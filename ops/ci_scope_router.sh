@@ -17,8 +17,9 @@ silently lose validation.
 The iOS suite additionally carries ios_mode=full|targeted. Targeted is admitted
 only for exactly one changed top-level ios/BooksAndVocabUITests/*UITests.swift
 file whose `ios_test.sh --ui --list --file` discovery returns fully qualified
-Target/Suite/Method selectors; every other input stays ios_mode=full with an
-empty ios_selectors. KG_CI_IOS_SELECTOR_DISCOVERY overrides the discovery
+Target/Suite/Method selectors and that no ios/BooksAndVocabTests source
+contract reads by path; every other input stays ios_mode=full with an empty
+ios_selectors. KG_CI_IOS_SELECTOR_DISCOVERY overrides the discovery
 command for contract tests only.
 EOF
 }
@@ -209,6 +210,14 @@ discover_targeted_selectors() {
     *fixture*|*helper*|*page*|*support*) return 1 ;;
   esac
   [[ -f "$ROOT/$path" && ! -L "$ROOT/$path" ]] || return 1
+
+  # A BooksAndVocabTests source contract that reads this file by path (for
+  # example ReviewCardEvidenceContractTests) makes it unit-lane input, and the
+  # targeted lane skips that lane. Any grep result other than "no match"
+  # (including a read error) keeps full mode.
+  local contract_status=0
+  grep -rqF --include='*.swift' -- "${path#ios/}" "$ROOT/ios/BooksAndVocabTests" || contract_status=$?
+  [[ "$contract_status" -eq 1 ]] || return 1
 
   out="$(cd "$ROOT" && "$DISCOVERY" --ui --list --file "$path" 2>/dev/null)" || return 1
   [[ -n "$out" ]] || return 1

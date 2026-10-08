@@ -83,6 +83,9 @@ struct ReviewCardEvidenceContractTests {
                 ReviewCardEvidenceRules.captureFlow(in:)
             ),
             (.todayReviewPage, "frontAbsentFields", #"_ = ["explanatoin"]"#, ReviewCardEvidenceRules.fieldNames(in:)),
+            // A loosened comparison added beside an intact check is still a violation.
+            (.todayReviewPage, "waitForUnique", "_ = matches.count >= 1", ReviewCardEvidenceRules.cardinality(in:)),
+            (.todayReviewPage, "cardMatchesGeometry", "_ = !matching.isEmpty", ReviewCardEvidenceRules.cardinality(in:)),
         ]
         for injection in injections {
             let mutated = try #require(
@@ -93,18 +96,45 @@ struct ReviewCardEvidenceContractTests {
             #expect(!violations.isEmpty, "no rule fired for `\(injection.line)` in \(injection.declaration)")
         }
 
+        // Remove each occurrence on its own: an accessor that checks in its polling
+        // loop and again in its final return must fail when either copy goes.
         for check in ReviewCardEvidenceRules.cardinalityChecks {
-            let weakened = try #require(
-                sources.weakening(check),
-                "\(check.declaration) in \(check.file.rawValue) has no cardinality check to remove"
+            let weakenings = try sources.weakenings(check)
+            #expect(
+                weakenings.count == check.expected,
+                "\(check.declaration) in \(check.file.rawValue): \(weakenings.count) sites of `\(check.pattern)`, expected \(check.expected)"
             )
-            let noticed = ReviewCardEvidenceRules.violation(of: check, in: weakened) != nil
-            #expect(noticed, "removing `\(check.pattern)` from \(check.declaration) went unnoticed")
+            for (site, weakened) in weakenings.enumerated() {
+                let noticed = ReviewCardEvidenceRules.violation(of: check, in: weakened) != nil
+                #expect(noticed, "removing site \(site) of `\(check.pattern)` from \(check.declaration) went unnoticed")
+            }
         }
 
         let unnamed = try #require(try sources.renamingFirstCaptureArgument(to: "capture"))
         let unnamedViolations = try ReviewCardEvidenceRules.captureFlow(in: unnamed)
         #expect(!unnamedViolations.isEmpty, "an unnamed capture path went unnoticed")
+    }
+
+    /// Realistic one-site weakenings: an accessor that keeps a second copy of its
+    /// check (the polling loop and the final return) must still turn red when only
+    /// one copy is loosened, and a loosened comparison is caught as such.
+    @Test func partialCardinalityWeakeningTurnsTheContractRed() throws {
+        let sources = try ReviewCardEvidenceSources.load()
+        let weakenings: [(declaration: String, original: String, weakened: String)] = [
+            ("waitForUnique", "if matches.count == 1, matches[0].exists", "if matches.count >= 1, matches[0].exists"),
+            ("cardMatchesGeometry", "guard matching.count == 1 else", "guard !matching.isEmpty else"),
+            ("waitForCardReadiness", "scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0,", "true,"),
+            ("scopedRequiredField", "return matching.count == 1 && matching[0].exists", "return !matching.isEmpty && matching[0].exists"),
+            ("scopedPresentationAnchor", "return anchors.count == 1", "return anchors.count > 0"),
+        ]
+        for weakening in weakenings {
+            let mutated = try #require(
+                sources.replacingFirst(weakening.original, with: weakening.weakened, in: weakening.declaration, of: .todayReviewPage),
+                "`\(weakening.original)` is missing from \(weakening.declaration)"
+            )
+            let violations = try ReviewCardEvidenceRules.cardinality(in: mutated)
+            #expect(!violations.isEmpty, "weakening `\(weakening.original)` in \(weakening.declaration) went unnoticed")
+        }
     }
 }
 
@@ -159,15 +189,32 @@ private struct ReviewCardEvidenceSources {
         return copy
     }
 
-    /// A copy with every match of `check.pattern` inside its declaration removed.
-    func weakening(_ check: ReviewCardEvidenceRules.CardinalityCheck) -> Self? {
+    /// One copy per match of `check.pattern` inside its declaration, each with only
+    /// that match replaced by `true`.
+    func weakenings(_ check: ReviewCardEvidenceRules.CardinalityCheck) throws -> [Self] {
         let source = code(check.file)
-        guard let body = ReviewCardEvidenceRules.bodyRange(of: check.declaration, in: source) else { return nil }
-        let bodyText = String(source[body])
-        let weakened = bodyText.replacingOccurrences(of: check.pattern, with: "true", options: .regularExpression)
-        guard weakened != bodyText else { return nil }
+        guard let body = ReviewCardEvidenceRules.bodyRange(of: check.declaration, in: source) else { return [] }
+        return try ReviewCardEvidenceRules.matchRanges(check.pattern, in: source, within: body).map { site in
+            var copy = self
+            copy.codeByFile[check.file] = source.replacingCharacters(in: site, with: "true")
+            return copy
+        }
+    }
+
+    /// A copy with the first literal `original` inside `declaration` replaced.
+    func replacingFirst(
+        _ original: String,
+        with replacement: String,
+        in declaration: String,
+        of file: ReviewCardEvidenceFile
+    ) -> Self? {
+        let source = code(file)
+        guard let body = ReviewCardEvidenceRules.bodyRange(of: declaration, in: source),
+              let site = source.range(of: original, range: body) else {
+            return nil
+        }
         var copy = self
-        copy.codeByFile[check.file] = source.replacingCharacters(in: body, with: weakened)
+        copy.codeByFile[file] = source.replacingCharacters(in: site, with: replacement)
         return copy
     }
 
@@ -188,7 +235,10 @@ private struct ReviewCardEvidenceSources {
 // MARK: - Rules
 
 private enum ReviewCardEvidenceRules {
-    typealias CardinalityCheck = (file: ReviewCardEvidenceFile, declaration: String, pattern: String)
+    /// `pattern` must match exactly `expected` times inside `declaration`: one per
+    /// guard site, so loosening any single site (a polling loop and its final
+    /// return each count) is a violation.
+    typealias CardinalityCheck = (file: ReviewCardEvidenceFile, declaration: String, pattern: String, expected: Int)
 
     /// `firstMatch` silently picks one of several matches; any `sleep(` (`usleep`,
     /// `Thread.sleep`, `Task.sleep`) times readiness instead of observing it.
@@ -205,22 +255,49 @@ private enum ReviewCardEvidenceRules {
         .todayReviewPage: ["queryElement", "scopedElement"],
     ]
 
-    /// Evidence-critical accessors and the cardinality check each must keep.
+    /// Evidence-critical accessors and the cardinality guards each must keep, one
+    /// entry per guard with its exact number of sites.
     static let cardinalityChecks: [CardinalityCheck] = [
-        (.todayReviewPage, "exactlyOne", #"XCTAssertEqual\(\s*\w+\.count\s*,\s*1\s*,"#),
-        (.todayReviewPage, "element", #"exactlyOne\("#),
-        (.todayReviewPage, "waitForUnique", #"\.count\s*==\s*1\b"#),
-        (.todayReviewPage, "cardIsCanonical", #"\.count\s*==\s*1\b"#),
-        (.todayReviewPage, "cardMatchesGeometry", #"\.count\s*==\s*1\b"#),
-        (.todayReviewPage, "scopedElements", #"\.count\s*==\s*1\b"#),
-        (.todayReviewPage, "scopedPresentationAnchor", #"\.count\s*==\s*1\b"#),
-        (.todayReviewPage, "waitForCardReadiness", #"alternatePresentationIdentifier\)\s*==\s*0\b"#),
-        (.todayReviewPage, "waitForCardReadiness", #"absentFieldIdentifiers\.allSatisfy\(\{[^}]*==\s*0\b"#),
-        (.layoutEditorPage, "element", #"precondition\(\s*\w+\.count\s*==\s*1\b"#),
-        (.layoutEditorPage, "presetSegment", #"precondition\(\s*\w+\.count\s*==\s*2\b"#),
-        (.settingsSheetPage, "navBar", #"precondition\(\s*\w+\.count\s*==\s*1\b"#),
+        (.todayReviewPage, "exactlyOne", #"XCTAssertEqual\(\s*matches\.count\s*,\s*1\s*,"#, 1),
+        (.todayReviewPage, "element", #"exactlyOne\(identifier,"#, 1),
+        (.todayReviewPage, "waitForUnique", #"matches\.count\s*==\s*1\b"#, 2),
+        (.todayReviewPage, "cardIsCanonical", #"guard\s+matching\.count\s*==\s*1\s+else"#, 1),
+        (.todayReviewPage, "cardMatchesGeometry", #"guard\s+matching\.count\s*==\s*1\s+else"#, 1),
+        (.todayReviewPage, "cardMatchesGeometry", #"expandMatches\.count\s*==\s*geometry\.expectedExpandZoneCount\b"#, 1),
+        (.todayReviewPage, "cardMatchesGeometry", #"guard\s+expandMatches\.count\s*==\s*1\s*,"#, 1),
+        (.todayReviewPage, "scopedRequiredField", #"matching\.count\s*==\s*1\b"#, 1),
+        (.todayReviewPage, "scopedElements", #"guard\s+cards\.count\s*==\s*1\s+else"#, 1),
+        (.todayReviewPage, "scopedPresentationAnchor", #"anchors\.count\s*==\s*1\b"#, 1),
+        // Readiness: every conjunct appears once in the polling loop and once in
+        // the final return.
+        (.todayReviewPage, "waitForCardReadiness", #"cardIsCanonical\(cardIdentifier,\s*identity:\s*identity\)"#, 2),
+        (.todayReviewPage, "waitForCardReadiness", #"cardMatchesGeometry\(cardIdentifier,\s*geometry:\s*geometry\)"#, 2),
+        (.todayReviewPage, "waitForCardReadiness", #"scopedPresentationAnchor\(cardIdentifier,\s*presentationIdentifier\)"#, 2),
+        (
+            .todayReviewPage, "waitForCardReadiness",
+            #"scopedCount\(cardIdentifier,\s*alternatePresentationIdentifier\)\s*==\s*0\b"#, 2
+        ),
+        (
+            .todayReviewPage, "waitForCardReadiness",
+            #"requiredFieldIdentifiers\.allSatisfy\(\{\s*scopedRequiredField\(cardIdentifier,\s*\$0\)\s*\}\)"#, 2
+        ),
+        (
+            .todayReviewPage, "waitForCardReadiness",
+            #"absentFieldIdentifiers\.allSatisfy\(\{\s*scopedCount\(cardIdentifier,\s*\$0\)\s*==\s*0\s*\}\)"#, 2
+        ),
+        (.layoutEditorPage, "element", #"precondition\(\s*matching\.count\s*==\s*1\b"#, 1),
+        (.layoutEditorPage, "presetSegment", #"precondition\(\s*buttons\.count\s*==\s*2\b"#, 1),
+        (.layoutEditorPage, "waitUntilVisible", #"matches\.count\s*==\s*1\b"#, 2),
+        (.settingsSheetPage, "navBar", #"precondition\(\s*matching\.count\s*==\s*1\b"#, 1),
         // `XCUIElementQuery.element` fails the test when the query is ambiguous.
-        (.settingsSheetPage, "exact", #"\.matching\(identifier:\s*\w+\)\s*\.element\s*$"#),
+        (.settingsSheetPage, "exact", #"\.matching\(identifier:\s*identifier\)\s*\.element\s*$"#, 1),
+    ]
+
+    /// Comparisons that accept more than one match. None belongs in a declaration
+    /// `cardinalityChecks` guards, even beside an intact exact check.
+    static let loosenedCardinalityPatterns = [
+        #"\.count\s*(?:>=|>|!=|<=|<)"#,
+        #"!\s*[A-Za-z_][\w.]*\.isEmpty\b"#,
     ]
 
     /// Computed lists in `TodayReviewPage.CardIdentity` that readiness turns into
@@ -256,7 +333,17 @@ private enum ReviewCardEvidenceRules {
     }
 
     static func cardinality(in sources: ReviewCardEvidenceSources) throws -> [String] {
-        cardinalityChecks.compactMap { violation(of: $0, in: sources) }
+        var violations = cardinalityChecks.compactMap { violation(of: $0, in: sources) }
+        var guarded: Set<String> = []
+        for check in cardinalityChecks where guarded.insert("\(check.file.rawValue)#\(check.declaration)").inserted {
+            let code = sources.code(check.file)
+            guard let body = bodyRange(of: check.declaration, in: code) else { continue }
+            for pattern in loosenedCardinalityPatterns
+            where String(code[body]).range(of: pattern, options: .regularExpression) != nil {
+                violations.append("\(check.file.rawValue): \(check.declaration) loosens a cardinality check (\(pattern))")
+            }
+        }
+        return violations
     }
 
     static func violation(of check: CardinalityCheck, in sources: ReviewCardEvidenceSources) -> String? {
@@ -264,8 +351,9 @@ private enum ReviewCardEvidenceRules {
         guard let body = bodyRange(of: check.declaration, in: code) else {
             return "\(check.file.rawValue): \(check.declaration) is missing; a rename updates cardinalityChecks"
         }
-        guard String(code[body]).range(of: check.pattern, options: .regularExpression) == nil else { return nil }
-        return "\(check.file.rawValue): \(check.declaration) lost its cardinality check \(check.pattern)"
+        let sites = (try? matchRanges(check.pattern, in: code, within: body).count) ?? -1
+        guard sites != check.expected else { return nil }
+        return "\(check.file.rawValue): \(check.declaration) has \(sites) sites of \(check.pattern), expected \(check.expected)"
     }
 
     /// Every declared capture is taken by name through `captureCanonicalStep`, and
@@ -444,6 +532,13 @@ private enum ReviewCardEvidenceRules {
 
     static func occurrences(of token: String, in text: String) -> Int {
         text.components(separatedBy: token).count - 1
+    }
+
+    /// Ranges of every match of `pattern` inside `scope` of `text`; the scope
+    /// bounds act as text bounds for anchors.
+    static func matchRanges(_ pattern: String, in text: String, within scope: Range<String.Index>) throws -> [Range<String.Index>] {
+        let regex = try NSRegularExpression(pattern: pattern)
+        return regex.matches(in: text, range: NSRange(scope, in: text)).compactMap { Range($0.range, in: text) }
     }
 
     /// The first capture group of every match of `pattern`.

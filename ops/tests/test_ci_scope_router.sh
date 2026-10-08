@@ -157,6 +157,17 @@ assert_ios_route 'single top-level UITests file with discovered selectors is tar
 assert_ios_route 'discovery without the ios_test header is accepted when selectors are exact' \
   "$OVERVIEW" no-header targeted 'OverviewFlowUITests/testA'
 
+# A UITests file that a BooksAndVocabTests source contract reads by path
+# (ReviewCardEvidenceContractTests, SettingsFixturesTests) is input to the unit
+# lane. Targeted mode skips that lane, so such a change must stay full or a
+# contract violation merges green (Issue #2114).
+for case_path in \
+  'ios/BooksAndVocabUITests/ReviewCardLayoutEditorUITests.swift' \
+  'ios/BooksAndVocabUITests/SettingsFlowUITests.swift'; do
+  assert_ios_route "UITests file read by a unit-test source contract stays full: $case_path" \
+    "$case_path" ok full ''
+done
+
 # Negative: inputs that would silently lose coverage must fall back to full.
 assert_ios_route 'two UITests files fall back to full' \
   "$OVERVIEW
