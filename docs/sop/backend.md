@@ -103,6 +103,8 @@ cd backend && uv run python -m pytest -q
 
 ### 查 Sentry 錯誤追蹤
 
+日誌格式：`kg.api` import 時呼叫 `kg.logging_config.configure_logging()`，root logger 輸出單行 JSON（`ts`／`level`／`logger`／`msg`，選填 `request_id`／`exc`／`stack`），跳脫由 `json.dumps` 負責；不要用 printf 風格手拼 JSON format string，也不要在 `msg` 之外另拼使用者輸入。
+
 先看：
 - `docs/sop/deploy.md`（env keys + opt-in 模式）
 - `backend/src/kg/sentry_init.py`（scrubbing / integrations 實作）
