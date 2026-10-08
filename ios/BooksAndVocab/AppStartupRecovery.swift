@@ -50,6 +50,15 @@ extension BooksAndVocabApp {
                     // 重建成功 — 替換 container 並關閉 recovery 畫面。SwiftUI 會以新 container 重掛 view tree。
                     modelContainer = outcome.container
                     startupFailure = nil
+                    #if os(iOS)
+                    // init 當時 configure 的是 in-memory fallback 容器；不重綁的話 commit 會在舊容器
+                    // 找不到 PodcastEpisode 而刪掉已下載的 mp3。與 init 套同一個 skip 條件。
+                    if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: ProcessInfo.processInfo.arguments) {
+                        PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
+                    }
+                    #endif
+                    // 先在背景暖 iCloud 目錄快取，reconciler 才不會在 main actor 上做 ubiquity lookup（#2107）。
+                    await Task.detached(priority: .utility) { _ = Book.iCloudBooksDirectory }.value
                     AppOrphanBookRecovery.run(container: outcome.container)
                     AppLog.app.info("AppStartupRecoveryView: retry succeeded — switching to main UI")
                     return true
