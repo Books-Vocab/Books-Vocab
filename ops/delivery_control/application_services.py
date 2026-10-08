@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -858,9 +859,14 @@ class DeliveryApplication:
             "claim_generation": final_record.claim_generation,
         }
 
-    def release_published(self, pull_request_number: int) -> object:
+    def release_published(
+        self,
+        pull_request_number: int,
+        *,
+        operation_lease: cleanup.OperationLease | None = None,
+    ) -> object:
         receipt = self._receipt_from_pr(pull_request_number)
-        return self._cleanup().release_after_publish(
+        return self._cleanup(operation_lease).release_after_publish(
             receipt=receipt, pull_request_number=pull_request_number
         )
 
@@ -918,15 +924,26 @@ class DeliveryApplication:
             command=self.github,
         ).trigger(pull_request_number)
 
-    def cleanup_merged(self, pull_request_number: int) -> object:
+    def cleanup_merged(
+        self,
+        pull_request_number: int,
+        *,
+        operation_lease: cleanup.OperationLease | None = None,
+    ) -> object:
         pull_request = self.github.get_pull_request(pull_request_number)
         if "<!-- kg.delivery.receipt.v1" not in pull_request.body:
-            return self._legacy_cleanup().cleanup_merged_pr(pull_request_number)
+            # Migration-only receipt-less PRs keep one lease for the whole run.
+            with (
+                nullcontext()
+                if operation_lease is None
+                else operation_lease("cleanup-merged")
+            ):
+                return self._legacy_cleanup().cleanup_merged_pr(pull_request_number)
         body_receipt = parse_pull_request_body(pull_request.body)
         receipt, record, previous_receipt = self._cleanup_receipt(
             body_receipt, pull_request
         )
-        result = self._cleanup().finalize_merged(
+        result = self._cleanup(operation_lease).finalize_merged(
             receipt=receipt,
             pull_request_number=pull_request_number,
             body_receipt=previous_receipt,
@@ -1215,13 +1232,16 @@ class DeliveryApplication:
             clock=self.clock,
         )
 
-    def _cleanup(self) -> cleanup.CleanupService:
+    def _cleanup(
+        self, operation_lease: cleanup.OperationLease | None = None
+    ) -> cleanup.CleanupService:
         return cleanup.CleanupService(
             registry_query=self.registry,
             registry_command=self.registry,
             git_query=self.git,
             git_command=self.git,
             github=self.github,
+            lease=operation_lease,
         )
 
     def _legacy_cleanup(self) -> legacy_cleanup.LegacyTerminalCleanupService:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +18,16 @@ from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryCleanupQueryPort, RegistryCommandPort
 from .pr_contract import parse_pull_request_body, pull_request_holds
+
+# One cross-process delivery mutation lease, keyed by a short section label
+# that a busy refusal reports.  The CLI supplies OperationLock; None means
+# the caller already holds the whole-command lease (publish) or is a fake.
+OperationLease = Callable[[str], AbstractContextManager[object]]
+
+
+def _unleased(label: str) -> AbstractContextManager[object]:
+    del label
+    return nullcontext()
 
 
 @dataclass(frozen=True)
@@ -35,12 +47,14 @@ class CleanupService:
         git_query: GitQueryPort,
         git_command: GitCommandPort,
         github: GitHubQueryPort,
+        lease: OperationLease | None = None,
     ) -> None:
         self.registry_query = registry_query
         self.registry_command = registry_command
         self.git_query = git_query
         self.git_command = git_command
         self.github = github
+        self.lease = _unleased if lease is None else lease
 
     def _require_canonical_main(self) -> None:
         """Protect local cleanup from removing the checkout running the command."""
@@ -74,21 +88,25 @@ class CleanupService:
             raise PolicyViolation("local claim differs from typed handback")
         return record
 
-    def _acquire_cleanup_lease(
-        self, receipt: HandbackReceipt, record: RegistrySnapshot
-    ) -> RegistrySnapshot:
-        if record.status == "merged":
-            raise PolicyViolation("merged lane cannot acquire a local cleanup lease")
-        if record.status != "cleanup_pending":
-            self.registry_command.resolve(
-                receipt.lane_id,
-                "cleanup_pending",
-                expected_claim_generation=receipt.claim_generation,
-                expected_branch=receipt.branch,
-                expected_path=receipt.worktree_path,
-                expected_head_sha=receipt.head_sha,
-            )
-        leased = self._record(receipt)
+    def _acquire_cleanup_lease(self, receipt: HandbackReceipt) -> RegistrySnapshot:
+        # Re-read under the operation lease: the caller's snapshot was taken
+        # before network checks that run unleased.
+        with self.lease("cleanup:registry-lease"):
+            record = self._record(receipt)
+            if record.status == "merged":
+                raise PolicyViolation(
+                    "merged lane cannot acquire a local cleanup lease"
+                )
+            if record.status != "cleanup_pending":
+                self.registry_command.resolve(
+                    receipt.lane_id,
+                    "cleanup_pending",
+                    expected_claim_generation=receipt.claim_generation,
+                    expected_branch=receipt.branch,
+                    expected_path=receipt.worktree_path,
+                    expected_head_sha=receipt.head_sha,
+                )
+            leased = self._record(receipt)
         if leased.status != "cleanup_pending":
             raise PolicyViolation("registry cleanup lease did not read back exactly")
         return leased
@@ -118,15 +136,16 @@ class CleanupService:
                 base_branch=pull_request.base_branch,
                 pr_state=pull_request.state,
             )
-        self.registry_command.resolve(
-            receipt.lane_id,
-            disposition,
-            expected_claim_generation=receipt.claim_generation,
-            expected_branch=receipt.branch,
-            expected_path=receipt.worktree_path,
-            expected_head_sha=receipt.head_sha,
-            terminal_proof=terminal_proof,
-        )
+        with self.lease("cleanup:registry-terminal"):
+            self.registry_command.resolve(
+                receipt.lane_id,
+                disposition,
+                expected_claim_generation=receipt.claim_generation,
+                expected_branch=receipt.branch,
+                expected_path=receipt.worktree_path,
+                expected_head_sha=receipt.head_sha,
+                terminal_proof=terminal_proof,
+            )
 
     def _pull_request(
         self,
@@ -217,10 +236,14 @@ class CleanupService:
                 body_receipt=body_receipt,
             )
             checked_pull_request = True
-            self.git_command.remove_worktree(
-                physical.path if physical is not None else Path(receipt.worktree_path),
-                expected_head_sha=receipt.head_sha,
-            )
+            # The adapter re-validates HEAD and cleanliness under the lease.
+            with self.lease("cleanup:remove-worktree"):
+                self.git_command.remove_worktree(
+                    physical.path
+                    if physical is not None
+                    else Path(receipt.worktree_path),
+                    expected_head_sha=receipt.head_sha,
+                )
         if local_sha is not None:
             self._pull_request(
                 receipt,
@@ -229,9 +252,10 @@ class CleanupService:
                 body_receipt=body_receipt,
             )
             checked_pull_request = True
-            self.git_command.delete_local_branch(
-                receipt.branch, expected_head_sha=receipt.head_sha
-            )
+            with self.lease("cleanup:delete-local-branch"):
+                self.git_command.delete_local_branch(
+                    receipt.branch, expected_head_sha=receipt.head_sha
+                )
         if not checked_pull_request:
             self._pull_request(
                 receipt,
@@ -243,7 +267,8 @@ class CleanupService:
     def release_after_publish(
         self, *, receipt: HandbackReceipt, pull_request_number: int
     ) -> CleanupResult:
-        self._require_canonical_main()
+        with self.lease("cleanup:canonical-main"):
+            self._require_canonical_main()
         record = self._record(receipt)
         if record.status == "merged":
             raise PolicyViolation("merged lane requires terminal cleanup")
@@ -254,7 +279,7 @@ class CleanupService:
             existing = self._result(receipt, "published")
             if existing.worktree_absent and existing.local_branch_absent:
                 return existing
-        self._acquire_cleanup_lease(receipt, record)
+        self._acquire_cleanup_lease(receipt)
         self._remove_local_assets(
             receipt,
             pull_request_number=pull_request_number,
@@ -316,7 +341,8 @@ class CleanupService:
         pull_request_number: int,
         body_receipt: HandbackReceipt | None = None,
     ) -> CleanupResult:
-        self._require_canonical_main()
+        with self.lease("cleanup:canonical-main"):
+            self._require_canonical_main()
         record = self._record(receipt)
         self._pull_request(
             receipt,
@@ -343,7 +369,7 @@ class CleanupService:
             if not result.worktree_absent:
                 raise PolicyViolation("merged registry record has unreconciled assets")
             return result
-        self._acquire_cleanup_lease(receipt, record)
+        self._acquire_cleanup_lease(receipt)
         self._remove_local_assets(
             receipt,
             pull_request_number=pull_request_number,

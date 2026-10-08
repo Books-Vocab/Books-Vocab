@@ -11,7 +11,7 @@ scope:
   - .github/workflows/pr-readiness.yml
   - .github/workflows/pr-gate.yml
   - .github/workflows/merge-group-required.yml
-verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
+verified_against: 9d1fc2de80eb235fa74410b319324e3085cc07b2
 -->
 # Delivery Control Dogfood SOP
 
@@ -70,6 +70,15 @@ ops pytest 另由 `ops/tests/conftest.py` 的 autouse fixture 設定 `KG_DELIVER
 該變數僅供測試：任何 operator、launchd 或 CI 的真實 delivery 環境都不得設定，否則使用不同值的程序彼此不再互斥，會削弱 fail-closed lease；production 不設定時路徑不變。
 不要平行直接啟動 registry mutation 測試；使用 `./ops/test_ops.sh worktree`，讓 wrapper
 在不同 linked worktree 之間共用同一把鎖。程序中止時由作業系統釋放鎖，不建立第二套 registry 狀態。
+
+`OperationLock` 的持有範圍：`publish`、`sync-main`、`record-published-base`、`abandon-pr`、`discard-*`、main preservation、
+`admit-candidate`、`issue-intake` 等 mutating command 仍整段持有；`queue`、`cleanup-merged`、`release-published`
+只在本機區段取得（#2236），GitHub API、`ls-remote` 與 `push` 都在 lease 之外。`queue` 完全不取 lease：它只寫 GitHub，
+由 `expectedHeadOid` 與 enqueue 前後的 body／base／head／state 讀回守住。`cleanup-merged`、`release-published` 只在
+canonical main 檢查、registry `cleanup_pending`／terminal read-modify-write、worktree 移除與 local branch 刪除這幾段持有；
+receipt-less legacy `cleanup-merged`（migration-only）仍整段持有。因此 `delivery mutation already in progress` 可能在
+命令中途出現：已完成的區段保留在 registry `cleanup_pending` lease 之下，重跑同一命令即從該處續做（已不存在的
+worktree／branch 冪等跳過）。
 
 `./ops/test_ops.sh` 對 `worktree`、`delivery-control`、`docs-lint`、`disk-guard`、`doctor` 這五個 heavy
 group 另有 host-wide slot limiter（`ops/lib/heavy_slots.sh`，名單為 `test_ops.sh` 的 `HEAVY_TESTS`）：

@@ -3,9 +3,14 @@
 The delivery CLI can be invoked concurrently by a supervisor, an integrator,
 or a cleanup retry.  Registry CAS protects the ledger, but Git operations such
 as sync, worktree removal, and branch deletion still share the repository's
-index and refs.  This lock serializes those command-level mutations while
-leaving observation commands concurrent.  The kernel releases the lock when
-the owning process exits, so a stale lock file is harmless.
+index and refs.  This lock serializes registry read-modify-write and local
+worktree/ref mutation while leaving observation commands concurrent.  Most
+mutating commands hold it for their whole run; ``queue``, ``cleanup-merged``
+and ``release-published`` take it only around those local sections, so their
+GitHub API calls, ``ls-remote`` and ``push`` run outside it (#2236).  The
+lease stays non-blocking and its busy refusal text is unchanged.  The kernel
+releases the lock when the owning process exits, so a stale lock file is
+harmless.
 """
 
 from __future__ import annotations
