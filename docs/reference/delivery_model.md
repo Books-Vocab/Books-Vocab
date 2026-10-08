@@ -43,7 +43,7 @@ GitHub 是整套交付控制面：
 | 新工作、風險與缺口的發現 | User／Backlog Scout（observation） |
 | 需要排序、追蹤或 fan-out 的 durable demand | GitHub Issue |
 | 要不要做、為什麼做、完成判準 | GitHub Issue（可選） |
-| 優先順序、視圖、里程碑 | GitHub Project |
+| 優先順序、狀態、認領 | GitHub Issue 的 `P0`–`P3`／狀態 label 與公開認領留言（正本 [`issue_management.md`](issue_management.md)）；不使用 GitHub Project 或 assignee |
 | 一次實作的隔離空間 | branch + local worktree |
 | 變更、討論、review、驗證、合併請求 | Pull Request |
 | 自動測試與 required checks | GitHub Actions |
@@ -140,14 +140,14 @@ PR 仍必須寫清楚指派內容、修改範圍、驗收方式、測試證據�
 
 ### B. Issue 流程
 
-適用於需要討論、排序、拆解、Project／milestone 視圖或未來追蹤的工作。
+適用於需要討論、排序、拆解或未來追蹤的工作。
 
 ```text
 User / Backlog Scout
     ↓
-GitHub Issue → Project priority / triage → Scout fan-out
+GitHub Issue → P0–P3 + 狀態 label triage → Scout fan-out
     ↓
-Issue Solver claim
+IM 公開認領（claim 留言 + in-progress）→ Issue Solver
     ↓
 IM 建立 dedicated worktree → code + tests → local commit + typed hand-back
     ↓
@@ -157,6 +157,12 @@ GitHub durable PR → required + advisory confidence／CR／DS → CM native mer
 ```
 
 Issue 的 acceptance 是需求真相；PR 的 diff、conversation、checks、review 與驗證證據是實作真相。Issue 關聯可由 PR 自動 close，但不把 Issue 狀態再寫入 repo。
+
+Issue 層的規則正本是 [`issue_management.md`](issue_management.md)；本文件只固定它與交付模型的接點：
+
+- **認領必須公開，且只有 IM 寫**：認領是 Issue 上帶 `kg.issue.claim.v1` 機讀標記的留言加 `in-progress` 狀態 label；不使用 assignee。本機 registry 仍是執行層真相（worktree 所有權、Scope overlap、hand-back），但只存在 registry 的認領不算已認領。Worker／Issue Solver 沒有 GitHub 寫入權，不發認領、不改 label。
+- **狀態 label**：open Issue 恰有一個狀態（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個優先級（`P0`–`P3`）。認領、釋放、`delivery:candidate` 准入仍只屬 IM／CM。
+- **PR 連結**：PR 內文用 `Closes #N` 表示完全解決（合併即自動關閉）、`Refs #N` 表示只解決一部分（Issue 回到 `ready-for-solver`）；整合 PR 逐一列出每個 Issue。手動補關 Issue 必須留言附 commit 證據，`close-terminal-issues` 只作安全網。
 
 只整理既有 Issue、尚未要求 admission 或實作時，依 [`docs/runbook/system.md` 的 Backlog grooming](../runbook/system.md#backlog-grooming) 限定範圍。
 

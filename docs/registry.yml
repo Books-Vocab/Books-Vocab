@@ -7,6 +7,7 @@ agent_facing_surface:
     - .claude/agents/
     - .claude/skills/
     - docs/reference/delivery_model.md
+    - docs/reference/issue_management.md
     - docs/reference/agent_context.md
     - docs/reference/project_onboarding.md
     - docs/reference/product_surface.md
@@ -129,6 +130,22 @@ documents:
       - ops/delivery_control/
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
+
+  - id: reference.issue_management
+    path: docs/reference/issue_management.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - issue-management-changed
+    sources:
+      - .github/
+      - .claude/skills/github-coordination/
+      - docs/reference/delivery_model.md
+      - ops/delivery.py
+      - ops/delivery_control/
+      - ops/worktree_registry.py
+      - ops/worktree_registry_core/
+      - ops/doctor_issue.py
 
   - id: asset.delivery_lifecycle_diagram
     path: docs/reference/kg-delivery-lifecycle.mmd
