@@ -106,7 +106,7 @@ raw-Chinese scan 在比對前會先把以下兩種區塊 blank 掉(行號保留,
 |---|---|---|
 | A. Key Coverage | `ops/_i18n_extract_keys.py` 抽出的 static key 集 | key 不在 `en.lproj/Localizable.strings` 也不在 `Localizable.stringsdict` |
 | B. EN Purity | `en.lproj/Localizable.strings` + `.stringsdict` 所有 value | value 含 CJK Unified Ideographs(`[一-鿿]`) |
-| C. Plural Coverage | extractor 輸出的 `plural_keys`(`L10n.format(...)` 呼叫) | en value 含 `%d`/`%lld` 整數規格符,但 `.stringsdict` 沒對應 entry |
+| C. Plural Rules | extractor 輸出的 `plural_keys`(`L10n.format(...)` 呼叫);en value 含 `%d`/`%lld` 或 en `.stringsdict` 已有該 key | 五語系(en/zh-Hant/zh-Hans/ja/ko)任一缺 `.stringsdict` entry(`plural_missing`)、變數 SpecType 非 `NSStringPluralRuleType` 或 ValueType 非 `lld`(`plural_type`)、en 缺 `one`/`other`(`plural_form`) |
 
 ### Extractor 掃描範圍
 
