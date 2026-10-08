@@ -3,7 +3,7 @@
 #
 # The component workflows are reusable building blocks. pr-gate owns the
 # pull_request entrypoint and merge-group-required owns the merge queue
-# entrypoint; both expose the same short `required` contract without importing
+# entrypoint; both expose the same `required` context without importing
 # the slow confidence fan-out into the merge queue.
 
 set -euo pipefail
@@ -184,8 +184,10 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     in_required && /^  [A-Za-z0-9_-]+:/ { exit }
     in_required { print }
   ' "$MERGE_GROUP_REQUIRED")"
-  grep -q 'timeout-minutes: 15' <<<"$merge_group_required_block" \
-    || fail "merge-group required gate is not hard-bounded to fifteen minutes"
+  # Job-level bound only (4-space indent): short gate plus the backend pytest
+  # suite must fit; 15 minutes was too tight for both.
+  grep -Eq '^    timeout-minutes: 25$' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not hard-bounded to twenty-five minutes"
   # ubuntu-latest is a moving label; the apt ffmpeg series follows the image and
   # the podcast preview skip allowlist turns a changed series into a red queue.
   grep -Eq '^    runs-on: ubuntu-24\.04$' <<<"$merge_group_required_block" \
@@ -220,7 +222,8 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   ' <<<"$merge_group_required_block")"
   [[ -n "$backend_pytest_step" ]] \
     || fail "merge-group required gate does not run the backend pytest suite"
-  grep -Fq "if: steps.${scope_step_id}.outputs.backend == 'true'" <<<"$backend_pytest_step" \
+  # Anchored to a live step-level key: a commented-out `# if: ...` must not pass.
+  grep -Eq "^        if: steps\.${scope_step_id}\.outputs\.backend == 'true'\$" <<<"$backend_pytest_step" \
     || fail "merge-group backend pytest step is not guarded by the router backend output"
   grep -Fq 'working-directory: backend' <<<"$backend_pytest_step" \
     || fail "merge-group backend pytest step does not run in backend/"

@@ -98,7 +98,7 @@ group 另有 host-wide slot limiter（`ops/lib/heavy_slots.sh`，名單為 `test
 這些條件任一失敗都只修該 blocker；不得以人工改 registry、刪 dirty worktree、跳過 branch rule 或降低 hard gate 讓 preflight 變綠。
 quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、PR mapping 或 security clearance 的替代品。
 
-控制面 PR 合併前不得預先修改 production repository rules。部署順序固定為：合併本控制面 PR → canonical `main` ff-only 同步 → 在 repository settings 啟用 native merge queue 並把 short `required` 設為 required context → 用 read-only API 讀回 merge queue 與 branch protection → 清到只剩 canonical worktree → 跑 preflight → 最後才建立四個 tasks。
+控制面 PR 合併前不得預先修改 production repository rules。部署順序固定為：合併本控制面 PR → canonical `main` ff-only 同步 → 在 repository settings 啟用 native merge queue 並把 `required` 設為 required context → 用 read-only API 讀回 merge queue 與 branch protection → 清到只剩 canonical worktree → 跑 preflight → 最後才建立四個 tasks。
 
 ## 四個 tasks 與唯一職責
 
@@ -141,7 +141,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 | handback → durable PR | `delivery.py receipt/publish`、unique PR mapping、CAS push、exact readback | PI 事件式立即執行 |
 | publication 後 local release | cleanup lease、worktree／local branch absence readback | PI 立即清理；不以等待 CI 為理由保留 |
 | exact abandoned PR | unique PR／typed body／published registry／local absence／remote SHA readback | PI 只對已證明可放棄的同一 PR 執行 `abandon-pr`；dirty、unknown、remote drift 一律保留 |
-| readiness／required | typed PR receipt validator、short `required`、exact manual retrigger | PI 修 metadata／trigger transient retry |
+| readiness／required | typed PR receipt validator、`required`、exact manual retrigger | PI 修 metadata／trigger transient retry |
 | required code failure | `resume-published` same-owner generation+1 transaction | 原 owner 修 code、fresh handback；PI 更新同一 PR |
 | full confidence／CR／DS | GitHub check／review facts；typed／label hold | PI 分類 follow-up；嚴重者先 durable hold |
 | merge-front conflict | `reanchor` same-owner CAS、fresh handback／PR required；只落後 main 而 mergeable 的 PR 不需 reanchor | CM 只選隊首，不批次重建後方 PR |
