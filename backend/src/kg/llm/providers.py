@@ -16,6 +16,10 @@ config reload:
     <NAME>_MODEL               override a provider's model, e.g. DEEPSEEK_MODEL
 
 Precedence for a chat call_type: exact > group > DEFAULT > gemini.
+
+App startup calls `validate_provider_routing()` (before the worker lock): unknown
+provider names, embed routed to a non-embedding provider, or a resolved
+provider with a blank API key fail the boot instead of the first request.
 """
 
 from __future__ import annotations
