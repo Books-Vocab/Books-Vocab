@@ -602,3 +602,33 @@ def test_only_episodes_dry_run_stages_only_named_and_calls_no_aws(partial):
     assert "ep_03/audio.m4a" in proc.stdout
     assert "ep_01" not in proc.stdout
     assert "NO prune" in proc.stdout
+
+
+def test_make_preview_survives_empty_movflags_under_set_u(tmp_path):
+    """mp3 previews leave movflags empty; bash 3.2 + set -u must not abort."""
+    script = Path(__file__).resolve().parents[1] / "podcast_upload.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    ffmpeg = fake_bin / "ffmpeg"
+    ffmpeg.write_text('#!/bin/sh\nfor last; do :; done\necho "$@" > "$last"\n')
+    ffmpeg.chmod(0o755)
+    body = subprocess.run(
+        ["sed", "-n", "/^make_preview() {/,/^}/p", str(script)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "make_preview" in body
+    dst = tmp_path / "out.mp3"
+    harness = (
+        'set -euo pipefail\nPREVIEW_SECONDS=180\nerr() { echo "$*" >&2; exit 1; }\n'
+        f'{body}\nmake_preview in.mp3 "{dst}" mp3\n'
+    )
+    r = subprocess.run(
+        ["/bin/bash", "-c", harness],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{fake_bin}:/usr/bin:/bin"},
+    )
+    assert r.returncode == 0, r.stderr
+    assert "-movflags" not in dst.read_text()

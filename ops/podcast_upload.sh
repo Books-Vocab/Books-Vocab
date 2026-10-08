@@ -108,7 +108,8 @@ make_preview() {
   local src="$1" dst="$2" ext="$3"
   local movflags=()
   [[ "$ext" == "m4a" ]] && movflags=(-movflags +faststart)  # faststart is mp4-only
-  ffmpeg -nostdin -v error -y -i "$src" -t "$PREVIEW_SECONDS" -c copy "${movflags[@]}" "$dst" \
+  # ${a[@]+"${a[@]}"}: bash 3.2 (macOS /bin/bash) + set -u treats an empty array as unbound.
+  ffmpeg -nostdin -v error -y -i "$src" -t "$PREVIEW_SECONDS" -c copy ${movflags[@]+"${movflags[@]}"} "$dst" \
     || err "ffmpeg failed to generate free-tier preview from $src (full audio publishes but free tier would 404)"
 }
 
