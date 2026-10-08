@@ -22,6 +22,15 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 - GitHub 外部狀態是唯一真相；本地 coordinator 只管理 worktree ownership／Scope，不保存 Issue／Project／PR lifecycle。
 - route 不是 merge 或 production 授權；缺少 PR、fresh checks、review 或批准時 fail closed。
 
+## Issue states, claims and PR links
+
+規則正本是 `docs/reference/issue_management.md`；此處只列協調時的動作。
+
+- 每個 open Issue 恰有一個狀態 label（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個 `P0`–`P3`。派工只取 `ready-for-solver`：先高優先級，同級依「解除阻擋者、範圍小、較舊」，跳過 Scope 與現有認領重疊者。
+- 認領只由 IM 寫，且必須公開：Issue 留言帶 `kg.issue.claim.v1` 標記（`claim`／`renew`／`release`，TTL 預設 6 小時）加 `in-progress`；不使用 assignee。過期只會被標 `claim-stale`，是否釋放由 IM 決定。CM 與一般寫作者只讀認領，不代發。
+- 公開看板是 label 為 `work-board` 的單一自我更新 Issue（機讀區塊 `kg.issue.board.v1`）；它是 Issue 事實的投影，兩者不一致以 Issue 與留言為準。
+- 發布 PR 時內文 `## Issues` 區段逐一列 `Closes #N`（完全解決，合併自動關閉）與 `Refs #N`（部分，Issue 回 `ready-for-solver`）。補關 Issue 必須留言附 commit 證據。
+
 ## Delivery control commands
 
 - PI：`delivery.py publish`／`release-published`／`repair-pr-metadata`／`trigger-required`／`abandon-pr`；code failure 用 `worktree_orchestrate.py resume-published` 交還同一 owner，與 live main 衝突（`CONFLICTING`）的 merge-front 用 `reanchor`；只落後 main 的 mergeable PR 直接 queue。`abandon-pr` 只處理 exact closed/registry/remote lifecycle proof，不可當 dirty 或 unknown worktree 的清除捷徑。不得建立 duplicate PR、接管 owner 或 force-push未知 remote state。
