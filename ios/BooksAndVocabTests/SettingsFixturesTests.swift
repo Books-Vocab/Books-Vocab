@@ -552,7 +552,7 @@ import Testing
             .success
         ])
         let context = ModelContext(container)
-        let coordinator = SettingsCoordinator(resetStateStore: resetStore)
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
         let before = SettingsResetLifecycle.Snapshot(
             localCardCount: 3,
             hasCustomPreferences: true,
@@ -598,7 +598,7 @@ import Testing
         let resetStore = StatefulSettingsResetStore()
         resetStore.makeUnreadable()
         let resetService = StatefulResetService(store: resetStore, outcomes: [.success])
-        let coordinator = SettingsCoordinator(resetStateStore: resetStore)
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
 
         await coordinator.resetLocalData(
             authManager: authManager,

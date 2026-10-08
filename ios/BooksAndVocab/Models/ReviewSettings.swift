@@ -786,6 +786,19 @@ struct AccountPreferenceLifecycleCoordinator: AccountPreferenceLifecycle {
     }
 }
 
+/// The translation-language slice of `AccountPreferenceLifecycleCoordinator`,
+/// for callers (`SettingsCoordinator`) that move the review/notebook stores
+/// themselves but still need the translation namespace behind an injectable seam.
+struct TranslationAccountPreferenceLifecycle: AccountPreferenceLifecycle {
+    func activate(accountID: String?) {
+        TranslationLanguage.activateAccount(accountID)
+    }
+
+    func suspend() {
+        TranslationLanguage.suspendForAccountBoundary()
+    }
+}
+
 private struct ReviewSettingsStoreKey: EnvironmentKey {
     static let defaultValue: ReviewSettingsStore = .shared
 }

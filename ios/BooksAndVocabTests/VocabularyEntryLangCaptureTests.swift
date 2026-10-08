@@ -7,8 +7,10 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
-@Suite(.serialized)
-struct VocabularyEntryLangCaptureTests {
+/// Mutates `TranslationLanguage` current source/target, so it extends the
+/// serialized `TranslationLanguageTests` suite instead of running as a
+/// separate suite in parallel with it (#2117).
+extension TranslationLanguageTests {
 
     @Test func test_init_captures_current_source_and_target() async throws {
         // Snapshot to restore.

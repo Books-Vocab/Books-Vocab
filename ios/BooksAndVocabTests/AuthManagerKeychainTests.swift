@@ -63,7 +63,8 @@ struct AuthManagerKeychainTests {
         AuthManager(
             verifier: NoopVerifier(),
             localDataCleaner: NoopCleaner(),
-            sessionStore: store
+            sessionStore: store,
+            accountPreferenceLifecycle: NoopAccountPreferenceLifecycle()
         )
     }
 
@@ -127,7 +128,12 @@ struct AuthManagerKeychainTests {
         let raceCleaner = RaceCleaner(onSuspend: {
             weakRacing?.login(userId: "new-user", token: "new.jwt")
         })
-        let racing = AuthManager(verifier: NoopVerifier(), localDataCleaner: raceCleaner, sessionStore: store)
+        let racing = AuthManager(
+            verifier: NoopVerifier(),
+            localDataCleaner: raceCleaner,
+            sessionStore: store,
+            accountPreferenceLifecycle: NoopAccountPreferenceLifecycle()
+        )
         racing.modelContainer = Self.makeContainer()
         weakRacing = racing
         #expect(racing.isLoggedIn == true)

@@ -10,10 +10,16 @@ import Foundation
 final class CloudPreferencesSync {
     static let shared = CloudPreferencesSync()
 
+    /// 把 debounced flush 的 `work` 排到 `delay` 秒後的 main queue 執行。
+    /// 取消一律走 `DispatchWorkItem.cancel()`，已取消的 `work` 不得執行。
+    typealias FlushScheduler = (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void
+
     private let kvs = NSUbiquitousKeyValueStore.default
 
     /// debounce 視窗：連續寫入在此窗口內 coalesce 成單次 `synchronize()`。
     private let flushDelay: TimeInterval
+    /// debounce 計時 seam（預設 `DispatchQueue.main.asyncAfter`，測試可注入假時間）。
+    private let scheduleFlushWork: FlushScheduler
     /// 實際執行 flush 的副作用 seam（預設打 KVS，測試可注入計數器）。
     private let flushAction: () -> Void
     /// pending 的 debounced flush；nil 表示無待執行。固定在 main thread 存取。
@@ -21,14 +27,25 @@ final class CloudPreferencesSync {
 
     private init() {
         self.flushDelay = 0.5
+        self.scheduleFlushWork = CloudPreferencesSync.scheduleOnMainQueue
         self.flushAction = { NSUbiquitousKeyValueStore.default.synchronize() }
     }
 
-    /// 測試用初始化：注入更短的 debounce 窗口與可觀測的 flush seam。
+    /// 測試用初始化：注入 debounce 窗口、計時 seam 與可觀測的 flush seam。
     /// 生產不使用此 path（`shared` 走 `init()`）。
-    init(flushDelay: TimeInterval, flushAction: @escaping () -> Void) {
+    init(
+        flushDelay: TimeInterval,
+        scheduler: @escaping FlushScheduler = CloudPreferencesSync.scheduleOnMainQueue,
+        flushAction: @escaping () -> Void
+    ) {
         self.flushDelay = flushDelay
+        self.scheduleFlushWork = scheduler
         self.flushAction = flushAction
+    }
+
+    /// 生產用 `FlushScheduler`。
+    static func scheduleOnMainQueue(_ delay: TimeInterval, _ work: DispatchWorkItem) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     // MARK: - Read
@@ -93,6 +110,6 @@ final class CloudPreferencesSync {
             self.flushAction()
         }
         pendingFlush = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + flushDelay, execute: work)
+        scheduleFlushWork(flushDelay, work)
     }
 }

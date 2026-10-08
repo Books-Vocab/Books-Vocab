@@ -111,7 +111,8 @@ struct AuthManagerLogoutCleanupRaceTests {
         let manager = AuthManager(
             verifier: NoopVerifier(),
             localDataCleaner: cleaner,
-            sessionStore: FixedSessionStore(userId: priorUserId)
+            sessionStore: FixedSessionStore(userId: priorUserId),
+            accountPreferenceLifecycle: NoopAccountPreferenceLifecycle()
         )
         manager.modelContainer = Self.makeContainer()
         return manager
