@@ -127,7 +127,10 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_asc_shipped.py
       ;;
-    backup-verify)      ./ops/tests/test_backup_verify.sh ;;
+    backup-verify)
+      ./ops/tests/test_backup_verify.sh &&
+      ./ops/tests/test_kg_backup.sh
+      ;;
     devops)
       ./ops/test_devops.sh &&
       ./ops/tests/test_devops_command_contract.sh &&

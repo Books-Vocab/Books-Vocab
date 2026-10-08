@@ -6,7 +6,7 @@ scope:
   - ops/kg_backup.sh
   - ops/launchd/com.kg.backup.plist
   - ops/cron/kg-backup.cron
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: f69f5e53d6b2ac6e3b6f96febb8456a7ed58b477
 -->
 # Backup / Restore SOP
 
@@ -48,10 +48,13 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | **排程（現役）** | **standby launchd `~/Library/LaunchAgents/com.kg.backup.plist`** → 每天 11:00 台北(= UTC 03:00)。源檔 `ops/launchd/com.kg.backup.plist` |
 | **排程（已停用）** | 舊 Lightsail `/etc/cron.d/kg-backup`（cron）— 遷移後停用 |
 | Script | `ops/kg_backup.sh`（standby/Lightsail 共用，靠 `KG_DATA_DIR`/`KG_BACKUP_BUCKET`/`KG_BACKUP_LOG` env 參數化，無需改 code） |
-| Log（現役） | standby `~/Library/Logs/kg_backup.log`(每執行一行) |
+| DB 擷取 | backend 以 WAL 模式常駐連線，已提交 rows 可能只在 `<db>-wal`。每個 `*.db` 先以 SQLite online backup（`.backup`，不 checkpoint、不建立 live DB）快照進 mktemp staging 並要求 `quick_check=ok`；非 DB 檔 hardlink（跨檔案系統改 `cp -p`）。archive 由 staging 打包，第一層仍是 `kg-data/`，不含 `-wal`/`-shm`/`-journal`/`._*`/`.DS_Store`；staging 由 trap 清除（含 INT/TERM/HUP）。任一快照、走訪失敗或缺 `sqlite3` → 上傳前 `exit=3`，絕不退回直接打包 live 檔（Issue #2250） |
+| Log（現役） | standby `~/Library/Logs/kg_backup.log`(每執行一行；成功 `exit=0 bytes=… sha256=… key=…`，上傳前中止 `exit=<rc> <原因>`，`backup_status.sh` 只認前者) |
 | Log（舊 Lightsail） | `/var/log/kg_backup.log` |
 | IAM | `kg-backup-agent` 僅 `s3:PutObject*`,**無 Delete / 無 List**(限制 blast radius)。同一主體跨機沿用(creds 由 Lightsail `/root/.aws` 複製到 standby `~/.aws/credentials`) |
 | 本機操作身份 | `MaxChen228`(admin),用 `~/.aws/credentials` 預設 profile |
+
+> 跨 VM 限制：快照在 macOS host 讀取，writer 在 OrbStack VM 內經 bind mount 寫入；SQLite 不保證 WAL shared memory 跨此邊界一致。還原演練時抽一個活躍用戶，比對容器內 live DB 與還原檔的近期 rows；若 host 端漏 frame，改為在容器內快照。
 
 防線層級（遷移後）:
 
@@ -215,8 +218,8 @@ ssh chenliangyu@100.118.39.104 "grep ${DATE} ~/Library/Logs/kg_backup.log"
 # 回滾到 Lightsail 時：ssh ubuntu@13.193.212.134 "sudo grep ${DATE} /var/log/kg_backup.log"
 sha256sum "${DATE}.tar.gz"
 
-# 3. SQLite integrity check
-for db in $(find data/users -name '*.db' -not -name '*-wal' -not -name '*-shm'); do
+# 3. SQLite integrity check（archive 第一層是 kg-data/）
+for db in $(find kg-data -name '*.db'); do
   echo "$db: $(sqlite3 "$db" 'PRAGMA integrity_check;' | head -1)"
 done
 
@@ -224,7 +227,7 @@ done
 cd /tmp && rm -rf "$DRILL"
 ```
 
-預期:所有 db 都 `ok`,sha256 與 server log 完全相符。**任何一個 db 不是 `ok` 就視為當天 backup 損壞**,立刻調查 cron 是否有時段碰到 SQLite WAL flush。
+預期:所有 db 都 `ok`,sha256 與 server log 完全相符。**任何一個 db 不是 `ok` 就視為當天 backup 損壞**:快照在上傳前已過 `quick_check`,所以先查傳輸/S3 物件（sha256 是否相符、改用 noncurrent version），再在 standby 對來源 DB 跑 `PRAGMA integrity_check`。
 
 ---
 
@@ -233,6 +236,8 @@ cd /tmp && rm -rf "$DRILL"
 | 症狀 | 原因 | 處置 |
 |---|---|---|
 | `kg_backup.sh` exit=2 | `data/` 目錄缺 | container 還沒起 / path 改了。檢查 `KG_DATA_DIR` env |
+| `kg_backup.sh` exit=3 `snapshot failed: <path>` | 該 DB 不是 SQLite／已損毀／被鎖超過 30 秒，或快照 `quick_check` 不是 `ok` | 在 standby 對該檔跑 `sqlite3 <path> 'PRAGMA quick_check'`；修復或移出 data 目錄後重跑。不要改回直接打包 live 檔 |
+| `kg_backup.sh` exit=3 `sqlite3 missing` / `file walk failed` | launchd PATH 找不到 `sqlite3`；或 data 目錄有不可讀子目錄 | 補 `sqlite3`（macOS 內建 `/usr/bin/sqlite3`）；修正權限後重跑 |
 | `aws` 寫入 `AccessDenied` | IAM `kg-backup-agent` 寫了 `s3:PutObject` 外的動作 | 不該發生。檢查 inline policy `kg-backup-put-only` |
 | backup 連續 N 天大小驟減 | 用戶資料異常 / 路徑被偷改 | 不可信。回到上一個正常日期的 backup |
 | sha256 不符 | 傳輸中斷或 S3 物件被改 | 改用 noncurrent version,並上 CloudTrail 查改動者 |
