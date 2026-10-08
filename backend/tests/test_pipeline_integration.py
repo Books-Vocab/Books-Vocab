@@ -6,6 +6,7 @@ Verifies that POST /api/pipeline triggers the background pipeline
 External APIs (Gemini enrich, embedding) are mocked. Difficulty (Zipf) and
 candidate-link evaluation run against an empty graph, so no LLM calls needed.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,6 @@ from fastapi.testclient import TestClient
 
 from conftest import _DummyEmbeddingStore, _swap_settings, make_jwt
 
-os.environ.setdefault("KG_DATA_DIR", "/tmp/kg_test_default")
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-ci-at-least-32-bytes")
 os.environ.setdefault("GEMINI_API_KEY", "fake-key")
 
@@ -74,7 +74,10 @@ def pipeline_api(tmp_path):
         client = TestClient(app, raise_server_exceptions=False)
         try:
             yield SimpleNamespace(
-                client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=tmp_path,
             )
         finally:
             client.close()
@@ -85,10 +88,7 @@ def pipeline_api(tmp_path):
 
 
 class TestPipelineIntegration:
-
-    def test_pipeline_fixture_closes_client_without_entering_lifespan(
-        self, tmp_path, monkeypatch
-    ):
+    def test_pipeline_fixture_closes_client_without_entering_lifespan(self, tmp_path, monkeypatch):
         events = []
 
         class _ProbeClient:
