@@ -79,6 +79,21 @@ class TestSecurityHeaders:
         r = client.get("/privacy")
         assert r.headers.get("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
 
+    @pytest.mark.parametrize(
+        ("path", "headers", "status"),
+        [
+            ("/privacy", None, None),
+            ("/nonexistent-path-404", None, 404),
+            ("/api/health", {"Authorization": "Bearer invalid"}, 401),
+        ],
+    )
+    def test_hsts_sent_with_default_settings_over_http_including_errors(self, client, path, headers, status):
+        assert client.base_url.scheme == "http"
+        r = client.get(path, headers=headers)
+        if status is not None:
+            assert r.status_code == status
+        assert r.headers.get("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
+
     def test_hsts_not_sent_when_public_base_url_is_http(self, client, monkeypatch):
         _set_public_web_base_url(client, monkeypatch, "http://localhost:8000")
         r = client.get("/privacy")
