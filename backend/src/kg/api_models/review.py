@@ -11,9 +11,9 @@ class ReviewStateEntry(BaseModel):
     review_interval_hours: float = Field(ge=0, allow_inf_nan=False)
     next_review_at: str  # ISO8601
     last_reviewed_at: str  # ISO8601
-    review_count: int = Field(ge=0)
-    lapse_count: int = Field(ge=0)
-    review_streak: int = Field(ge=0)
+    review_count: int = Field(ge=0, le=2_147_483_647)
+    lapse_count: int = Field(ge=0, le=2_147_483_647)
+    review_streak: int = Field(ge=0, le=2_147_483_647)
     last_review_feedback: int = Field(ge=-1, le=1)
 
     @field_validator("review_interval_hours", mode="before")
