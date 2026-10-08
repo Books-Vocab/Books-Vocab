@@ -83,14 +83,8 @@ struct BooksAndVocabApp: App {
         UITestFixtureSeed.injectIfNeeded(into: outcome.container, arguments: runtimeArguments)
         #endif
 
-        // Always recover orphan book files (idempotent — skips files with existing records)
-        // -ui-testing 下跳過：它對「真實 Books 目錄」reconcile（manifest 有
-        // 磁碟寫入），且跑在 fixture seed 之後——會把真機使用者的真書/髒模擬器
-        // 殘留收編進 ephemeral 容器，破壞 fixture 決定性與截圖隱私。
-        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments),
-           !AppRuntimeOptions.isUITesting(arguments: runtimeArguments) {
-            AppOrphanBookRecovery.run(container: outcome.container)
-        }
+        // Orphan book recovery 不在 init 跑（#2107）：reconciler 預設 root 會在 main thread
+        // 解析 iCloud 容器；改由 ContentView 的 .task 先背景暖快取再執行。
 
         #if os(iOS)
         // PodcastDownloadManager must hold a ModelContainer ref before any
@@ -231,6 +225,18 @@ struct BooksAndVocabApp: App {
                     GIDSignIn.sharedInstance.handle(url)
                 }
                 .task {
+                    // Always recover orphan book files (idempotent — skips files with existing records)
+                    // -ui-testing 下跳過：它對「真實 Books 目錄」reconcile（manifest 有
+                    // 磁碟寫入），且跑在 fixture seed 之後——會把真機使用者的真書/髒模擬器
+                    // 殘留收編進 ephemeral 容器，破壞 fixture 決定性與截圖隱私。
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments),
+                          !AppRuntimeOptions.isUITesting(arguments: runtimeArguments) else { return }
+                    // 先在背景解析 iCloud 容器並暖 Book 快取，main actor 上的 reconciler
+                    // 才不會在 ubiquity lookup 上阻塞（#2107）。@Query 書架會在 save 後刷新。
+                    await Task.detached(priority: .utility) { _ = Book.iCloudBooksDirectory }.value
+                    AppOrphanBookRecovery.run(container: modelContainer)
+                }
+                .task {
                     guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     iCloudDownloadManager.startMonitoring()
                 }
@@ -241,6 +247,9 @@ struct BooksAndVocabApp: App {
                     // 污染的書（title=UUID、cover=0）。不放進 init / 同步啟動路徑，
                     // 避免 Readium parsing 拖慢冷啟動。service 內建 in-flight guard +
                     // 候選門檻，語言切換重建 view tree 時對乾淨書庫近乎零成本。
+                    // 先背景暖 iCloud 目錄快取：needsRepair 的 fileURL 解析與 manifest store 都在
+                    // main actor 讀 Book 目錄，冷快取會在 main 上跑 ubiquity lookup（#2107）。
+                    await Task.detached(priority: .utility) { _ = Book.iCloudBooksDirectory }.value
                     await bookMetadataRepairService.repairIfNeeded(context: modelContainer.mainContext)
                 }
                 #endif

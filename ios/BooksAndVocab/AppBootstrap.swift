@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import SwiftData
 
 enum AppBootstrap {
@@ -33,7 +34,8 @@ enum AppBootstrap {
     static func run(
         arguments: [String] = ProcessInfo.processInfo.arguments,
         persistentStoreLocations: PersistentStoreLocations? = nil,
-        persistentContainerFactory: (() throws -> ModelContainer)? = nil
+        persistentContainerFactory: (() throws -> ModelContainer)? = nil,
+        iCloudMigrationFileOps: ICloudEPUBMigration.FileOps = .live
     ) -> Outcome {
         // UI-test / probe 隔離（2026-06-10 事故）：fixture 會 wipe+seed
         // VocabularyEntry，掛真用戶 on-disk store 等於清掉整個本地單字庫；
@@ -99,7 +101,9 @@ enum AppBootstrap {
             AuthManager.shared.modelContainer = container
             CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: true)
             CloudKitMirroringMonitor.shared.start()
-            runMigrationIfNeeded(container: container)
+            // #2107：ubiquity lookup 與 EPUB 複製全是 file I/O，不碰 SwiftData，
+            // 丟到 detached task；App.init 不等它。
+            ICloudEPUBMigration.schedule(fileOps: iCloudMigrationFileOps)
             AppLog.app.info("ModelContainer initialized — models: \(fullModelTypes.map { String(describing: $0) }.joined(separator: ", "))")
             return Outcome(container: container, failure: nil)
         } catch {
@@ -117,50 +121,6 @@ enum AppBootstrap {
                 container: fallback,
                 failure: AppStartupFailure.storageInitialization(error: error)
             )
-        }
-    }
-
-    private static func runMigrationIfNeeded(container: ModelContainer) {
-        let migrationKey = "iCloudDataMigrationCompleted_v1"
-        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
-
-        let localBooksDir = Book.localBooksDirectory
-        guard let iCloudDir = Book.iCloudBooksDirectory else {
-            AppLog.app.info("iCloud not available, deferring book migration")
-            return
-        }
-
-        let files: [URL]
-        do {
-            files = try FileManager.default.contentsOfDirectory(
-                at: localBooksDir,
-                includingPropertiesForKeys: nil
-            )
-        } catch {
-            AppLog.app.warning("Cannot list local books for migration: \(error.localizedDescription)")
-            UserDefaults.standard.set(true, forKey: migrationKey)
-            return
-        }
-
-        let epubs = files.filter { $0.pathExtension == "epub" }
-        var failedCount = 0
-        for file in epubs {
-            let dest = iCloudDir.appendingPathComponent(file.lastPathComponent)
-            if !FileManager.default.fileExists(atPath: dest.path) {
-                do {
-                    try FileManager.default.copyItem(at: file, to: dest)
-                } catch {
-                    failedCount += 1
-                    AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
-                }
-            }
-        }
-
-        if failedCount == 0 {
-            UserDefaults.standard.set(true, forKey: migrationKey)
-            AppLog.app.info("iCloud EPUB migration completed: \(epubs.count) files")
-        } else {
-            AppLog.app.warning("iCloud EPUB migration incomplete: \(failedCount)/\(epubs.count) failed, will retry next launch")
         }
     }
 
@@ -225,5 +185,146 @@ enum AppBootstrap {
             AppLog.app.info("purgeStoreFiles: processed \(storeURL.lastPathComponent)")
         }
         return succeeded
+    }
+}
+
+/// 一次性「本機 EPUB → iCloud Books 目錄」複製（#2107）。
+///
+/// - 只做 file I/O，永遠在 detached task 執行（`run` 開頭 assert 非 main thread）。
+/// - Resumable／idempotent：每本先 copy 到 staging，再以 rename 原子落到 iCloud 目的地，
+///   中斷時目的地不會留下半份檔；下次啟動略過已存在的目的地、清掉殘留 staging 後重做其餘。
+/// - Completion key 只在「每本都已在 iCloud 目的地」時寫入；iCloud 不可用或任一本失敗
+///   都不寫，留待下次啟動重試。
+enum ICloudEPUBMigration {
+    static let completionKey = "iCloudDataMigrationCompleted_v1"
+
+    /// File-ops seam；每個成員都在背景執行緒被呼叫。
+    struct FileOps: Sendable {
+        /// 同一 key 同時只允許一個 run（App.init 與 startup-recovery 重試可能重疊）。
+        var lockKey: String
+        var iCloudBooksDirectory: @Sendable () -> URL?
+        var localBooksDirectory: @Sendable () -> URL
+        var stagingDirectory: @Sendable () -> URL
+        var contentsOfDirectory: @Sendable (URL) throws -> [URL]
+        var fileExists: @Sendable (URL) -> Bool
+        var createDirectory: @Sendable (URL) throws -> Void
+        var copyItem: @Sendable (_ from: URL, _ to: URL) throws -> Void
+        var moveItem: @Sendable (_ from: URL, _ to: URL) throws -> Void
+        var removeItem: @Sendable (URL) throws -> Void
+        var isCompleted: @Sendable () -> Bool
+        var markCompleted: @Sendable () -> Void
+
+        static let live = FileOps(
+            lockKey: ICloudEPUBMigration.completionKey,
+            iCloudBooksDirectory: { Book.iCloudBooksDirectory },
+            localBooksDirectory: { Book.localBooksDirectory },
+            stagingDirectory: {
+                FileManager.default.temporaryDirectory
+                    .appendingPathComponent("iCloudEPUBMigration", isDirectory: true)
+            },
+            contentsOfDirectory: {
+                try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)
+            },
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) },
+            createDirectory: {
+                try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+            },
+            copyItem: { try FileManager.default.copyItem(at: $0, to: $1) },
+            moveItem: { try FileManager.default.moveItem(at: $0, to: $1) },
+            removeItem: { try FileManager.default.removeItem(at: $0) },
+            isCompleted: { UserDefaults.standard.bool(forKey: ICloudEPUBMigration.completionKey) },
+            markCompleted: { UserDefaults.standard.set(true, forKey: ICloudEPUBMigration.completionKey) }
+        )
+    }
+
+    enum RunResult: Equatable {
+        case alreadyCompleted
+        case alreadyRunning
+        case deferredICloudUnavailable
+        case deferredLocalListingFailed
+        case completed(copied: Int, total: Int)
+        case incomplete(failed: Int, total: Int)
+    }
+
+    private static let inFlight = OSAllocatedUnfairLock<Set<String>>(initialState: [])
+
+    /// 背景啟動 migration，立即返回。回傳的 task 供測試 await。
+    @discardableResult
+    static func schedule(
+        fileOps: FileOps = .live,
+        progress: (@Sendable (_ completed: Int, _ total: Int) -> Void)? = nil
+    ) -> Task<RunResult, Never> {
+        Task.detached(priority: .utility) {
+            ICloudEPUBMigration.run(fileOps: fileOps, progress: progress)
+        }
+    }
+
+    static func run(
+        fileOps: FileOps,
+        progress: (@Sendable (_ completed: Int, _ total: Int) -> Void)? = nil
+    ) -> RunResult {
+        assert(!Thread.isMainThread, "ICloudEPUBMigration must run off the main thread (#2107)")
+        guard !fileOps.isCompleted() else { return .alreadyCompleted }
+        let claimed = inFlight.withLock { $0.insert(fileOps.lockKey).inserted }
+        guard claimed else { return .alreadyRunning }
+        defer { _ = inFlight.withLock { $0.remove(fileOps.lockKey) } }
+
+        guard let iCloudDir = fileOps.iCloudBooksDirectory() else {
+            AppLog.app.info("iCloud not available, deferring book migration")
+            return .deferredICloudUnavailable
+        }
+
+        let localBooksDir = fileOps.localBooksDirectory()
+        let files: [URL]
+        do {
+            files = try fileOps.contentsOfDirectory(localBooksDir)
+        } catch {
+            if !fileOps.fileExists(localBooksDir) {
+                // 沒有本機 Books 目錄 = 沒有書要搬，視為完成。
+                fileOps.markCompleted()
+                return .completed(copied: 0, total: 0)
+            }
+            AppLog.app.warning("Cannot list local books for migration: \(error.localizedDescription) — will retry next launch")
+            return .deferredLocalListingFailed
+        }
+
+        let epubs = files.filter { $0.pathExtension == "epub" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let staging = fileOps.stagingDirectory()
+        var copied = 0
+        var failed = 0
+        for (index, file) in epubs.enumerated() {
+            defer { progress?(index + 1, epubs.count) }
+            let dest = iCloudDir.appendingPathComponent(file.lastPathComponent)
+            if fileOps.fileExists(dest) { continue }
+            let staged = staging.appendingPathComponent(file.lastPathComponent)
+            do {
+                try fileOps.createDirectory(staging)
+                // 上次中斷殘留的半份 staging 檔：丟掉重做。
+                if fileOps.fileExists(staged) { try fileOps.removeItem(staged) }
+                try fileOps.copyItem(file, staged)
+                do {
+                    try fileOps.moveItem(staged, dest)
+                    copied += 1
+                } catch {
+                    // 並行寫入者（或 iCloud 同步）已先落地：保留目的地，不重複；否則算失敗。
+                    guard fileOps.fileExists(dest) else { throw error }
+                    try? fileOps.removeItem(staged)
+                }
+            } catch {
+                failed += 1
+                try? fileOps.removeItem(staged)
+                AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
+            }
+            AppLog.app.debug("iCloud EPUB migration progress: \(index + 1)/\(epubs.count)")
+        }
+
+        if failed == 0 {
+            fileOps.markCompleted()
+            AppLog.app.info("iCloud EPUB migration completed: \(copied) copied, \(epubs.count) total")
+            return .completed(copied: copied, total: epubs.count)
+        }
+        AppLog.app.warning("iCloud EPUB migration incomplete: \(failed)/\(epubs.count) failed, will retry next launch")
+        return .incomplete(failed: failed, total: epubs.count)
     }
 }

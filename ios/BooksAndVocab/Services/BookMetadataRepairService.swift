@@ -26,7 +26,10 @@ final class BookMetadataRepairService {
     private static let logicVersion = 1
 
     private let extractor: any BookMetadataExtracting
-    private let manifestStore: BookManifestStore
+    /// 延遲建立：`BookManifestStore()` 預設 root 會讀 `Book.booksDirectory`（可能在 main thread
+    /// 觸發 ubiquity lookup，#2107）。App.init 只建 service，不得解析 iCloud 容器；
+    /// store 在第一次真的要寫 manifest 時才建（此時啟動 task 已先背景暖過快取）。
+    private let makeManifestStore: () -> BookManifestStore
     private let fileManager: FileManager
     private let userDefaults: UserDefaults
     private let fileURLProvider: (Book) -> URL
@@ -36,13 +39,13 @@ final class BookMetadataRepairService {
 
     init(
         extractor: any BookMetadataExtracting,
-        manifestStore: BookManifestStore = BookManifestStore(),
+        manifestStore: @autoclosure @escaping () -> BookManifestStore = BookManifestStore(),
         fileManager: FileManager = .default,
         userDefaults: UserDefaults = .standard,
         fileURLProvider: @escaping (Book) -> URL = { $0.fileURL }
     ) {
         self.extractor = extractor
-        self.manifestStore = manifestStore
+        self.makeManifestStore = manifestStore
         self.fileManager = fileManager
         self.userDefaults = userDefaults
         self.fileURLProvider = fileURLProvider
@@ -146,7 +149,7 @@ final class BookMetadataRepairService {
         if changed {
             // merge-on-write：保留 manifest 既有 progress/locator/notebook/dateAdded，
             // 只讓修好的 title/author/cover 取代髒值。
-            manifestStore.writeBestEffort(book: book)
+            makeManifestStore().writeBestEffort(book: book)
         }
 
         // 抽取成功但 row 仍帶 fallback title/author（EPUB 內就沒有可用 metadata）→ 標記跳過，
