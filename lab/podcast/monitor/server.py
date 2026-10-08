@@ -1006,7 +1006,15 @@ def delete_workspace(ws_name: str, confirm: str = Query(...)):
     ws = _resolve_ws(ws_name)
     if confirm != ws_name:
         raise HTTPException(400, "confirm param must equal workspace name")
-    shutil.rmtree(ws)
+    busy = _active_job_for_ws(ws_name)
+    if busy:
+        raise HTTPException(
+            409, f"a job is running for {ws_name} (job {busy['job_id']}); stop it first"
+        )
+    try:
+        shutil.rmtree(ws)
+    except OSError as e:
+        raise HTTPException(500, f"failed to delete {ws_name}: {e}") from e
     return {"deleted": ws_name}
 
 
