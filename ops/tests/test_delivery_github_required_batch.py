@@ -172,6 +172,10 @@ def test_batch_required_snapshot_filters_advisory_and_consumes_once() -> None:
     assert len(runner.calls) == 2
     query = next(part for part in runner.calls[1] if part.startswith("query="))
     assert "pullRequest(number: 12)" in query
+    argv = runner.calls[1]
+    assert argv[argv.index("owner=owner") - 1] == "-f"
+    assert argv[argv.index("name=repo") - 1] == "-f"
+    assert "-F" not in argv
 
 
 def test_batch_required_snapshot_uses_latest_duplicate_required_context() -> None:

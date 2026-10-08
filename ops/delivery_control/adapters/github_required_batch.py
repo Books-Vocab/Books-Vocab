@@ -295,9 +295,9 @@ def batch_required_snapshots(
                 "graphql",
                 "-f",
                 f"query={_required_checks_query(chunk)}",
-                "-F",
+                "-f",
                 f"owner={owner}",
-                "-F",
+                "-f",
                 f"name={name}",
             )
         )
