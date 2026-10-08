@@ -61,10 +61,10 @@ uv run python -m pytest -q
 提供一個可視化測試入口，可在瀏覽器一鍵執行測試並查看 matrix。
 
 - UI:
-  - `GET /admin/tests?token=<ADMIN_TOKEN>`
+  - `GET /admin/tests`（先於 `/admin/login` 登入取得 cookie）
 - API:
-  - `POST /api/admin/tests/run?token=<ADMIN_TOKEN>`：執行 `python -m pytest tests -vv --maxfail=0 --disable-warnings`
-  - `GET /api/admin/tests/last?token=<ADMIN_TOKEN>`：讀取最近一次執行結果
+  - `POST /api/admin/tests/run`（`Authorization: Bearer <ADMIN_TOKEN>`）：執行 `python -m pytest tests -vv --maxfail=0 --disable-warnings`
+  - `GET /api/admin/tests/last`（`Authorization: Bearer <ADMIN_TOKEN>`）：讀取最近一次執行結果
 
 回傳資料包含：
 - `totals`：passed / failed / errors / skipped / total
@@ -74,7 +74,7 @@ uv run python -m pytest -q
 
 操作流程：
 1. 設定 `ADMIN_TOKEN` 並啟動 API。
-2. 開啟 `/admin/tests?token=...`。
+2. 經 `/admin/login` 登入後開啟 `/admin/tests`。
 3. 點擊 `Run Tests` 觸發整包測試，結果會即時刷新在 matrix。
 
 ## Backend Quality CI

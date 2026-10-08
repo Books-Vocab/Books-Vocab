@@ -17,6 +17,7 @@ interpreter with a fake boto3 that records every delete_objects key.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
@@ -78,6 +79,7 @@ def upload(tmp_path):
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
 
     def stagings() -> list[Path]:
@@ -357,3 +359,246 @@ def test_sigterm_mid_reconcile_stops_the_child_before_staging_goes(live_upload):
     )
     assert not child_alive, "reconcile child outlived the upload script"
     assert not live_upload.staging().exists()
+
+
+# ── Partial republish: --only-episodes / --no-prune never delete (#2094) ──────
+# Series of three episodes; only 1 and 3 were re-rendered locally, episode 2's
+# audio exists only in S3. The fake aws serves a remote metadata.json for the
+# `cp <s3-uri> -` fetch and records every uploaded metadata.json body. The fake
+# boto3 (reconcile / index) still lists ep_02 as a remote-only key, so any prune
+# would delete it and show up in the delete log.
+_PARTIAL_OVERVIEW = """# Test Series
+
+| # | Title | Focus | Length |
+|---|---|---|---|
+| 1 | One | a | ~10 min |
+| 2 | Two | b | ~10 min |
+| 3 | Three | c | ~10 min |
+"""
+_REMOTE_META = {
+    "id": "x",
+    "title": "Old",
+    "audioFormat": "m4a",
+    "coverImageURL": "/api/podcasts/x/cover?v=abc",
+    "createdAt": "2026-01-01T00:00:00+00:00",
+    "episodes": [
+        {"episodeNumber": 1, "title": "One", "durationSec": 11, "audioAvailable": True},
+        {"episodeNumber": 2, "title": "Two", "durationSec": 22, "audioAvailable": True},
+        {
+            "episodeNumber": 3,
+            "title": "Three",
+            "durationSec": 33,
+            "audioAvailable": True,
+        },
+    ],
+}
+_FAKE_AWS_PARTIAL = """#!/bin/sh
+src=; dst=
+for a; do src=$dst; dst=$a; done
+echo "aws $*" >> "$FAKE_AWS_LOG"
+if [ "$dst" = - ]; then
+  [ -n "${FAKE_REMOTE_META:-}" ] && [ -f "$FAKE_REMOTE_META" ] && cat "$FAKE_REMOTE_META" && exit 0
+  exit 1
+fi
+case "$src" in
+  */metadata.json) cp "$src" "$FAKE_META_OUT" ;;
+esac
+exit 0
+"""
+_BOTO3_REMOTE_OLD = (
+    '("metadata.json", "ep_01/audio.m4a", "ep_01/preview.m4a", "ep_07/audio.m4a")'
+)
+_BOTO3_REMOTE_NEW = (
+    '("metadata.json", "ep_01/audio.m4a", "ep_01/preview.m4a",'
+    ' "ep_02/audio.m4a", "ep_03/audio.m4a")'
+)
+
+
+@pytest.fixture
+def partial(tmp_path):
+    assert _BOTO3_REMOTE_OLD in _FAKE_BOTO3, "boto3 stub patch target moved"
+    fake_boto3 = _FAKE_BOTO3.replace(_BOTO3_REMOTE_OLD, _BOTO3_REMOTE_NEW)
+    series_id = f"kgtest_partial_{uuid.uuid4().hex[:12]}"
+    ws = tmp_path / series_id
+    (ws / "plan").mkdir(parents=True)
+    (ws / "plan" / "overview.md").write_text(_PARTIAL_OVERVIEW)
+    (ws / "plan" / "cover.png").write_bytes(b"new cover")
+    (ws / "scripts").mkdir()
+    for n in (1, 3):  # episode 2 is S3-only
+        (ws / "scripts" / f"ep_{n}_pro.m4a").write_bytes(b"audio")
+
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    for name, body in (
+        ("ffmpeg", _FAKE_FFMPEG),
+        ("uv", _FAKE_UV_LIVE),
+        ("aws", _FAKE_AWS_PARTIAL),
+    ):
+        (fakebin / name).write_text(body)
+        (fakebin / name).chmod(0o755)
+    fakepy = tmp_path / "fakepy" / "boto3"
+    fakepy.mkdir(parents=True)
+    (fakepy / "__init__.py").write_text(fake_boto3)
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir()
+    remote_meta = tmp_path / "remote_meta.json"
+    remote_meta.write_text(json.dumps(_REMOTE_META))
+    logs = {
+        "aws": tmp_path / "aws.log",
+        "ffmpeg": tmp_path / "ffmpeg.log",
+        "delete": tmp_path / "delete.log",
+        "meta": tmp_path / "uploaded_metadata.json",
+    }
+
+    def run(*args: str, with_remote_meta: bool = True) -> subprocess.CompletedProcess:
+        env = {
+            "PATH": f"{fakebin}:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "TMPDIR": str(tmpdir),
+            "PYTHONPATH": str(fakepy.parent),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PODCAST_BUCKET": "kg-test-bucket",
+            "FAKE_UV_PYTHON": sys.executable,
+            "FAKE_FFMPEG_MODE": "ok",
+            "FAKE_FFMPEG_LOG": str(logs["ffmpeg"]),
+            "FAKE_AWS_LOG": str(logs["aws"]),
+            "FAKE_S3_SERIES": series_id,
+            "FAKE_S3_DELETE_LOG": str(logs["delete"]),
+            "FAKE_META_OUT": str(logs["meta"]),
+        }
+        if with_remote_meta:
+            env["FAKE_REMOTE_META"] = str(remote_meta)
+        return subprocess.run(
+            ["bash", str(_SCRIPT), str(ws), *args],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+
+    def aws_calls() -> list[str]:
+        return logs["aws"].read_text().splitlines() if logs["aws"].exists() else []
+
+    def uploaded_keys() -> set[str]:
+        """Destination keys (relative to the series prefix) of every `aws s3 cp` upload."""
+        prefix = f"s3://kg-test-bucket/{series_id}/"
+        keys = set()
+        for line in aws_calls():
+            dst = line.split()[-1]
+            if dst.startswith(prefix):
+                keys.add(dst[len(prefix) :])
+            elif dst == "s3://kg-test-bucket/index.json":
+                keys.add("index.json")
+        return keys
+
+    def deleted() -> list[str]:
+        path = logs["delete"]
+        return path.read_text().split() if path.exists() else []
+
+    def meta() -> dict:
+        return json.loads(logs["meta"].read_text())
+
+    return SimpleNamespace(
+        run=run,
+        aws_calls=aws_calls,
+        uploaded_keys=uploaded_keys,
+        deleted=deleted,
+        meta=meta,
+        series_id=series_id,
+        tmpdir=tmpdir,
+    )
+
+
+def test_default_mode_still_prunes_remote_only_keys(partial):
+    """Default behaviour is unchanged: remote keys absent from staging are deleted
+    (positive control for the no-prune assertions below)."""
+    proc = partial.run()
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert partial.deleted() == [f"{partial.series_id}/ep_02/audio.m4a"]
+    assert "cover.png" in partial.uploaded_keys()
+    assert "pruned 1 orphan" in proc.stdout
+
+
+def test_only_episodes_uploads_only_named_keys_and_never_deletes(partial):
+    proc = partial.run("--only-episodes", "1,3")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert partial.deleted() == [], "partial republish deleted a remote key"
+    calls = "\n".join(partial.aws_calls())
+    for banned in (" rm ", "--delete", " sync ", " mv "):
+        assert banned not in calls, f"{banned!r} issued: {calls}"
+    # Only the named episodes' files (+ metadata, index); nothing for ep 2 or cover.
+    assert partial.uploaded_keys() == {
+        "ep_01/audio.m4a",
+        "ep_01/preview.m4a",
+        "ep_03/audio.m4a",
+        "metadata.json",
+        "index.json",
+    }
+    assert "Skipping reconcile" in proc.stdout
+
+
+def test_only_episodes_keeps_untouched_episodes_listed_from_remote_metadata(partial):
+    proc = partial.run("--only-episodes=1,3")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    meta = partial.meta()
+    eps = {e["episodeNumber"]: e for e in meta["episodes"]}
+    assert [e["episodeNumber"] for e in meta["episodes"]] == [1, 2, 3]
+    assert eps[2] == _REMOTE_META["episodes"][1], "untouched episode was rewritten"
+    assert eps[1]["audioAvailable"] and eps[3]["audioAvailable"]
+    assert meta["createdAt"] == _REMOTE_META["createdAt"]
+    assert meta["coverImageURL"] == _REMOTE_META["coverImageURL"]
+    assert meta["audioFormat"] == "m4a"
+
+
+def test_no_prune_alone_uploads_everything_local_but_deletes_nothing(partial):
+    proc = partial.run("--no-prune")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert partial.deleted() == []
+    assert {
+        "ep_01/audio.m4a",
+        "ep_03/audio.m4a",
+        "cover.png",
+    } <= partial.uploaded_keys()
+    assert "Skipping reconcile" in proc.stdout
+
+
+def test_only_episodes_missing_locally_aborts_before_any_upload(partial):
+    proc = partial.run("--only-episodes", "1,2")
+
+    assert proc.returncode != 0
+    assert "episode 2 has no local" in proc.stderr
+    assert partial.uploaded_keys() == set()
+    assert partial.deleted() == []
+    assert os.listdir(partial.tmpdir) == [], "staging leaked"
+
+
+def test_only_episodes_without_remote_metadata_aborts_before_any_upload(partial):
+    proc = partial.run("--only-episodes", "1,3", with_remote_meta=False)
+
+    assert proc.returncode != 0
+    assert "needs an existing remote" in proc.stderr
+    assert partial.uploaded_keys() == set()
+    assert partial.deleted() == []
+
+
+@pytest.mark.parametrize("bad", ["", "a", "1,,3", "1;3"])
+def test_only_episodes_rejects_malformed_lists(partial, bad):
+    proc = partial.run("--only-episodes", bad)
+
+    assert proc.returncode != 0
+    assert partial.uploaded_keys() == set()
+
+
+def test_only_episodes_dry_run_stages_only_named_and_calls_no_aws(partial):
+    proc = partial.run("--only-episodes", "3", "--dry-run")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert partial.aws_calls() == []
+    assert "ep_03/audio.m4a" in proc.stdout
+    assert "ep_01" not in proc.stdout
+    assert "NO prune" in proc.stdout

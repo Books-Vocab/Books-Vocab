@@ -15,13 +15,23 @@ if [[ ! -f "$RUNNER" || ! -x "$RUNNER" ]]; then
 fi
 
 groups=()
-while IFS= read -r group; do
-  [[ -n "$group" ]] && groups+=("$group")
-done < <(./ops/tests/test_ops_ci_coverage.sh --print-mac-groups)
+if [[ -n "${KG_EXPECTED_FAIL_GROUPS+x}" ]]; then
+  # Test seam: lets the harness be falsified with a fixture list.
+  read -r -a groups <<<"$KG_EXPECTED_FAIL_GROUPS"
+else
+  probe_out="$(./ops/tests/test_ops_ci_coverage.sh --print-mac-groups)" ||
+    {
+      echo "✗ 探針壞了：--print-mac-groups 非零退出，不是分類表" >&2
+      exit 2
+    }
+  while IFS= read -r group; do
+    [[ -n "$group" ]] && groups+=("$group")
+  done <<<"$probe_out"
+fi
 
 if (( ${#groups[@]} == 0 )); then
-  echo "✗ 解析不到任何 macOS-only group——探針壞了，不是分類表" >&2
-  exit 2
+  echo "expected-fail: 0 條排除（沒有 macOS-only group 需要在 Linux 證偽）"
+  exit 0
 fi
 
 survived=()

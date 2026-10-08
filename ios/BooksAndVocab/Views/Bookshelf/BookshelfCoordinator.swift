@@ -261,8 +261,14 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
                     let draft = try await method(url, onProgress)
                     // An importer may ignore cancellation and complete after a newer
-                    // batch has started. Never let that stale result reach SwiftData.
-                    guard self.isCurrentImport(generation) else { return }
+                    // batch has started. Never let that stale result reach SwiftData,
+                    // and drop the file it already wrote so it isn't orphaned.
+                    // This is the only await-adjacent guard: everything below runs
+                    // synchronously on MainActor until the save, so generation can't change.
+                    guard self.isCurrentImport(generation) else {
+                        try? LocalBookFileManager().deleteBookFile(named: draft.fileName)
+                        return
+                    }
                     AppLog.book.info("Import succeeded: \(draft.fileName)")
                     AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
 
@@ -273,12 +279,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                         fileName: draft.fileName,
                         format: draft.format
                     )
-                    guard self.isCurrentImport(generation) else { return }
                     modelContext.insert(book)
-                    guard self.isCurrentImport(generation) else {
-                        modelContext.delete(book)
-                        return
-                    }
                     if modelContext.safeSaveWithToast(toastCoordinator) {
                         BookManifestStore().writeBestEffort(book: book, originalFileName: url.lastPathComponent)
                         AppLog.book.info("Book saved: \(book.title)")

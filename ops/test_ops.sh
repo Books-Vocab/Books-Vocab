@@ -134,12 +134,16 @@ run_one() {
     devops)
       ./ops/test_devops.sh &&
       ./ops/tests/test_devops_command_contract.sh &&
+      ./ops/tests/test_devops_backup_cleanup.sh &&
       ./ops/tests/test_backup_status.sh &&
       # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
       # 主體與 test_devops.sh 同源（都測 wrapper），先前不屬於任何 group。
       ./ops/tests/test_devops_safe_lightsail_guard.sh &&
+      # Issue #2327：成本文件引用的 ops-cli 子命令／旗標必須真實存在，
+      # 與 devops command contract 同屬「文件宣稱的命令 vs 實作」守衛。
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_env_drift.py &&
+        ops/tests/test_env_drift.py \
+        ops/tests/test_cost_docs_commands.py &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
@@ -359,7 +363,6 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_demo_backend_emitter.py \
         ops/tests/test_demo_ios_emitter.py \
-        ops/tests/test_demo_ios_spec_emitter.py \
         ops/tests/test_shape_history.py \
         ops/tests/test_apply_curation.py \
         ops/tests/test_ui_world_manifest.py \
@@ -372,7 +375,9 @@ run_one() {
         ops/tests/test_uitest_evidence_contract.py \
         ops/tests/test_uitest_manifest_normalize.py \
         ops/tests/test_png_integrity.py \
-        ops/tests/test_uitest_review_attest.py
+        ops/tests/test_uitest_review_attest.py \
+        && KG_REQUIRE_BACKEND_E2E=1 "$UV_BIN" run --project backend python -m pytest -q \
+          ops/tests/test_demo_ios_spec_emitter.py
       ;;
     catalog-agent)
       ./ops/tests/test_catalog_agent_boundary.sh \

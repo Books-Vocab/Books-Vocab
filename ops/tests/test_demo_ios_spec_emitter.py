@@ -122,28 +122,72 @@ def _small_spec() -> dict:
     return {
         "schema": "kg.seed_spec.v1",
         "notebooks": [
-            {"name": nb, "color": "#4F7C73", "cover_pattern": "waves",
-             "sort_order": 0, "is_default": True},
-            {"name": side, "color": None, "cover_pattern": None,
-             "sort_order": 1, "is_default": False},
+            {
+                "name": nb,
+                "color": "#4F7C73",
+                "cover_pattern": "waves",
+                "sort_order": 0,
+                "is_default": True,
+            },
+            {
+                "name": side,
+                "color": None,
+                "cover_pattern": None,
+                "sort_order": 1,
+                "is_default": False,
+            },
         ],
         "cards": [
-            _card("alpha", nb, review_count=4, review_streak=2, lapse_count=1,
-                  interval=48.0, next_review_at="2026-06-01T00:00:00+00:00",
-                  last_reviewed_at="2026-05-30T12:00:00+00:00", last_feedback=1),
-            _card("bravo", nb, mode="production", review_count=2, review_streak=1,
-                  interval=24.0, next_review_at="2026-06-02T00:00:00+00:00",
-                  last_reviewed_at="2026-05-31T09:00:00+00:00", last_feedback=1),
+            _card(
+                "alpha",
+                nb,
+                review_count=4,
+                review_streak=2,
+                lapse_count=1,
+                interval=48.0,
+                next_review_at="2026-06-01T00:00:00+00:00",
+                last_reviewed_at="2026-05-30T12:00:00+00:00",
+                last_feedback=1,
+            ),
+            _card(
+                "bravo",
+                nb,
+                mode="production",
+                review_count=2,
+                review_streak=1,
+                interval=24.0,
+                next_review_at="2026-06-02T00:00:00+00:00",
+                last_reviewed_at="2026-05-31T09:00:00+00:00",
+                last_feedback=1,
+            ),
             _card("charlie", nb),
-            _card("delta", nb, is_archived=True, review_count=1,
-                  last_reviewed_at="2026-05-01T00:00:00+00:00", last_feedback=0),
+            _card(
+                "delta",
+                nb,
+                is_archived=True,
+                review_count=1,
+                last_reviewed_at="2026-05-01T00:00:00+00:00",
+                last_feedback=0,
+            ),
             _card("echo", side),
         ],
         "links": [
-            {"from": "alpha", "to": "bravo", "kind": "shares_usage",
-             "confidence": 0.9, "reason": "related usage", "notebook": nb},
-            {"from": "alpha", "to": "charlie", "kind": "contrasts_with",
-             "confidence": 0.6, "reason": "contrast", "notebook": nb},
+            {
+                "from": "alpha",
+                "to": "bravo",
+                "kind": "shares_usage",
+                "confidence": 0.9,
+                "reason": "related usage",
+                "notebook": nb,
+            },
+            {
+                "from": "alpha",
+                "to": "charlie",
+                "kind": "contrasts_with",
+                "confidence": 0.6,
+                "reason": "contrast",
+                "notebook": nb,
+            },
         ],
     }
 
@@ -159,8 +203,13 @@ def _small_spec_aligned_to_plan() -> dict:
 
 def _big_spec(n: int = 636) -> dict:
     notebooks = [
-        {"name": f"Deck {i}", "color": "#4F7C73", "cover_pattern": "waves",
-         "sort_order": i, "is_default": i == 0}
+        {
+            "name": f"Deck {i}",
+            "color": "#4F7C73",
+            "cover_pattern": "waves",
+            "sort_order": i,
+            "is_default": i == 0,
+        }
         for i in range(3)
     ]
     cards, links = [], []
@@ -168,33 +217,49 @@ def _big_spec(n: int = 636) -> dict:
         nb = notebooks[i % 3]["name"]
         word = f"word{i:04d}"
         count = i % 9
-        cards.append(_card(
-            word, nb,
-            mode="production" if i % 7 == 0 else "recognition",
-            is_archived=i % 20 == 19,
-            review_count=count,
-            review_streak=min(count, i % 4),
-            lapse_count=count // 3,
-            interval=12.0 * (1 + i % 5),
-            next_review_at=(f"2026-06-{1 + i % 28:02d}T08:00:00+00:00" if i % 3 else None),
-            last_reviewed_at=(f"2026-05-{1 + i % 28:02d}T08:00:00+00:00" if count else None),
-            last_feedback=-1 if count == 0 else i % 2,
-        ))
+        cards.append(
+            _card(
+                word,
+                nb,
+                mode="production" if i % 7 == 0 else "recognition",
+                is_archived=i % 20 == 19,
+                review_count=count,
+                review_streak=min(count, i % 4),
+                lapse_count=count // 3,
+                interval=12.0 * (1 + i % 5),
+                next_review_at=(
+                    f"2026-06-{1 + i % 28:02d}T08:00:00+00:00" if i % 3 else None
+                ),
+                last_reviewed_at=(
+                    f"2026-05-{1 + i % 28:02d}T08:00:00+00:00" if count else None
+                ),
+                last_feedback=-1 if count == 0 else i % 2,
+            )
+        )
         if i % 3 == 0 and i + 3 < n:
-            links.append({
-                "from": word, "to": f"word{i + 3:04d}",
-                "kind": "shares_usage" if i % 6 else "contrasts_with",
-                "confidence": 0.5 + (i % 50) / 100,
-                "reason": f"link {i}", "notebook": nb,
-            })
-    return {"schema": "kg.seed_spec.v1", "notebooks": notebooks,
-            "cards": cards, "links": links}
+            links.append(
+                {
+                    "from": word,
+                    "to": f"word{i + 3:04d}",
+                    "kind": "shares_usage" if i % 6 else "contrasts_with",
+                    "confidence": 0.5 + (i % 50) / 100,
+                    "reason": f"link {i}",
+                    "notebook": nb,
+                }
+            )
+    return {
+        "schema": "kg.seed_spec.v1",
+        "notebooks": notebooks,
+        "cards": cards,
+        "links": links,
+    }
 
 
 def _write_spec(tmp_path: Path, payload: dict, name: str = "spec.json") -> Path:
     path = tmp_path / name
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     return path
 
 
@@ -202,7 +267,8 @@ def _emit_spec_bytes(tmp_path: Path, payload: dict) -> bytes:
     spec_path = _write_spec(tmp_path, payload)
     bundle = sot.load_sot()
     [(path, content)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "fixture.json")
+        bundle, spec_path=spec_path, out_path=tmp_path / "fixture.json"
+    )
     assert path == tmp_path / "fixture.json"
     return content
 
@@ -272,17 +338,21 @@ def test_normalize_boolean_fields_rejects_invalid_values(tmp_path, target, raw, 
         payload["cards"][0][field] = raw
 
     with pytest.raises(spec_world.SpecWorldError, match=field):
-        spec_world._normalize(
-            spec_world.load_seed_spec(_write_spec(tmp_path, payload))
-        )
+        spec_world._normalize(spec_world.load_seed_spec(_write_spec(tmp_path, payload)))
 
 
 def test_load_seed_spec_rejects_link_to_unknown_card(tmp_path):
     payload = _small_spec()
-    payload["links"].append({
-        "from": "alpha", "to": "ghost", "kind": "shares_usage",
-        "confidence": 0.5, "reason": "dangling", "notebook": "Primary Notebook",
-    })
+    payload["links"].append(
+        {
+            "from": "alpha",
+            "to": "ghost",
+            "kind": "shares_usage",
+            "confidence": 0.5,
+            "reason": "dangling",
+            "notebook": "Primary Notebook",
+        }
+    )
     spec_path = _write_spec(tmp_path, payload)
     with pytest.raises(spec_world.SpecWorldError, match="ghost"):
         spec_world.load_seed_spec(spec_path)
@@ -297,7 +367,8 @@ def test_spec_mode_requires_active_card_in_primary_notebook(tmp_path):
     bundle = sot.load_sot()
     with pytest.raises(ValueError, match="active"):
         emit_ios._spec_artifacts(
-            bundle, spec_path=spec_path, out_path=tmp_path / "fixture.json")
+            bundle, spec_path=spec_path, out_path=tmp_path / "fixture.json"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -313,7 +384,9 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
 
     # non-spec domains stay byte-equal to the baseline（scenarioContext 為 spec/plan
     # 驅動 overlay，與 auth/datasetID 同排除）
-    for key in sorted(set(document) - {"datasetID", "auth", "scenarioContext", *SPEC_DOMAINS}):
+    for key in sorted(
+        set(document) - {"datasetID", "auth", "scenarioContext", *SPEC_DOMAINS}
+    ):
         assert document[key] == baseline[key], f"domain {key} drifted from baseline"
 
     # identity overlay identical to baseline mode
@@ -326,8 +399,10 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     populated = document["vocabulary"]["vocabListPopulated"]
     assert [e["word"] for e in populated["entries"]] == ["alpha", "bravo", "charlie"]
     assert populated["notebookName"] == "Primary Notebook"
-    assert all(e["syncStatus"] == 1 and e["actionType"] == "add"
-               and e["isArchived"] is False for e in populated["entries"])
+    assert all(
+        e["syncStatus"] == 1 and e["actionType"] == "add" and e["isArchived"] is False
+        for e in populated["entries"]
+    )
     alpha = populated["entries"][0]
     assert alpha["reviewCount"] == 4
     assert alpha["reviewStreak"] == 2
@@ -340,12 +415,17 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     # archived views are content-pinned by ArchivedVocabScenarios (≥5 / ==1 / ≥40)
     # -> spec mode keeps them baseline instead of projecting (see
     # test_spec_mode_keeps_content_pinned_vocabulary_fixtures_baseline)
-    assert document["vocabulary"]["archivedPopulated"] == baseline["vocabulary"]["archivedPopulated"]
+    assert (
+        document["vocabulary"]["archivedPopulated"]
+        == baseline["vocabulary"]["archivedPopulated"]
+    )
 
     # notebook rows mirror the spec notebooks
     rows = document["notebook"]["populated"]["notebooks"]
     assert [(r["name"], r["isDefault"], r["sortOrder"]) for r in rows] == [
-        ("Primary Notebook", True, 0), ("Side Notes", False, 1)]
+        ("Primary Notebook", True, 0),
+        ("Side Notes", False, 1),
+    ]
     assert rows[0]["coverPattern"] == "waves"
     assert rows[0]["color"] == "#4F7C73"
     assert [e["word"] for e in rows[0]["entries"]] == ["alpha", "bravo", "charlie"]
@@ -355,10 +435,15 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     deck = document["reviewDeck"]["phaseMulti"]
     assert [e["word"] for e in deck["entries"]] == ["alpha", "bravo", "charlie"]
     assert deck["notebookName"] == "Primary Notebook"
-    assert [e["word"] for e in document["reviewDeck"]["phaseSingle"]["entries"]] == ["alpha"]
+    assert [e["word"] for e in document["reviewDeck"]["phaseSingle"]["entries"]] == [
+        "alpha"
+    ]
     # probe / notebookReviewDeck 是 UITest 量測 deck（probeword content-pin）→ 保留 baseline
     assert document["reviewDeck"]["probe"] == baseline["reviewDeck"]["probe"]
-    assert document["reviewDeck"]["notebookReviewDeck"] == baseline["reviewDeck"]["notebookReviewDeck"]
+    assert (
+        document["reviewDeck"]["notebookReviewDeck"]
+        == baseline["reviewDeck"]["notebookReviewDeck"]
+    )
 
 
 def test_spec_mode_notebook_entries_carry_review_scheduling(tmp_path):
@@ -395,7 +480,8 @@ def test_spec_mode_fixture_id_key_sets_match_baseline_and_whitelist_kept(tmp_pat
     # account-data-independent UI chrome fixtures stay byte-equal to baseline
     for domain, fixture_id in emit_ios.SPEC_BASELINE_KEPT_FIXTURES:
         assert document[domain][fixture_id] == baseline[domain][fixture_id], (
-            f"{domain}.{fixture_id} should stay baseline")
+            f"{domain}.{fixture_id} should stay baseline"
+        )
 
 
 def test_spec_mode_today_review_invariants(tmp_path):
@@ -445,7 +531,9 @@ def test_spec_mode_today_review_cards_declare_non_null_date_added(tmp_path):
             card = seed[key]
             if card is None:
                 continue
-            assert card["dateAdded"], f"todayReview.{fixture_id}.{key}.dateAdded must be non-null"
+            assert card["dateAdded"], (
+                f"todayReview.{fixture_id}.{key}.dateAdded must be non-null"
+            )
             _dt.strptime(card["dateAdded"], "%Y-%m-%dT%H:%M:%SZ")
             checked += 1
     assert checked >= 8  # front/back/autoplay*/production* 的 current+next 都要被驗到
@@ -467,9 +555,13 @@ def test_spec_mode_date_added_deterministic_fallback_without_review_dates(tmp_pa
     payload = _small_spec()
     for card in payload["cards"]:
         card["review"] = {
-            "review_count": 0, "review_streak": 0, "lapse_count": 0,
-            "review_interval_hours": 12.0, "next_review_at": None,
-            "last_reviewed_at": None, "last_review_feedback": -1,
+            "review_count": 0,
+            "review_streak": 0,
+            "lapse_count": 0,
+            "review_interval_hours": 12.0,
+            "next_review_at": None,
+            "last_reviewed_at": None,
+            "last_review_feedback": -1,
         }
     with pytest.raises(ValueError, match="at least one last_reviewed_at"):
         _emit_spec_bytes(tmp_path, payload)
@@ -480,7 +572,8 @@ def test_spec_mode_keeps_content_pinned_fixtures_baseline(tmp_path):
     domains, _stats = spec_world.derive_domains(spec_world.load_seed_spec(spec_path))
     for domain, fixture_id in CONTENT_PINNED_FIXTURES:
         assert fixture_id not in domains[domain], (
-            f"{domain}.{fixture_id} is content-pinned and must not be spec-derived")
+            f"{domain}.{fixture_id} is content-pinned and must not be spec-derived"
+        )
 
     kept = set(emit_ios.SPEC_BASELINE_KEPT_FIXTURES)
     assert set(CONTENT_PINNED_FIXTURES) <= kept
@@ -490,7 +583,8 @@ def test_spec_mode_keeps_content_pinned_fixtures_baseline(tmp_path):
     baseline = _baseline()
     for domain, fixture_id in CONTENT_PINNED_FIXTURES:
         assert document[domain][fixture_id] == baseline[domain][fixture_id], (
-            f"{domain}.{fixture_id} must stay byte-equal to baseline in spec mode")
+            f"{domain}.{fixture_id} must stay byte-equal to baseline in spec mode"
+        )
 
 
 def test_spec_mode_date_added_anchor_fallback_without_history(tmp_path):
@@ -498,10 +592,13 @@ def test_spec_mode_date_added_anchor_fallback_without_history(tmp_path):
     payload = _small_spec()
     for card in payload["cards"]:
         card["review"] = {
-            "review_count": 0, "review_streak": 0, "lapse_count": 0,
+            "review_count": 0,
+            "review_streak": 0,
+            "lapse_count": 0,
             "review_interval_hours": 12.0,
             "next_review_at": "2026-06-10T08:00:00+00:00",
-            "last_reviewed_at": None, "last_review_feedback": -1,
+            "last_reviewed_at": None,
+            "last_review_feedback": -1,
         }
     with pytest.raises(ValueError, match="at least one last_reviewed_at"):
         _emit_spec_bytes(tmp_path, payload)
@@ -516,7 +613,10 @@ def test_spec_mode_prunes_graph_links_to_in_seed_targets(tmp_path):
 
     # 全量 populated：alpha 的兩條 link（bravo/charlie 皆在 seed）保留
     populated = {e["word"]: e for e in vocab["vocabListPopulated"]["entries"]}
-    assert set(populated["alpha"]["graphLinksByKind"]) == {"contrasts_with", "shares_usage"}
+    assert set(populated["alpha"]["graphLinksByKind"]) == {
+        "contrasts_with",
+        "shares_usage",
+    }
 
     # 單卡子集：alpha 的 link target（bravo/charlie）不在 seed → 全 prune
     single = vocab["vocabListSingle"]["entries"]
@@ -533,15 +633,21 @@ def test_spec_mode_prunes_graph_links_to_in_seed_targets(tmp_path):
         for entry in seed["entries"]:
             for links in entry["graphLinksByKind"].values():
                 for link in links:
-                    assert link["word"] in words, f"{fixture_id}: dangling word {link['word']}"
-                    assert link["cardId"] in ids, f"{fixture_id}: dangling cardId {link['cardId']}"
+                    assert link["word"] in words, (
+                        f"{fixture_id}: dangling word {link['word']}"
+                    )
+                    assert link["cardId"] in ids, (
+                        f"{fixture_id}: dangling cardId {link['cardId']}"
+                    )
 
 
 def test_spec_mode_sync_pending_mixed_covers_add_and_delete_with_two_active(tmp_path):
     """SyncViewScenarios mixed 釘 pending>1 且同時含 add+delete —— 只要 spec 有
     ≥2 張 active 卡就必須滿足，不得依賴恰有 4 張。"""
     payload = _small_spec()
-    payload["cards"] = [c for c in payload["cards"] if c["content"] in {"alpha", "bravo", "echo"}]
+    payload["cards"] = [
+        c for c in payload["cards"] if c["content"] in {"alpha", "bravo", "echo"}
+    ]
     payload["links"] = [payload["links"][0]]  # alpha -> bravo；去掉指向 charlie 的 link
     content = _emit_spec_bytes(tmp_path, payload)
     mixed = json.loads(content)["vocabulary"]["syncPendingMixed"]
@@ -576,8 +682,9 @@ def test_spec_mode_review_history_is_synthesized_and_references_entries(tmp_path
     # streak=2, lapses=1 -> [1, 0, 1, 1]
     assert sum(r["feedback"] for r in alpha_events) == 3
     # deterministic ordering: newest first
-    assert history == sorted(history, key=lambda r: (r["reviewedAt"], r["word"]),
-                             reverse=True)
+    assert history == sorted(
+        history, key=lambda r: (r["reviewedAt"], r["word"]), reverse=True
+    )
 
 
 def test_spec_mode_stats_populated_covers_all_primary_active_cards(tmp_path):
@@ -590,21 +697,23 @@ def test_spec_mode_stats_populated_covers_all_primary_active_cards(tmp_path):
     populated = document["vocabulary"]["vocabListPopulated"]
 
     assert [e["word"] for e in stats["entries"]] == [
-        e["word"] for e in populated["entries"]]
+        e["word"] for e in populated["entries"]
+    ]
     assert len(stats["entries"]) > 8
 
     history_words = {r["word"] for r in stats["reviewHistory"]}
-    beyond_first_8 = {
-        e["word"] for e in stats["entries"][8:] if e["reviewCount"] > 0}
+    beyond_first_8 = {e["word"] for e in stats["entries"][8:] if e["reviewCount"] > 0}
     assert beyond_first_8 & history_words, (
-        "statsPopulated.reviewHistory 必須含前 8 張以外的卡事件")
+        "statsPopulated.reviewHistory 必須含前 8 張以外的卡事件"
+    )
 
 
 def test_spec_staleness_warning_helper():
     """emit --spec 防呆：spec 錨日（max last_reviewed_at）距 now > 48h → WARN。"""
     stale = _small_spec()  # last_reviewed 全在 2026-05-31 之前
     now = __import__("datetime").datetime(
-        2026, 7, 9, tzinfo=__import__("datetime").timezone.utc)
+        2026, 7, 9, tzinfo=__import__("datetime").timezone.utc
+    )
     warning = emit_ios.spec_staleness_warning(stale, now=now)
     assert warning is not None and "48h" in warning
 
@@ -617,7 +726,9 @@ def test_spec_mode_accepts_empty_link_reason(tmp_path):
     """export 面容許 reason=""；投影必須確定式 fallback，不得在 session 卡位置炸。"""
     payload = _small_spec()
     for link in payload["links"]:
-        link["reason"] = ""  # alpha 是 todayReview current card，其 link 必經嚴格 validator
+        link["reason"] = (
+            ""  # alpha 是 todayReview current card，其 link 必經嚴格 validator
+        )
     content = _emit_spec_bytes(tmp_path, payload)
     document = json.loads(content)
     links = document["todayReview"]["front"]["currentCard"]["graphLinksByKind"]
@@ -631,8 +742,17 @@ def test_reader_passage_projection_is_real_deterministic_and_highlights_match(tm
     spec = _small_spec()
     passage = spec_world.derive_reader_passage(spec)
     # 欄位契約
-    for key in ("bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
-                "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords"):
+    for key in (
+        "bookTitle",
+        "activeWord",
+        "activePartOfSpeech",
+        "activeTranslation",
+        "activeExplanation",
+        "activeContext",
+        "paragraphs",
+        "vocabWords",
+        "activeWords",
+    ):
         assert key in passage, key
     assert passage["bookTitle"] == "Primary Notebook"  # primary notebook 名
     # small_spec 每卡 example = "The word **X** appears in a real sentence."
@@ -648,7 +768,9 @@ def test_reader_passage_projection_is_real_deterministic_and_highlights_match(tm
     assert "**" not in joined
     # activeContext = hero example 去標記全文
     assert "**" not in passage["activeContext"]
-    assert passage["activeWord"] in {spec_world._bare_token(t) for t in passage["activeContext"].split()}
+    assert passage["activeWord"] in {
+        spec_world._bare_token(t) for t in passage["activeContext"].split()
+    }
     # 確定式
     assert spec_world.derive_reader_passage(_small_spec()) == passage
 
@@ -710,6 +832,7 @@ def test_spec_mode_output_passes_shared_validator_and_is_byte_stable(tmp_path):
     out = tmp_path / "validated.json"
     out.write_bytes(first)
     from ui_world_manifest import validate_fixture_dataset_file
+
     assert validate_fixture_dataset_file(out, label="spec fixture")
 
 
@@ -722,6 +845,7 @@ def test_spec_mode_large_synthetic_spec(tmp_path):
     out = tmp_path / "big.json"
     out.write_bytes(first)
     from ui_world_manifest import validate_fixture_dataset_file
+
     assert validate_fixture_dataset_file(out, label="big spec fixture")
 
     document = json.loads(first)
@@ -745,33 +869,60 @@ def test_build_demo_cli_spec_flow(tmp_path, capsys):
     out_path = tmp_path / "fixture.json"
 
     # dry-run: plan only, no file
-    rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
-                          "--out", str(out_path), "--json"])
+    rc = build_demo.main(
+        ["emit-ios", "--spec", str(spec_path), "--out", str(out_path), "--json"]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload["result"]["action"] == "dry-run"
     assert not out_path.exists()
 
     # commit writes the fixture
-    rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
-                          "--out", str(out_path), "--commit", "--json"])
+    rc = build_demo.main(
+        [
+            "emit-ios",
+            "--spec",
+            str(spec_path),
+            "--out",
+            str(out_path),
+            "--commit",
+            "--json",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload["result"]["action"] == "commit"
     assert out_path.exists()
 
     # check passes against the fresh artifact
-    rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
-                          "--out", str(out_path), "--check", "--json"])
+    rc = build_demo.main(
+        [
+            "emit-ios",
+            "--spec",
+            str(spec_path),
+            "--out",
+            str(out_path),
+            "--check",
+            "--json",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload["result"]["drift"] is False
 
     # tampering -> drift -> exit 1
-    out_path.write_text(out_path.read_text(encoding="utf-8") + "\n",
-                        encoding="utf-8")
-    rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
-                          "--out", str(out_path), "--check", "--json"])
+    out_path.write_text(out_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    rc = build_demo.main(
+        [
+            "emit-ios",
+            "--spec",
+            str(spec_path),
+            "--out",
+            str(out_path),
+            "--check",
+            "--json",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert rc == 1
     assert payload["result"]["drift"] is True
@@ -791,12 +942,17 @@ def test_build_demo_baseline_mode_unaffected_by_spec_flags(capsys):
 # --------------------------------------------------------------------------- #
 # end-to-end: ops_edit seed (sandbox) -> ops_cli world-export -> emit --spec
 # --------------------------------------------------------------------------- #
-def _run_backend_cli(script: str, argv: list[str], *, sandbox: str) -> subprocess.CompletedProcess:
+def _run_backend_cli(
+    script: str, argv: list[str], *, sandbox: str
+) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["KG_DATA_DIR"] = sandbox
     return subprocess.run(
         [sys.executable, str(BACKEND_DIR / script), *argv],
-        cwd=str(BACKEND_DIR), env=env, capture_output=True, text=True,
+        cwd=str(BACKEND_DIR),
+        env=env,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -809,54 +965,98 @@ def _backend_cli_ready() -> bool:
     runs via `uv run --project backend --with pytest pytest <this file>`."""
     probe = subprocess.run(
         [sys.executable, str(BACKEND_DIR / "ops_edit.py"), "--help"],
-        cwd=str(BACKEND_DIR), capture_output=True, text=True,
+        cwd=str(BACKEND_DIR),
+        capture_output=True,
+        text=True,
     )
     return probe.returncode == 0
 
 
+def _skip_or_fail_backend_unavailable() -> None:
+    """Skip the e2e when backend deps are absent, unless KG_REQUIRE_BACKEND_E2E=1
+    (set by the demo-data arm of ops/test_ops.sh): then a missing backend is a
+    real failure so a green arm can never mean 'e2e silently skipped'."""
+    if _backend_cli_ready():
+        return
+    message = (
+        "backend deps unavailable to sys.executable (sandbox pytest run) "
+        "— run with `uv run --project backend python -m pytest` for the e2e"
+    )
+    if os.environ.get("KG_REQUIRE_BACKEND_E2E") == "1":
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 def test_spec_mode_end_to_end_from_world_export(tmp_path):
-    if not _backend_cli_ready():
-        pytest.skip("backend deps unavailable to sys.executable (sandbox pytest run) "
-                    "— run with `uv run --project backend --with pytest` for the e2e")
+    _skip_or_fail_backend_unavailable()
     identity = sot.load_identity()
     uid = identity["user_id"]
     with tempfile.TemporaryDirectory(prefix="kg-spec-e2e-") as sandbox:
-        created = _run_backend_cli("ops_edit.py", [
-            "user-create", uid, "--email", identity["email"],
-            "--provider", identity["provider"], "--commit", "--json",
-        ], sandbox=sandbox)
+        created = _run_backend_cli(
+            "ops_edit.py",
+            [
+                "user-create",
+                uid,
+                "--email",
+                identity["email"],
+                "--provider",
+                identity["provider"],
+                "--commit",
+                "--json",
+            ],
+            sandbox=sandbox,
+        )
         assert created.returncode == 0, created.stderr
 
-        seeded = _run_backend_cli("ops_edit.py", [
-            "seed", uid, str(DEMO_DIR / "demo_dataset.json"), "--commit", "--json",
-        ], sandbox=sandbox)
+        seeded = _run_backend_cli(
+            "ops_edit.py",
+            [
+                "seed",
+                uid,
+                str(DEMO_DIR / "demo_dataset.json"),
+                "--commit",
+                "--json",
+            ],
+            sandbox=sandbox,
+        )
         assert seeded.returncode == 0, seeded.stderr
 
         spec_path = tmp_path / "world_export_spec.json"
-        exported = _run_backend_cli("ops_cli.py", [
-            "world-export", uid, "--out", str(spec_path),
-        ], sandbox=sandbox)
+        exported = _run_backend_cli(
+            "ops_cli.py",
+            [
+                "world-export",
+                uid,
+                "--out",
+                str(spec_path),
+            ],
+            sandbox=sandbox,
+        )
         assert exported.returncode == 0, exported.stderr
 
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     assert spec["schema"] == "kg.seed_spec.v1"
     dataset_cards = json.loads(
-        (DEMO_DIR / "demo_dataset.json").read_text(encoding="utf-8"))["cards"]
-    assert {c["content"] for c in spec["cards"]} == {c["content"] for c in dataset_cards}
+        (DEMO_DIR / "demo_dataset.json").read_text(encoding="utf-8")
+    )["cards"]
+    assert {c["content"] for c in spec["cards"]} == {
+        c["content"] for c in dataset_cards
+    }
 
     bundle = sot.load_sot()
     out_path = tmp_path / "e2e_fixture.json"
-    result = emit_ios.emit(bundle, spec_path=spec_path, out_path=out_path,
-                           commit=True)
+    result = emit_ios.emit(bundle, spec_path=spec_path, out_path=out_path, commit=True)
     assert result["action"] == "commit"
     assert out_path.exists()
 
     from ui_world_manifest import validate_fixture_dataset_file
+
     assert validate_fixture_dataset_file(out_path, label="e2e spec fixture")
 
     # byte-stable re-emit
     [(_, fresh)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=out_path)
+        bundle, spec_path=spec_path, out_path=out_path
+    )
     assert out_path.read_bytes() == fresh
 
 
@@ -872,6 +1072,7 @@ def _scenario_plan() -> dict:
 
 def _freeze_dt_from_plan(plan: dict):
     from datetime import date, datetime, timedelta, timezone
+
     anchor = date.fromisoformat(str(plan["anchor_day"]))
     max_offset = max(plan["render_utc_offset_hours"])
     base = datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
@@ -886,11 +1087,17 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
-        review_clock_frozen_at=freeze)
+        bundle,
+        spec_path=spec_path,
+        out_path=tmp_path / "frozen.json",
+        review_clock_frozen_at=freeze,
+    )
     mc = json.loads(content)["scenarioContext"]
     assert set(mc) == {
-        "reviewClock", "readerPassage", "wordDetail", "surfaceContracts",
+        "reviewClock",
+        "readerPassage",
+        "wordDetail",
+        "surfaceContracts",
     }
     assert mc["wordDetail"]["entries"][0]["word"]  # 聚焦字非空
     clock = mc["reviewClock"]
@@ -909,7 +1116,8 @@ def test_scenario_context_unfrozen_review_clock_is_from_history_plan(tmp_path):
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
+        bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json"
+    )
     mc = json.loads(content)["scenarioContext"]
     assert mc["reviewClock"]["source"] == "history_plan.anchor_day"
     assert mc["reviewClock"]["timeZone"] == "Pacific/Honolulu"
@@ -924,12 +1132,18 @@ def test_review_clock_field_matches_preferences_overlay_epoch(tmp_path):
     spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "f.json",
-        review_clock_frozen_at=freeze)
+        bundle,
+        spec_path=spec_path,
+        out_path=tmp_path / "f.json",
+        review_clock_frozen_at=freeze,
+    )
     doc = json.loads(content)
     clock_epoch = doc["scenarioContext"]["reviewClock"]["frozenEpoch"]
     for store in ("userDefaults", "ubiquitousKeyValueStore"):
-        assert doc["preferences"][store]["review_settings_progress_paused_at"] == clock_epoch
+        assert (
+            doc["preferences"][store]["review_settings_progress_paused_at"]
+            == clock_epoch
+        )
 
 
 def test_baseline_emission_requires_the_explicit_review_clock():
@@ -979,7 +1193,9 @@ def test_emitter_rejects_unknown_review_calendar_nested_keys(
         ("row", "assetIDs"),
     ),
 )
-def test_emitter_rejects_missing_review_calendar_nested_keys(location: str, missing_key: str):
+def test_emitter_rejects_missing_review_calendar_nested_keys(
+    location: str, missing_key: str
+):
     document = emit_ios._build_fixture_document(sot.load_sot())
     baseline = emit_ios._load_base_ui_world()
     surface = document["scenarioContext"]["surfaceContracts"]
@@ -1056,8 +1272,11 @@ def test_review_clock_freeze_overlays_both_stores(tmp_path):
     spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
-        review_clock_frozen_at=freeze)
+        bundle,
+        spec_path=spec_path,
+        out_path=tmp_path / "frozen.json",
+        review_clock_frozen_at=freeze,
+    )
     doc = json.loads(content)
     baseline = _baseline()
     for store in ("userDefaults", "ubiquitousKeyValueStore"):
@@ -1072,7 +1291,12 @@ def test_review_clock_freeze_overlays_both_stores(tmp_path):
             assert s[k] == v, f"non-clock preferences.{store}.{k} drifted"
     # LWW：canonical marketing baseline may already carry the same plan freeze;
     # an explicit freeze must never move backwards.
-    assert epoch >= baseline["preferences"]["userDefaults"]["review_settings_progress_updated_at"]
+    assert (
+        epoch
+        >= baseline["preferences"]["userDefaults"][
+            "review_settings_progress_updated_at"
+        ]
+    )
 
 
 def test_review_clock_unfrozen_preferences_byte_equal_baseline(tmp_path):
@@ -1080,7 +1304,8 @@ def test_review_clock_unfrozen_preferences_byte_equal_baseline(tmp_path):
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
+        bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json"
+    )
     doc = json.loads(content)
     assert doc["preferences"] == _baseline()["preferences"]
 
@@ -1088,10 +1313,13 @@ def test_review_clock_unfrozen_preferences_byte_equal_baseline(tmp_path):
 def test_review_clock_validator_blocks_non_clock_preferences_drift(tmp_path):
     """(c) validator 仍擋非時鐘 key 的 preferences 偏離（精準守住只有時鐘可變）。"""
     bundle = sot.load_sot()
-    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec_aligned_to_plan()))
+    spec = spec_world.load_seed_spec(
+        _write_spec(tmp_path, _small_spec_aligned_to_plan())
+    )
     freeze = _freeze_dt_from_plan(_scenario_plan())
     doc, _stats = emit_ios._build_spec_fixture_document(
-        bundle, spec, review_clock_frozen_at=freeze)
+        bundle, spec, review_clock_frozen_at=freeze
+    )
     baseline = emit_ios._load_base_ui_world()
     # 合法凍結世界 + 一個 rogue 非時鐘 preferences 改動 → 必 raise
     tampered = dict(doc["preferences"])
@@ -1102,16 +1330,20 @@ def test_review_clock_validator_blocks_non_clock_preferences_drift(tmp_path):
     doc["preferences"] = tampered
     with pytest.raises(ValueError, match="non-clock preferences"):
         emit_ios._validate_fixture_document(
-            doc, baseline, spec_domains=emit_ios.SPEC_DOMAINS, review_clock_frozen=True)
+            doc, baseline, spec_domains=emit_ios.SPEC_DOMAINS, review_clock_frozen=True
+        )
 
 
 def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
     """(c') 新增非時鐘 preferences key 也要 raise（不可整域放行）。"""
     bundle = sot.load_sot()
-    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec_aligned_to_plan()))
+    spec = spec_world.load_seed_spec(
+        _write_spec(tmp_path, _small_spec_aligned_to_plan())
+    )
     freeze = _freeze_dt_from_plan(_scenario_plan())
     doc, _stats = emit_ios._build_spec_fixture_document(
-        bundle, spec, review_clock_frozen_at=freeze)
+        bundle, spec, review_clock_frozen_at=freeze
+    )
     baseline = emit_ios._load_base_ui_world()
     tampered = dict(doc["preferences"])
     ud = dict(tampered["userDefaults"])
@@ -1121,7 +1353,8 @@ def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
     doc["preferences"] = tampered
     with pytest.raises(ValueError, match="non-clock preferences"):
         emit_ios._validate_fixture_document(
-            doc, baseline, spec_domains=emit_ios.SPEC_DOMAINS, review_clock_frozen=True)
+            doc, baseline, spec_domains=emit_ios.SPEC_DOMAINS, review_clock_frozen=True
+        )
 
 
 def test_review_clock_freeze_deterministic(tmp_path):
@@ -1130,11 +1363,17 @@ def test_review_clock_freeze_deterministic(tmp_path):
     spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     first = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "a.json",
-        review_clock_frozen_at=freeze)[0][1]
+        bundle,
+        spec_path=spec_path,
+        out_path=tmp_path / "a.json",
+        review_clock_frozen_at=freeze,
+    )[0][1]
     second = emit_ios._spec_artifacts(
-        bundle, spec_path=spec_path, out_path=tmp_path / "b.json",
-        review_clock_frozen_at=freeze)[0][1]
+        bundle,
+        spec_path=spec_path,
+        out_path=tmp_path / "b.json",
+        review_clock_frozen_at=freeze,
+    )[0][1]
     assert first == second
 
 
@@ -1150,9 +1389,19 @@ def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
     """build_demo emit-ios --plan → world 凍結；--plan 無 --spec 應報錯。"""
     spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     out_path = tmp_path / "frozen_cli.json"
-    rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
-                          "--plan", str(SCENARIO_PLAN_PATH),
-                          "--out", str(out_path), "--commit", "--json"])
+    rc = build_demo.main(
+        [
+            "emit-ios",
+            "--spec",
+            str(spec_path),
+            "--plan",
+            str(SCENARIO_PLAN_PATH),
+            "--out",
+            str(out_path),
+            "--commit",
+            "--json",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0, payload
     assert out_path.exists()
@@ -1169,3 +1418,23 @@ def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
     payload2 = json.loads(capsys.readouterr().out)
     assert rc2 == 1
     assert "requires --spec" in payload2["error"]
+
+
+def test_backend_unavailable_gate_fails_when_e2e_required(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_backend_cli_ready", lambda: False)
+    monkeypatch.setenv("KG_REQUIRE_BACKEND_E2E", "1")
+    with pytest.raises(pytest.fail.Exception):
+        _skip_or_fail_backend_unavailable()
+
+
+def test_backend_unavailable_gate_skips_without_flag(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_backend_cli_ready", lambda: False)
+    monkeypatch.delenv("KG_REQUIRE_BACKEND_E2E", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        _skip_or_fail_backend_unavailable()
+
+
+def test_backend_available_gate_is_noop(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_backend_cli_ready", lambda: True)
+    monkeypatch.setenv("KG_REQUIRE_BACKEND_E2E", "1")
+    _skip_or_fail_backend_unavailable()

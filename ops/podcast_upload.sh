@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
 # Upload podcast workspace assets to S3 (Lightsail Object Storage,
 # S3-compatible). Track B replaced SSH/rsync — no more ssh key handling here.
-# Usage: ./ops/podcast_upload.sh <workspace_path> [--dry-run]
+# Usage: ./ops/podcast_upload.sh <workspace_path> [--dry-run] [--no-prune] [--only-episodes N,N,...]
+#
+# Default (full republish): stages EVERY episode found in the workspace, uploads
+# them, then prunes every remote key under the series prefix that is absent from
+# staging. The local workspace must hold every episode.
+#
+# --only-episodes 1,3,7  Partial republish (REQUIRED when some episodes' audio
+#                        exists only in S3). Stages and uploads only the named
+#                        episodes' audio/preview/subtitle/script; implies
+#                        --no-prune. metadata.json is rebuilt by merging the
+#                        existing remote metadata: episodes not named keep their
+#                        remote entry untouched. Needs an existing remote
+#                        metadata.json; every named episode must exist locally.
+# --no-prune             Never delete any S3 key (skips the reconcile step).
+#                        With a full workspace this uploads everything but
+#                        leaves remote-only objects alone.
 set -euo pipefail
 
 usage() {
@@ -98,17 +113,41 @@ make_preview() {
 }
 
 DRY_RUN=0
+NO_PRUNE=0
+ONLY_EPISODES=""  # normalized " 1 3 7 " (space-delimited base-10 numbers); empty = all
 
 # ── Parse args ───────────────────────────────────────────────────────────────
 WORKSPACE=""
-for arg in "$@"; do
-  case "$arg" in
-    --dry-run) DRY_RUN=1 ;;
-    *)         WORKSPACE="$arg" ;;
+USAGE="Usage: $0 <workspace_path> [--dry-run] [--no-prune] [--only-episodes N,N,...]"
+parse_only_episodes() {
+  local raw="$1" tok
+  [[ -n "$raw" ]] || err "--only-episodes needs a value (e.g. 1,3,7). $USAGE"
+  ONLY_EPISODES=" "
+  IFS=',' read -r -a _toks <<< "$raw"
+  for tok in "${_toks[@]}"; do
+    [[ "$tok" =~ ^[0-9]+$ ]] || err "--only-episodes: '$tok' is not an episode number (got '$raw')"
+    ONLY_EPISODES="$ONLY_EPISODES$((10#$tok)) "
+  done
+}
+while (( $# )); do
+  case "$1" in
+    --dry-run)  DRY_RUN=1 ;;
+    --no-prune) NO_PRUNE=1 ;;
+    --only-episodes)
+      (( $# >= 2 )) || err "--only-episodes needs a value (e.g. 1,3,7). $USAGE"
+      shift
+      parse_only_episodes "$1"
+      ;;
+    --only-episodes=*) parse_only_episodes "${1#--only-episodes=}" ;;
+    -*) err "Unknown option '$1'. $USAGE" ;;
+    *)  WORKSPACE="$1" ;;
   esac
+  shift
 done
 
-[[ -n "$WORKSPACE" ]] || err "Usage: $0 <workspace_path> [--dry-run]"
+[[ -n "$WORKSPACE" ]] || err "$USAGE"
+# A partial republish must never delete the episodes it did not stage.
+[[ -z "$ONLY_EPISODES" ]] || NO_PRUNE=1
 
 # Resolve to absolute path
 WORKSPACE="$(cd "$WORKSPACE" && pwd)"
@@ -151,6 +190,9 @@ for src in \
   ep_num="${ep_num%%_*}"
   case "$SEEN_EPS" in *" $ep_num "*) continue ;; esac
   SEEN_EPS="$SEEN_EPS$ep_num "
+  if [[ -n "$ONLY_EPISODES" ]]; then
+    case "$ONLY_EPISODES" in *" $((10#$ep_num)) "*) ;; *) continue ;; esac
+  fi
 
   ext="${fname##*.}"
   AUDIO_EXT="$ext"  # all eps in a series share the same format
@@ -177,13 +219,22 @@ for src in \
 done
 
 [[ $EP_COUNT -gt 0 ]] \
-  || err "No ep_*_{pro,flash}.{m4a,mp3} files found in scripts/"
+  || err "No ep_*_{pro,flash}.{m4a,mp3} files found in scripts/ (matching --only-episodes: ${ONLY_EPISODES:-all})"
+# Every named episode must have been staged, else the partial republish would
+# silently skip a re-render the caller expects to ship.
+if [[ -n "$ONLY_EPISODES" ]]; then
+  for _n in $ONLY_EPISODES; do
+    case "$SEEN_EPS" in *" $_n "*) ;; *) err "--only-episodes: episode $_n has no local ep_${_n}_{pro,flash}.{m4a,mp3} in scripts/" ;; esac
+  done
+fi
 ok "Staged $EP_COUNT episodes (format: $AUDIO_EXT)"
 
 # ── Stage series cover (cover stage output, optional) ────────────────────────
 # plan/cover.png → <staging>/cover.png; the sync loop uploads it to
 # <sid>/cover.png and the metadata block sets coverImageURL when present.
-if [[ -f "$WORKSPACE/plan/cover.png" ]]; then
+# Partial republish does not touch the series-level cover: metadata keeps the
+# remote coverImageURL.
+if [[ -z "$ONLY_EPISODES" && -f "$WORKSPACE/plan/cover.png" ]]; then
   cp "$WORKSPACE/plan/cover.png" "$STAGING/cover.png"
   ok "Staged series cover"
 fi
@@ -194,6 +245,11 @@ if [[ $DRY_RUN -eq 0 ]]; then
   EXISTING_META="$(run_aws s3 cp \
     --region "$REGION" \
     "$S3_PREFIX/$SERIES_ID/metadata.json" - 2>/dev/null || true)"
+  # Partial republish merges into the remote metadata; without it the untouched
+  # episodes would be listed as unavailable (or dropped), so refuse.
+  if [[ -n "$ONLY_EPISODES" && -z "${EXISTING_META//[[:space:]]/}" ]]; then
+    err "--only-episodes needs an existing remote $SERIES_ID/metadata.json to merge into (none readable); use a full upload for a first publish"
+  fi
 fi
 
 # ── Generate metadata.json ───────────────────────────────────────────────────
@@ -205,11 +261,13 @@ OVERVIEW="$WORKSPACE/plan/overview.md"
 EXISTING_META_TMP="$(mktemp)"
 printf '%s' "$EXISTING_META" > "$EXISTING_META_TMP"
 
-"$UV_BIN" run python - "$OVERVIEW" "$STAGING" "$SERIES_ID" "$AUDIO_EXT" "$EXISTING_META_TMP" <<'PYEOF'
+"$UV_BIN" run python - "$OVERVIEW" "$STAGING" "$SERIES_ID" "$AUDIO_EXT" "$EXISTING_META_TMP" "$ONLY_EPISODES" <<'PYEOF'
 import sys, json, os, re, subprocess, hashlib
 
 overview_path, staging_dir, series_id, audio_ext = sys.argv[1:5]
 existing_meta_path = sys.argv[5] if len(sys.argv) > 5 else ""
+# Partial republish: episode numbers staged this run (empty = full upload).
+only_eps = {int(t) for t in (sys.argv[6] if len(sys.argv) > 6 else "").split()}
 existing_meta_raw = ""
 if existing_meta_path and os.path.isfile(existing_meta_path):
     with open(existing_meta_path, "r", encoding="utf-8") as mf:
@@ -233,6 +291,26 @@ if not host_names:
         file=sys.stderr,
     )
 
+prev = {}
+if existing_meta_raw.strip():
+    try:
+        prev = json.loads(existing_meta_raw)
+    except json.JSONDecodeError:
+        prev = {}
+prev_episodes = {
+    e.get("episodeNumber"): e
+    for e in (prev.get("episodes") or [])
+    if isinstance(e, dict)
+}
+if only_eps and existing_meta_raw.strip():  # dry-run fetches no remote metadata
+    if not prev_episodes:
+        sys.exit("✗ --only-episodes: remote metadata.json has no episodes to merge into")
+    if prev.get("audioFormat") and prev["audioFormat"] != audio_ext:
+        sys.exit(
+            f"✗ --only-episodes: staged audio format {audio_ext} != remote "
+            f"audioFormat {prev['audioFormat']}; use a full upload to change format"
+        )
+
 episodes = []
 for m in re.finditer(
     r'\|\s*(\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*~?(\d+)\s*min\s*\|',
@@ -240,6 +318,11 @@ for m in re.finditer(
 ):
     ep_num = int(m.group(1))
     ep_title = m.group(2).strip()
+    if only_eps and ep_num not in only_eps and ep_num in prev_episodes:
+        # Not re-rendered locally: keep the remote entry verbatim so the episode
+        # stays listed (a staging-derived entry would claim audioAvailable false).
+        episodes.append(prev_episodes[ep_num])
+        continue
     ep_dir = os.path.join(staging_dir, f"ep_{ep_num:02d}")
     audio_path = os.path.join(ep_dir, f"audio.{audio_ext}")
 
@@ -299,20 +382,17 @@ total_duration = sum(e["durationSec"] for e in episodes)
 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 created_at = now
-if existing_meta_raw.strip():
-    try:
-        prev = json.loads(existing_meta_raw)
-        if isinstance(prev.get("createdAt"), str) and prev["createdAt"]:
-            created_at = prev["createdAt"]
-    except json.JSONDecodeError:
-        pass
+if isinstance(prev.get("createdAt"), str) and prev["createdAt"]:
+    created_at = prev["createdAt"]
 
 # Cover stage output (staged as <staging>/cover.png → S3 <sid>/cover.png).
 # coverImageURL is the backend proxy path the client fetches; null when the
 # cover stage hasn't produced one (legacy / pre-cover series → procedural cover).
 cover_path = os.path.join(staging_dir, "cover.png")
 cover_image_url = None
-if os.path.isfile(cover_path):
+if only_eps:
+    cover_image_url = prev.get("coverImageURL")  # series cover untouched
+elif os.path.isfile(cover_path):
     with open(cover_path, "rb") as cover_f:
         cover_version = hashlib.sha256(cover_f.read()).hexdigest()[:16]
     cover_image_url = f"/api/podcasts/{series_id}/cover?v={cover_version}"
@@ -349,7 +429,11 @@ if [[ $DRY_RUN -eq 1 ]]; then
     size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo "?")
     echo "  $(echo "$f" | sed "s|$STAGING/||")  ($size bytes)"
   done
-  info "Would: per-file 'aws s3 cp --content-type' each file into $S3_PREFIX/$SERIES_ID/ (metadata.json last), then prune remote orphans"
+  if [[ $NO_PRUNE -eq 1 ]]; then
+    info "Would: per-file 'aws s3 cp --content-type' each file into $S3_PREFIX/$SERIES_ID/ (metadata.json last); NO prune (--no-prune${ONLY_EPISODES:+ / --only-episodes:$ONLY_EPISODES})"
+  else
+    info "Would: per-file 'aws s3 cp --content-type' each file into $S3_PREFIX/$SERIES_ID/ (metadata.json last), then prune remote orphans"
+  fi
   exit 0
 fi
 
@@ -404,6 +488,10 @@ ok "Upload complete"
 # under this series prefix that no longer exists in staging — preserving the
 # previous --delete semantics. Done AFTER metadata.json upload: pruning a stale
 # orphan never affects the ready signal, and deleting before would not help.
+# Skipped entirely under --no-prune / --only-episodes: no delete is ever issued.
+if [[ $NO_PRUNE -eq 1 ]]; then
+  info "Skipping reconcile (--no-prune${ONLY_EPISODES:+ / --only-episodes:$ONLY_EPISODES}): no remote key is deleted"
+else
 info "Reconciling remote (pruning orphans) ..."
 "$UV_BIN" run --with boto3 python - \
   "$BUCKET" "$REGION" "${AWS_ENDPOINT_URL:-}" "$SERIES_ID" "$STAGING" <<'PYEOF'
@@ -449,6 +537,7 @@ for i in range(0, len(orphans), 1000):
     )
 print(f"reconcile: pruned {len(orphans)} orphan object(s)")
 PYEOF
+fi
 
 # ── Rebuild index.json locally (no remote flock needed — last writer wins) ───
 # Multiple concurrent uploads racing the index.json swap is still possible,
@@ -502,4 +591,4 @@ run_aws s3 cp \
 rm -f "$INDEX_TMP"
 ok "index.json rebuilt"
 
-ok "Done — $SERIES_ID uploaded with $EP_COUNT episodes"
+ok "Done — $SERIES_ID uploaded with $EP_COUNT episodes${ONLY_EPISODES:+ (partial:$ONLY_EPISODES; others kept from remote)}"

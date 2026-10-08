@@ -6,7 +6,10 @@ behavior, and the idempotent attach contract used by app startup.
 
 from __future__ import annotations
 
+import io
 import logging
+
+import pytest
 
 from kg.mem_log import _MemoryLogHandler, install_memory_log_handler
 
@@ -146,3 +149,78 @@ def test_install_returns_working_handler():
             for handler in list(target.handlers):
                 if handler not in original:
                     target.removeHandler(handler)
+
+
+# ---- access-log secret redaction -----------------------------------------
+
+_ACCESS_FMT = '%s - "%s %s HTTP/%s" %d'
+
+
+@pytest.fixture
+def access_logger():
+    logger = logging.getLogger("uvicorn.access")
+    before_handlers = list(logger.handlers)
+    before_filters = list(logger.filters)
+    before_level = logger.level
+    logger.setLevel(logging.INFO)
+    stream = io.StringIO()
+    stream_handler = logging.StreamHandler(stream)
+    logger.addHandler(stream_handler)
+    ring = install_memory_log_handler()
+    try:
+        yield logger, stream, ring
+    finally:
+        logger.setLevel(before_level)
+        for h in list(logger.handlers):
+            if h not in before_handlers:
+                logger.removeHandler(h)
+        for f in list(logger.filters):
+            if f not in before_filters:
+                logger.removeFilter(f)
+
+
+@pytest.mark.parametrize("param", ["token", "code", "state"])
+def test_access_log_redacts_sensitive_query_params(access_logger, param):
+    logger, stream, ring = access_logger
+    path = f"/admin/tests?{param}=s3cr3t&x=1"
+    logger.info(_ACCESS_FMT, "127.0.0.1:1234", "GET", path, "1.1", 200)
+
+    streamed = stream.getvalue()
+    buffered = ring.get(1)[-1]["msg"]
+    for text in (streamed, buffered):
+        assert "s3cr3t" not in text
+        assert f"{param}=[REDACTED]" in text
+        assert "x=1" in text
+
+
+def test_access_log_redacts_param_after_other_params(access_logger):
+    logger, stream, ring = access_logger
+    logger.info(_ACCESS_FMT, "c", "GET", "/cb?x=1&code=abc&state=def", "1.1", 200)
+    for text in (stream.getvalue(), ring.get(1)[-1]["msg"]):
+        assert "abc" not in text and "def" not in text
+        assert "code=[REDACTED]&state=[REDACTED]" in text
+
+
+def test_access_log_leaves_clean_records_unchanged(access_logger):
+    logger, stream, ring = access_logger
+    captured: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            captured.append(record)
+
+    logger.addHandler(_Capture())
+    logger.info(_ACCESS_FMT, "c", "GET", "/api/x?mytoken=keep&y=2", "1.1", 200)
+    rec = captured[-1]
+    assert rec.args == ("c", "GET", "/api/x?mytoken=keep&y=2", "1.1", 200)
+    assert rec.getMessage() == 'c - "GET /api/x?mytoken=keep&y=2 HTTP/1.1" 200'
+    assert "mytoken=keep" in stream.getvalue()
+
+
+def test_access_log_filter_installed_once(access_logger):
+    logger, _, _ = access_logger
+    install_memory_log_handler()
+    install_memory_log_handler()
+    from kg.mem_log import _SensitiveQueryRedactionFilter
+
+    assert sum(isinstance(f, _SensitiveQueryRedactionFilter) for f in logger.filters) == 1

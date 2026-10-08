@@ -308,3 +308,38 @@ def test_review_events_require_auth(isolated_api):
     r = isolated_api.client.get("/api/vocab/review-events")
 
     assert r.status_code in {401, 403}
+
+
+def test_review_state_patch_rejects_nan_counter_with_strict_json_422(isolated_api):
+    entry = {
+        "word": "serendipity",
+        "review_interval_hours": 1.0,
+        "next_review_at": "2026-06-01T10:00:00Z",
+        "last_reviewed_at": "2026-06-01T10:00:00Z",
+        "review_count": "__NAN__",
+        "lapse_count": 0,
+        "review_streak": 0,
+        "last_review_feedback": 0,
+    }
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review",
+        content=json.dumps({"entries": [entry]}).replace('"__NAN__"', "NaN"),
+        headers={**isolated_api.headers, "content-type": "application/json"},
+    )
+
+    assert r.status_code == 422, r.text
+    body = json.loads(r.text, parse_constant=lambda name: pytest.fail(name))
+    assert body["detail"][0]["input"] == "NaN"
+
+
+def test_book_position_put_rejects_nan_progression_with_strict_json_422(isolated_api):
+    r = isolated_api.client.put(
+        "/api/library/books/any-book/position",
+        content='{"progression": NaN, "updated_at": "2026-06-01T10:00:00Z"}',
+        headers={**isolated_api.headers, "content-type": "application/json"},
+    )
+
+    assert r.status_code == 422, r.text
+    body = json.loads(r.text, parse_constant=lambda name: pytest.fail(name))
+    assert body["detail"][0]["input"] == "NaN"

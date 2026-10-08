@@ -116,6 +116,23 @@ def test_demo_data_dispatcher_has_one_explicit_owner_per_route_file():
     assert "ops/tests/*.py" not in arm
 
 
+def test_demo_data_spec_e2e_runs_under_backend_project_requiring_e2e():
+    """Issue #2283: the spec e2e needs backend deps; it must run on a
+    `--project backend` pytest line with KG_REQUIRE_BACKEND_E2E=1, never in the
+    bare `--no-project` call where it would silently skip."""
+    source = (ROOT / "ops/test_ops.sh").read_text(encoding="utf-8")
+    arm = source.split("demo-data)", 1)[1].split(";;", 1)[0]
+    path = "ops/tests/test_demo_ios_spec_emitter.py"
+
+    assert arm.count(path) == 1
+    commands = arm.replace("\\\n", " ").replace("&&", "\n").splitlines()
+    owner = [line for line in commands if path in line]
+    assert len(owner) == 1
+    assert "--project backend" in owner[0]
+    assert "KG_REQUIRE_BACKEND_E2E=1" in owner[0]
+    assert "--no-project" not in owner[0]
+
+
 @pytest.mark.parametrize(
     ("file_name", "contents", "message"),
     (

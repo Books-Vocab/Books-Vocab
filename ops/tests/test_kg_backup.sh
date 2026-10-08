@@ -11,6 +11,7 @@
 #   2. 非空亂碼 *.db → exit≠0、aws 未被呼叫、log exit=<非零> 指名該檔、staging 清空
 #   3. 走訪失敗（不可讀子目錄）→ 同樣 fail-closed（root 執行時跳過）
 #   4. sqlite3 不在 PATH → exit=3、aws 未被呼叫
+#   1c. （#2281）填充 wc／空或非數字 sha256·bytes 不得記 exit=0／慢消費者仍被等待
 #   5. 上傳中收到 TERM → log exit=143、staging 清空
 
 set -o pipefail
@@ -195,6 +196,60 @@ check "restored cards.db has all $((N+1)) committed rows" \
   sql_is "$R/users/u1/cards.db" 'SELECT count(*) FROM card;' "$((N+1))"
 check "live cards.db main file not checkpointed" main_untouched
 check "staging removed" tmp_empty
+
+# ── 1c. 紀錄驗證（Issue #2281）────────────────────────────────────────
+# 以 PATH stub 取代 wc / sha256sum：BSD 式填充輸出、空輸出、非數字輸出、延遲輸出。
+REAL_WC="$(command -v wc)"
+REAL_SHA="$(command -v sha256sum)"
+make_stub() {  # <name> <body>
+  mkdir -p "$T/stub-$1"
+  printf '#!/bin/sh\n%s\n' "$2" >"$T/stub-$1/${3:-$1}"
+  chmod +x "$T/stub-$1/${3:-$1}"
+}
+make_stub padwc "n=\$('$REAL_WC' \"\$@\" | tr -d ' '); printf '%*s\\n' 12 \"\$n\"" wc
+make_stub emptysha "cat >/dev/null" sha256sum
+make_stub badwc "cat >/dev/null; echo not-a-number" wc
+# Slow stubs drain ALL of stdin first and only then delay their output: a
+# consumer that sleeps before reading just back-pressures the FIFO writer, so the
+# script could not reach the .sha/.size read early and `wait` would go unproven.
+slow_stub() {  # <name> <real-cmd> <stub-cmd>
+  make_stub "$1" "f='$T/slurp.$1.'\$\$; cat >\"\$f\"; sleep 2; '$2' \"\$@\" <\"\$f\"; rc=\$?; rm -f \"\$f\"; exit \$rc" "$3"
+}
+slow_stub slowsha "$REAL_SHA" sha256sum
+slow_stub slowwc "$REAL_WC" wc
+no_exit0() { ! grep -Eq ' exit=0( |$)' "$LOG" 2>/dev/null; }
+record_valid() {
+  [[ "$(last_log)" =~ exit=0\ bytes=[0-9]+\ sha256=[0-9a-f]{64}\ key= ]]
+}
+
+section "case 1c-A: BSD-padded wc output still logs bytes=<digits>"
+reset_run
+run_backup "$DATA" PATH="$T/stub-padwc:$PATH"; rc=$?
+if [[ $rc -eq 0 ]]; then ok "exit 0"; else fail_t "exit=$rc"; show_run; fi
+check "record is bytes=<digits> sha256=<64 hex>" record_valid
+up_bytes="$("$REAL_WC" -c <"$T/upload.tgz" | tr -d ' ')"
+check "logged bytes match the upload" log_field bytes "$up_bytes"
+check "backup_status accepts the record" status_healthy
+
+section "case 1c-B: empty/invalid sha256 or bytes never log exit=0"
+for variant in emptysha badwc; do
+  reset_run
+  run_backup "$DATA" PATH="$T/stub-$variant:$PATH"; rc=$?
+  if [[ $rc -ne 0 ]]; then ok "$variant: exit $rc"; else fail_t "$variant: exit 0 with an invalid record"; show_run; fi
+  check "$variant: log records exit=<nonzero>, backup_status unhealthy" failure_logged
+  check "$variant: no exit=0 record" no_exit0
+  check "$variant: staging removed" tmp_empty
+done
+
+section "case 1c-C: slow sha256sum/wc consumers are waited for"
+for variant in slowsha slowwc; do
+  reset_run
+  run_backup "$DATA" PATH="$T/stub-$variant:$PATH"; rc=$?
+  if [[ $rc -eq 0 ]]; then ok "$variant: exit 0"; else fail_t "$variant: exit=$rc"; show_run; fi
+  check "$variant: record complete" record_valid
+  up_sha="$("$REAL_SHA" "$T/upload.tgz" | awk '{print $1}')"
+  check "$variant: logged sha256 matches the upload" log_field sha256 "$up_sha"
+done
 
 # ── 2. 快照失敗 ────────────────────────────────────────────────────────
 section "case 2: garbage *.db fails closed before upload"

@@ -90,24 +90,33 @@ def record(
 
 
 def get_all_stats() -> dict[str, dict]:
-    """Return aggregated token usage per user per call_type."""
+    """Return aggregated token usage per user per call_type.
+
+    Each call_type bucket also carries ``cost_usd``: provider slices are priced
+    at their own row provider (NULL → currently routed), then folded together.
+    """
+    from .quota_service import token_cost_usd  # local: quota_service imports us
+
     with _lock:
         conn = _get_conn()
         rows = conn.execute("""
-            SELECT user_id, call_type,
+            SELECT user_id, call_type, provider,
                    SUM(input_tokens) as total_input,
                    SUM(output_tokens) as total_output,
                    COUNT(*) as calls
             FROM token_usage
-            GROUP BY user_id, call_type
+            GROUP BY user_id, call_type, provider
         """).fetchall()
     stats: dict[str, dict] = {}
-    for user_id, call_type, total_input, total_output, calls in rows:
-        if user_id not in stats:
-            stats[user_id] = {}
-        stats[user_id][call_type] = {
-            "input_tokens": total_input or 0,
-            "output_tokens": total_output or 0,
-            "calls": calls,
-        }
+    for user_id, call_type, provider, total_input, total_output, calls in rows:
+        bucket = stats.setdefault(user_id, {}).setdefault(
+            call_type,
+            {"input_tokens": 0, "output_tokens": 0, "calls": 0, "cost_usd": 0.0},
+        )
+        t_in = total_input or 0
+        t_out = total_output or 0
+        bucket["input_tokens"] += t_in
+        bucket["output_tokens"] += t_out
+        bucket["calls"] += calls
+        bucket["cost_usd"] += token_cost_usd(call_type, t_in, t_out, provider=provider)
     return stats

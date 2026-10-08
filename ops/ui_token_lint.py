@@ -36,13 +36,13 @@ Env overrides (for tests): KG_UI_TOKEN_SRC, KG_UI_TOKEN_BASELINE.
 
 from __future__ import annotations
 
-import argparse
-import datetime as dt
 import logging
 import os
 import re
 import sys
 from pathlib import Path
+
+from _swift_scan import collect_findings, normalize, run_modes
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = Path(os.environ.get("KG_UI_TOKEN_SRC", ROOT / "ios" / "BooksAndVocab"))
@@ -52,11 +52,8 @@ BASELINE_FILE = Path(
 
 ALLOW_MARKER = "token-allow:"
 
-# File-level exclusions. A path is skipped if any fragment matches, or its
-# basename matches an exact-name exclusion, or it matches a glob.
-SKIP_PATH_FRAGMENTS = ("/Debug/",)
+# Extra file-level exclusions on top of _swift_scan.should_skip (Debug/, Preview, Tests).
 SKIP_BASENAMES = ("AppMetrics.swift", "AppColors.swift")
-SKIP_NAME_GLOBS = ("*Preview*.swift", "*Tests*.swift")
 LOGGER = logging.getLogger(__name__)
 
 # (pattern_id, compiled regex, remediation hint). Order = report order.
@@ -83,7 +80,9 @@ PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
         # Absolute pt radii. The corner system is dimensionless now: radius is
         # derived from the shape's own box at render time.
         "radius",
-        re.compile(r"RoundedRectangle\(\s*cornerRadius:\s*-?\d|\.cornerRadius\(\s*-?\d"),
+        re.compile(
+            r"RoundedRectangle\(\s*cornerRadius:\s*-?\d|\.cornerRadius\(\s*-?\d"
+        ),
         "use AppRoundedRect(roundness: AppRoundness.*)",
     ),
     (
@@ -118,22 +117,6 @@ PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
     ),
 ]
 
-# Collapse runs of whitespace so the normalized key is indentation-invariant.
-_WS = re.compile(r"\s+")
-
-
-def normalize(snippet: str) -> str:
-    return _WS.sub(" ", snippet.strip())
-
-
-def should_skip(path: Path) -> bool:
-    s = str(path)
-    if any(frag in s for frag in SKIP_PATH_FRAGMENTS):
-        return True
-    if path.name in SKIP_BASENAMES:
-        return True
-    return any(path.match(g) for g in SKIP_NAME_GLOBS)
-
 
 class Finding:
     __slots__ = ("rel", "lineno", "pattern", "hint", "snippet")
@@ -150,7 +133,9 @@ class Finding:
         return f"{self.rel}::{self.pattern}::{self.snippet}"
 
     def display(self) -> str:
-        return f"{self.rel}:{self.lineno}: [{self.pattern}] {self.snippet}  → {self.hint}"
+        return (
+            f"{self.rel}:{self.lineno}: [{self.pattern}] {self.snippet}  → {self.hint}"
+        )
 
 
 def _strip_comment(line: str) -> str:
@@ -179,7 +164,7 @@ def _strip_comment(line: str) -> str:
         if ch == '"':
             in_string = not in_string
             continue
-        if not in_string and ch == "/" and line[idx + 1: idx + 2] == "/":
+        if not in_string and ch == "/" and line[idx + 1 : idx + 2] == "/":
             return line[:idx]
     return line
 
@@ -204,92 +189,20 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
 
 
 def collect() -> list[Finding]:
-    if not SRC.exists():
-        print(f"ERROR: {SRC} not found", file=sys.stderr)
-        sys.exit(2)
-    files: list[Path] = []
-    for f in sorted(SRC.rglob("*.swift")):
-        if should_skip(f):
-            continue
-        files.append(f)
-    findings: list[Finding] = []
-    for f in files:
-        findings.extend(scan_file(f, str(f.relative_to(SRC))))
-    return findings
-
-
-def read_baseline() -> set[str]:
-    if not BASELINE_FILE.exists():
-        return set()
-    items: set[str] = set()
-    for raw in BASELINE_FILE.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        items.add(line)
-    return items
+    return collect_findings(SRC, scan_file, SKIP_BASENAMES)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    g = ap.add_mutually_exclusive_group()
-    g.add_argument("--report", action="store_true", default=True)
-    g.add_argument("--baseline", action="store_true")
-    g.add_argument("--baseline-check", action="store_true")
-    g.add_argument("--strict", action="store_true")
-    args = ap.parse_args()
-
-    findings = collect()
-
-    if args.baseline:
-        BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        keys = sorted({f.key() for f in findings})
-        header = [
-            f"# ui_token_lint baseline — generated {dt.date.today().isoformat()}",
+    return run_modes(
+        "ui_token_lint",
+        collect(),
+        BASELINE_FILE,
+        [
             "# Line-number-free finding keys: <relpath>::<pattern>::<normalized-snippet>.",
             "# Regenerate after a sanctioned sweep:  bash ops/ui_token_lint.sh --baseline",
-            "",
-        ]
-        BASELINE_FILE.write_text("\n".join(header + keys) + "\n", encoding="utf-8")
-        print(f"[ui_token_lint] wrote baseline: {len(keys)} findings → {BASELINE_FILE}")
-        return 0
-
-    if args.baseline_check:
-        baseline = read_baseline()
-        current = {f.key(): f for f in findings}
-        new_keys = sorted(set(current) - baseline)
-        if new_keys:
-            print(
-                f"[ui_token_lint] REGRESSION — {len(new_keys)} new finding(s):",
-                file=sys.stderr,
-            )
-            for k in new_keys:
-                print(f"  {current[k].display()}", file=sys.stderr)
-            return 1
-        print(
-            f"[ui_token_lint] OK — {len(current)} finding(s), all within "
-            f"baseline of {len(baseline)}."
-        )
-        return 0
-
-    if args.strict:
-        for f in findings:
-            print(f.display(), file=sys.stderr)
-        if findings:
-            print(
-                f"[ui_token_lint] FAIL — {len(findings)} finding(s). Fix or "
-                f"annotate with // token-allow: <reason>.",
-                file=sys.stderr,
-            )
-            return 1
-        print("[ui_token_lint] OK — no findings.")
-        return 0
-
-    # default --report
-    for f in findings:
-        print(f.display())
-    print(f"\n[ui_token_lint] total: {len(findings)} findings", file=sys.stderr)
-    return 0
+        ],
+        "Fix or annotate with // token-allow: <reason>.",
+    )
 
 
 if __name__ == "__main__":

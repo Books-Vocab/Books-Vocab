@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from .llm.providers import validate_provider_routing
 from .settings import KGSettings
 
 
@@ -48,6 +49,9 @@ def build_app_lifespan_from_dependencies(
             dependencies.logger.warning(
                 "admin_password is empty → admin password login is disabled (set ADMIN_PASSWORD to enable)"
             )
+        # Validate LLM routing before taking the worker lock so a bad deploy
+        # env fails startup without leaking the lock.
+        validate_provider_routing()
         data_root = dependencies.settings.data_dir
         worker_lock_path = data_root / ".worker.lock"
         dependencies.assert_single_worker_fn(worker_lock_path)

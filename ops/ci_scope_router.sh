@@ -12,7 +12,10 @@ Usage: ops/ci_scope_router.sh (--base <commit> --head <commit> | --paths-stdin |
 
 Classify changed paths into the non-blocking backend, ops, and iOS confidence
 suites. Unknown paths select every suite so a new runtime surface cannot
-silently lose validation.
+silently lose validation. With --base/--head the changed paths are the diff
+from `git merge-base <base> <head>` to <head>, so commits that landed on the
+base branch after the fork never count as this change; no merge base selects
+every suite.
 
 The iOS suite additionally carries ios_mode=full|targeted. Targeted is admitted
 only for exactly one changed top-level ios/BooksAndVocabUITests/*UITests.swift
@@ -258,9 +261,18 @@ case "$source" in
     [[ -n "$base" && -n "$head" ]] || { usage >&2; exit 2; }
     git rev-parse --verify "${base}^{commit}" >/dev/null
     git rev-parse --verify "${head}^{commit}" >/dev/null
-    while IFS= read -r -d '' path; do
-      classify_path "$path"
-    done < <(git diff --name-only -z "$base" "$head")
+    # A PR's own changes start at the merge base. The base branch tip moves on
+    # after the fork, and a two-point diff would add the reverse of its newer
+    # commits to this PR's scope. No common ancestor cannot be scoped, so it
+    # selects every suite like any other unclassifiable input.
+    if diff_base="$(git merge-base "$base" "$head")"; then
+      while IFS= read -r -d '' path; do
+        classify_path "$path"
+      done < <(git diff --name-only -z "$diff_base" "$head")
+    else
+      printf 'ci_scope_router: no merge base for %s and %s; selecting every suite\n' "$base" "$head" >&2
+      select_all
+    fi
     ;;
   *)
     usage >&2

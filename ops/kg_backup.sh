@@ -3,10 +3,12 @@
 #
 # Pipeline:
 #   stage data/ (SQLite online snapshots + hardlinks)
-#     →  tar -czf - data/  →  tee >(sha256sum)  →  aws s3 cp - s3://...
+#     →  tar -czf - data/  →  tee fifo(sha256sum)  →  tee fifo(wc -c)  →  aws s3 cp - s3://...
 # Writes a one-line audit log per run (path from $KG_BACKUP_LOG):
 #   <timestamp> exit=<rc> bytes=<size> sha256=<hash> key=<s3 key>
-# A run that stops before the upload logs `exit=<rc> <reason>` instead.
+# A run that stops before the upload, or whose bytes/sha256 are empty or
+# malformed, logs `exit=<rc> <reason>` (non-zero) instead; exit=0 is never logged
+# without bytes=<digits> and a 64-hex sha256.
 #
 # The archive itself is never written locally: avoids filling the data disk and
 # removes the "backup tarball deleted by same incident" risk. The only local
@@ -40,7 +42,13 @@ log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
 die() { local rc="$1"; shift; log "exit=$rc $*"; exit "$rc"; }
 
 STAGE=""
-cleanup() { if [[ -n "$STAGE" ]]; then rm -rf "$STAGE"; fi; }
+SHA_PID=""; SIZE_PID=""
+cleanup() {
+  # A consumer still blocked opening its FIFO (no writer ever came) would orphan.
+  [[ -z "$SHA_PID" ]] || kill "$SHA_PID" 2>/dev/null || true
+  [[ -z "$SIZE_PID" ]] || kill "$SIZE_PID" 2>/dev/null || true
+  if [[ -n "$STAGE" ]]; then rm -rf "$STAGE"; fi
+}
 on_signal() { log "exit=$1 interrupted by signal"; exit "$1"; }
 trap cleanup EXIT
 trap 'on_signal 129' HUP
@@ -102,6 +110,19 @@ while IFS= read -r -d '' path; do
   fi
 done <"$STAGE/.list"
 
+# sha256 and byte count are computed by two consumers fed through FIFOs rather
+# than `tee >(...)`: bash 3.2 (the launchd /bin/bash on macOS) does not set `$!`
+# for process substitution, so those children could not be waited on by PID.
+# Both consumers are started first (each opens its FIFO for reading) so the
+# writers in the pipeline never deadlock on open order, and the record is read
+# only after `wait`ing on each named PID. Their output is normalized (BSD wc
+# left-pads the count) and validated before an exit=0 record is allowed.
+mkfifo "$STAGE/.sha.fifo" "$STAGE/.size.fifo" || die 3 "cannot create fifos"
+{ sha256sum <"$STAGE/.sha.fifo" | awk '{print $1}' >"$STAGE/.sha"; } &
+SHA_PID=$!
+{ wc -c <"$STAGE/.size.fifo" >"$STAGE/.size"; } &
+SIZE_PID=$!
+
 set +e
 tar -C "$STAGE" \
     --exclude='._*' \
@@ -110,23 +131,25 @@ tar -C "$STAGE" \
     --exclude='*-shm' \
     --exclude='*-journal' \
     -czf - "$ROOT" \
-  | tee >(sha256sum | awk '{print $1}' >"$STAGE/.sha") \
-  | tee >(wc -c >"$STAGE/.size") \
+  | tee "$STAGE/.sha.fifo" \
+  | tee "$STAGE/.size.fifo" \
   | aws s3 cp - "$S3_URI" \
       --region "$REGION" \
       --expected-size 2000000000 \
       --no-progress
 rc=${PIPESTATUS[3]}
+wait "$SHA_PID"
+wait "$SIZE_PID"
+SHA_PID=""; SIZE_PID=""
 set -e
 
-# Ensure the `tee >(...)` process-substitution children have finished writing
-# .sha / .size before we read them. Without this the read races the async
-# subshells; it happens to win under the current aws consumer but that's luck,
-# not contract.
-wait
-
-SHA="$(cat "$STAGE/.sha")"
-# BSD wc (macOS) left-pads the count; backup_status.sh expects bytes=<digits>.
-SIZE="$(tr -d '[:space:]' <"$STAGE/.size")"
+SHA="$(tr -cd '0-9A-Fa-f' <"$STAGE/.sha")"
+SIZE="$(tr -cd '0-9' <"$STAGE/.size")"
+if [[ -z "$SIZE" || ! "$SHA" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+  if [[ "$rc" -eq 0 ]]; then
+    die 3 "backup record incomplete: empty or invalid bytes/sha256 (upload may have succeeded)"
+  fi
+  die "$rc" "backup record incomplete: empty or invalid bytes/sha256"
+fi
 log "exit=$rc bytes=$SIZE sha256=$SHA key=$KEY"
 exit "$rc"

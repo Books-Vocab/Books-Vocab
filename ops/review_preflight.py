@@ -375,16 +375,20 @@ def evaluate(payload: object) -> dict[str, Any]:
 def _read_input(path: Path | None) -> tuple[object | None, str | None]:
     try:
         raw = (
-            sys.stdin.read()
+            sys.stdin.buffer.read().decode("utf-8")
             if path is None or str(path) == "-"
             else path.read_text(encoding="utf-8")
         )
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         return None, f"input_unreadable: {error}"
     try:
         return json.loads(raw), None
     except json.JSONDecodeError as error:
         return None, f"input_invalid_json: {error.msg}"
+    except RecursionError:
+        return None, "input_invalid_json: nesting too deep"
+    except ValueError as error:
+        return None, f"input_invalid_json: {error}"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

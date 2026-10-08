@@ -6,6 +6,31 @@ enum SubscriptionProductLoadState: Equatable {
     case retry
 }
 
+/// StoreKit 免費試用 intro offer 的資格與天數（paywall 試用宣稱的唯一來源）。
+enum PaywallIntroOffer {
+    /// 期間 → 天數（純函式）。value<=0 → nil。月／年採 30／365 近似，僅用於顯示。
+    static func days(unit: Product.SubscriptionPeriod.Unit, value: Int) -> Int? {
+        guard value > 0 else { return nil }
+        switch unit {
+        case .day: return value
+        case .week: return value * 7
+        case .month: return value * 30
+        case .year: return value * 365
+        @unknown default: return nil
+        }
+    }
+
+    /// 商品有 `.freeTrial` intro offer 且使用者仍有資格 → 天數；否則 nil。
+    static func eligibleFreeTrialDays(for product: Product?) async -> Int? {
+        guard let subscription = product?.subscription,
+              let offer = subscription.introductoryOffer,
+              offer.paymentMode == .freeTrial,
+              await subscription.isEligibleForIntroOffer
+        else { return nil }
+        return days(unit: offer.period.unit, value: offer.period.value)
+    }
+}
+
 extension SubscriptionManager {
     static func productLoadState(
         isLoading: Bool,

@@ -184,7 +184,8 @@ class _LinksMixin:
                     if cached is None:
                         self._links[canonical.id] = canonical
                         self._index_link(canonical)
-                    elif cached.status not in ("active", "hidden"):
+                    elif cached.status not in ("active", "hidden") and canonical.id not in self._pending_link_ids:
+                        # An unflushed local status change (e.g. deprecated) wins over the stale disk copy.
                         self._links[canonical.id] = canonical
                         self._index_link(canonical)
 

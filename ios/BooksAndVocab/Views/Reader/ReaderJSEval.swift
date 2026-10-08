@@ -51,5 +51,17 @@ enum ReaderJSEval {
     static func quotedLiteral(_ value: String) -> String {
         (try? JSONEncoder().encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
     }
+
+    /// Script that hands `words` to `window.__markVocabWords` as a JSON array
+    /// (JSON encoding escapes newlines/control chars; one bad word cannot break the batch).
+    static func markVocabWordsScript(_ words: [String]) -> String {
+        let json = (try? JSONEncoder().encode(words)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        return "if(window.__markVocabWords) window.__markVocabWords(\(json));"
+    }
+
+    /// Script that calls the single-word bridge `window.<function>(word)`.
+    static func singleWordScript(function: String, word: String) -> String {
+        "if(window.\(function)) window.\(function)(\(quotedLiteral(word)));"
+    }
 }
 #endif

@@ -53,7 +53,6 @@ HOT_PATH = re.compile(
 )
 BACKUP_MAX_AGE_HOURS = 24
 FELIX_SSH = os.environ.get("KG_FELIX_SSH", "chenliangyu@100.118.39.104")
-SHA_MIN = 7
 
 
 # --- pure evaluators --------------------------------------------------------
