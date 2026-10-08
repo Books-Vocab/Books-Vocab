@@ -6,6 +6,7 @@ import json
 import shutil
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,32 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 import deliver
+
+
+HEAD = "c" * 40
+NEW_TIP = "d" * 40
+BOT = "chatgpt-codex-connector[bot]"
+
+
+def _review(
+    status: str = "completed",
+    conclusion: str = "success",
+    job: bool = False,
+    run: int = 1,
+):
+    """One `agent-review` check run: the Actions job, or a verdict it posted.
+
+    Both name the workflow run that made them: the job by its details_url, the
+    posted verdict by its external_id marker (as agent-review.yml writes them).
+    """
+    url = f"https://github.com/o/r/actions/runs/{run}"
+    return {
+        "name": "agent-review",
+        "status": status,
+        "conclusion": conclusion if status == "completed" else None,
+        "external_id": "" if job else f"kg.agent-review.v1:{run}:{HEAD}",
+        "details_url": f"{url}/job/9" if job else url,
+    }
 
 
 class FakeWorld:
@@ -37,14 +64,51 @@ class FakeWorld:
         self.fork = state.get("fork", "f" * 40)
         self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
         self.format_rc = state.get("format_rc", 0)
+        self.unformatted = state.get("unformatted", ["ops/a.py"])
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
+        self.stderr_for: dict[str, str] = state.get("stderr_for", {})
+        self.lock_busy: dict[str, int] = dict(state.get("lock_busy", {}))
+        self.now = 0.0
+        self.sleeps: list[float] = []
+        self.head = state.get("head", HEAD)
+        self.review_runs = list(
+            state.get("review_runs", [[_review(job=True), _review()]])
+        )
+        self.review_comments: list[dict[str, Any]] = state.get("review_comments", [])
+        # Workflow runs by id (None: GitHub answers 404); a run not listed here
+        # belongs to the PR whose head was last read, as the real ones do.
+        self.actions_runs: dict[int, dict[str, Any] | None] = state.get(
+            "actions_runs", {}
+        )
+        self.head_ref = state.get("head_ref", self.branch)
+        self.viewed_pr = 0
+        # Mid-redelivery change: the replaced PR is MERGED once this verb ran.
+        self.merge_old_after = state.get("merge_old_after")
+        # Per-branch registry/PR/remote facts that react to the mutations.
+        self.records_by_branch: dict[str, list[dict[str, Any]]] = state.get(
+            "records_by_branch", {}
+        )
+        self.prs_by_branch: dict[str, list[dict[str, Any]]] = state.get(
+            "prs_by_branch", {}
+        )
+        self.remote_heads: dict[str, str] = state.get("remote_heads", {})
+        # Hold/queue facts of the replaced PR, one dict per read (last repeats).
+        self.pr_guard: list[dict[str, Any]] = list(state.get("pr_guard", []))
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
+        # How the new tip relates to the replaced lane's hand-back commit.
+        self.old_is_ancestor: bool = state.get("old_is_ancestor", True)
+        self.cherry: str = state.get("cherry", "")
+        self.old_object_present: bool = state.get("old_object_present", True)
         self.calls: list[list[str]] = []
         self.cwds: list[Path | None] = []
         self.work = Path(tempfile.mkdtemp())
         self.canon = Path(tempfile.mkdtemp())
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
 
     def names(self) -> list[str]:
         out = []
@@ -85,7 +149,11 @@ class FakeWorld:
                 if sub[1] == "--abort":
                     return ok()
                 return deliver.Proc(
-                    0 if self.rebase_ok else 1, "", "" if self.rebase_ok else "conflict"
+                    0 if self.rebase_ok else 1,
+                    ""
+                    if self.rebase_ok
+                    else "CONFLICT (content): Merge conflict in ops/a.py\n",
+                    "" if self.rebase_ok else "error: could not apply c0ffee0\n",
                 )
             if sub[0] == "worktree":
                 return ok(f"worktree {self.canon}\nHEAD abc\n")
@@ -93,21 +161,42 @@ class FakeWorld:
                 return ok("".join(f"{name}\n" for name in self.changed_py))
             if sub[0] == "diff":
                 return ok(self.diff)
+            if sub[:2] == ["merge-base", "--is-ancestor"]:
+                return deliver.Proc(0 if self.old_is_ancestor else 1, "", "")
             if sub[0] == "merge-base":
                 return ok(self.fork)
+            if sub[:2] == ["cat-file", "-e"]:
+                return deliver.Proc(0 if self.old_object_present else 128, "", "")
+            if sub[0] == "cherry":
+                return ok(self.cherry)
+            if sub[:2] == ["rev-parse", "--verify"]:
+                return ok(NEW_TIP)
             if sub[0] == "log":
                 return ok("feat: the thing")
             if sub[0] == "rev-parse":
                 return ok(str(self.canon))
+            if sub[0] == "ls-remote":
+                name = sub[2].removeprefix("refs/heads/")
+                sha = self.remote_heads.get(name)
+                return ok(f"{sha}\trefs/heads/{name}\n" if sha else "")
+            if sub[0] == "push" and sub[-2] == "--delete":
+                self.remote_heads.pop(sub[-1], None)
+                return ok()
         if head == "uv":
-            return deliver.Proc(
-                self.format_rc,
-                "Would reformat: ops/a.py\n" if self.format_rc else "",
-                "",
-            )
+            listed = "".join(f"Would reformat: {n}\n" for n in self.unformatted)
+            return deliver.Proc(self.format_rc, listed if self.format_rc else "", "")
         if head == "gh":
             if cmd[1:3] == ["repo", "view"]:
                 return ok("o/r")
+            if cmd[1:3] == ["pr", "close"]:
+                for pr in sum(self.prs_by_branch.values(), []):
+                    if str(pr["number"]) == cmd[3]:
+                        pr["state"] = "CLOSED"
+                return ok()
+            if cmd[1:3] == ["pr", "list"] and "--head" in cmd:
+                listed = self.prs_by_branch.get(cmd[cmd.index("--head") + 1])
+                if listed is not None:
+                    return ok(json.dumps(listed))
             if cmd[1:3] == ["pr", "list"]:
                 if "merged" in cmd:
                     return ok(
@@ -128,33 +217,105 @@ class FakeWorld:
             if cmd[1:3] == ["pr", "checks"]:
                 batch = self.checks.pop(0) if len(self.checks) > 1 else self.checks[0]
                 return ok(json.dumps(batch))
+            if cmd[1:3] == ["api", "graphql"]:
+                number = int(_value(cmd, "number=", prefix=True))
+                pr = next(
+                    p
+                    for p in sum(self.prs_by_branch.values(), [])
+                    if p["number"] == number
+                )
+                guard = self.pr_guard
+                extra = guard.pop(0) if len(guard) > 1 else (guard or [{}])[0]
+                node = {
+                    "number": number,
+                    "state": pr["state"],
+                    "body": "",
+                    "labels": {"nodes": []},
+                    "autoMergeRequest": None,
+                    "mergeQueueEntry": None,
+                    **extra,
+                }
+                return ok(json.dumps({"data": {"repository": {"pullRequest": node}}}))
+            if cmd[1] == "api" and "/check-runs?" in cmd[-1]:
+                runs = self.review_runs
+                batch = runs.pop(0) if len(runs) > 1 else runs[0]
+                return ok(
+                    json.dumps([{"total_count": len(batch), "check_runs": batch}])
+                )
+            if cmd[1] == "api" and "/actions/runs/" in cmd[-1]:
+                run_id = int(cmd[-1].rsplit("/", 1)[1])
+                found = self.actions_runs.get(
+                    run_id,
+                    {
+                        "event": "pull_request_target",
+                        "head_branch": self.head_ref,
+                        "pull_requests": [{"number": self.viewed_pr}],
+                    },
+                )
+                if found is None:
+                    return deliver.Proc(1, "", "gh: Not Found (HTTP 404)")
+                return ok(json.dumps({"id": run_id, **found}))
+            if cmd[1] == "api" and cmd[-1].endswith("/comments?per_page=100"):
+                return ok(json.dumps([self.review_comments]))
+            if cmd[1:3] == ["pr", "view"]:
+                self.viewed_pr = int(cmd[3])
+            if cmd[1:3] == ["pr", "view"] and "headRefOid,headRefName" in cmd:
+                return ok(
+                    json.dumps({"headRefOid": self.head, "headRefName": self.head_ref})
+                )
             if cmd[1:3] == ["pr", "view"]:
                 return ok(
                     self.pr_state.pop(0) if len(self.pr_state) > 1 else self.pr_state[0]
                 )
         if head.endswith("worktree_registry.py"):
+            branch = cmd[cmd.index("--branch") + 1] if "--branch" in cmd else None
+            if branch in self.records_by_branch:
+                return ok(json.dumps({"records": self.records_by_branch[branch]}))
             return ok(json.dumps({"records": [self.record] if self.record else []}))
         if head.endswith(("worktree_orchestrate.py", "delivery.py")):
             verb = cmd[1] if head.endswith("worktree_orchestrate.py") else cmd[3]
+            if self.lock_busy.get(verb, 0) > 0:  # the lock is taken before any change
+                self.lock_busy[verb] -= 1
+                if head.endswith("delivery.py"):  # its CLI reports one JSON error
+                    doc = {"command": verb, "error": _LOCKED, "ok": False}
+                    return deliver.Proc(1, "", json.dumps(doc))
+                return deliver.Proc(1, "", f"Traceback\nDeliverySourceError: {_LOCKED}")
+            if verb == "resolve" and "--branch" in cmd:
+                for record in self.records_by_branch.get(
+                    cmd[cmd.index("--branch") + 1], []
+                ):
+                    record["status"] = cmd[cmd.index("--status") + 1]
             if verb == "publish":
                 shutil.rmtree(
                     self.work, ignore_errors=True
                 )  # publish retires the lane worktree
-            return deliver.Proc(
-                1 if verb in self.fail_commands else 0,
-                "{}",
-                "boom" if verb in self.fail_commands else "",
-            )
+            if verb == self.merge_old_after:
+                for old in self.prs_by_branch.get(OLD, []):
+                    old["state"] = "MERGED"
+            failing = verb in self.fail_commands
+            if failing:
+                return deliver.Proc(1, "", self.stderr_for.get(verb, "boom"))
+            return ok("{}")
         raise AssertionError(f"unscripted call: {cmd}")
 
 
+_LOCKED = (
+    "delivery mutation already in progress; command=sync-main; "
+    "retry after the active operation exits"
+)
+
+
 def ship(world: FakeWorld, *flags: str) -> tuple[int, dict[str, Any]]:
-    argv = ["--timeout", "5", "--poll", "0"]
+    argv = ["--timeout", "5", "--poll", "1"]
     if "--worktree" not in flags:
         argv += ["--worktree", str(world.work)]
+    command = ["redeliver"] if flags[:1] == ("redeliver",) else []
+    argv = [*command, *argv, *flags[len(command) :]]  # options follow redeliver
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-        code = deliver.main([*argv, *flags], runner=world, sleep=lambda _s: None)
+        code = deliver.main(
+            argv, runner=world, sleep=world.sleep, clock=lambda: world.now
+        )
     return code, json.loads(buf.getvalue().strip().splitlines()[-1])
 
 
@@ -313,6 +474,7 @@ def test_a_branch_that_cannot_rebase_is_aborted_and_not_claimed() -> None:
     code, result = ship(world, "--check", "u=good")
     assert code == 1
     assert "rebase" in result["error"]
+    assert "CONFLICT (content): Merge conflict in ops/a.py" in result["error"]
     assert ["git", "rebase", "--abort"] in world.calls
     assert world.names() == []
 
@@ -339,6 +501,320 @@ def test_a_stage_failure_names_the_stage() -> None:
     code, result = ship(world, "--check", "u=good")
     assert code == 1
     assert result["error"].startswith("hand-back failed")
+    assert world.names().count("hand-back") == 1  # a real failure is not retried
+
+
+_GITHUB = "GraphQL: Pull request is in unstable status (enqueuePullRequest)"
+_ADAPTER = (
+    "command failed with exit 1: gh api graphql -f query=mutation {"
+    + "x" * 2000
+    + "} -F pullRequestId=PR_1: "
+    + _GITHUB
+)
+_TRACE = "Traceback (most recent call last):\n" + "  frame\n" * 100 + "Boom: cause"
+
+
+@pytest.mark.parametrize(
+    ("verb", "stderr", "detail"),
+    [
+        (  # delivery.py: progress lines, then one JSON error document
+            "queue",
+            "reading PR\n"
+            + json.dumps({"command": "queue", "error": _ADAPTER, "ok": False}),
+            _ADAPTER,
+        ),
+        ("adopt", _TRACE, _TRACE),  # anything else: the whole stream
+    ],
+    ids=["delivery-json-error", "traceback"],
+)
+def test_a_failed_stage_surfaces_the_whole_underlying_error(
+    verb: str, stderr: str, detail: str
+) -> None:
+    world = FakeWorld(fail_commands={verb}, stderr_for={verb: stderr})
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1
+    assert result["error"] == f"{verb} failed (rc=1): {detail}"
+
+
+# ---- the delivery mutation lock -------------------------------------------
+
+
+def test_a_busy_mutation_lock_is_waited_out_instead_of_failing() -> None:
+    world = FakeWorld(lock_busy={"adopt": 1, "queue": 2})  # traceback / JSON shapes
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    assert world.names().count("adopt") == 2
+    assert world.names().count("queue") == 3
+    waits = [line for line in result["log"] if "operation lock" in line]
+    assert len(waits) == 3 and all("command=sync-main" in line for line in waits)
+
+
+def test_the_lock_wait_is_bounded_and_names_the_holder() -> None:
+    world = FakeWorld(lock_busy={"publish": 99})
+    code, result = ship(world, "--check", "u=good", "--lock-timeout", "12")
+    assert code == 1
+    assert world.names().count("publish") == 4
+    assert world.sleeps == [5, 5, 2]
+    assert "lock is still held after 12s" in result["error"]
+    assert _LOCKED in result["error"]
+
+
+def test_the_lock_marker_is_the_lock_adapters_own_message() -> None:
+    adapter = OPS / "delivery_control" / "adapters" / "operation_lock.py"
+    assert deliver.LOCK_BUSY in adapter.read_text()
+
+
+# ---- the agent-review gate on --merge -------------------------------------
+
+
+def _calls_at(world: FakeWorld, wanted: Callable[[list[str]], bool]) -> list[int]:
+    return [i for i, call in enumerate(world.calls) if wanted(call)]
+
+
+def _is_review_read(call: list[str]) -> bool:
+    return call[:2] == ["gh", "api"] and "/check-runs?" in call[-1]
+
+
+def _is_queue(call: list[str]) -> bool:
+    return call[0].endswith("delivery.py") and call[3] == "queue"
+
+
+_FINDING = {
+    "user": {"login": BOT},
+    "commit_id": HEAD,
+    "original_commit_id": HEAD,
+    "path": "ops/a.py",
+    "line": 12,
+    "body": "**P2 Handle the empty case**\n\nWhy it breaks.",
+    "html_url": "https://github.com/o/r/pull/77#discussion_r1",
+}
+
+
+def test_merge_waits_for_agent_review_to_complete_on_the_exact_head() -> None:
+    orphan = _review("in_progress")  # the marker of a run that was cancelled
+    world = FakeWorld(
+        review_runs=[
+            [],
+            [_review("in_progress", job=True), orphan],
+            [_review(job=True), orphan, _review()],
+        ]
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    reads = _calls_at(world, _is_review_read)
+    assert len(reads) == 3
+    assert all(f"/commits/{HEAD}/check-runs?" in world.calls[i][-1] for i in reads)
+    assert reads[-1] < _calls_at(world, _is_queue)[0]
+    assert result["review"] == {
+        "head": HEAD,
+        "verdict": "success",
+        "findings": [],
+        "accepted": None,
+        "accepted_no_review": None,
+    }
+
+
+def test_merge_refuses_to_queue_when_agent_review_failed() -> None:
+    failed = [_review(conclusion="failure", job=True), _review(conclusion="failure")]
+    world = FakeWorld(review_runs=[failed])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1
+    assert f"agent-review failed on {HEAD}" in result["error"]
+    assert "--accept-review-findings" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_merge_refuses_on_inline_review_comments_on_the_head_and_lists_them() -> None:
+    ignored = [
+        {**_FINDING, "user": {"login": "someone"}},  # not the review bot
+        {**_FINDING, "commit_id": "d" * 40, "original_commit_id": "d" * 40},
+    ]
+    world = FakeWorld(review_comments=[_FINDING, *ignored])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1
+    assert f"1 inline review comment(s) on {HEAD}" in result["error"]
+    assert (
+        "ops/a.py:12: **P2 Handle the empty case** "
+        "https://github.com/o/r/pull/77#discussion_r1"
+    ) in result["error"]
+    assert result["error"].count("ops/a.py:12") == 1
+    assert not _calls_at(world, _is_queue)
+
+
+def test_an_explicit_reason_accepts_the_review_findings_and_queues() -> None:
+    world = FakeWorld(review_comments=[_FINDING])
+    reason = "P2 tracked in #123"
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-review-findings", reason
+    )
+    assert code == 0, result
+    assert _calls_at(world, _is_queue)
+    assert result["review"]["accepted"] == reason
+    assert result["review"]["findings"][0]["where"] == "ops/a.py:12"
+    assert any(reason in line for line in result["log"])
+
+
+_NEUTRAL = [_review(job=True), _review(conclusion="neutral")]
+
+
+def test_a_neutral_review_is_not_a_verdict_and_refuses_to_queue() -> None:
+    """`neutral` only means the workflow stopped waiting for the bot (5 min)."""
+    world = FakeWorld(review_runs=[_NEUTRAL])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert len(_calls_at(world, _is_review_read)) > 1  # kept polling to --timeout
+    assert "never settled" in result["error"]
+    assert "--accept-no-review" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_neutral_review_followed_by_a_blocker_is_not_queued() -> None:
+    """PR #2082: neutral at 13:15, the bot's P1 failure verdict at 13:17."""
+    later = [*_NEUTRAL, _review(conclusion="failure")]
+    world = FakeWorld(review_runs=[_NEUTRAL, later])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert f"agent-review failed on {HEAD}" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_neutral_review_followed_by_a_review_is_queued() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL, [*_NEUTRAL, _review()]])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    assert result["review"]["verdict"] == "success"
+    assert result["review"]["accepted_no_review"] is None
+
+
+def test_an_explicit_reason_queues_without_a_review_and_records_it() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL])
+    reason = "codex quota exhausted; reviewed by hand"
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", reason
+    )
+    assert code == 0, result
+    assert _calls_at(world, _is_queue)
+    assert result["review"]["verdict"] == "neutral"
+    assert result["review"]["accepted_no_review"] == reason
+    assert any(reason in line for line in result["log"])
+
+
+def test_accepting_no_review_never_queues_while_the_review_is_still_running() -> None:
+    world = FakeWorld(review_runs=[[_review("in_progress", job=True)]])
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "no bot"
+    )
+    assert code == 1, result
+    assert "timed out" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_without_merge_the_review_is_not_awaited() -> None:
+    world = FakeWorld(review_runs=[[]])
+    assert ship(world, "--check", "u=good")[0] == 0
+    assert not _calls_at(world, _is_review_read)
+
+
+_OF_PR_50 = {
+    "event": "pull_request_target",
+    "head_branch": "feat/old",
+    "pull_requests": [{"number": 50}],
+}
+
+
+def test_a_review_run_of_another_pr_on_the_same_head_is_not_accepted() -> None:
+    """redeliver's PR shares the replaced PR's head sha, so the commit-level
+    check list also holds the replaced PR's runs: its success says nothing about
+    this PR, and this PR was never reviewed."""
+    world = FakeWorld(
+        review_runs=[[_review(job=True), _review()]], actions_runs={1: _OF_PR_50}
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert "belong to other PRs" in result["error"]
+    assert "#77" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_only_the_runs_of_this_pr_decide_among_runs_on_a_shared_head() -> None:
+    """Positive control: the replaced PR's runs (here a failure) are ignored and
+    this PR's own success is accepted."""
+    old = [_review(job=True, run=1), _review(conclusion="failure", run=1)]
+    own = [_review(job=True, run=2), _review(run=2)]
+    world = FakeWorld(review_runs=[[*old, *own]], actions_runs={1: _OF_PR_50})
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    assert result["review"]["verdict"] == "success"
+    assert _calls_at(world, _is_queue)
+    runs_read = [c[-1] for c in world.calls if "/actions/runs/" in c[-1]]
+    assert sorted(set(runs_read)) == [
+        "repos/o/r/actions/runs/1",
+        "repos/o/r/actions/runs/2",
+    ]
+
+
+def test_a_run_without_pull_requests_is_owned_by_its_head_branch() -> None:
+    world = FakeWorld(
+        actions_runs={
+            1: {"event": "pull_request_target", "head_branch": "feat/thing"},
+        }
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+
+
+@pytest.mark.parametrize(
+    "unattributed",
+    [
+        None,  # GitHub no longer has the run (404)
+        {"event": "issue_comment", "head_branch": "main", "pull_requests": []},
+        {"event": "pull_request_target", "head_branch": "feat/old"},
+    ],
+    ids=["run-not-found", "comment-run-names-no-pr", "head-branch-of-another-pr"],
+)
+def test_a_review_whose_owner_cannot_be_determined_is_not_accepted(
+    unattributed: dict[str, Any] | None,
+) -> None:
+    world = FakeWorld(actions_runs={1: unattributed})
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert "belong to other PRs or could not be attributed" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_review_run_naming_no_workflow_run_is_not_accepted() -> None:
+    bare = {**_review(job=True), "details_url": None}
+    marker_only = {**_review(), "external_id": "", "details_url": ""}
+    world = FakeWorld(review_runs=[[bare, marker_only]])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert not _calls_at(world, _is_queue)
+
+
+@pytest.mark.parametrize(
+    ("runs", "verdict"),
+    [
+        ([], None),
+        ([_review("in_progress")], None),  # only an orphaned verdict marker
+        ([_review(conclusion="cancelled", job=True)], None),
+        ([_review("in_progress", job=True), _review()], None),  # still evaluating
+        ([_review(job=True), _review(conclusion="neutral"), _review()], "success"),
+        ([_review(job=True), _review(conclusion="neutral")], "neutral"),
+        ([_review(job=True)], "success"),
+        ([_review(job=True), _review(conclusion="failure"), _review()], "failure"),
+    ],
+)
+def test_the_review_verdict_reads_every_run_on_the_head(
+    runs: list[dict[str, Any]], verdict: str | None
+) -> None:
+    assert deliver.review_verdict(runs) == verdict
+
+
+def test_the_review_bots_are_read_from_the_workflow() -> None:
+    workflow = deliver.AGENT_REVIEW.read_text()
+    assert deliver.review_bots(workflow) == (BOT, "chatgpt-codex-connector")
+    with pytest.raises(deliver.DeliverError, match="cannot read the review bot"):
+        deliver.review_bots("env: {}")
 
 
 # ---- gc -------------------------------------------------------------------
@@ -609,6 +1085,14 @@ def test_the_pin_is_read_from_the_workflow_not_restated() -> None:
     assert "ruff==9.9.9" in bumped and "3.14" in bumped
 
 
+def test_a_long_format_failure_names_every_file() -> None:
+    names = [f"ops/module_{i:03d}.py" for i in range(60)]
+    world = FakeWorld(format_rc=1, unformatted=names)
+    code, result = ship(world, "--check", "unit=good")
+    assert code == 1
+    assert all(f"Would reformat: {n}" in result["error"] for n in names)
+
+
 def test_an_unreadable_pin_fails_closed() -> None:
     with pytest.raises(deliver.DeliverError, match="cannot read the pinned ruff"):
         deliver.ruff_format_command("run: ruff format --check x")
@@ -630,3 +1114,439 @@ def test_a_branch_without_python_changes_skips_the_format_gate() -> None:
     world = FakeWorld(changed_py=[])
     assert ship(world, "--check", "unit=good")[0] == 0
     assert _format_calls(world) == []
+
+
+# ---- redeliver: replace a published PR with a fixed lane ------------------
+
+OLD = "feat/old"
+PUBLISHED = "a" * 40
+_HOLDS_BLOCK = (
+    'body\n<!-- kg.delivery.holds.v1\n{"schema": "kg.delivery.holds.v1", '
+    '"holds": ["security"]}\n-->\n'
+)
+
+
+def _replacement_world(
+    *,
+    generation: int = 0,
+    old_status: str = "published",
+    old_pr_state: str = "OPEN",
+    remote: str | None = PUBLISHED,
+    **state: Any,
+) -> FakeWorld:
+    lane = {
+        "branch": OLD,
+        "status": old_status,
+        "claim_generation": generation,
+        "handed_back_sha": PUBLISHED,
+        "path": "/gone/old-lane",
+        "external_ids": ["LANE-OLD"],
+    }
+    pr = {"number": 50, "state": old_pr_state, "url": "https://x/pull/50"}
+    return FakeWorld(
+        records_by_branch={
+            OLD: state.pop("old_records", [lane]),
+            **state.pop("new_records", {}),
+        },
+        prs_by_branch={OLD: state.pop("old_prs", [pr]), **state.pop("new_prs", {})},
+        remote_heads={OLD: remote} if remote else {},
+        **state,
+    )
+
+
+def redeliver(world: FakeWorld, *flags: str) -> tuple[int, dict[str, Any]]:
+    worktree = [] if "--worktree" in flags else ["--worktree", str(world.work)]
+    common = ["--timeout", "5", "--poll", "1", *worktree]
+    return ship(world, "redeliver", "--branch", OLD, *common, *flags)
+
+
+def _call(world: FakeWorld, *prefix: str) -> list[str] | None:
+    return next((c for c in world.calls if c[: len(prefix)] == list(prefix)), None)
+
+
+def _value(call: list[str], flag: str, prefix: bool = False) -> str:
+    if prefix:  # a `-F name=value` field
+        return next(a for a in call if a.startswith(flag)).removeprefix(flag)
+    return call[call.index(flag) + 1]
+
+
+@pytest.mark.parametrize("generation", [0, 1])
+def test_redeliver_abandons_the_old_lane_with_the_registrys_generation_and_head(
+    generation: int,
+) -> None:
+    world = _replacement_world(generation=generation)
+    code, result = redeliver(world, "--check", "u=good", "--lane", "LANE-NEW")
+    assert code == 0, result
+    assert world.names() == ["resolve", "adopt", "hand-back", "receipt", "publish"]
+    resolve = next(c for c in world.calls if c[1:2] == ["resolve"])
+    assert _value(resolve, "--branch") == OLD
+    assert _value(resolve, "--path") == "/gone/old-lane"
+    assert _value(resolve, "--status") == "abandoned"
+    assert _value(resolve, "--expected-generation") == str(generation)
+    assert _value(resolve, "--expected-head-sha") == PUBLISHED
+    close = _call(world, "gh", "pr", "close")
+    assert close is not None and close[3] == "50"
+    assert _value(close, "--comment").startswith("Superseded by #77 (u)")
+    publish = next(
+        i
+        for i, c in enumerate(world.calls)
+        if c[0].endswith("delivery.py") and c[3] == "publish"
+    )
+    assert world.calls.index(close) > publish  # the link exists before the close
+    assert _call(world, "git", "push") == [
+        "git",
+        "push",
+        f"--force-with-lease=refs/heads/{OLD}:{PUBLISHED}",
+        "origin",
+        "--delete",
+        OLD,
+    ]
+    assert result["replaced"] == {
+        "branch": OLD,
+        "pr": 50,
+        "claim_generation": generation,
+        "published_head": PUBLISHED,
+        "remote_branch": "deleted",
+    }
+
+
+def test_redeliver_keeps_an_old_remote_branch_that_moved_off_the_published_head() -> (
+    None
+):
+    moved = "b" * 40
+    world = _replacement_world(remote=moved)
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert _call(world, "git", "push") is None
+    assert result["replaced"]["remote_branch"] == (
+        f"kept: at {moved}, not the published head {PUBLISHED}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("state", "flags", "message"),
+    [
+        ({"branch": OLD}, [], "commit the fix on a new branch"),
+        ({"old_pr_state": "MERGED"}, [], "PR #50 is already merged"),
+        ({"old_status": "active"}, [], "redeliver replaces a published lane"),
+        ({"old_records": []}, [], f"no registry lane for {OLD}"),
+        ({"old_prs": []}, [], f"no PR for {OLD}"),
+        ({}, ["--lane", "LANE-OLD"], "is the replaced lane's id"),
+        (
+            {"pr_guard": [{"labels": {"nodes": [{"name": "delivery-hold:p1"}]}}]},
+            [],
+            "PR #50 carries a hard hold (p1)",
+        ),
+        (
+            {"pr_guard": [{"body": _HOLDS_BLOCK}]},
+            [],
+            "PR #50 carries a hard hold (security)",
+        ),
+        (
+            {"pr_guard": [{"autoMergeRequest": {"enabledAt": "t"}}]},
+            [],
+            "PR #50 is scheduled to merge",
+        ),
+        (
+            {"pr_guard": [{"mergeQueueEntry": {"id": "q"}}]},
+            [],
+            "PR #50 is scheduled to merge",
+        ),
+    ],
+)
+def test_redeliver_refuses_before_touching_anything(
+    state: dict[str, Any], flags: list[str], message: str
+) -> None:
+    world = _replacement_world(**state)
+    code, result = redeliver(world, "--check", "u=good", *flags)
+    assert code == 1
+    assert message in result["error"]
+    assert world.names() == []
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_redeliver_rereads_the_old_pr_before_abandoning_its_lane() -> None:
+    """The checks can run for minutes; the old PR may get queued meanwhile."""
+    world = _replacement_world(pr_guard=[{}, {"mergeQueueEntry": {"id": "q"}}])
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 is scheduled to merge" in result["error"]
+    assert "resolve" not in world.names()
+    assert _call(world, "gh", "pr", "close") is None
+    graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
+    assert len(graphql) == 2
+
+
+def test_redeliver_aborts_when_the_replaced_pr_merges_during_redelivery() -> None:
+    """Checked at the lookup, not by the OPEN-only guard: a merged PR must not
+    be reported as superseded, nor have its branch deleted."""
+    world = _replacement_world(merge_old_after="publish")
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 merged while #77 was replacing it" in result["error"]
+    assert "not deleted" in result["error"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+    assert world.remote_heads == {OLD: PUBLISHED}
+
+
+def test_redeliver_rereads_the_old_pr_before_closing_it() -> None:
+    world = _replacement_world(
+        pr_guard=[{}, {}, {"labels": {"nodes": [{"name": "delivery-hold:p0"}]}}]
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 carries a hard hold (p0)" in result["error"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_delivery_options_before_redeliver_are_refused_not_dropped() -> None:
+    argv = ["--worktree", "/fixed", "--merge", "redeliver", "--branch", OLD]
+    with (
+        contextlib.redirect_stderr(io.StringIO()) as err,
+        pytest.raises(SystemExit) as stop,
+    ):
+        deliver.main(argv, runner=FakeWorld())
+    assert stop.value.code == 2
+    assert "--worktree, --merge" in err.getvalue()
+    assert "after `redeliver`" in err.getvalue()
+    parsed = deliver.build_parser().parse_args(
+        ["redeliver", "--branch", OLD, "--worktree", "/fixed", "--merge"]
+    )
+    assert (parsed.worktree, parsed.merge) == ("/fixed", True)
+
+
+def test_a_redeliver_rerun_skips_what_is_already_retired() -> None:
+    world = _replacement_world(
+        old_status="abandoned", old_pr_state="CLOSED", remote=None
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names() == ["adopt", "hand-back", "receipt", "publish"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert result["replaced"]["remote_branch"] == "absent"
+
+
+def test_redeliver_resumes_from_the_new_branch_once_its_worktree_is_gone() -> None:
+    world = _replacement_world(
+        old_status="abandoned",
+        new_records={"feat/new": [{"branch": "feat/new", "status": "published"}]},
+        new_prs={"feat/new": [{"number": 77, "state": "OPEN", "url": "u"}]},
+    )
+    gone = str(world.work / "gone")
+    code, result = redeliver(world, "--worktree", gone)
+    assert code == 1 and "--new-branch" in result["error"]
+    code, result = redeliver(world, "--worktree", gone, "--new-branch", "feat/new")
+    assert code == 0, result
+    assert world.names() == []  # already published: nothing re-claimed
+    assert _call(world, "gh", "pr", "close") is not None
+    assert result["pr"] == 77 and result["replaced"]["remote_branch"] == "deleted"
+
+
+def test_the_old_remote_branch_is_deleted_only_at_the_published_head(
+    tmp_path: Path,
+) -> None:
+    """Real git: the lease makes the delete a compare-and-swap on the remote."""
+    import subprocess
+
+    def sh(*argv: str, cwd: Path) -> str:
+        done = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=True)
+        return done.stdout.strip()
+
+    remote, repo = tmp_path / "remote.git", tmp_path / "repo"
+    sh("git", "init", "-q", "--bare", str(remote), cwd=tmp_path)
+    sh("git", "init", "-q", "-b", "main", str(repo), cwd=tmp_path)
+    sh("git", "config", "user.email", "t@example.com", cwd=repo)
+    sh("git", "config", "user.name", "T", cwd=repo)
+    sh("git", "remote", "add", "origin", str(remote), cwd=repo)
+    (repo / "a.txt").write_text("1")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "published", cwd=repo)
+    published = sh("git", "rev-parse", "HEAD", cwd=repo)
+    sh("git", "push", "-q", "origin", f"HEAD:refs/heads/{OLD}", cwd=repo)
+
+    args = deliver.build_parser().parse_args(["--worktree", str(repo)])
+    replacement = deliver.Replacement(
+        deliver.Delivery(args, deliver.run, lambda _s: None), OLD
+    )
+    (repo / "a.txt").write_text("2")
+    sh("git", "commit", "-qam", "pushed onto the PR", cwd=repo)
+    moved = sh("git", "rev-parse", "HEAD", cwd=repo)
+    sh("git", "push", "-q", "origin", f"HEAD:refs/heads/{OLD}", cwd=repo)
+    assert replacement.drop_remote_branch(published) == (
+        f"kept: at {moved}, not the published head {published}"
+    )
+    with pytest.raises(deliver.DeliverError, match="stale info|rejected"):
+        replacement.delete_remote_branch(published)  # the lease refuses a moved ref
+    assert sh("git", "ls-remote", "origin", f"refs/heads/{OLD}", cwd=repo)
+
+    assert replacement.drop_remote_branch(moved) == "deleted"
+    assert sh("git", "ls-remote", "origin", f"refs/heads/{OLD}", cwd=repo) == ""
+    assert replacement.drop_remote_branch(moved) == "absent"
+
+
+# ---- redeliver: the new tip has to carry the replaced lane's work ---------
+
+
+def _lineage_refusal(**state: Any) -> tuple[FakeWorld, dict[str, Any]]:
+    world = _replacement_world(**state)
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    return world, result
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"old_is_ancestor": False, "cherry": f"+ {'b' * 40}\n"},
+        {"old_is_ancestor": False, "cherry": f"- {'b' * 40}\n+ {'e' * 40}\n"},
+    ],
+)
+def test_redeliver_refuses_a_branch_that_does_not_carry_the_replaced_lane(
+    state: dict[str, Any],
+) -> None:
+    """Any clean branch ahead of trunk used to retire an unrelated lane."""
+    world, result = _lineage_refusal(**state)
+    assert (
+        f"does not carry the replaced lane's hand-back {PUBLISHED}" in result["error"]
+    )
+    assert world.names() == []  # nothing abandoned, adopted or published
+    assert world.records_by_branch[OLD][0]["status"] == "published"
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_redeliver_names_the_unmatched_commits_of_the_replaced_lane() -> None:
+    world, result = _lineage_refusal(
+        old_is_ancestor=False, cherry=f"- {'b' * 40}\n+ {'e' * 40}\n"
+    )
+    assert ("e" * 12) in result["error"] and ("b" * 12) not in result["error"]
+
+
+def test_redeliver_refuses_when_the_replaced_hand_back_is_not_in_the_repository() -> (
+    None
+):
+    world, result = _lineage_refusal(old_object_present=False)
+    assert f"hand-back {PUBLISHED} is not in this repository" in result["error"]
+    assert world.names() == []
+
+
+def test_redeliver_accepts_a_tip_that_contains_the_replaced_hand_back() -> None:
+    world = _replacement_world(old_is_ancestor=True)
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names()[0] == "resolve"
+
+
+def test_redeliver_accepts_a_tip_that_is_patch_equivalent_to_the_hand_back() -> None:
+    world = _replacement_world(old_is_ancestor=False, cherry=f"- {'b' * 40}\n")
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names()[0] == "resolve"
+
+
+def test_redeliver_compares_against_the_branch_when_the_worktree_is_gone() -> None:
+    world = _replacement_world(
+        old_status="abandoned",
+        old_is_ancestor=False,
+        cherry=f"+ {'b' * 40}\n",
+        new_records={"feat/new": [{"branch": "feat/new", "status": "published"}]},
+        new_prs={"feat/new": [{"number": 77, "state": "OPEN", "url": "u"}]},
+    )
+    gone = str(world.work / "gone")
+    code, result = redeliver(world, "--worktree", gone, "--new-branch", "feat/new")
+    assert code == 1 and "does not carry" in result["error"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_the_lineage_check_on_real_git(tmp_path: Path) -> None:
+    """Ancestor and rebased tips pass; an unrelated or reworded one is refused."""
+    import subprocess
+
+    def sh(*argv: str) -> str:
+        done = subprocess.run(
+            argv, cwd=tmp_path, capture_output=True, text=True, check=True
+        )
+        return done.stdout.strip()
+
+    def commit(name: str, text: str) -> None:
+        (tmp_path / name).write_text(text)
+        sh("git", "add", name)
+        sh("git", "commit", "-qm", f"{name}: {text}")
+
+    sh("git", "init", "-q", "-b", "main")
+    sh("git", "config", "user.email", "t@example.com")
+    sh("git", "config", "user.name", "T")
+    commit("base.txt", "base")
+    sh("git", "switch", "-q", "-c", "old")
+    commit("one.txt", "1")
+    commit("two.txt", "2")
+    published = sh("git", "rev-parse", "HEAD")
+    sh("git", "switch", "-q", "-c", "ancestor")  # old + a review fix
+    commit("fix.txt", "fix")
+    sh("git", "switch", "-q", "main")
+    commit("main-moved.txt", "m")  # trunk moves on; old is now stale
+    sh("git", "switch", "-q", "-c", "rebased")
+    sh("git", "cherry-pick", "old~1", "old")
+    commit("fix.txt", "fix")
+    sh("git", "switch", "-q", "main")
+    sh("git", "switch", "-q", "-c", "unrelated")
+    commit("other.txt", "elsewhere")
+    sh("git", "switch", "-q", "-c", "reworded", "main")
+    sh("git", "cherry-pick", "old~1")
+    commit("two.txt", "2 but different")  # the second commit's patch changed
+
+    args = deliver.build_parser().parse_args(["--worktree", str(tmp_path)])
+    replacement = deliver.Replacement(
+        deliver.Delivery(args, deliver.run, lambda _s: None), "old"
+    )
+    record = {"handed_back_sha": published}
+    for tip in ("ancestor", "rebased"):
+        sh("git", "switch", "-q", tip)
+        replacement.check_lineage(record)  # no raise
+    for tip in ("unrelated", "reworded"):
+        sh("git", "switch", "-q", tip)
+        with pytest.raises(deliver.DeliverError, match="does not carry"):
+            replacement.check_lineage(record)
+
+
+# ---- redeliver: the guard holds across every lock-wait retry --------------
+
+
+def test_redeliver_rechecks_the_old_pr_after_waiting_on_the_lock() -> None:
+    """abandon waits out a busy lock; the PR may be queued during that wait."""
+    world = _replacement_world(
+        lock_busy={"resolve": 1},
+        pr_guard=[{}, {}, {"mergeQueueEntry": {"id": "q"}}],
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 is scheduled to merge" in result["error"]
+    assert world.names() == ["resolve"]  # the one refused attempt, no retry
+    assert world.records_by_branch[OLD][0]["status"] == "published"
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_redeliver_rechecks_for_a_hold_added_during_the_lock_wait() -> None:
+    world = _replacement_world(
+        lock_busy={"resolve": 2},
+        pr_guard=[{}, {}, {}, {"labels": {"nodes": [{"name": "delivery-hold:p0"}]}}],
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 carries a hard hold (p0)" in result["error"]
+    assert world.names() == ["resolve", "resolve"]
+    assert world.records_by_branch[OLD][0]["status"] == "published"
+
+
+def test_redeliver_still_abandons_when_the_pr_stays_clean_across_the_wait() -> None:
+    world = _replacement_world(lock_busy={"resolve": 1})
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names()[:2] == ["resolve", "resolve"]
+    graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
+    assert len(graphql) >= 3  # run, retire, and once more before the retry
