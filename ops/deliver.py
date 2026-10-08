@@ -24,7 +24,7 @@ rewrite after the author committed would hand back code nobody ran the checks on
 
 Outcomes written into the hand-back receipt come only from the ``--check``
 commands this run executed: status from the exit code, detail from the last
-non-empty line of output.  Each check's full output is also kept under the
+non-empty line of stdout (stderr only when stdout is empty).  Each check's full output is also kept under the
 canonical checkout's ``.cache/deliver-checks/`` (gitignored) and a failed check
 prints its last lines to stderr; the failure JSON lists the checks with their
 ``log`` paths.  Logs hold raw test output, never the environment.  There is no way to pass an outcome in by hand.
@@ -256,7 +256,10 @@ def run_checks(
         done = runner(["bash", "-c", command], cwd)
         ok = done.returncode == 0
         text = "\n".join(p for p in (done.stdout, done.stderr) if p.strip())
-        lines = [ln for ln in text.splitlines() if ln.strip()]
+        # detail keeps the historical rule: stdout's last line, stderr only when
+        # stdout is empty (uv/pytest warnings on stderr must not mask "3 passed").
+        lines = (done.stdout.strip() or done.stderr.strip()).splitlines()
+        lines = [ln for ln in lines if ln.strip()]
         outcome = {
             "check": label,
             "status": "passed" if ok else "failed",

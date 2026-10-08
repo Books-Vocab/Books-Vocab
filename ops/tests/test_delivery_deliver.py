@@ -455,11 +455,25 @@ def test_a_failed_check_shows_its_tail_on_stderr_and_keeps_the_full_log(
     err = capsys.readouterr().err
     assert "stdout line 100" in err and "FAILED test_x - boom" in err
     assert "stdout line 50\n" not in err  # only the tail, not the whole run
-    assert outcome["detail"] == "FAILED test_x - boom"
+    assert outcome["detail"] == "stdout line 100"  # stdout wins; stderr is in tail+log
     log = Path(outcome["log"])
     assert log.parent == tmp_path / "logs" and log.name.startswith("b-x-unit-")
     text = log.read_text()
     assert "stdout line 1\n" in text and "stdout line 100" in text and "boom" in text
+
+
+def test_detail_is_the_last_stdout_line_even_when_stderr_also_has_output() -> None:
+    def runner(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        return deliver.Proc(0, "collected\n3 passed in 1s\n", "warning: x\n")
+
+    (ok,) = deliver.run_checks(["unit=x"], Path("."), runner)
+    assert ok["detail"] == "3 passed in 1s"
+
+    def stderr_only(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        return deliver.Proc(1, "  \n", "oops\nreal reason\n")
+
+    (bad,) = deliver.run_checks(["unit=x"], Path("."), stderr_only)
+    assert bad["detail"] == "real reason"
 
 
 def test_a_passed_check_is_logged_but_stays_quiet(
