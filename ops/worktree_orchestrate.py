@@ -1453,29 +1453,29 @@ def cmd_gate(args: argparse.Namespace) -> int:
             human=json.dumps(payload, indent=2, ensure_ascii=False),
         )
         return EXIT_OK
-    remote_route = any(check.get("kind") == "remote" for check in checks)
-    initial_head: str | None = None
-    if remote_route:
-        head_rc, initial_head = _git(["rev-parse", "HEAD"], worktree)
-        if head_rc != EXIT_OK or not initial_head:
-            payload.update(
-                {
-                    "verdict": "block",
-                    "reason": "head-read-before-remote-gate",
-                    "results": [],
-                    "head": initial_head or "",
-                }
-            )
-            _emit(
-                payload,
-                as_json=args.json,
-                human=f"✗ gate block: {worktree}",
-            )
-            return EXIT_BLOCK
+    initial_head_rc, initial_head = _git(["rev-parse", "HEAD"], worktree)
+    if initial_head_rc != EXIT_OK or not initial_head:
+        payload.update(
+            {
+                "verdict": "block",
+                "reason": "head-read-before-gate",
+                "results": [],
+                "head": initial_head or "",
+            }
+        )
+        _emit(
+            payload,
+            as_json=args.json,
+            human=f"✗ gate block: {worktree}",
+        )
+        return EXIT_BLOCK
     results = [_run_check(check, worktree) for check in checks]
     final_head_rc, final_head = _git(["rev-parse", "HEAD"], worktree)
-    if remote_route and (
-        final_head_rc != EXIT_OK or not final_head or final_head != initial_head
+    if (
+        final_head_rc != EXIT_OK
+        or not final_head
+        or final_head != initial_head
+        or _changed_files(worktree, args.base) != files
     ):
         payload.update(
             {
