@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./ops/ios_ops.sh status
-#   ./ops/ios_ops.sh guard [--refresh]                      # shared disk guard verdict (exit 75 = blocked, names the worktrees); --refresh re-evaluates now
+#   ./ops/ios_ops.sh guard [--refresh]                      # shared disk guard verdict (exit 75 = temporary block, 77 = structural block / retryable=no; names the worktrees); --refresh re-evaluates now
 #   ./ops/ios_ops.sh build [ios_build.sh args...]          # app + test-target compile; e.g. --swift6
 #   ./ops/ios_ops.sh test [ios_test.sh args...]
 #   ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>]
@@ -306,7 +306,7 @@ source "$SCRIPT_DIR/lib/ios_ops_catalog.sh"
 source "$SCRIPT_DIR/lib/ios_disk_budget.sh"
 
 # guard [--refresh]: show the shared disk guard verdict that gates build/test
-# (exit 75 = blocked), naming the blocking worktrees; --refresh re-evaluates now.
+# (exit 75 = temporary block, 77 = structural block / retryable=no), naming the blocking worktrees; --refresh re-evaluates now.
 cmd_guard() {
   local refresh=0 arg state rc=0
   for arg in "$@"; do

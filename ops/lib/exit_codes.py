@@ -13,6 +13,9 @@ EXIT_BLOCK = 2
 EXIT_WARN = 3
 EXIT_USAGE = 64
 EXIT_CLAIMED = 75
+# Blocked by a structural condition that waiting never clears (e.g. the iOS
+# disk guard naming unregistered worktrees): retryable=no, unlike 75.
+EXIT_STRUCTURAL_BLOCK = 77
 
 # Existing registry callers use this for an operational partial failure.
 EXIT_PARTIAL = EXIT_TOOL_ERROR

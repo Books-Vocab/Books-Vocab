@@ -51,7 +51,7 @@
 
 set -euo pipefail
 
-LOCK_FILE="/tmp/kg-ios-build.lock"
+LOCK_FILE="${KG_IOS_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"   # override only for hermetic tests
 # Shares the build lock with `ios_build.sh`, so it shares the same override:
 # `--timeout` per call, `KG_IOS_BUILD_LOCK_TIMEOUT` for callers that cannot pass
 # flags (see the note in ios_build.sh).
@@ -984,6 +984,27 @@ write_early_failure_verdict() {
   kg_ios_verdict_publish
 }
 
+# Read the shared disk guard BEFORE leasing a simulator or taking the build lock.
+# A structural block (exit 77, retryable=no) or a temporary one (exit 75) is
+# decided here in seconds instead of after a lease and a lock-queue wait; the
+# in-lock preflight below keeps measuring real disk space only.
+if [[ "$TEST_CACHE_ACTION" != "status" && "$TEST_CACHE_ACTION" != "clean" ]]; then
+  early_guard_rc=0
+  kg_ios_disk_guard_early_verdict "test" || early_guard_rc=$?
+  if (( early_guard_rc != 0 )); then
+    if (( early_guard_rc == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+      write_early_failure_verdict "disk-guard-structural-block" "$early_guard_rc"
+    else
+      echo "[ios_test] blocked by the shared disk guard (exit $early_guard_rc, temporary): see the guard reason and action above; './ops/ios_ops.sh guard --refresh' re-evaluates now" >&2
+      write_early_failure_verdict "disk-guard-blocked" "$early_guard_rc"
+    fi
+    exit "$early_guard_rc"
+  fi
+  # The guard verdict was just read; the in-lock preflight now measures real
+  # disk space only (cache budget, free-space floor) and does not re-read it.
+  kg_ios_disk_guard_mark_checked
+fi
+
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease
 # / KG_IOS_TEST_AUTOLEASE only when no explicit device/destination was given —
 # explicit targeting always wins. Done after the trap is armed so the lease is
@@ -1178,6 +1199,13 @@ handle_cache_action() {
   fi
 
   if [[ "$(jq -r '.status' <<<"$payload")" == "error" ]]; then
+    # The in-lock disk preflight inside rebuild_test_cache returns its own rc:
+    # 75 (temporary) / 77 (structural, retryable=no). Keep that classification
+    # instead of flattening it to a generic tool error; any other build failure
+    # (xcodebuild's own rc) stays exit 1.
+    if (( ${build_exit:-0} == KG_IOS_DISK_BUDGET_EXIT || ${build_exit:-0} == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+      exit "$build_exit"
+    fi
     exit 1
   fi
   exit 0
@@ -1541,10 +1569,12 @@ rebuild_test_cache() {
   # worktrees. Pass that same anchor so the aggregate preflight measures the
   # shared test cache instead of reporting the worktree-local .cache as empty.
   disk_budget_project_root="$(dirname "$(dirname "$TEST_CACHE_ROOT")")"
-  if ! kg_ios_disk_budget_preflight "$disk_budget_project_root" "test"; then
-    echo "[ios_test] blocked by disk budget; clean rebuildable cache before retry" >&2
+  local preflight_rc=0
+  kg_ios_disk_budget_preflight "$disk_budget_project_root" "test" || preflight_rc=$?
+  if (( preflight_rc != 0 )); then
+    kg_ios_disk_budget_blocked_hint "[ios_test]" "$preflight_rc"
     release_build_lock
-    return "$KG_IOS_DISK_BUDGET_EXIT"
+    return "$preflight_rc"
   fi
   REBUILD_DID_BUILD=1
   # A previous build may have been interrupted, leaving a partial cache with no

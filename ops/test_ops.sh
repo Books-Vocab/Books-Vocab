@@ -307,7 +307,8 @@ run_one() {
     ios-cache-evict)
       ./ops/tests/test_ios_cache_evict.sh &&
       ./ops/tests/test_ios_test_cache_root.sh &&
-      ./ops/tests/test_ios_build_cache_lifecycle.sh
+      ./ops/tests/test_ios_build_cache_lifecycle.sh &&
+      ./ops/tests/test_ios_disk_budget.sh
       ;;
     review-probe)       ./ops/tests/test_review_probe.sh ;;
     review-flip-probe)

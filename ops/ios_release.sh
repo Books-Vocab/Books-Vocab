@@ -281,9 +281,11 @@ echo "[release] lock acquired by $CALLER (pid=$$)"
 # that previously happened immediately before each individual stage.
 rm -rf "$ARCHIVE" "$EXPORT_DIR"
 
-if ! kg_ios_disk_budget_preflight "$ROOT" "release"; then
-  echo "[release] blocked by disk budget; clean rebuildable cache before retry" >&2
-  exit "$KG_IOS_DISK_BUDGET_EXIT"
+preflight_rc=0
+kg_ios_disk_budget_preflight "$ROOT" "release" || preflight_rc=$?
+if (( preflight_rc != 0 )); then
+  kg_ios_disk_budget_blocked_hint "[release]" "$preflight_rc"
+  exit "$preflight_rc"
 fi
 
 [[ $DO_UPLOAD -eq 1 ]] && guard_build_number

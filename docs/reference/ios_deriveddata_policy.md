@@ -192,9 +192,16 @@ harness 產生的形狀 → `ownership=stale-agent`（`agent_lock.state=dead-pid
 兩者都完整計入 per-lane／aggregate bytes 與 quota。lock 理由不符（他人持有、無理由、名稱指向別的目錄）、
 未上鎖且目錄名非 harness 形狀（例如手建的 `scratch`；dirty 時另觸發 dirty blocker）、
 lock 狀態未觀測到、或不在該 root 直屬的 checkout 無法歸屬，仍是 unregistered hard block。
-被 guard 擋下（exit 75）時，`kg.ios.disk-budget.v1` 輸出會附 `blockingReasons=`／`unregisteredWorktrees=`／
+被 guard 擋下時（暫時性空間／預算 exit 75；`lane-usage-report-blocked` 與 manual-review 這類結構性擋下為 **exit 77、retryable=no**，見 `docs/sop/ios.md` 的 exit code 契約），`kg.ios.disk-budget.v1` 輸出會附 `blockingReasons=`／`unregisteredWorktrees=`／
 `dirtyWorktrees=`；`lane-usage-report-*` 的擋下會先 inline 重跑一次 guard tick（`KG_IOS_DISK_GUARD_AUTO_REFRESH=0` 可關），
-也可手動 `./ops/ios_ops.sh guard [--refresh]` 立即重新評估。非標準的 supervision checkout 只能由 caller 重複傳入 exact path：
+也可手動 `./ops/ios_ops.sh guard [--refresh]` 立即重新評估。
+guard state 與 `lane_disk_usage.json` 是 host-global、只有一個 writer 身分：`kg_disk_guard.sh` 未設
+`KG_DISK_GUARD_WORKSPACE` 時以 git-common-dir 錨定 canonical checkout（與 iOS cache 同錨），即使從
+linked worktree 直接跑 `./ops/kg_disk_guard.sh` 也不會把該 lane 當 workspace（否則報告會讀
+`<lane>/.cache/worktree_registry.json` 得 `registry-missing`，並把 canonical checkout 列成 unregistered lane）；
+`guard --refresh` 與 inline refresh 一律執行 canonical checkout 的 `ops/kg_disk_guard.sh`（與 launchd 同碼同根），
+解析不到 canonical 時 refresh 直接失敗，不退回 lane 的 root 或 lane 自己的程式版本。
+非標準的 supervision checkout 只能由 caller 重複傳入 exact path：
 
 ```bash
 ./ops/disk_usage.py \

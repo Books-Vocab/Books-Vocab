@@ -4,7 +4,24 @@
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE="${KG_DISK_GUARD_WORKSPACE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
+# The tick publishes host-global state (STATE_FILE, LANE_USAGE_STATE) that every
+# lane reads, so its default root is the canonical checkout (the git-common-dir
+# anchor shared with the iOS caches), never the linked worktree that happens to
+# hold this copy.  Rooting at a lane makes the report read
+# <lane>/.cache/worktree_registry.json (registry-missing) and list the canonical
+# checkout as an unregistered lane.  Only a non-Git copy falls back to the
+# script-relative checkout.
+kg_disk_guard_default_workspace() {
+  local common=""
+  common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$common" && -d "$common" && -d "$(dirname "$common")" ]]; then
+    (cd "$(dirname "$common")" && pwd)
+  else
+    (cd "$SCRIPT_DIR/.." && pwd)
+  fi
+}
+WORKSPACE="${KG_DISK_GUARD_WORKSPACE:-$(kg_disk_guard_default_workspace)}"
 # shellcheck source=lib/userland_compat.sh
 source "$SCRIPT_DIR/lib/userland_compat.sh"
 STATE_FILE="${KG_DISK_GUARD_STATE:-$HOME/Library/Application Support/KG/disk_guard.json}"
