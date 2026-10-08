@@ -87,6 +87,8 @@ final class KGService: KGServing {
 
     var isConnected: Bool = false
     var lastSyncDate: Date? = KGService.loadPersistedLastSyncDate()
+    @ObservationIgnored
+    nonisolated(unsafe) private var userDataClearObserver: NSObjectProtocol?
     var serverCardCount: Int = 0
     var sessionExpiredReason: String?
 
@@ -266,6 +268,19 @@ final class KGService: KGServing {
         self.urlSession = urlSession
         self.transport = transport ?? URLSessionKGHTTPTransport(session: urlSession)
         self.connectivityGate = connectivityGate
+        // 登出／換帳號後 live instance 的 lastSyncDate 也要歸零（持久值由
+        // LocalDataCleanerService 清），否則 UI 在重啟前仍顯示前一帳號的同步時間。
+        userDataClearObserver = NotificationCenter.default.addObserver(
+            forName: .localUserDataDidClear,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.lastSyncDate = nil }
+        }
+    }
+
+    deinit {
+        if let o = userDataClearObserver { NotificationCenter.default.removeObserver(o) }
     }
 
     // MARK: - Auth Helper

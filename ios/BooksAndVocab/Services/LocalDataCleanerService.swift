@@ -17,6 +17,8 @@ final class LocalDataCleanerService: LocalDataClearing {
         // 漏清會讓 account-switch 後 B 沿用 A 的 review-event pull cursor，
         // incremental pull 可能漏抓 B 在該 cursor 之前的 review events。
         defaults.removeObject(forKey: KGService.SyncKeys.reviewEventPullBoundary)
+        // 「上次同步時間」跨登出殘留會讓帳號 B 冷啟動看到 A 的 synced 時間（#2424）。
+        KGService.persistLastSyncDate(nil, defaults: defaults)
         ActiveNotebookStore.shared.clear()
         defaults.removeObject(forKey: NotebookFilter.storageKey)
         // Today-review session snapshots are keyed per-user in a single
