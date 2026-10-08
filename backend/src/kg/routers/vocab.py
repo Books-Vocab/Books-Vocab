@@ -152,6 +152,7 @@ async def enqueue_add_link_operation(
             get_user_lock_fn=get_user_lock,
             client_factory=create_client,
             logger=logger,
+            notebook_store_factory=_notebook_store,
         )
     return operation_response(record)
 

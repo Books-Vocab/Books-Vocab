@@ -19,9 +19,12 @@ from typing import Any
 
 import pytest
 
+import test_notebook_api
 from kg.api_models import VocabEntry, VocabSource
 from kg.exceptions import ValidationError
 from kg.vocab_intake import _build_example, _derive_inflections, add_vocab_entries
+
+isolated_api = test_notebook_api.isolated_api  # reuse the real-app fixture
 
 
 @dataclass
@@ -68,6 +71,13 @@ class _IntakeCardsStore:
         )
         self._cards.append(card)
         return card
+
+    def delete(self, card_id: str) -> bool:
+        card = self.get(card_id)
+        if card is None or card.is_deleted:
+            return False
+        card.is_deleted = True
+        return True
 
     def get(self, card_id: str) -> _IntakeCard | None:
         for c in self._cards:
@@ -444,3 +454,67 @@ class TestAddVocabEntries:
         # … and it MUST have been embedded + marked pending despite the rewrite.
         assert len(embeddings.added) == 1
         assert graph.pending == [embeddings.added[0][0]]
+
+
+class TestNotebookDeletedDuringIntake:
+    def test_failed_notebook_check_tombstones_only_new_cards_and_skips_embed(self):
+        existing = _IntakeCard(id="dup1", content="old")
+        store = _IntakeCardsStore(preload=[existing])
+        embeddings = _IntakeEmbeddings()
+        graph = _IntakeGraph()
+
+        def gone() -> None:
+            raise RuntimeError("Notebook access denied")
+
+        entries = [
+            VocabEntry(word="old", translation="舊", context=""),
+            VocabEntry(word="fresh", translation="新", context=""),
+        ]
+        with pytest.raises(RuntimeError, match="Notebook access denied"):
+            add_vocab_entries(
+                entries,
+                user={"id": "u1"},
+                cards=store,
+                embeddings=embeddings,
+                graph=graph,
+                logger=_silent_logger(),
+                notebook_check=gone,
+            )
+
+        assert store.get("id_1").is_deleted is True
+        assert existing.is_deleted is False
+        assert embeddings.added == []
+        assert graph.pending == []
+
+
+def test_post_vocab_notebook_deleted_mid_call_returns_403_and_tombstones_cards(isolated_api, monkeypatch):
+    import kg.vocab_intake as intake
+    from kg.cards import CardStore
+    from kg.notebook import NotebookStore
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    notebooks = NotebookStore(user_dir / "notebooks.db")
+    nb = notebooks.create("Racy")
+    real_derive = intake._derive_inflections
+
+    def derive_then_delete(*args, **kwargs):
+        notebooks.delete(nb.id)  # notebook removed after validate_notebook_access
+        return real_derive(*args, **kwargs)
+
+    monkeypatch.setattr(intake, "_derive_inflections", derive_then_delete)
+    try:
+        response = isolated_api.client.post(
+            "/api/vocab",
+            json=[{"word": "apple", "translation": "蘋果"}],
+            params={"notebook_id": nb.id},
+            headers=isolated_api.headers,
+        )
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"] == "Notebook access denied"
+
+        cards = CardStore(user_dir / "cards.db")
+        rows = [c for c in cards.all(include_deleted=True) if c.notebook_id == nb.id]
+        assert [c.content for c in rows] == ["apple"]
+        assert all(c.is_deleted for c in rows)  # tombstone, not hard delete
+    finally:
+        notebooks.close()

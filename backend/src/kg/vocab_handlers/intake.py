@@ -4,6 +4,7 @@ from logging import Logger
 from typing import Any
 
 from ..api_models import VocabAddResponse, VocabEntry
+from ..notebook import validate_notebook_access
 from ..vocab_intake import add_vocab_entries
 from ._shared import (
     CardStoreFactory,
@@ -33,12 +34,18 @@ def add_vocab_response(
     from ..tracked_llm import TrackedLLM
 
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
     provider = provider_for("embed")
     llm = TrackedLLM(client_factory(provider), user["id"], provider=provider, reserve_quota=False)
+    notebook_check = (
+        None
+        if notebook_store_factory is None
+        else lambda: validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    )
     with reserve(user["id"], estimate_call_cost("embed"), enforce=True, is_pro=_is_pro(user)):
         return add_vocab_entries(
             entries,
@@ -48,4 +55,5 @@ def add_vocab_response(
             graph=graph_store_factory(user["dir"], notebook_id=notebook_id),
             logger=logger,
             notebook_id=notebook_id,
+            notebook_check=notebook_check,
         )

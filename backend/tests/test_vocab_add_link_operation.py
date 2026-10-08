@@ -45,6 +45,7 @@ class Cards:
             self.items[target.id] = target
         self.added = []
         self.updated = []
+        self.deleted = []
 
     def get(self, card_id):
         return self.items.get(card_id)
@@ -80,6 +81,14 @@ class Cards:
     def batch_update(self, updates):
         self.updated.extend(updates)
         return len(updates)
+
+    def delete(self, card_id):
+        card = self.items.get(card_id)
+        if card is None or card.is_deleted:
+            return False
+        card.is_deleted = True
+        self.deleted.append(card_id)
+        return True
 
 
 class Graph:
@@ -453,3 +462,83 @@ def test_delete_for_users_is_scoped_idempotent_and_handles_empty():
     with operations._lock:
         rows = operations._get_conn().execute("SELECT user_id FROM vocab_add_link_operations").fetchall()
     assert [r[0] for r in rows] == ["keep"]
+
+
+class _NotebookStore:
+    def __init__(self):
+        self.alive = True
+
+    def exists(self, _notebook_id):
+        return self.alive
+
+    def ensure_default(self):
+        return None
+
+
+def _race_source(notebook_id):
+    return SimpleNamespace(
+        id="source-card",
+        content="source",
+        meaning="來源",
+        notebook_id=notebook_id,
+        is_deleted=False,
+        is_archived=False,
+    )
+
+
+def _run_race(cards, notebooks, **kwargs):
+    operation, _ = create_operation(user_id="user-1", notebook_id="nb-x", idempotency_key="race", payload=payload())
+    run(operation["operation_id"], cards, Graph(), notebook_store_factory=lambda _dir: notebooks, **kwargs)
+    return get_operation("user-1", operation["operation_id"])
+
+
+def test_notebook_deleted_during_translate_fails_without_orphan_card():
+    cards = Cards(_race_source("nb-x"))
+    notebooks = _NotebookStore()
+    calls = []
+
+    async def translate(**_kwargs):
+        notebooks.alive = False  # notebook X is deleted while translation is in flight
+        return SimpleNamespace(t="發光的", p="adj.", r="luminous")
+
+    async def enrich(**_kwargs):
+        calls.append("enrich")
+
+    result = _run_race(cards, notebooks, translate_fn=translate, enrich_fn=enrich)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "notebook_unavailable"
+    assert calls == []
+    assert not [
+        c for c in cards.items.values() if c.notebook_id == "nb-x" and c.id != "source-card" and not c.is_deleted
+    ]
+
+
+def test_notebook_deleted_during_card_write_tombstones_created_target():
+    class RacingCards(Cards):
+        def __init__(self, source, notebooks):
+            super().__init__(source)
+            self.notebooks = notebooks
+
+        def add(self, **kwargs):
+            card = super().add(**kwargs)
+            self.notebooks.alive = False  # delete cascade ran right after this write
+            return card
+
+    notebooks = _NotebookStore()
+    cards = RacingCards(_race_source("nb-x"), notebooks)
+    calls = []
+
+    async def translate(**_kwargs):
+        return SimpleNamespace(t="發光的", p="adj.", r="luminous")
+
+    async def enrich(**_kwargs):
+        calls.append("enrich")
+
+    result = _run_race(cards, notebooks, translate_fn=translate, enrich_fn=enrich)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "notebook_unavailable"
+    assert calls == []
+    assert cards.deleted == ["target-1"]  # soft delete (tombstone), not a hard delete
+    assert cards.items["target-1"].is_deleted is True
