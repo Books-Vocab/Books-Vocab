@@ -76,7 +76,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | 檔案 | 說明 |
 |------|------|
 | `TranslationPanel.swift` | `struct TranslationPanel: View`，翻譯面板 UI；compact 支援拖曳關閉，regular / Catalyst 關閉 bottom-sheet 拖曳語意 |
-| `TranslationPanelPresenter.swift` | 翻譯面板佈局（最大檔案） |
+| `TranslationPanel.swift` | 翻譯面板佈局（最大檔案）；`TranslationPanelPresenter+State.swift` 為其狀態 |
 | `TranslationVocabPresenter.swift` | 翻譯詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
 | `ReaderSettingsPanel.swift` | `struct ReaderSettingsPanel: View`，閱讀設定面板 |
 | `ReaderSettingsPresenter.swift` | 設定面板 presenter facade，持有設定狀態與 layout environment |

@@ -36,7 +36,7 @@ Scope: `ios/BooksAndVocab`
 主要檔案：
 - `ios/BooksAndVocab/Views/Reader/ReaderView.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderViewPresenter.swift`
-- `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter+State.swift`
 - `ios/BooksAndVocab/Views/Reader/TranslationVocabPresenter.swift`
 
 ### Reader Container State
