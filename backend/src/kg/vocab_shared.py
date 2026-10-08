@@ -92,10 +92,12 @@ def _build_content_lookup(cards_store: Any, notebook_id: str | None = None) -> d
 
 
 def _clean_content(word: str) -> str:
-    """Clean up word content for storage: strip trailing punctuation, lowercase first char."""
+    """Clean up word content for storage: strip trailing punctuation, fold a simple capitalized token."""
     word = word.strip().rstrip(".,;:!?")
-    # Lowercase first char unless it's an acronym (all caps) or proper noun in a phrase
-    if word and word[0].isupper() and not word.isupper() and " " not in word:
+    # Lowercase the first char only for a simple capitalized single token (rest already
+    # lowercase, e.g. "However"). Acronyms ("NASA", "I"), mixed-case words ("PhD",
+    # "YouTube", "McCarthy") and phrases ("New York") keep their casing.
+    if word and word[0].isupper() and not word.isupper() and word[1:] == word[1:].lower() and " " not in word:
         word = word[0].lower() + word[1:]
     return word
 
