@@ -25,8 +25,9 @@ _DEGRADED_REASON = "使用者認為這兩個詞相關。"
 class ManualLinkJudge:
     """LLM judge for user-initiated links. Never returns None."""
 
-    def __init__(self, llm: TrackedLLM, model: str | None = None,
-                 *, user_id: str = "", notebook_id: str = "default") -> None:
+    def __init__(
+        self, llm: TrackedLLM, model: str | None = None, *, user_id: str = "", notebook_id: str = "default"
+    ) -> None:
         self.llm = llm
         self.model = model
         self.user_id = user_id
@@ -37,12 +38,19 @@ class ManualLinkJudge:
             return
         try:
             from .. import judge_log
+
             judge_log.record(
-                user_id=self.user_id, notebook_id=self.notebook_id,
-                from_id=from_id, to_id=to_id, similarity=None,
-                verdict=judgement.link, confidence=judgement.confidence,
-                accepted=True, reject_reason=None,
-                reason=judgement.reason, source="manual",
+                user_id=self.user_id,
+                notebook_id=self.notebook_id,
+                from_id=from_id,
+                to_id=to_id,
+                similarity=None,
+                verdict=judgement.link,
+                confidence=judgement.confidence,
+                accepted=True,
+                reject_reason=None,
+                reason=judgement.reason,
+                source="manual",
             )
         except QuotaExceededError:
             raise
@@ -56,7 +64,7 @@ class ManualLinkJudge:
         try:
             return json.loads(content)
         except (json.JSONDecodeError, ValueError):
-            m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+            m = re.search(r"\{[^{}]*\}", content, re.DOTALL)
             if not m:
                 return None
             try:
@@ -81,7 +89,10 @@ class ManualLinkJudge:
         to_id: str = "",
     ) -> Judgement:
         user_msg = MANUAL_USER_TEMPLATE.format(
-            word_a=word_a, meaning_a=meaning_a, word_b=word_b, meaning_b=meaning_b,
+            word_a=word_a,
+            meaning_a=meaning_a,
+            word_b=word_b,
+            meaning_b=meaning_b,
         )
 
         try:
@@ -113,20 +124,25 @@ class ManualLinkJudge:
         except Exception:
             logger.warning(
                 "Manual judge LLM transport failure; degrading to %s",
-                _DEGRADED_LINK, exc_info=True,
+                _DEGRADED_LINK,
+                exc_info=True,
             )
             return self._degraded(from_id=from_id, to_id=to_id)
 
         content = resp.choices[0].message.content or ""
 
         data = self._parse_judgement(content)
-        if data is None:
+        if not isinstance(data, dict):
             return self._degraded(from_id=from_id, to_id=to_id)
 
         link_val = data.get("link", _DEGRADED_LINK)
-        reason_val = data.get("reason", _DEGRADED_REASON)
+        reason_val = data.get("reason")
+        if isinstance(reason_val, str) and reason_val.strip():
+            reason_val = reason_val.strip()
+        else:
+            reason_val = _DEGRADED_REASON
 
-        if link_val not in ("contrasts_with", "shares_usage"):
+        if not isinstance(link_val, str) or link_val not in ("contrasts_with", "shares_usage"):
             link_val = _DEGRADED_LINK
 
         j = Judgement(link=link_val, confidence=1.0, reason=reason_val)
