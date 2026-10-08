@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid as _uuid
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -14,6 +15,10 @@ from fastapi.responses import JSONResponse
 from kg.settings import DEFAULT_PUBLIC_WEB_BASE_URL
 
 RateLimiter = Any
+
+
+# Inbound X-Request-ID reaches logs and the admin dashboard; accept only a safe charset.
+_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 @dataclass(frozen=True)
@@ -109,7 +114,8 @@ def install_app_middlewares_from_dependencies(
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or _uuid.uuid4().hex[:16]
+        inbound = request.headers.get("X-Request-ID") or ""
+        request_id = inbound if _REQUEST_ID_RE.fullmatch(inbound) else _uuid.uuid4().hex[:16]
         request.state.request_id = request_id
         token = request_id_var.set(request_id)
         tag_request_id(request_id)
