@@ -12,6 +12,17 @@ usage() {
   awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
 }
 
+# Portable in-place sed (BSD `sed -i ''` and GNU `sed -i` differ): write via a
+# temp file, then copy back so the target keeps its inode and mode.
+sed_inplace() {
+  local expr="$1" file="$2" tmp
+  tmp="$(mktemp)"
+  sed "$expr" "$file" >"$tmp" && cat "$tmp" >"$file"
+  local rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
 YES=0
 MODE=full   # full=marketing+build / build=只 +1 CURRENT_PROJECT_VERSION
 TARGET_BUILD=""
@@ -60,11 +71,11 @@ bump_api() {
   [[ $YES -eq 1 ]] || return 0
 
   # pyproject.toml
-  sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" "$pyproject"
+  sed_inplace "s/^version = \".*\"/version = \"$VERSION\"/" "$pyproject"
   echo "✓ pyproject.toml → $VERSION"
 
   # api.py
-  sed -i '' "s/version=\"[^\"]*\"/version=\"$VERSION\"/" "$api_py"
+  sed_inplace "s/version=\"[^\"]*\"/version=\"$VERSION\"/" "$api_py"
   echo "✓ api.py → $VERSION"
 
   # 驗證
@@ -93,8 +104,8 @@ bump_ios() {
   [[ $YES -eq 1 ]] || return 0
 
   # 以「= 當前值;」精準錨定，只命中與主 app 同值的 config（Debug+Release 兩處），不碰異值的測試 bundle。
-  sed -i '' "s/MARKETING_VERSION = ${cur_mv};/MARKETING_VERSION = $VERSION;/g" "$pbxproj"
-  sed -i '' "s/CURRENT_PROJECT_VERSION = ${cur_build};/CURRENT_PROJECT_VERSION = $new_build;/g" "$pbxproj"
+  sed_inplace "s/MARKETING_VERSION = ${cur_mv};/MARKETING_VERSION = $VERSION;/g" "$pbxproj"
+  sed_inplace "s/CURRENT_PROJECT_VERSION = ${cur_build};/CURRENT_PROJECT_VERSION = $new_build;/g" "$pbxproj"
 
   # 驗證 + 回報實際命中數（不再謊稱「6 處」）
   local count
@@ -129,7 +140,7 @@ bump_ios_build() {
   echo "  MARKETING_VERSION ${cur_mv} 不動（同版重送只 bump build）"
   [[ $YES -eq 1 ]] || return 0
 
-  sed -i '' "s/CURRENT_PROJECT_VERSION = ${cur_build};/CURRENT_PROJECT_VERSION = $new_build;/g" "$pbxproj"
+  sed_inplace "s/CURRENT_PROJECT_VERSION = ${cur_build};/CURRENT_PROJECT_VERSION = $new_build;/g" "$pbxproj"
 
   local count
   count=$(grep -c "CURRENT_PROJECT_VERSION = $new_build;" "$pbxproj")

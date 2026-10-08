@@ -278,7 +278,7 @@ source = { registry = "https://example.invalid/simple" }
 LOCK
 cp "$TMP2/backend/uv.lock" "$TMP2/backend/uv.lock.before"
 chmod 0644 "$TMP2/backend/uv.lock"
-lock_mode_before="$(stat -f '%Lp' "$TMP2/backend/uv.lock" 2>/dev/null || stat -c '%a' "$TMP2/backend/uv.lock")"
+lock_mode_before="$(stat -c '%a' "$TMP2/backend/uv.lock" 2>/dev/null || stat -f '%Lp' "$TMP2/backend/uv.lock")"
 
 # 13a. dry-run（無 --yes）：exit 0、不改任何檔
 dry_out="$(KG_ROOT="$TMP2" bash "$BUMP" ios 9.9.1 2>&1)" \
@@ -323,7 +323,7 @@ unrelated_version="$(awk 'BEGIN { RS="" } /name = "unrelated"/ { if (match($0, /
    && "$unrelated_version" == "9.9.9" ]] \
   && ok "release.sh bump api updates only editable kg entry in uv.lock" \
   || fail_t "uv.lock scope wrong: editable=$editable_kg_version registry=$registry_kg_version unrelated=$unrelated_version"
-lock_mode_after="$(stat -f '%Lp' "$TMP2/backend/uv.lock" 2>/dev/null || stat -c '%a' "$TMP2/backend/uv.lock")"
+lock_mode_after="$(stat -c '%a' "$TMP2/backend/uv.lock" 2>/dev/null || stat -f '%Lp' "$TMP2/backend/uv.lock")"
 [[ "$lock_mode_after" == "$lock_mode_before" ]] \
   && ok "release.sh bump api preserves uv.lock mode" \
   || fail_t "uv.lock mode changed: before=$lock_mode_before after=$lock_mode_after"
@@ -830,7 +830,7 @@ downgrade_out="$(bash "$fx_e/ops/release.sh" release ios 1.9.9 --yes 2>&1)" || d
 #      未審查的來源帶進 release PR。
 fx_f="$TMP4/already-committed"; remote_f="$TMP4/already-committed.git"
 make_ios_release_fixture "$fx_f" "$remote_f"
-sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 6;/g' \
+perl -pi -e 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 6;/g' \
   "$fx_f/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 git -C "$fx_f" add ios/BooksAndVocab.xcodeproj/project.pbxproj
 git -C "$fx_f" commit -qm "fixture: version already committed"
@@ -986,7 +986,7 @@ echo "$status_fx" | grep -E '^■ ios' | grep -q 'ios/2.0.0+6' \
 # marketing tag turns a completed build into a false pending backlog.
 fx_status_sealed="$TMP5/status-sealed-build"
 cp -R "$fx_lt" "$fx_status_sealed"
-sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 6;/CURRENT_PROJECT_VERSION = 12;/g' \
+perl -pi -e 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 6;/CURRENT_PROJECT_VERSION = 12;/g' \
   "$fx_status_sealed/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 git -C "$fx_status_sealed" add ios/BooksAndVocab.xcodeproj/project.pbxproj
 git -C "$fx_status_sealed" commit -q -m "ios: prepare ios 2.0.1 build 12"
@@ -1609,7 +1609,7 @@ lane_behind_out="$(bash "$fx_lane_behind/ops/release.sh" release ios 2.0.1 --yes
 # of the supplied merged build-12 evidence).
 fx_dup="$TMP6/duplicate-tuple"; remote_dup="$TMP6/duplicate-tuple.git"
 make_ios_release_fixture "$fx_dup" "$remote_dup"
-sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 12;/g' \
+perl -pi -e 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 12;/g' \
   "$fx_dup/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 git -C "$fx_dup" add ios/BooksAndVocab.xcodeproj/project.pbxproj
 git -C "$fx_dup" commit -qm "fixture: merged ios 2.0.1 build 12"

@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 TABLE = ROOT / "ops/tests/test_ops_ci_coverage.sh"
 
 
-def run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(args),
         cwd=ROOT,
@@ -24,7 +26,7 @@ def run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedPr
 
 def mac_groups_from_source() -> list[str]:
     text = TABLE.read_text()
-    body = text.split("MAC_GROUPS=(", 1)[1].split("\n)", 1)[0]
+    body = text.split("\nMAC_GROUPS=(", 1)[1].split(")", 1)[0]
     groups: list[str] = []
     for line in body.splitlines():
         groups.extend(line.split("#", 1)[0].split())
@@ -131,8 +133,7 @@ def test_a_runner_that_fails_to_launch_is_a_tool_error(tmp_path: Path) -> None:
     runner = tmp_path / "broken-runner.sh"
     runner.write_text("#!/definitely/not/an/interpreter\n")
     runner.chmod(runner.stat().st_mode | stat.S_IXUSR)
-    env = os.environ | {"KG_EXPECTED_FAIL_RUNNER": str(runner)}
-    result = run("./ops/ci_expected_fail_exclusions.sh", env=env)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
     assert_runner_tool_error(result)
 
 
