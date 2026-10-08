@@ -77,17 +77,13 @@ enum SubscriptionPresentation {
             return L10n.string("來源：管理員授權")
         }
         if let price = proProduct?.displayPrice, !price.isEmpty, !status.is_active {
-            let days = status.trial_days ?? 7
-            return L10n.format("%@ / month · %@ 天免費試用", price, "\(days)")
+            return L10n.format("%@ / month", price)
         }
         if let price = status.price_display, !price.isEmpty {
             if let expiresAt = status.expires_at, !expiresAt.isEmpty {
                 return L10n.format("%@ · 到期 %@", price, expiresAt)
             }
             return price
-        }
-        if let days = status.trial_days, !status.is_active {
-            return L10n.format("預設提供 %@ 天免費試用", "\(days)")
         }
         return L10n.string("價格與試用長度會以 App Store 顯示為準")
     }
@@ -96,7 +92,7 @@ enum SubscriptionPresentation {
         if status.source == "admin", status.is_active {
             return L10n.string("查看權限")
         }
-        return status.is_active ? L10n.string("管理訂閱") : L10n.string("開始免費試用")
+        return status.is_active ? L10n.string("管理訂閱") : L10n.string("訂閱")
     }
 
     static func sourceLabel(for status: KGSubscriptionStatus) -> String {

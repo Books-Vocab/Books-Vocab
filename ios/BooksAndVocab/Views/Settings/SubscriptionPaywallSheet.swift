@@ -8,6 +8,8 @@ struct SubscriptionPaywallSheet: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.authManager) private var authManager
     @Environment(\.kgService) private var kgService
+    /// StoreKit 對此使用者有資格的免費試用天數；nil＝無 offer／不符資格／尚未解析。
+    @State private var introTrialDays: Int?
 
     private var activeFeatures: [SettingsSubscriptionFeatureItem] {
         SubscriptionPaywallFeatureCatalog.activeItems(successTone: appSkin.palette.success)
@@ -36,6 +38,9 @@ struct SubscriptionPaywallSheet: View {
             .inlineNavigationBarTitle()
             .task {
                 await subscriptionManager.loadProducts()
+            }
+            .task(id: subscriptionManager.proProduct?.id) {
+                introTrialDays = await PaywallIntroOffer.eligibleFreeTrialDays(for: subscriptionManager.proProduct)
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -304,9 +309,9 @@ struct SubscriptionPaywallSheet: View {
     private var activeSummaryText: String { SubscriptionPaywallCopy.activeSummary(pro) }
     private var paywallSummaryText: String { SubscriptionPaywallCopy.marketingSummary }
     private var billedAmountLine: String { SubscriptionPaywallCopy.billedAmount(pro, productDisplayPrice: productPrice) }
-    private var trialInfoLine: String? { SubscriptionPaywallCopy.trialInfo(pro) }
-    private var priceLine: String { SubscriptionPaywallCopy.priceLine(pro, productDisplayPrice: productPrice) }
-    private var ctaButtonTitle: String { SubscriptionPaywallCopy.ctaButtonTitle(pro, productDisplayPrice: productPrice) }
+    private var trialInfoLine: String? { SubscriptionPaywallCopy.trialInfo(pro, introTrialDays: introTrialDays) }
+    private var priceLine: String { SubscriptionPaywallCopy.priceLine(pro, productDisplayPrice: productPrice, introTrialDays: introTrialDays) }
+    private var ctaButtonTitle: String { SubscriptionPaywallCopy.ctaButtonTitle(pro, productDisplayPrice: productPrice, introTrialDays: introTrialDays) }
     private var entitlementSourceLine: String { SubscriptionPaywallCopy.entitlementSource(pro) }
     private var primaryActionTitle: String { SubscriptionPaywallCopy.primaryActionTitle(pro) }
     private var footerNote: String { SubscriptionPaywallCopy.footerNote(pro) }
