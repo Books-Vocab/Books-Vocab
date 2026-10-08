@@ -1,8 +1,12 @@
 """Tests for kg.enrich — LLM-powered card enrichment."""
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -17,24 +21,97 @@ from kg.tracked_llm import TrackedLLM
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_card(content: str = "hello", meaning: str = "你好",
-               examples: list[str] | None = None) -> Card:
-    return Card(content=content, meaning=meaning,
-                examples=examples or [])
+
+def _make_card(content: str = "hello", meaning: str = "你好", examples: list[str] | None = None) -> Card:
+    return Card(content=content, meaning=meaning, examples=examples or [])
 
 
-def _mock_response(content: str, prompt_tokens: int = 10,
-                   completion_tokens: int = 20):
-    usage = SimpleNamespace(prompt_tokens=prompt_tokens,
-                            completion_tokens=completion_tokens)
+def _mock_response(content: str, prompt_tokens: int = 10, completion_tokens: int = 20):
+    usage = SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
     message = SimpleNamespace(content=content)
     choice = SimpleNamespace(message=message)
     return SimpleNamespace(choices=[choice], usage=usage)
 
 
+@contextlib.asynccontextmanager
+async def _max_loop_gap(settle: float = 0.05):
+    """Measure event-loop responsiveness around the block.
+
+    A ticker task sleeps 10 ms in a loop and records the largest wall-clock
+    gap between its wake-ups, so any synchronous work on the loop thread
+    (e.g. ``ThreadPoolExecutor.shutdown(wait=True)``) shows up as a gap. It
+    keeps ticking ``settle`` seconds after the block, so a stall right after
+    the generator closes is counted too.
+    """
+    stats = {"max_gap": 0.0}
+    stop = asyncio.Event()
+
+    async def _tick() -> None:
+        last = time.monotonic()
+        while not stop.is_set():
+            await asyncio.sleep(0.01)
+            now = time.monotonic()
+            stats["max_gap"] = max(stats["max_gap"], now - last)
+            last = now
+
+    ticker = asyncio.create_task(_tick())
+    await asyncio.sleep(0)
+    try:
+        yield stats
+    finally:
+        await asyncio.sleep(settle)
+        stop.set()
+        await ticker
+
+
+class _ConsumerKeyError(KeyError):
+    """A consumer-side failure like a missing LLM "word" key, raised only by a
+    test consumer after it has received a message, so `pytest.raises` cannot
+    be satisfied by a KeyError from the stream itself."""
+
+
+class _GatedSyncRetry:
+    """Stand-in for ``kg.enrich.sync_retry`` that simulates in-flight batches.
+
+    The first call returns ``first`` (or raises it, if it is an exception);
+    every later call parks on ``gate`` and then returns ``response``. A safety
+    timer opens the gate after ``safety_release`` seconds, so code that blocks
+    the loop until every batch has run fails the assertions instead of hanging
+    the suite. ``calls`` counts LLM invocations across worker threads.
+    """
+
+    def __init__(self, first, response, *, safety_release: float = 1.0) -> None:
+        self._first = first
+        self._response = response
+        self._lock = threading.Lock()
+        self.calls = 0
+        self.gate = threading.Event()
+        self._timer = threading.Timer(safety_release, self.gate.set)
+
+    def __enter__(self) -> _GatedSyncRetry:
+        self._timer.start()
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.gate.set()
+        self._timer.cancel()
+
+    def __call__(self, *args, **kwargs):
+        with self._lock:
+            self.calls += 1
+            call_number = self.calls
+        if call_number == 1:
+            if isinstance(self._first, BaseException):
+                raise self._first
+            return self._first
+        self.gate.wait(5)
+        return self._response
+
+
 # ---------------------------------------------------------------------------
 # _build_prompt
 # ---------------------------------------------------------------------------
+
 
 class TestBuildPrompt:
     def test_single_card_with_example(self):
@@ -72,6 +149,7 @@ class TestBuildPrompt:
 # ---------------------------------------------------------------------------
 # _parse_enrich_response
 # ---------------------------------------------------------------------------
+
 
 class TestParseEnrichResponse:
     def test_json_array_direct(self):
@@ -112,10 +190,12 @@ class TestParseEnrichResponse:
 # enrich_cards_stream
 # ---------------------------------------------------------------------------
 
+
 class TestEnrichCardsStream:
     @pytest.mark.asyncio
     async def test_empty_cards(self):
         from kg.enrich import enrich_cards_stream
+
         llm = TrackedLLM(MagicMock(), "test_user")
         results = []
         async for msg in enrich_cards_stream(llm, []):
@@ -127,6 +207,7 @@ class TestEnrichCardsStream:
     @pytest.mark.asyncio
     async def test_multi_batch_yields_progress(self):
         from kg.enrich import enrich_cards_stream
+
         enriched = [{"word": "w", "pos": "n."}]
         resp = _mock_response(json.dumps(enriched))
 
@@ -161,15 +242,16 @@ class TestEnrichCardsStream:
         resp = _mock_response(json.dumps([{"word": "x"}]))
         llm = TrackedLLM(MagicMock(), "u_test")
 
-        with patch("kg.enrich.sync_retry", return_value=resp), \
-             patch.object(enrich_mod.asyncio, "Queue", side_effect=spy_queue):
+        with (
+            patch("kg.enrich.sync_retry", return_value=resp),
+            patch.object(enrich_mod.asyncio, "Queue", side_effect=spy_queue),
+        ):
             cards = [_make_card()]
             async for _ in enrich_cards_stream(llm, cards):
                 pass
 
         assert captured.get("maxsize", 0) > 0, (
-            "enrich_cards_stream queue is unbounded — a stalled consumer "
-            "would let workers buffer unlimited messages."
+            "enrich_cards_stream queue is unbounded — a stalled consumer would let workers buffer unlimited messages."
         )
 
     @staticmethod
@@ -177,6 +259,7 @@ class TestEnrichCardsStream:
         """Drain an async generator, failing the test (rather than hanging the
         whole suite) if it doesn't complete within `timeout`. Used to detect
         the consumer/worker deadlock regression."""
+
         async def _drain():
             out = []
             async for msg in agen_factory():
@@ -209,9 +292,7 @@ class TestEnrichCardsStream:
 
         with patch("kg.enrich.sync_retry", return_value=resp):
             results = await self._drain_with_timeout(
-                lambda: enrich_cards_stream(
-                    llm, [_make_card("hello", "你好")], batch_size=1
-                )
+                lambda: enrich_cards_stream(llm, [_make_card("hello", "你好")], batch_size=1)
             )
 
         # tasks_remaining reached 0: the final yielded message accounts for the
@@ -236,12 +317,12 @@ class TestEnrichCardsStream:
         resp = _mock_response('[{"word": "x"}]')
         llm = TrackedLLM(MagicMock(), "u_deadlock_weird")
 
-        with patch("kg.enrich.sync_retry", return_value=resp), \
-             patch("kg.enrich._parse_enrich_response", side_effect=WeirdError("boom")):
+        with (
+            patch("kg.enrich.sync_retry", return_value=resp),
+            patch("kg.enrich._parse_enrich_response", side_effect=WeirdError("boom")),
+        ):
             results = await self._drain_with_timeout(
-                lambda: enrich_cards_stream(
-                    llm, [_make_card("hello", "你好")], batch_size=1
-                )
+                lambda: enrich_cards_stream(llm, [_make_card("hello", "你好")], batch_size=1)
             )
 
         errors = [r for r in results if r["status"] == "error"]
@@ -268,8 +349,8 @@ class TestEnrichCardsStream:
     async def test_stream_token_tracking_via_tracked_llm(self):
         """Token tracking now happens inside TrackedLLM.chat(), not in stream consumer."""
         from kg.enrich import enrich_cards_stream
-        resp = _mock_response(json.dumps([{"word": "x"}]),
-                              prompt_tokens=50, completion_tokens=25)
+
+        resp = _mock_response(json.dumps([{"word": "x"}]), prompt_tokens=50, completion_tokens=25)
         llm = TrackedLLM(MagicMock(), "u_test")
 
         with patch("kg.enrich.sync_retry", return_value=resp):
@@ -281,3 +362,108 @@ class TestEnrichCardsStream:
             running = [m for m in msgs if m["status"] == "running"]
             assert len(running) >= 1
             assert "usage" not in running[0]
+
+    # Early exit (#2262): 40 single-card batches on 4 workers. When the first
+    # batch lands, 3 workers are parked inside the LLM call and the first
+    # worker has picked up a 5th batch, so at most max_workers + 1 calls may
+    # ever happen; the other 35 batches must be cancelled, not run and billed.
+    _EARLY_EXIT_BATCHES = 40
+    _EARLY_EXIT_WORKERS = 4
+
+    @pytest.mark.asyncio
+    async def test_consumer_exception_close_is_nonblocking_and_cancels_queued(self):
+        from kg.enrich import enrich_cards_stream
+
+        resp = _mock_response(json.dumps([{"word": "x"}]))
+        llm = TrackedLLM(MagicMock(), "u_early_exit")
+        cards = [_make_card(f"w{i}") for i in range(self._EARLY_EXIT_BATCHES)]
+
+        with _GatedSyncRetry(resp, resp) as stub, patch("kg.enrich.sync_retry", stub):
+            async with _max_loop_gap() as loop_gap:
+                with pytest.raises(_ConsumerKeyError):
+                    async with contextlib.aclosing(
+                        enrich_cards_stream(llm, cards, batch_size=1, max_workers=self._EARLY_EXIT_WORKERS)
+                    ) as stream:
+                        async for msg in stream:
+                            if msg["status"] == "running":
+                                raise _ConsumerKeyError("word")
+            calls_at_close = stub.calls
+            stub.gate.set()
+            await asyncio.sleep(0.3)
+
+        assert loop_gap["max_gap"] < 0.2, (
+            f"closing the stream stalled the event loop for {loop_gap['max_gap']:.2f}s "
+            f"({calls_at_close} LLM calls had run by then)"
+        )
+        assert stub.calls <= self._EARLY_EXIT_WORKERS + 1, (
+            f"{stub.calls}/{self._EARLY_EXIT_BATCHES} batches called the LLM after the consumer left"
+        )
+        assert stub.calls < self._EARLY_EXIT_BATCHES
+
+    @pytest.mark.asyncio
+    async def test_quota_abort_is_nonblocking_and_cancels_queued(self):
+        from kg.enrich import enrich_cards_stream
+
+        resp = _mock_response(json.dumps([{"word": "x"}]))
+        llm = TrackedLLM(MagicMock(), "u_quota_abort")
+        cards = [_make_card(f"w{i}") for i in range(self._EARLY_EXIT_BATCHES)]
+
+        with (
+            _GatedSyncRetry(QuotaExceededError(reset_seconds=60), resp) as stub,
+            patch("kg.enrich.sync_retry", stub),
+        ):
+            async with _max_loop_gap() as loop_gap:
+                with pytest.raises(QuotaExceededError) as exc_info:
+                    async for _ in enrich_cards_stream(llm, cards, batch_size=1, max_workers=self._EARLY_EXIT_WORKERS):
+                        pass
+            calls_at_close = stub.calls
+            stub.gate.set()
+            await asyncio.sleep(0.3)
+
+        assert exc_info.value.reset_seconds == 60
+        assert loop_gap["max_gap"] < 0.2, (
+            f"quota abort stalled the event loop for {loop_gap['max_gap']:.2f}s "
+            f"({calls_at_close} LLM calls had run by then)"
+        )
+        assert stub.calls <= self._EARLY_EXIT_WORKERS + 1, (
+            f"{stub.calls}/{self._EARLY_EXIT_BATCHES} batches called the LLM after the quota abort"
+        )
+
+    @pytest.mark.asyncio
+    async def test_early_exit_leaves_no_try_put_timers(self):
+        """150 instant batches overflow the 100-slot queue while the consumer
+        stalls, so ~50 terminal deliveries keep re-arming ``_try_put`` via
+        ``loop.call_later``. Once the stream is closed nothing may re-arm."""
+        from kg.enrich import enrich_cards_stream
+
+        loop = asyncio.get_running_loop()
+        original_call_later = loop.call_later
+        try_put_arms = 0
+
+        def spy_call_later(delay, callback, *args, **kwargs):
+            nonlocal try_put_arms
+            if getattr(callback, "__name__", "") == "_try_put":
+                try_put_arms += 1
+            return original_call_later(delay, callback, *args, **kwargs)
+
+        resp = _mock_response(json.dumps([{"word": "x"}]))
+        llm = TrackedLLM(MagicMock(), "u_try_put")
+        cards = [_make_card(f"w{i}") for i in range(150)]
+
+        with (
+            patch("kg.enrich.sync_retry", return_value=resp),
+            patch.object(loop, "call_later", spy_call_later),
+        ):
+            with pytest.raises(_ConsumerKeyError):
+                async with contextlib.aclosing(enrich_cards_stream(llm, cards, batch_size=1, max_workers=5)) as stream:
+                    async for _ in stream:
+                        await asyncio.sleep(0.3)
+                        raise _ConsumerKeyError("word")
+            arms_at_close = try_put_arms
+            await asyncio.sleep(0.1)
+            arms_after_wait = try_put_arms
+
+        assert arms_at_close > 0, "precondition: the stalled consumer must overflow the queue"
+        assert arms_after_wait == arms_at_close, (
+            f"_try_put re-armed {arms_after_wait - arms_at_close} times after the stream closed"
+        )
