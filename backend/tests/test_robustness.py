@@ -34,7 +34,6 @@ from conftest import TEST_JWT_SECRET, TEST_PRO_PRODUCT_ID, _swap_settings, make_
 # Import kg modules ONCE. SQLModel's MetaData is a process singleton;
 # reimporting causes "Table 'card' already defined" errors.
 # ---------------------------------------------------------------------------
-os.environ["KG_DATA_DIR"] = "/tmp/kg_test_default"
 os.environ["JWT_SECRET"] = "test-secret-key-for-ci-at-least-32-bytes"
 os.environ["GEMINI_API_KEY"] = "fake-key"
 

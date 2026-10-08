@@ -190,33 +190,50 @@ def _duration_s(start: str | None, end: str | None) -> float | None:
         return None
 
 
+_RUN_COLUMNS = "run_id, user_id, notebook_id, trigger, started_at, ended_at, status, steps"
+
+
+def _run_from_row(row: tuple) -> dict:
+    """Shape one ``_RUN_COLUMNS`` row as a run dict with parsed, timed steps."""
+    run_id, uid, nb, trigger, started, ended, status, steps_json = row
+    steps = _parse_steps(steps_json, run_id=run_id) or []
+    for step in steps:
+        step["duration_s"] = _duration_s(step.get("started_at"), step.get("ended_at"))
+    return {
+        "run_id": run_id,
+        "user_id": uid,
+        "notebook_id": nb,
+        "trigger": trigger,
+        "started_at": started,
+        "ended_at": ended,
+        "status": status,
+        "duration_s": _duration_s(started, ended),
+        "steps": steps,
+    }
+
+
 def get_runs(user_id: str, *, limit: int = 20) -> list[dict]:
     """Return recent runs for a user, newest first. Parses steps JSON."""
     with _lock:
         conn = _get_conn()
         rows = conn.execute(
-            "SELECT run_id, user_id, notebook_id, trigger, started_at, ended_at, status, steps "
-            "FROM pipeline_runs WHERE user_id = ? "
+            f"SELECT {_RUN_COLUMNS} FROM pipeline_runs WHERE user_id = ? "
             "ORDER BY julianday(started_at) DESC, started_at DESC LIMIT ?",
             (user_id, limit),
         ).fetchall()
-    result = []
-    for run_id, uid, nb, trigger, started, ended, status, steps_json in rows:
-        steps = _parse_steps(steps_json, run_id=run_id) or []
-        for step in steps:
-            step["duration_s"] = _duration_s(step.get("started_at"), step.get("ended_at"))
-        duration_s = _duration_s(started, ended)
-        result.append(
-            {
-                "run_id": run_id,
-                "user_id": uid,
-                "notebook_id": nb,
-                "trigger": trigger,
-                "started_at": started,
-                "ended_at": ended,
-                "status": status,
-                "duration_s": duration_s,
-                "steps": steps,
-            }
-        )
-    return result
+    return [_run_from_row(row) for row in rows]
+
+
+def get_run(run_id: str, user_id: str) -> dict | None:
+    """Return ``user_id``'s run ``run_id`` in the ``get_runs`` shape, or None.
+
+    A point lookup on the UNIQUE ``run_id``, independent of how many runs the
+    user has; another user's run is None, never readable.
+    """
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute(
+            f"SELECT {_RUN_COLUMNS} FROM pipeline_runs WHERE run_id = ? AND user_id = ?",
+            (run_id, user_id),
+        ).fetchone()
+    return _run_from_row(row) if row is not None else None

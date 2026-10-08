@@ -35,12 +35,14 @@ verified_against: af224fa2d86d76db01efe47b092706c80988e82e
 
 ### 3) Contract & safety checks
 - 不允許 pipeline 核心模組出現 `print()`
+- 受管 router 的 `async def` route 不得在 event loop 直接呼叫 store／SQLite／`pipeline_log`／LLM（`tests/test_async_route_blocking_guard.py` 的 AST guard；新模組在 `GUARDED_ROUTE_MODULES` 加一列）
 - 背景任務失敗必須寫入 `ERROR` logs
 - concurrent config writes 不得損壞 `users.json`
 
 ## Test Isolation Rules
 - 每個測試使用 `tmp_path` 建立獨立 data 目錄
-- `KG_DATA_DIR/JWT_SECRET/GEMINI_API_KEY` 使用測試預設值
+- `KG_DATA_DIR` 每個 pytest process 專屬：`tests/conftest.py` 在任何 `kg` import 前覆寫（含繼承值）為新的 `tempfile.mkdtemp(prefix="kg_test_")`，process 結束時刪除；import 時建立的全域 `app` 的 `.worker.lock` 與 startup reaper 只碰這個目錄，並行 run（其他 worktree、container 內 admin test matrix）互不干擾。測試模組不得在 module level 改寫它（`tests/test_data_dir_isolation.py` 守護）
+- `JWT_SECRET/GEMINI_API_KEY` 使用測試預設值
 - 外部 API 一律 mock（Gemini/Google/Apple）
 - 不觸碰 production data，不依賴網路
 

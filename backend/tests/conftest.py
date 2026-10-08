@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import sys
+import tempfile
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,8 +34,24 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+# KG_DATA_DIR is a fresh directory owned by this pytest process (#2112): the
+# import-time `kg.api.app` locks `<data_dir>/.worker.lock` and sweeps orphaned
+# rows there, so a fixed path collided with every concurrent run on the machine.
+# It is set below, before any `kg` import, because modules freeze it on import.
+SESSION_DATA_DIR = Path(tempfile.mkdtemp(prefix="kg_test_"))
+_SESSION_DATA_DIR_OWNER = os.getpid()
+
+
+@atexit.register
+def _remove_session_data_dir() -> None:
+    # atexit runs after every fixture and after the handlers `kg` registers on
+    # import. A forked child inherits this hook; only the owner may delete.
+    if os.getpid() == _SESSION_DATA_DIR_OWNER:
+        shutil.rmtree(SESSION_DATA_DIR, ignore_errors=True)
+
+
 # Force deterministic test env (do not inherit prod secrets/config).
-os.environ["KG_DATA_DIR"] = "/tmp/kg_test_default"
+os.environ["KG_DATA_DIR"] = str(SESSION_DATA_DIR)
 os.environ["JWT_SECRET"] = "test-secret-key-for-ci-at-least-32-bytes"
 os.environ["GEMINI_API_KEY"] = "fake-key"
 # Pin LLM routing before api.py's load_dotenv() can inject a dev .env value:

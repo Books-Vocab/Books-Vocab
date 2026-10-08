@@ -27,19 +27,19 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 | # | 狀態 | 位置 | 跨 worker 多開的後果 |
 |---|------|------|----------------------|
-| 1 | 額度 in-flight reservation | `backend/src/kg/quota_service.py:140`（`_reservations`） | 每個 worker 各持一份 `_reservations`，有效超支天花板變成 `N × 真實 per-user 上限` |
-| 2 | translate singleflight 去重表 | `backend/src/kg/translate_service.py:30`（`_INFLIGHT`） | dedup 只在單 process 內生效；N worker → 同一 (word, context) 最多被重複翻譯 N 次，浪費成本且競態 |
-| 3 | pipeline 孤兒 reap | `backend/src/kg/pipeline_log.py:52`（`reap_orphaned_runs`，API startup 觸發） | 每個 worker 啟動都跑一次 reap；多 worker 同時 reap 會互相把對方仍在跑的 `running` row 誤判成 `interrupted` |
+| 1 | 額度 in-flight reservation | `backend/src/kg/quota_service.py:138`（`_reservations`） | 每個 worker 各持一份 `_reservations`，有效超支天花板變成 `N × 真實 per-user 上限` |
+| 2 | translate singleflight 去重表 | `backend/src/kg/translate_service.py:31`（`_INFLIGHT`） | dedup 只在單 process 內生效；N worker → 同一 (word, context) 最多被重複翻譯 N 次，浪費成本且競態 |
+| 3 | pipeline 孤兒 reap | `backend/src/kg/pipeline_log.py:71`（`reap_orphaned_runs(data_root)`，API startup 取得 worker 鎖後對 `settings.data_dir` 觸發） | 每個 worker 啟動都跑一次 reap；多 worker 同時 reap 會互相把對方仍在跑的 `running` row 誤判成 `interrupted` |
 
 ### 不變量如何被釘死
 
-- **`worker_guard.assert_single_worker`**（`backend/src/kg/worker_guard.py:34`）：
-  每個 worker process 啟動時對固定路徑取**非阻塞 exclusive `flock`**
+- **`worker_guard.assert_single_worker`**（`backend/src/kg/worker_guard.py:35`）：
+  每個 worker process 啟動時對 `<settings.data_dir>/.worker.lock` 取**非阻塞 exclusive `flock`**
   （`fcntl.LOCK_EX | LOCK_NB`）。第二個 worker 搶不到鎖 → raise → 拒絕啟動。
   這是 fail-loud 不變量：誤把 worker 數調大於 1，第二個就**不會默默跑壞資料**，
   而是直接開不起來。由 `app_lifespan` 在 startup 呼叫
-  （`backend/src/kg/app_lifespan.py:34`）。
-- **Dockerfile `--workers 1`**（`backend/Dockerfile:57`，含警示註解 `:55`）：
+  （`backend/src/kg/app_lifespan.py:53`）。
+- **Dockerfile `--workers 1`**（`backend/Dockerfile:58`，含警示註解 `:56`）：
   容器層硬性 single-worker。註解明文「`--workers 1` 是硬性不變式，勿改」。
 
 > 兩道防線**互補非冗餘**：Dockerfile 是宣告意圖，`worker_guard` 是執行期保險——
@@ -85,7 +85,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 在以下訊號出現**之前**，single-worker 是正解，不要為了「未來可能」提前引入 Redis
 的維運與失效模式複雜度。任一門檻觸發 = 升級評估，不是自動開工。
 
-- **threadpool 飽和**：FastAPI 把 sync handler 丟 threadpool（≈`min(32, cpu+4)`）。
+- **threadpool 飽和**：FastAPI 把 sync handler 丟 threadpool（anyio 預設 40 個 token）；
+  external API 的 `async def` route 在 admission 後也經 `run_in_threadpool` 共用這個池。
   觀測到 threadpool 佇列持續積壓、請求在等執行緒（而非等 I/O）→ 單 worker 的並行度
   封頂訊號。
 - **並發用戶 > X**：實測單 worker 在目標 p95 下能穩定服務的並發上限被逼近
