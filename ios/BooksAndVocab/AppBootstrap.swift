@@ -196,7 +196,12 @@ enum AppBootstrap {
 /// - Completion key 只在「每本都已在 iCloud 目的地」時寫入；iCloud 不可用或任一本失敗
 ///   都不寫，留待下次啟動重試。
 enum ICloudEPUBMigration {
-    static let completionKey = "iCloudDataMigrationCompleted_v1"
+    /// v2：v1 只搬 .epub 就寫完成旗標，留在本機的 .pdf 永遠不會上 iCloud；
+    /// 換 key 讓已完成的使用者再跑一次（目的地已存在者會略過，idempotent）。
+    static let completionKey = "iCloudDataMigrationCompleted_v2"
+
+    /// 匯入後會留在本機 Books 目錄、屬於 iCloud 書庫的格式（txt/md 匯入時已轉成 epub）。
+    static let migratedExtensions: Set<String> = ["epub", "pdf"]
 
     /// File-ops seam；每個成員都在背景執行緒被呼叫。
     struct FileOps: Sendable {
@@ -288,13 +293,13 @@ enum ICloudEPUBMigration {
             return .deferredLocalListingFailed
         }
 
-        let epubs = files.filter { $0.pathExtension == "epub" }
+        let books = files.filter { migratedExtensions.contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         let staging = fileOps.stagingDirectory()
         var copied = 0
         var failed = 0
-        for (index, file) in epubs.enumerated() {
-            defer { progress?(index + 1, epubs.count) }
+        for (index, file) in books.enumerated() {
+            defer { progress?(index + 1, books.count) }
             let dest = iCloudDir.appendingPathComponent(file.lastPathComponent)
             if fileOps.fileExists(dest) { continue }
             let staged = staging.appendingPathComponent(file.lastPathComponent)
@@ -314,17 +319,17 @@ enum ICloudEPUBMigration {
             } catch {
                 failed += 1
                 try? fileOps.removeItem(staged)
-                AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
+                AppLog.app.error("iCloud book copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
             }
-            AppLog.app.debug("iCloud EPUB migration progress: \(index + 1)/\(epubs.count)")
+            AppLog.app.debug("iCloud book migration progress: \(index + 1)/\(books.count)")
         }
 
         if failed == 0 {
             fileOps.markCompleted()
-            AppLog.app.info("iCloud EPUB migration completed: \(copied) copied, \(epubs.count) total")
-            return .completed(copied: copied, total: epubs.count)
+            AppLog.app.info("iCloud book migration completed: \(copied) copied, \(books.count) total")
+            return .completed(copied: copied, total: books.count)
         }
-        AppLog.app.warning("iCloud EPUB migration incomplete: \(failed)/\(epubs.count) failed, will retry next launch")
-        return .incomplete(failed: failed, total: epubs.count)
+        AppLog.app.warning("iCloud book migration incomplete: \(failed)/\(books.count) failed, will retry next launch")
+        return .incomplete(failed: failed, total: books.count)
     }
 }
