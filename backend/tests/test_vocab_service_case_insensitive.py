@@ -82,6 +82,9 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
     card_id = card.id
 
     class _FailingGraph:
+        def get_links_for(self, cid):
+            return []
+
         def deprecate_links_for(self, cid, *, source="auto"):
             raise RuntimeError("graph write failed")
 
@@ -325,6 +328,9 @@ class TestDeleteEvictsEmbedding:
         emb = _FakeEmbeddingStore(ids=[card.id])
 
         class _FailingGraph:
+            def get_links_for(self, cid):
+                return []
+
             def cleanup_for_card(self, cid, *, remove_blocked=False, source="auto"):
                 raise RuntimeError("graph write failed")
 
