@@ -107,6 +107,11 @@ final class SettingsCoordinator: SettingsCoordinating {
     private let resetStateStore: any SettingsResetStorePort
     private var settingsSyncService: SettingsSyncService?
     private let syncPersistence: any SettingsSyncPersisting
+    /// The only seam through which this coordinator moves the process-wide
+    /// `TranslationLanguage` account namespace. Tests inject a no-op so a
+    /// Settings suite never flips the namespace under `TranslationLanguageTests`
+    /// when parallel testing is on (#2117).
+    private let translationLifecycle: any AccountPreferenceLifecycle
 #if DEBUG
     private var settingsSyncFixtureSummary: SettingsFixtureSeed.SyncSummary?
     private var settingsSyncFixtureEvidenceSessionID: Int? = nil
@@ -115,7 +120,8 @@ final class SettingsCoordinator: SettingsCoordinating {
     init(
         settingsSyncService: SettingsSyncService? = nil,
         syncPersistence: (any SettingsSyncPersisting)? = nil,
-        resetStateStore: (any SettingsResetStorePort)? = nil
+        resetStateStore: (any SettingsResetStorePort)? = nil,
+        translationLifecycle: (any AccountPreferenceLifecycle)? = nil
     ) {
         // A default argument is evaluated before entering this @MainActor
         // initializer. Constructing the @MainActor persistence adapter there
@@ -123,6 +129,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         // after entering the actor instead of weakening the adapter's isolation.
         self.syncPersistence = syncPersistence ?? ModelContextSettingsSyncPersistence()
         self.resetStateStore = resetStateStore ?? LiveSettingsResetStore()
+        self.translationLifecycle = translationLifecycle ?? TranslationAccountPreferenceLifecycle()
 
 #if DEBUG
         var resolvedService = settingsSyncService
@@ -172,7 +179,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         _ = translationMutation.begin()
         ReviewSettingsStore.shared.suspendForAccountBoundary()
         ActiveNotebookStore.shared.suspendForAccountBoundary()
-        TranslationLanguage.suspendForAccountBoundary()
+        translationLifecycle.suspend()
         translationSourceLang = TranslationLanguage.currentSource
         translationTargetLang = TranslationLanguage.currentTarget
         configurationIssue = nil
@@ -967,7 +974,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     private func activateAccountPreferences(for accountID: String?) {
         ReviewSettingsStore.shared.activateAccount(accountID)
         ActiveNotebookStore.shared.activateAccount(accountID)
-        TranslationLanguage.activateAccount(accountID)
+        translationLifecycle.activate(accountID: accountID)
         translationSourceLang = TranslationLanguage.currentSource
         translationTargetLang = TranslationLanguage.currentTarget
     }

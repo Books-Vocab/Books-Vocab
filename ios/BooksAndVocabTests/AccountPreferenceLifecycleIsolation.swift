@@ -10,39 +10,54 @@ import Testing
 /// `TranslationLanguage.activateAccount` / `suspendForAccountBoundary`, which
 /// flips the account namespace under `TranslationLanguageTests` (serialized
 /// only within its own suite tree) when parallel testing is on (#2117). Every
-/// test-side `AuthManager` therefore injects this instead.
+/// test-side `AuthManager` and `SettingsCoordinator` therefore injects this
+/// instead.
 final class NoopAccountPreferenceLifecycle: AccountPreferenceLifecycle {
     func activate(accountID: String?) {}
     func suspend() {}
 }
 
-/// Guards the convention above: a test that builds an `AuthManager` with the
-/// default lifecycle would silently reintroduce the cross-suite race.
+/// Guards the convention above: a test that builds an `AuthManager` or a
+/// `SettingsCoordinator` with the default lifecycle would silently reintroduce
+/// the cross-suite race. `SettingsCoordinator` reaches the same
+/// `TranslationLanguage` namespace through `loadData` / `resetForAccountBoundary`
+/// and is injected via its `translationLifecycle:` seam (#2117).
 struct AccountPreferenceLifecycleIsolationTests {
     @Test func everyTestAuthManagerInjectsAnAccountPreferenceLifecycle() throws {
+        let scan = try Self.scanTestSources(constructor: "AuthManager" + "(", requiredLabel: "accountPreferenceLifecycle:")
+        // Positive control: the scan really sees the known construction sites.
+        #expect(scan.constructions >= 5, "scan found only \(scan.constructions) AuthManager constructions")
+        #expect(scan.offenders.isEmpty, "AuthManager built with the default (global-state) lifecycle in: \(scan.offenders)")
+    }
+
+    @Test func everyTestSettingsCoordinatorInjectsATranslationLifecycle() throws {
+        let scan = try Self.scanTestSources(constructor: "SettingsCoordinator" + "(", requiredLabel: "translationLifecycle:")
+        #expect(scan.constructions >= 10, "scan found only \(scan.constructions) SettingsCoordinator constructions")
+        #expect(scan.offenders.isEmpty, "SettingsCoordinator built with the default (global-state) translation lifecycle in: \(scan.offenders)")
+    }
+
+    private static func scanTestSources(
+        constructor: String,
+        requiredLabel: String
+    ) throws -> (constructions: Int, offenders: [String]) {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let ownName = URL(fileURLWithPath: #filePath).lastPathComponent
         let files = try FileManager.default.contentsOfDirectory(
             at: testsDirectory,
             includingPropertiesForKeys: nil
-        ).filter { $0.pathExtension == "swift" && $0.lastPathComponent != URL(fileURLWithPath: #filePath).lastPathComponent }
+        ).filter { $0.pathExtension == "swift" && $0.lastPathComponent != ownName }
         #expect(!files.isEmpty)
 
-        let constructor = "AuthManager" + "("
         var constructions = 0
         var offenders: [String] = []
         for file in files {
             let source = try String(contentsOf: file, encoding: .utf8)
-            for call in Self.calls(of: constructor, in: source) {
+            for call in calls(of: constructor, in: source) {
                 constructions += 1
-                if !call.contains("accountPreferenceLifecycle:") {
-                    offenders.append(file.lastPathComponent)
-                }
+                if !call.contains(requiredLabel) { offenders.append(file.lastPathComponent) }
             }
         }
-
-        // Positive control: the scan really sees the known construction sites.
-        #expect(constructions >= 5, "scan found only \(constructions) AuthManager constructions")
-        #expect(offenders.isEmpty, "AuthManager built with the default (global-state) lifecycle in: \(offenders)")
+        return (constructions, offenders)
     }
 
     /// Source text of each `constructor` call (through its balanced closing

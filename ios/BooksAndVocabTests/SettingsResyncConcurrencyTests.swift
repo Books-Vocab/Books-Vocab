@@ -225,7 +225,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("額度與連線檢查併發，不是兩趟序列往返")
     func quotaAndHealthOverlap() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let service = ProbeKGService()
 
         // container 必須用 local 撐住：`resync` 會走 `modelContext.container
@@ -243,7 +243,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("resync 把 backgroundSync 的事件依序餵進 store，計數器不倒退")
     func progressEventsReachTheStoreInOrder() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let service = ProbeKGService()
         service.eventsToEmit = [.started(.push), .finished(.push, status: .done, detail: "p")]
         // 兩條腿併發送事件——這才是 AsyncStream 要對付的亂序來源。pull 那條的
@@ -283,7 +283,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("成功一輪收在 .completed 且進度條走到滿")
     func successfulRoundCompletes() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let service = ProbeKGService()
 
         // container 必須用 local 撐住：`resync` 會走 `modelContext.container
@@ -299,7 +299,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("backgroundSync 回報錯誤時收在 .failed，且不把沒跑的步驟刷成綠勾")
     func failedRoundDoesNotFakeCompletion() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let service = ProbeKGService()
         service.outcome = .failed
         service.eventsToEmit = [.finished(.push, status: .error, detail: "boom")]
@@ -319,7 +319,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("被別的 round 佔著 claim（.didNotRun）→ 面板收合，不得宣稱 100% 完成")
     func abandonedRoundDoesNotClaimSuccess() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let service = ProbeKGService()
         // `claimBackgroundSync()` 失敗那條出口在 `lastBackgroundSyncError` 被重置
         // **之前**就 return，所以那個全域欄位留著上一輪的 nil。舊寫法會據此判定
@@ -341,7 +341,7 @@ struct SettingsResyncConcurrencyTests {
     func resyncIsNoOpWithoutARealSession() async {
         let demoAuth = MockAuth()
         demoAuth.isDemoMode = true
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
 
         let container = Self.makeContainer()
         await coordinator.resync(
@@ -355,7 +355,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("帳號邊界清除上一帳號的同步終態")
     func accountBoundaryResetsTransientProgress() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let container = Self.makeContainer()
 
         await coordinator.resync(
@@ -378,7 +378,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("帳號切換後拒收前一帳號晚到的同步事件")
     func accountBoundaryRejectsLateEventsFromTheOldRound() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let auth = MockAuth()
         let service = SuspendedKGService()
         let container = Self.makeContainer()
@@ -400,7 +400,7 @@ struct SettingsResyncConcurrencyTests {
 
     @Test("帳號邊界允許新 round 並拒收舊 round 收尾")
     func oldRoundCleanupDoesNotClearTheNewRoundFlag() async {
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let auth = MockAuth()
         let service = SuspendedKGService()
         let container = Self.makeContainer()

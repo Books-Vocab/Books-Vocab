@@ -121,7 +121,7 @@ struct SettingsCoordinatorReviewClockTests {
         // 清掉本地 pause updatedAt，讓 server timestamp 成為可比較的基準。
         UserDefaults.standard.removeObject(forKey: "review_settings_progress_updated_at")
 
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
         let auth = MockAuth()
         let kgService = StubKGService()
         kgService.userConfigToReturn = KGUserConfig(
@@ -169,7 +169,7 @@ struct SettingsCoordinatorReviewClockTests {
         let auth = MockAuth()
         auth.userId = "account-a"
         let service = DeferredFailureKGService()
-        let coordinator = SettingsCoordinator()
+        let coordinator = SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle())
 
         let task = Task { @MainActor in
             await coordinator.loadData(authManager: auth, kgService: service)
@@ -207,7 +207,7 @@ struct SettingsCoordinatorReviewClockTests {
         let auth = MockAuth()
         auth.isLoggedIn = false
 
-        let result = await SettingsCoordinator().updateReviewClock(
+        let result = await SettingsCoordinator(translationLifecycle: NoopAccountPreferenceLifecycle()).updateReviewClock(
             isPaused: true,
             reviewSettingsStore: store,
             authManager: auth,

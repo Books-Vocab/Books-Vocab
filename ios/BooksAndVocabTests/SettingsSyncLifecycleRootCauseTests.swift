@@ -290,7 +290,8 @@ struct SettingsSyncLifecycleRootCauseTests {
         let service = CompletedSyncService()
         let coordinator = SettingsCoordinator(
             settingsSyncService: service,
-            syncPersistence: FailingSyncPersistence()
+            syncPersistence: FailingSyncPersistence(),
+            translationLifecycle: NoopAccountPreferenceLifecycle()
         )
         let auth = TestAuthManager()
         let container = try Self.makeContainer()
