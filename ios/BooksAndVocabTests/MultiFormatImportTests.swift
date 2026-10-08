@@ -128,6 +128,21 @@ struct MultiFormatImportTests {
         #expect(PDFDocument(data: truncated) == nil)
     }
 
+    // MARK: - Originals copy naming (#2440)
+    // `Book.booksDirectory` is not injectable, so the real import path is not exercised here;
+    // the shared naming rule (used by import and delete) and the delete side are unit-tested.
+
+    @Test func originalCopyName_derivesFromEpubStemWithLowercasedExt() {
+        #expect(LocalBookFileManager.originalCopyName(forEpub: "ABC-123.epub", sourceExt: "TXT") == "ABC-123.txt")
+        #expect(LocalBookFileManager.originalCopyName(forEpub: "ABC-123.epub", sourceExt: "md") == "ABC-123.md")
+    }
+
+    @Test func originalCopyName_distinctEpubNamesNeverCollide() {
+        let a = LocalBookFileManager.originalCopyName(forEpub: "\(UUID().uuidString)_notes.epub", sourceExt: "txt")
+        let b = LocalBookFileManager.originalCopyName(forEpub: "\(UUID().uuidString)_notes.epub", sourceExt: "txt")
+        #expect(a != b)
+    }
+
     // MARK: - Import error classification (TXT / MD / PDF failure contract)
 
     @Test func classify_passesThroughTypedError() {

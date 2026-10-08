@@ -53,6 +53,55 @@ struct LocalBookFileManagerDeletionTests {
         try LocalBookFileManager(locations: [a]).deleteBookFile(named: "never-there.epub")
     }
 
+    // MARK: - Originals copy（#2440）
+
+    private func writeBook(_ stem: String, originalExt: String?, in dir: URL) throws {
+        try Data("x".utf8).write(to: dir.appendingPathComponent("\(stem).epub"))
+        guard let originalExt else { return }
+        let originals = try makeDir("Originals", in: dir)
+        try Data("src".utf8).write(to: originals.appendingPathComponent("\(stem).\(originalExt)"))
+    }
+
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    @Test(arguments: ["txt", "md"])
+    func deletingBookAlsoRemovesItsOriginalsCopy(ext: String) throws {
+        let root = try makeRoot()
+        defer { cleanUp(root) }
+        let a = try makeDir("a", in: root)
+        try writeBook("book-X", originalExt: ext, in: a)
+
+        try LocalBookFileManager(locations: [a]).deleteBookFile(named: "book-X.epub")
+
+        #expect(!exists(a.appendingPathComponent("book-X.epub")))
+        #expect(!exists(a.appendingPathComponent("Originals/book-X.\(ext)")))
+    }
+
+    @Test func missingOriginalsCopyIsNotAnError() throws {
+        let root = try makeRoot()
+        defer { cleanUp(root) }
+        let a = try makeDir("a", in: root)
+        try writeBook("book-Y", originalExt: nil, in: a)
+
+        try LocalBookFileManager(locations: [a]).deleteBookFile(named: "book-Y.epub")
+
+        #expect(!exists(a.appendingPathComponent("book-Y.epub")))
+    }
+
+    @Test func deletingOneBookKeepsAnotherBooksOriginalsWithSameSourceName() throws {
+        let root = try makeRoot()
+        defer { cleanUp(root) }
+        let a = try makeDir("a", in: root)
+        try writeBook("uuid1_notes", originalExt: "txt", in: a)
+        try writeBook("uuid2_notes", originalExt: "txt", in: a)
+
+        try LocalBookFileManager(locations: [a]).deleteBookFile(named: "uuid1_notes.epub")
+
+        #expect(!exists(a.appendingPathComponent("Originals/uuid1_notes.txt")))
+        #expect(exists(a.appendingPathComponent("Originals/uuid2_notes.txt")))
+        #expect(exists(a.appendingPathComponent("uuid2_notes.epub")))
+    }
+
     @Test func emptyFileNameNeverTouchesTheDirectoryItself() throws {
         let root = try makeRoot()
         defer { cleanUp(root) }
