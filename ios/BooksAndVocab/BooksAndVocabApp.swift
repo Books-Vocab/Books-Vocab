@@ -297,8 +297,9 @@ struct BooksAndVocabApp: App {
                         // already on disk get rows; nothing is resurrected from a
                         // deleted file), so running it here is safe.
                         AppOrphanBookRecovery.run(container: modelContainer)
-                        // Poke main context so @Query picks up background actor's save
-                        try? modelContainer.mainContext.save()
+                        // No mainContext.save() "poke": @Query observes the background actor's
+                        // save through the store (QueryPicksUpBackgroundSaveTests), and a main
+                        // save here would flush half-edited UI state and swallow errors (#2051).
                         if let error = kgService.lastBackgroundSyncError {
                             toastCoordinator.warning(error)
                             kgService.lastBackgroundSyncError = nil
@@ -325,8 +326,6 @@ struct BooksAndVocabApp: App {
                                 progress: PodcastBackgroundSyncStatusStore.report
                             )
                             await kgService.fetchQuota()
-                            // Poke main context so @Query picks up background actor's save
-                            try? modelContainer.mainContext.save()
                             let durationMs = Int(Date().timeIntervalSince(syncStart) * 1000)
                             let success = kgService.lastBackgroundSyncError == nil
                             AppAnalytics.track(.backgroundSyncCompleted(durationMs: durationMs, success: success))
