@@ -63,27 +63,6 @@ class _LinksMixin:
     # Links
     # ------------------------------------------------------------------
 
-    def _find_persisted_link_for_pair(
-        self,
-        rows: list[Any],
-        from_id: str,
-        to_id: str,
-    ) -> GraphLink | None:
-        """Find an active/hidden link for a pair in a freshly-read disk snapshot."""
-        for row in rows:
-            if not isinstance(row, dict) or row.get("status", "active") not in ("active", "hidden"):
-                continue
-            row_from, row_to = row.get("from_id"), row.get("to_id")
-            if not ((row_from == from_id and row_to == to_id) or (row_from == to_id and row_to == from_id)):
-                continue
-            try:
-                return GraphLink.model_validate(row)
-            except (TypeError, ValueError):
-                # Match _load's tolerant handling: a malformed row cannot make
-                # a valid add_link request fail its semantic uniqueness check.
-                continue
-        return None
-
     def _snapshot_link_pairs(self, snapshot: list[dict]) -> set[tuple[str, str]]:
         """Return active/hidden semantic pairs represented by a snapshot."""
         pairs: set[tuple[str, str]] = set()

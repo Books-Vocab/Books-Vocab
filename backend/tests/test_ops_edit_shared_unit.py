@@ -1,4 +1,5 @@
 """Unit tests for kg.ops_edit_shared — EditContext, backup, audit, emit."""
+
 from __future__ import annotations
 
 import json
@@ -109,7 +110,7 @@ class TestBackupUserDir:
     def test_collision_avoidance(self, tmp_path):
         user_dir = tmp_path / "users" / "u1"
         user_dir.mkdir(parents=True)
-        (tmp_path / "users.json").write_text('{}')
+        (tmp_path / "users.json").write_text("{}")
 
         p1 = shared.backup_user_dir(tmp_path, "u1")
         p2 = shared.backup_user_dir(tmp_path, "u1")
@@ -264,7 +265,8 @@ class TestEditContext:
         dd = self._setup(tmp_path)
         ctx = shared.EditContext(data_dir=dd, uid="u1", commit=True, json_mode=True)
         rc = ctx.run(
-            action="test", plan={"x": 1},
+            action="test",
+            plan={"x": 1},
             apply_fn=lambda: {"result": "ok"},
             verify_fn=lambda: {"ok": False},
         )
@@ -274,7 +276,8 @@ class TestEditContext:
         dd = self._setup(tmp_path)
         ctx = shared.EditContext(data_dir=dd, uid="u1", commit=True, json_mode=True)
         rc = ctx.run(
-            action="test", plan={"x": 1},
+            action="test",
+            plan={"x": 1},
             apply_fn=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
         )
         assert rc == 1
@@ -330,14 +333,14 @@ class TestEditContext:
     def test_user_not_found(self, tmp_path):
         dd = tmp_path
         (dd / "users").mkdir()
-        (dd / "users.json").write_text('{}')
+        (dd / "users.json").write_text("{}")
         with pytest.raises(shared.EditError):
             shared.EditContext(data_dir=dd, uid="ghost", commit=False, json_mode=True)
 
     def test_require_user_false(self, tmp_path):
         dd = tmp_path
         (dd / "users").mkdir()
-        (dd / "users.json").write_text('{}')
+        (dd / "users.json").write_text("{}")
         ctx = shared.EditContext(data_dir=dd, uid="newuser", commit=False, json_mode=True, require_user=False)
         assert ctx.user_dir == dd / "users" / "newuser"
 
@@ -365,33 +368,3 @@ class TestWorldSnapshotMembers:
         assert "_ops_backups" not in names
         assert "_ops_world_backups" not in names
         assert "users.json" in names
-
-
-# ── _read_json_member ────────────────────────────────────────────────────
-
-
-class TestReadJsonMember:
-    def test_missing(self, tmp_path):
-        import tarfile
-        from io import BytesIO
-        p = tmp_path / "test.tar"
-        with tarfile.open(p, "w") as tar:
-            data = b"hello"
-            info = tarfile.TarInfo(name="a.txt")
-            info.size = len(data)
-            tar.addfile(info, BytesIO(data))
-        with tarfile.open(p, "r") as tar:
-            assert shared._read_json_member(tar, "no.json") is None
-
-    def test_valid(self, tmp_path):
-        import tarfile
-        from io import BytesIO
-        p = tmp_path / "test.tar"
-        with tarfile.open(p, "w") as tar:
-            data = json.dumps({"key": "val"}).encode()
-            info = tarfile.TarInfo(name="data.json")
-            info.size = len(data)
-            tar.addfile(info, BytesIO(data))
-        with tarfile.open(p, "r") as tar:
-            result = shared._read_json_member(tar, "data.json")
-            assert result == {"key": "val"}

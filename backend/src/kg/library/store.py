@@ -107,11 +107,6 @@ class LibraryStore:
         with Session(self.engine) as session:
             return session.get(LibraryBook, book_id)
 
-    def get_by_client_book_id(self, client_book_id: str) -> LibraryBook | None:
-        with Session(self.engine) as session:
-            stmt = select(LibraryBook).where(LibraryBook.client_book_id == client_book_id)
-            return session.exec(stmt).first()
-
     def create(self, req: BookCreateRequest) -> BookMetadataResponse:
         with Session(self.engine) as session:
             # Serialize the idempotency check with the insert across workers.
