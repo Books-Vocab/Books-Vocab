@@ -124,18 +124,28 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         fileManager: any BookFileManaging,
         toastCoordinator: AppToastCoordinator
     ) {
-        // 刪除是「暫存 DB 變更 → 刪檔 → 才 save」：檔案刪除失敗時 rollback() 讓 row 與
-        // 單字連結原封不動（若先 save 再刪檔，失敗時 row 已沒、檔案還在，使用者看到
-        // 「已刪除」後 AppOrphanBookRecovery 又讓書復活）。rollback() 會丟棄 context 內
-        // **所有**未存變更，故先把既有 pending 變更（autosave 尚未落盤者）沖掉，只讓
-        // rollback 涵蓋本次刪除。
+        // 刪除是「刪檔 → 暫存 DB 變更 → save」：檔案刪除失敗時 DB 與單字連結完全沒被碰過
+        // （若先 save 再刪檔，失敗時 row 已沒、檔案還在，使用者看到「已刪除」後
+        // AppOrphanBookRecovery 又讓書復活）。刻意不用「先暫存、失敗再 rollback()」來還原：
+        // CI（Xcode 26.5、iOS 26.4 simulator）實測 rollback() 之後，已載入的 VocabularyEntry
+        // 實例 bookId 仍是暫存的 nil（持久層正確、記憶體實例不一致，hasChanges 卻是 false），
+        // 書架 UI 讀的正是這些實例。rollback() 會丟棄 context 內**所有**未存變更，故先把既有 pending 變更
+        // （autosave 尚未落盤者）沖掉，讓 save 失敗時的 rollback 只涵蓋本次刪除。
         if modelContext.hasChanges {
             guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
         }
 
-        // Manual cascade: clear bookId on related vocabulary entries
         let bookId = book.id
         let fileName = book.epubFileName  // 先捕捉：row 刪除後再讀 property 可能已 fault
+        do {
+            try fileManager.deleteBookFile(named: fileName)
+        } catch {
+            AppLog.book.error("delete book: file removal failed, keeping book and links bookId=\(bookId): \(error.localizedDescription)")
+            toastCoordinator.error(L10n.string("刪除失敗，書籍檔案無法移除"))
+            return
+        }
+
+        // Manual cascade: clear bookId on related vocabulary entries
         var descriptor = FetchDescriptor<VocabularyEntry>()
         descriptor.predicate = #Predicate<VocabularyEntry> { $0.bookId == bookId }
         do {
@@ -148,16 +158,9 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         }
 
         modelContext.delete(book)
-        do {
-            try fileManager.deleteBookFile(named: fileName)
-        } catch {
-            AppLog.book.error("delete book: file removal failed, rolling back bookId=\(bookId): \(error.localizedDescription)")
-            modelContext.rollback()
-            toastCoordinator.error(L10n.string("刪除失敗，書籍檔案無法移除"))
-            return
-        }
         // save 失敗（罕見）：檔案已刪但 row 回滾保留、manifest 不動 → metadata 不遺失，
-        // 再刪一次即可完成（缺檔不算刪除失敗）。
+        // 再刪一次即可完成（缺檔不算刪除失敗）。持久層無損；已載入單字實例的 bookId 可能
+        // 仍是暫存的 nil（見上），重啟後以持久層為準，此罕見路徑不另行補還原。
         guard modelContext.safeSaveWithToast(toastCoordinator) else {
             modelContext.rollback()
             return

@@ -35,7 +35,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 | 檔案 | 說明 |
 |------|------|
-| `BookshelfCoordinator.swift` | `@MainActor protocol BookshelfCoordinating` + `@Observable @MainActor` 實作，含匯入、刪除、批次選擇、open reader / podcast 導航狀態、顯式同步 `sync(...)`（吃窄協定 `any BackgroundSyncing`，`isSyncing` 重入守衛，委派 `ExplicitSync.run`）。**刪除順序**：先沖掉既有 pending 變更 → 暫存 row 刪除 + 單字 `bookId` 清除 → `BookFileManaging.deleteBookFile`（throws；缺檔不算失敗）→ 成功才 save 並刪 manifest、toast「已刪除」；刪檔失敗 `rollback()` + 錯誤 toast，不可吞錯（否則 row 已消失、檔案仍在，`AppOrphanBookRecovery` 讓書復活） |
+| `BookshelfCoordinator.swift` | `@MainActor protocol BookshelfCoordinating` + `@Observable @MainActor` 實作，含匯入、刪除、批次選擇、open reader / podcast 導航狀態、顯式同步 `sync(...)`（吃窄協定 `any BackgroundSyncing`，`isSyncing` 重入守衛，委派 `ExplicitSync.run`）。**刪除順序**：先沖掉既有 pending 變更 → `BookFileManaging.deleteBookFile`（throws；缺檔不算失敗）→ 失敗：只彈錯誤 toast 並返回，row 與單字 `bookId` 完全未動，不可吞錯（否則 row 已消失、檔案仍在，`AppOrphanBookRecovery` 讓書復活）→ 成功才暫存 row 刪除 + 單字 `bookId` 清除、save、刪 manifest、toast「已刪除」；僅 save 失敗才 `rollback()`。**不可改回「先暫存再失敗時 rollback」**：`rollback()` 不還原已載入 `VocabularyEntry` 實例的 `bookId`（CI iOS 26.4 simulator 實測仍為暫存的 nil，`BookshelfDeleteBookTests` 守護） |
 
 ### Components Layer（row UI）
 
