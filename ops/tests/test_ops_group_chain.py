@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -35,7 +36,9 @@ run_one() {
     assert "beta" not in arms["alpha"]
 
 
-def test_absolute_calls_ignore_comments_strings_and_fixture_payloads(tmp_path: Path) -> None:
+def test_absolute_calls_ignore_comments_strings_and_fixture_payloads(
+    tmp_path: Path,
+) -> None:
     root = tmp_path
     dispatcher = root / "ops/test_ops.sh"
     script = root / "ops/demo.sh"
@@ -82,8 +85,78 @@ def test_current_ios_group_exposes_absolute_log_calls() -> None:
 def test_case_arms_covers_every_group_in_test_ops() -> None:
     arms = MODULE.case_arms()
 
-    assert {"ios-ops", "lldb-forensics", "ops-ci-coverage", "worktree", "asc", "release-surfaces"} <= set(arms)
+    assert {
+        "ios-ops",
+        "lldb-forensics",
+        "ops-ci-coverage",
+        "worktree",
+        "asc",
+        "release-surfaces",
+    } <= set(arms)
     assert "*" not in arms
+
+
+_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=\S.*")
+
+
+def _unchained_commands(arm: str) -> list[str]:
+    """Commands that are followed by another command without ``&&``.
+
+    run_one() runs under ``set +e`` and reports only the arm's last status, so
+    an unchained earlier command fails silently.  Pure assignments are not
+    commands whose status matters and are ignored.
+    """
+
+    logical: list[str] = []
+    pending = ""
+    for raw in arm.splitlines():
+        line = MODULE._strip_shell_comment(raw).rstrip()
+        if not line.strip():
+            continue
+        if line.endswith("\\"):
+            pending += line[:-1] + " "
+            continue
+        logical.append((pending + line).strip())
+        pending = ""
+    if pending.strip():
+        logical.append(pending.strip())
+    commands = [line for line in logical if not _ASSIGNMENT_RE.fullmatch(line)]
+    return [command for command in commands[:-1] if not command.endswith("&&")]
+
+
+def test_unchained_command_detector_flags_a_dropped_and() -> None:
+    arms = MODULE.parse_dispatcher(
+        """
+run_one() {
+  case "$1" in
+    good)
+      tests=(ops/tests/test_*.py)
+      ./ops/a.sh &&
+      uv run pytest -q \\
+        ops/tests/test_b.py
+      ;;
+    bad)
+      ./ops/a.sh
+      uv run pytest -q \\
+        ops/tests/test_b.py
+      ;;
+  esac
+}
+"""
+    )
+
+    assert _unchained_commands(arms["good"]) == []
+    assert _unchained_commands(arms["bad"]) == ["./ops/a.sh"]
+
+
+def test_every_multi_command_group_arm_chains_with_and() -> None:
+    offenders = {
+        group: unchained
+        for group, arm in MODULE.case_arms().items()
+        if (unchained := _unchained_commands(arm))
+    }
+
+    assert offenders == {}
 
 
 def test_delivery_control_group_discovers_all_delivery_test_modules() -> None:
@@ -116,7 +189,9 @@ def test_lldb_forensics_chain_has_no_absolute_path_invocation() -> None:
     assert MODULE.abs_calls("lldb-forensics") == []
 
 
-def test_abs_calls_in_file_ignores_shebang_comment_and_string_literals(tmp_path: Path) -> None:
+def test_abs_calls_in_file_ignores_shebang_comment_and_string_literals(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "fixture.sh"
     path.write_text(
         """#!/usr/bin/env bash

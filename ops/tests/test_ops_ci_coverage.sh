@@ -201,10 +201,8 @@ REACHABILITY_PATHSPECS=(
 )
 # "<test file>|<why it is not executed>".  An entry is tracked debt with a
 # follow-up, not an exemption: one that is routed, untracked or has no reason
-# turns this check red.
-UNROUTED_TESTS=(
-  "ops/tests/test_worktree_registry_published_base.py|red on main: test_reanchor_uses_exact_base_sha_when_legacy_base_is_a_ref reanchors to a target path the published-resume path-drift guard (50223f3d3) refuses; fix the fixture, then route it into worktree-extended"
-)
+# turns this check red.  Empty today.
+UNROUTED_TESTS=()
 
 # Print "<group><TAB><path or glob>" for every test path a case arm of run_one()
 # names.  Comments are stripped first; "devops/x" is not "ops/x".

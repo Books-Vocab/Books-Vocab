@@ -559,7 +559,10 @@ rsync_progress_flags() {
   # 必須用 if，不可縮寫成 `[[ -z … ]] && version_line=$(…)`：本檔 :11 是 set -euo
   # pipefail，帶參數呼叫時該 && 複合命令回 1，會當場殺掉整支腳本。
   if [[ -z "$version_line" ]]; then
-    version_line=$(rsync --version 2>&1 | head -1)
+    # 不經 `| head -1`：pipefail 下 head 提早關管會讓 rsync 吃 SIGPIPE（141），
+    # 整支腳本被 set -e 殺掉。整段讀進來再取首行，沒有會斷的管線。
+    version_line=$(rsync --version 2>&1) || true
+    version_line="${version_line%%$'\n'*}"
   fi
   if [[ "$version_line" == openrsync* ]]; then
     printf '%s\n' '--progress'

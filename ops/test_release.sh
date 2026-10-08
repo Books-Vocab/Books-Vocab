@@ -1457,8 +1457,9 @@ guard_rc=0; guard_out="$(bash -c "source '$REL'" 2>&1)" || guard_rc=$?
   && ok "source release.sh 不執行 dispatcher（BASH_SOURCE guard）" \
   || fail_t "source release.sh 有輸出/非零：rc=$guard_rc out=${guard_out:0:120}"
 
-# paths_trigger_rollout：委派 reconciler 的正則。uv.lock 那條是關鍵——orchestrate 的
-# `backend/` 前綴是超集，拿它決定等不等會去等一場永遠不會發生的 rollout，然後假紅。
+# paths_trigger_rollout：委派 reconciler 的正則，不另寫一份。「只有 docs／ios」那兩條
+# 鎖住 orchestrate 的 `backend/` 前綴超集不能決定等不等。uv.lock 自 #2088 起 reconciler
+# 會 rebuild（Dockerfile 依它安裝），所以 lock-only 範圍必須等 rollout；期望值跟著正則走。
 conv_paths() {  # <label> <yes|no> <paths...>
   local label="$1" expect="$2"; shift 2
   local got
@@ -1469,7 +1470,7 @@ conv_paths() {  # <label> <yes|no> <paths...>
 conv_paths "backend/src"          yes backend/src/kg/api.py
 conv_paths "backend/tests"        yes backend/tests/test_x.py
 conv_paths "pyproject（版號 bump）" yes backend/pyproject.toml
-conv_paths "只有 uv.lock"          no  backend/uv.lock
+conv_paths "只有 uv.lock（#2088）"  yes backend/uv.lock
 conv_paths "只有 docs"             no  docs/sop/release.md
 conv_paths "只有 ios"              no  ios/BooksAndVocab/App.swift
 conv_paths "uv.lock + src 混合"     yes backend/uv.lock backend/src/kg/api.py
