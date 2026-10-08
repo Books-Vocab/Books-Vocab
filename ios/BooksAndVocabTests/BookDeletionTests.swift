@@ -175,7 +175,8 @@ struct BookshelfDeleteBookTests {
         #expect(toast.current?.style == .success)
         let fresh = ModelContext(container)
         #expect(try fresh.fetch(FetchDescriptor<Book>()).isEmpty)
-        #expect(try fresh.fetch(FetchDescriptor<VocabularyEntry>()).first?.bookId == nil)
+        let entries = try fresh.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(entries.map(\.bookId) == [nil])
     }
 }
 #endif
