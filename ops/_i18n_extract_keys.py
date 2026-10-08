@@ -30,19 +30,25 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-IOS_SRC = ROOT / "ios" / "BooksAndVocab"
+# KG_I18N_SRC: same fixture override as ops/i18n_lint.sh.
+IOS_SRC = Path(
+    os.environ.get("KG_I18N_SRC") or ROOT / "ios" / "BooksAndVocab"
+).resolve()
 STRIP_PREVIEWS = ROOT / "ops" / "_i18n_strip_previews.py"
 
 # Load the preview-stripper as a module (loaded from its absolute path so this
 # works regardless of the caller's CWD / sys.path) and reuse its pure
 # text->text strip_previews(), instead of spawning one python3 subprocess per
 # Swift file — which is slow at repo scale and depends on bare `python3` on PATH.
-_strip_spec = importlib.util.spec_from_file_location("_i18n_strip_previews", STRIP_PREVIEWS)
+_strip_spec = importlib.util.spec_from_file_location(
+    "_i18n_strip_previews", STRIP_PREVIEWS
+)
 _strip_mod = importlib.util.module_from_spec(_strip_spec)
 _strip_spec.loader.exec_module(_strip_mod)
 
@@ -56,9 +62,9 @@ RE_L10N_FORMAT = re.compile(r'\bL10n\.format\(\s*"((?:[^"\\]|\\.)*)"\s*[,\)]')
 # Dynamic shapes — same prefix but no opening quote inside paren.
 RE_L10N_STRING_DYNAMIC = re.compile(r'\bL10n\.string\(\s*(?!")')
 RE_L10N_FORMAT_DYNAMIC = re.compile(r'\bL10n\.format\(\s*(?!")')
-RE_VAR_DOT_LOCALIZED = re.compile(r'\b([A-Za-z_][\w.]*)\.localized\b')
+RE_VAR_DOT_LOCALIZED = re.compile(r"\b([A-Za-z_][\w.]*)\.localized\b")
 
-ALLOW_MARK = re.compile(r'//\s*i18n-allow')
+ALLOW_MARK = re.compile(r"//\s*i18n-allow")
 
 # Known enums whose `titleKey: String` we statically expand. We do not auto-
 # discover enums to keep behavior deterministic — add new ones here when the

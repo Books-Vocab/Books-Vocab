@@ -1,0 +1,4 @@
+/* Fixture: one key defined twice in one file. CFPropertyList keeps the last value. */
+"關閉" = "Close";
+"字幕大小" = "Subtitle Size";
+"關閉" = "Off";

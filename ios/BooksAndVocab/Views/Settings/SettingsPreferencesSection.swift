@@ -272,7 +272,7 @@ struct SettingsPreferencesSection: View {
     private var autoLinkRow: some View {
         AppKeyValueRow(
             icon: "point.3.connected.trianglepath.dotted",
-            label: L10n.string("自動連結"),
+            label: L10n.string("settings.autoLink.title"),
             style: .settings(appSkin)
         ) {
             Toggle("", isOn: Binding(

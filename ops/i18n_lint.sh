@@ -6,7 +6,7 @@
 #   --baseline Write current findings count to ops/i18n_baseline.txt. Use to lock in a watermark.
 #   --baseline-check
 #              Compare current findings to baseline; fail if regressed (count > baseline).
-#   --strict   Any finding fails. Use in CI / Xcode Run Script Phase after sweep done.
+#   --strict   Any finding fails, plus the localized_calls watermark. CI gate (ui-quality-gate).
 #              Adds three coverage checks on top of the legacy finding count:
 #                A. Key Coverage — every static key referenced from .swift must exist
 #                   in en.lproj/Localizable.strings or .stringsdict.
@@ -35,15 +35,21 @@
 #   - ProgressView("中") / vocabLabelChip(title: "中") / .accessibilityLabel("中")
 #   - static let \w+ = (DateFormatter|RelativeDateTimeFormatter|NumberFormatter)
 #
+# Localization files (every mode): a key defined twice in one .strings/.stringsdict
+# (the runtime keeps the last value; ops/_i18n_duplicate_keys.py). Never debt:
+# kept out of `total`, and --baseline / --baseline-check / --strict all fail on it.
+# KG_I18N_SRC / KG_I18N_BASELINE redirect root / baseline for ops/tests/test_i18n_lint.sh.
+#
 # Exclusions: *Preview*.swift, *Tests*.swift, *PreviewData*, .localized / L10n. usage on same line.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-IOS_SRC="$ROOT_DIR/ios/BooksAndVocab"
-BASELINE_FILE="$ROOT_DIR/ops/i18n_baseline.txt"
+IOS_SRC="${KG_I18N_SRC:-$ROOT_DIR/ios/BooksAndVocab}"
+BASELINE_FILE="${KG_I18N_BASELINE:-$ROOT_DIR/ops/i18n_baseline.txt}"
 STRIP_PREVIEWS="$ROOT_DIR/ops/_i18n_strip_previews.py"
 KEY_EXTRACTOR="$ROOT_DIR/ops/_i18n_extract_keys.py"
+DUPLICATE_KEYS="$ROOT_DIR/ops/_i18n_duplicate_keys.py"
 EN_STRINGS="$IOS_SRC/en.lproj/Localizable.strings"
 EN_STRINGSDICT="$IOS_SRC/en.lproj/Localizable.stringsdict"
 
@@ -181,6 +187,11 @@ scan_localized_usage() {
     "$LOCALIZED_USAGE_PATTERN" "$IOS_SRC" 2>/dev/null || true
 }
 
+# A helper crash is itself a finding: the gate must not read "could not scan" as clean.
+scan_duplicate_keys() {
+  "${PY_CMD[@]}" "$DUPLICATE_KEYS" "$IOS_SRC" || echo "duplicate-key scan failed: $DUPLICATE_KEYS"
+}
+
 # ---- strict-only coverage checks --------------------------------------------
 #
 # These run only in --strict mode (gated by main). They compare the Swift call
@@ -199,6 +210,7 @@ try:
     payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
+    print("missing_key: <key extractor failed; coverage unverified>")  # fail closed
     sys.exit(0)
 # Parse en.lproj/Localizable.strings — simple "key" = "value"; entries; ignore
 # // and /* */ comments. Tolerant rather than strict — we want every defined key.
@@ -282,6 +294,7 @@ try:
     payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
+    print("plural_missing: <key extractor failed; coverage unverified>")  # fail closed
     sys.exit(0)
 src = ""
 try:
@@ -324,11 +337,13 @@ raw_hits="$(scan_raw_chinese)"
 ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
 localized_hits="$(scan_localized_usage)"
+dup_hits="$(scan_duplicate_keys)"
 
 raw_count=$(count_lines "$raw_hits")
 ret_count=$(count_lines "$ret_hits")
 fmt_count=$(count_lines "$fmt_hits")
 localized_count=$(count_lines "$localized_hits")
+dup_count=$(count_lines "$dup_hits")
 total=$((raw_count + ret_count + fmt_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
@@ -355,6 +370,11 @@ print_findings() {
     printf '%s\n' "$fmt_hits"
     echo
   fi
+  if [ -n "$dup_hits" ]; then
+    echo "=== Duplicate localization keys ($dup_count) ==="
+    printf '%s\n' "$dup_hits"
+    echo
+  fi
   if [ -n "$missing_key_hits" ]; then
     echo "=== Missing en.lproj keys ($missing_key_count) ==="
     printf '%s\n' "$missing_key_hits"
@@ -370,12 +390,53 @@ print_findings() {
     printf '%s\n' "$plural_missing_hits"
     echo
   fi
-  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count localized_calls=$localized_count)"
+  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count dup=$dup_count localized_calls=$localized_count)"
+}
+
+# Duplicate keys are never debt: no gating mode may fold them into a watermark.
+reject_duplicates() {
+  [ "$dup_count" -eq 0 ] && return 0
+  echo "[i18n_lint] FAIL: $dup_count duplicate-key finding(s); fix them, they cannot be baselined" >&2
+  exit 1
+}
+
+# True when the baseline carries any localized_calls= line, even a malformed one.
+has_localized_watermark() {
+  grep -q '^localized_calls=' "$BASELINE_FILE" 2>/dev/null
+}
+
+# .localized debt only ratchets down; --strict (CI) requires the watermark to exist.
+# Fail closed (exit 2, tool error) unless it is exactly one non-negative integer:
+# a malformed value would make `[ -gt ]` error, read false inside `if`, and pass.
+check_localized_watermark() {
+  local lines n
+  lines=$(grep '^localized_calls=' "$BASELINE_FILE" 2>/dev/null || true)
+  if [ -z "$lines" ]; then
+    echo "[i18n_lint] error: no localized_calls= watermark in $BASELINE_FILE" >&2
+    exit 2
+  fi
+  n=$(printf '%s\n' "$lines" | grep -c .)
+  if [ "$n" -ne 1 ]; then
+    echo "[i18n_lint] error: duplicate localized_calls watermark ($n lines) in $BASELINE_FILE" >&2
+    exit 2
+  fi
+  localized_baseline=${lines#localized_calls=}
+  case "$localized_baseline" in
+    ''|*[!0-9]*)
+      echo "[i18n_lint] error: malformed localized_calls watermark '$localized_baseline' in $BASELINE_FILE (want a non-negative integer)" >&2
+      exit 2
+      ;;
+  esac
+  if [ "$localized_count" -gt "$localized_baseline" ]; then
+    echo "[i18n_lint] REGRESSION: localized_calls $localized_count > baseline $localized_baseline" >&2
+    exit 1
+  fi
 }
 
 case "$MODE" in
   --baseline)
     print_findings
+    reject_duplicates
     cat > "$BASELINE_FILE" <<EOF
 findings=$total
 localized_calls=$localized_count
@@ -385,23 +446,26 @@ EOF
     ;;
   --baseline-check)
     print_findings
+    reject_duplicates
     if [ ! -f "$BASELINE_FILE" ]; then
       echo "[i18n_lint] error: $BASELINE_FILE missing; run --baseline first" >&2
       exit 2
     fi
     baseline=$(awk -F= '/^findings=/{print $2}' "$BASELINE_FILE")
-    localized_baseline=$(awk -F= '/^localized_calls=/{print $2}' "$BASELINE_FILE")
     if [ -z "$baseline" ]; then
       baseline=$(tr -d '[:space:]' < "$BASELINE_FILE")
     fi
+    case "$baseline" in
+      ''|*[!0-9]*)  # empty, non-numeric or multi-line: `[ -gt ]` would error and read false
+        echo "[i18n_lint] error: malformed findings baseline '$baseline' in $BASELINE_FILE (want one non-negative integer)" >&2
+        exit 2
+        ;;
+    esac
     if [ "$total" -gt "$baseline" ]; then
       echo "[i18n_lint] REGRESSION: $total > baseline $baseline" >&2
       exit 1
     fi
-    if [ -n "$localized_baseline" ] && [ "$localized_count" -gt "$localized_baseline" ]; then
-      echo "[i18n_lint] REGRESSION: localized_calls $localized_count > baseline $localized_baseline" >&2
-      exit 1
-    fi
+    ! has_localized_watermark || check_localized_watermark
     echo "[i18n_lint] ok: $total <= baseline $baseline"
     exit 0
     ;;
@@ -416,10 +480,13 @@ EOF
     plural_missing_count=$(count_lines "$plural_missing_hits")
     strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count))
     print_findings
+    reject_duplicates
     if [ "$strict_total" -gt 0 ]; then
       echo "[i18n_lint] FAIL strict: $strict_total findings (legacy=$total, coverage=$missing_key_count, en_cjk=$en_cjk_count, plural=$plural_missing_count)" >&2
       exit 1
     fi
+    check_localized_watermark
+    echo "[i18n_lint] ok strict: 0 findings, localized_calls $localized_count <= baseline $localized_baseline"
     exit 0
     ;;
   --report|*)

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%d 個單字</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%d words</string>
+	</dict>
+	<key>%d 本書</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%d books</string>
+	</dict>
+	<key>%d 個單字</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%d vocabulary words</string>
+	</dict>
+</dict>
+</plist>
