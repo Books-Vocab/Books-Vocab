@@ -806,3 +806,47 @@ def test_notification_still_reaches_owner_who_signed_in_again_after_deletion(tmp
     assert result["updated"] is True
     assert result["user_id"] == "apple-X"
     assert users_store["apple-X"]["subscription"]["is_active"] is False
+
+
+def test_refund_after_rejected_sync_of_other_users_jws_revokes_owner_not_attacker(tmp_path):
+    """#2253: Q's rejected sync of P's JWS must not redirect the index, so REFUND hits P."""
+    from fastapi import HTTPException
+
+    from kg.api_models import AppStoreSyncRequest
+    from kg.billing.index import account_token_for_user
+    from kg.billing_handlers import sync_app_store_subscription_response
+
+    users_store = {
+        "P": {"subscription": {"is_active": True, "status": "active", "original_transaction_id": "orig-1"}},
+        "Q": {"config": {}},
+        "_subscription_index": {"orig-1": "P", "txn-1": "P"},
+    }
+    stolen = {**_make_snapshot(), "app_account_token": account_token_for_user("P")}
+    with pytest.raises(HTTPException):
+        sync_app_store_subscription_response(
+            AppStoreSyncRequest(product_id="pro_monthly", transaction_id="txn-1", signed_transaction_info="j"),
+            {"id": "Q"},
+            allow_unsigned_sync=False,
+            users_lock_file=tmp_path / "lock",
+            load_users=lambda: users_store,
+            save_users=lambda u: None,
+            decode_signed_transaction_info=lambda _s: stolen,
+            write_subscription_snapshot=_real_write_snapshot(),
+            build_entitlements_response=_entitlements_from_record,
+        )
+
+    refund = {**_make_snapshot(), "status": "expired", "will_renew": False}
+    result = app_store_notifications_response(
+        AppStoreNotificationRequest(notification_type="REFUND", signed_payload="s"),
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=lambda u: None,
+        decode_notification_payload=MagicMock(return_value=(refund, {"notificationType": "REFUND"})),
+        append_app_store_event=MagicMock(),
+        resolve_user_id_from_subscription_index=_real_resolver(),
+        write_subscription_snapshot=_real_write_snapshot(),
+        build_entitlements_response=_entitlements_from_record,
+    )
+    assert result["user_id"] == "P"
+    assert users_store["P"]["subscription"]["is_active"] is False
+    assert "subscription" not in users_store["Q"]

@@ -247,3 +247,107 @@ def test_sync_forged_cert_chain_maps_to_400_not_500(tmp_path, monkeypatch):
             req, {"id": "u1"}, allow_unsigned_sync=False, **deps
         )
     assert exc_info.value.status_code == 400
+
+
+# ── #2253: appAccountToken / index ownership binding ───────────────────────────
+
+import copy  # noqa: E402
+
+from kg.billing import write_subscription_snapshot as _real_write  # noqa: E402
+from kg.billing.index import account_token_for_user  # noqa: E402
+from kg.billing.notifications import verified_transaction_snapshot  # noqa: E402
+
+
+def _owned_state():
+    return {
+        "P": {"subscription": {"is_active": True, "status": "active", "original_transaction_id": "orig-1"}},
+        "Q": {"config": {}},
+        "_subscription_index": {"orig-1": "P", "txn-1": "P"},
+    }
+
+
+def _sync(tmp_path, users, caller, token):
+    snapshot = _make_snapshot()
+    if token is not None:
+        snapshot["app_account_token"] = token
+    saved = MagicMock()
+    req = AppStoreSyncRequest(
+        product_id="pro_monthly",
+        transaction_id="txn-1",
+        original_transaction_id="orig-1",
+        signed_transaction_info="signed.jws",
+    )
+    return saved, lambda: sync_app_store_subscription_response(
+        req,
+        {"id": caller},
+        allow_unsigned_sync=False,
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users,
+        save_users=saved,
+        decode_signed_transaction_info=lambda _s: snapshot,
+        write_subscription_snapshot=_real_write,
+        build_entitlements_response=lambda rec: _active_entitlements(),
+    )
+
+
+def test_verified_snapshot_carries_app_account_token_but_not_into_stored_fields():
+    snap = verified_transaction_snapshot(
+        {"productId": "pro_monthly", "transactionId": "t", "originalTransactionId": "o", "appAccountToken": "abc"},
+        parse_datetime_fn=lambda v: v,
+    )
+    assert snap["app_account_token"] == "abc"
+    snap = verified_transaction_snapshot({"productId": "pro_monthly"}, parse_datetime_fn=lambda v: v)
+    assert snap["app_account_token"] is None
+
+
+def test_sync_rejects_jws_whose_token_belongs_to_another_user(tmp_path):
+    users = _owned_state()
+    before = copy.deepcopy(users)
+    saved, run = _sync(tmp_path, users, "Q", account_token_for_user("P"))
+    with pytest.raises(HTTPException) as exc:
+        run()
+    assert exc.value.status_code in (403, 409)
+    assert users == before
+    saved.assert_not_called()
+
+
+def test_sync_rejects_tokenless_jws_for_index_owned_by_other_user(tmp_path):
+    users = _owned_state()
+    before = copy.deepcopy(users)
+    saved, run = _sync(tmp_path, users, "Q", None)
+    with pytest.raises(HTTPException) as exc:
+        run()
+    assert exc.value.status_code == 409
+    assert users["_subscription_index"]["orig-1"] == "P"
+    assert users == before
+    saved.assert_not_called()
+
+
+def test_sync_rejects_unparsable_token_as_mismatch(tmp_path):
+    users = _owned_state()
+    _, run = _sync(tmp_path, users, "Q", "not-a-uuid")
+    with pytest.raises(HTTPException):
+        run()
+    assert users["_subscription_index"]["orig-1"] == "P"
+
+
+def test_sync_own_token_accepted_case_insensitively_and_claims(tmp_path):
+    users = _owned_state()
+    _, run = _sync(tmp_path, users, "Q", account_token_for_user("Q").upper())
+    run()
+    assert users["_subscription_index"]["orig-1"] == "Q"
+    assert "subscription" in users["Q"]
+
+
+def test_sync_first_purchase_without_owner_unchanged(tmp_path):
+    users = {"Q": {"config": {}}}
+    _, run = _sync(tmp_path, users, "Q", None)
+    run()
+    assert users["_subscription_index"]["orig-1"] == "Q"
+
+
+def test_sync_owner_resyncing_own_tokenless_jws_unchanged(tmp_path):
+    users = _owned_state()
+    _, run = _sync(tmp_path, users, "P", None)
+    run()
+    assert users["_subscription_index"]["orig-1"] == "P"
