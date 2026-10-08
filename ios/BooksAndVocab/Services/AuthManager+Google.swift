@@ -79,7 +79,7 @@ extension AuthManager {
                 )
             } catch {
                 AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
-                self.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
+                let shouldRecord = self.handleVerifyFailure(error)
                 AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
                 AppCrashReporting.addBreadcrumb(
                     category: "auth",
@@ -87,7 +87,7 @@ extension AuthManager {
                     level: .warning,
                     data: ["provider": "google", "stage": "verify"]
                 )
-                if !(error is CancellationError) {
+                if shouldRecord {
                     AppCrashReporting.record(error, context: "auth.google.verify")
                 }
             }
