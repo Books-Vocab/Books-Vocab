@@ -5,13 +5,21 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.observations import PullRequestSnapshot
+from ..ports.github import RequiredTriggerOutcome
 from .errors import AdapterCommandError, AdapterPayloadError
 from .github_client import GitHubCliClient
 from .github_queue import GitHubQueueGraphQLAdapter
+from .github_required_run import (
+    JobCounts,
+    assess_active_run,
+    parse_job_counts,
+    run_jobs_command,
+    wedged_run_after,
+)
 from .timestamps import parse_optional_timestamp
 
 _READ_AFTER_WRITE_ATTEMPTS = 5
@@ -20,7 +28,7 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _ACTIVE_RUN_STATUSES = frozenset(
     {"queued", "in_progress", "waiting", "requested", "pending"}
 )
-_STALE_QUEUED_RUN_AFTER = timedelta(minutes=15)
+_FAILED_JOB_CONCLUSIONS = frozenset({"failure", "cancelled", "timed_out"})
 _CANCEL_REREAD_ATTEMPTS = 3
 _CANCEL_REREAD_DELAY_SECONDS = 1.0
 _CANCEL_COMPLETED_RACE_MARKER = "cannot cancel a workflow run that is completed"
@@ -146,6 +154,11 @@ class GitHubCommands:
                 time.sleep(_READ_AFTER_WRITE_DELAY_SECONDS)
         raise CompareAndSwapConflict(conflict_message)
 
+    def _load_job_counts(self, database_id: int) -> JobCounts:
+        return parse_job_counts(
+            self.client.load_json(run_jobs_command(database_id=database_id))
+        )
+
     def trigger_required(
         self,
         *,
@@ -153,7 +166,7 @@ class GitHubCommands:
         branch: str,
         base_sha: str,
         head_sha: str,
-    ) -> tuple[str, ...]:
+    ) -> RequiredTriggerOutcome:
         del number, base_sha
         list_argv = _required_run_list_command(branch=branch, head_sha=head_sha)
         created_at, database_id, status, conclusion = _select_exact_required_run(
@@ -161,96 +174,27 @@ class GitHubCommands:
             branch=branch,
             head_sha=head_sha,
         )
+        recovered_reason: str | None = None
         if status in _ACTIVE_RUN_STATUSES:
-            queued_is_stale = (
-                status == "queued"
-                and datetime.now(tz=UTC) - created_at >= _STALE_QUEUED_RUN_AFTER
+            assessment = assess_active_run(
+                database_id=database_id,
+                status=status,
+                created_at=created_at,
+                now=datetime.now(tz=UTC),
+                threshold=wedged_run_after(),
+                load_jobs=lambda: self._load_job_counts(database_id),
             )
-            if not queued_is_stale:
-                raise AdapterPayloadError(
-                    "exact pull_request pr-gate run is still active; refusing duplicate rerun"
-                )
-
-            cancel_argv = ("gh", "run", "cancel", "--force", str(database_id))
-            cancel_result = self.client.runner.run(
-                cancel_argv,
-                cwd=self.client.repo,
+            if not assessment.wedged:
+                # A waiting or partially executing run is evidence, not an
+                # obstacle: never cancel it and never dispatch a duplicate.
+                return RequiredTriggerOutcome((), "wait", assessment.reason)
+            recovered_reason = assessment.reason
+            database_id, status, conclusion = self._cancel_wedged_run(
+                list_argv=list_argv,
+                database_id=database_id,
+                branch=branch,
+                head_sha=head_sha,
             )
-            # Cancellation is asynchronous and may race with GitHub's own
-            # terminal transition. Never infer cancellation from exit status;
-            # select the same exact run again before rerunning it. GitHub can
-            # report the run as already completed while the list endpoint
-            # briefly continues to expose its queued state, so only that
-            # specific race gets a bounded additional read window.
-            cancel_detail = f"{cancel_result.stdout}\n{cancel_result.stderr}".casefold()
-            reread_attempts = (
-                _CANCEL_REREAD_ATTEMPTS
-                if (
-                    cancel_result.exit_code != 0
-                    and _CANCEL_COMPLETED_RACE_MARKER in cancel_detail
-                )
-                else 1
-            )
-            for attempt in range(reread_attempts):
-                created_at, database_id, status, conclusion = (
-                    _select_exact_required_run(
-                        self.client.load_json(list_argv),
-                        branch=branch,
-                        head_sha=head_sha,
-                    )
-                )
-                del created_at
-                if status not in _ACTIVE_RUN_STATUSES:
-                    break
-                if attempt + 1 < reread_attempts:
-                    time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
-            else:
-                if (
-                    cancel_result.exit_code == 0
-                    or _CANCEL_COMPLETED_RACE_MARKER not in cancel_detail
-                ):
-                    if cancel_result.exit_code != 0:
-                        raise AdapterCommandError(cancel_result)
-                    raise AdapterPayloadError(
-                        "stale exact pull_request pr-gate run remained active after forced cancel"
-                    )
-
-                expected_database_id = database_id
-                view_argv = _required_run_view_command(database_id=expected_database_id)
-                view_terminal = False
-                for attempt in range(_CANCEL_REREAD_ATTEMPTS):
-                    (
-                        view_created_at,
-                        viewed_database_id,
-                        view_status,
-                        view_conclusion,
-                    ) = _select_exact_required_run(
-                        [self.client.load_json(view_argv)],
-                        branch=branch,
-                        head_sha=head_sha,
-                    )
-                    del view_created_at
-                    if viewed_database_id != expected_database_id:
-                        raise AdapterPayloadError(
-                            "authoritative exact pull_request pr-gate run identity changed"
-                        )
-                    database_id = viewed_database_id
-                    status = view_status
-                    conclusion = view_conclusion
-                    if status not in _ACTIVE_RUN_STATUSES:
-                        view_terminal = True
-                        break
-                    if attempt + 1 < _CANCEL_REREAD_ATTEMPTS:
-                        time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
-                if not view_terminal:
-                    raise AdapterPayloadError(
-                        "authoritative exact pull_request pr-gate run remained active "
-                        "after completed-cancel race"
-                    )
-            if status != "completed" or conclusion is None:
-                raise AdapterPayloadError(
-                    "exact pull_request pr-gate run has an invalid terminal state"
-                )
         if status != "completed" or conclusion is None:
             raise AdapterPayloadError(
                 "exact pull_request pr-gate run has an invalid terminal state"
@@ -259,9 +203,104 @@ class GitHubCommands:
             raise AdapterPayloadError(
                 "exact pull_request pr-gate run already succeeded; refusing duplicate rerun"
             )
-        argv = ("gh", "run", "rerun", str(database_id))
+        if recovered_reason is not None:
+            # No job ever ran, so there is no green evidence to preserve.
+            return self._rerun(
+                database_id,
+                failed_only=False,
+                action="recover_wedged_run",
+                reason=f"{recovered_reason}; cancelled and rerun in full",
+            )
+        failed_only = conclusion.casefold() in _FAILED_JOB_CONCLUSIONS
+        return self._rerun(
+            database_id,
+            failed_only=failed_only,
+            action="rerun_failed_jobs" if failed_only else "rerun",
+            reason=(
+                f"run {database_id} finished {conclusion}; "
+                + (
+                    "rerunning only its failed jobs to keep green evidence"
+                    if failed_only
+                    else "rerunning it in full"
+                )
+            ),
+        )
+
+    def _rerun(
+        self, database_id: int, *, failed_only: bool, action: str, reason: str
+    ) -> RequiredTriggerOutcome:
+        argv = (
+            ("gh", "run", "rerun", "--failed", str(database_id))
+            if failed_only
+            else ("gh", "run", "rerun", str(database_id))
+        )
         self.client.run(argv)
-        return argv
+        return RequiredTriggerOutcome(argv, action, reason)
+
+    def _cancel_wedged_run(
+        self,
+        *,
+        list_argv: tuple[str, ...],
+        database_id: int,
+        branch: str,
+        head_sha: str,
+    ) -> tuple[int, str, str | None]:
+        cancel_argv = ("gh", "run", "cancel", "--force", str(database_id))
+        cancel_result = self.client.runner.run(cancel_argv, cwd=self.client.repo)
+        # Cancellation is asynchronous and may race with GitHub's own terminal
+        # transition. Never infer cancellation from exit status; select the
+        # same exact run again before rerunning it. GitHub can report the run
+        # as already completed while the list endpoint briefly continues to
+        # expose its queued state, so only that specific race gets a bounded
+        # additional read window.
+        cancel_detail = f"{cancel_result.stdout}\n{cancel_result.stderr}".casefold()
+        completed_race = (
+            cancel_result.exit_code != 0
+            and _CANCEL_COMPLETED_RACE_MARKER in cancel_detail
+        )
+        reread_attempts = _CANCEL_REREAD_ATTEMPTS if completed_race else 1
+        for attempt in range(reread_attempts):
+            _, database_id, status, conclusion = _select_exact_required_run(
+                self.client.load_json(list_argv),
+                branch=branch,
+                head_sha=head_sha,
+            )
+            if status not in _ACTIVE_RUN_STATUSES:
+                return database_id, status, conclusion
+            if attempt + 1 < reread_attempts:
+                time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
+        if not completed_race:
+            if cancel_result.exit_code != 0:
+                raise AdapterCommandError(cancel_result)
+            raise AdapterPayloadError(
+                "stale exact pull_request pr-gate run remained active after forced cancel"
+            )
+        return self._view_completed_race(
+            database_id=database_id, branch=branch, head_sha=head_sha
+        )
+
+    def _view_completed_race(
+        self, *, database_id: int, branch: str, head_sha: str
+    ) -> tuple[int, str, str | None]:
+        view_argv = _required_run_view_command(database_id=database_id)
+        for attempt in range(_CANCEL_REREAD_ATTEMPTS):
+            _, viewed_id, status, conclusion = _select_exact_required_run(
+                [self.client.load_json(view_argv)],
+                branch=branch,
+                head_sha=head_sha,
+            )
+            if viewed_id != database_id:
+                raise AdapterPayloadError(
+                    "authoritative exact pull_request pr-gate run identity changed"
+                )
+            if status not in _ACTIVE_RUN_STATUSES:
+                return viewed_id, status, conclusion
+            if attempt + 1 < _CANCEL_REREAD_ATTEMPTS:
+                time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
+        raise AdapterPayloadError(
+            "authoritative exact pull_request pr-gate run remained active "
+            "after completed-cancel race"
+        )
 
     def trigger_readiness(
         self,

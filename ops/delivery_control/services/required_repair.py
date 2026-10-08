@@ -28,6 +28,8 @@ class RequiredRepairResult:
     holds: frozenset[HoldKind]
     dispatch_command: tuple[str, ...]
     dispatched: bool = True
+    dispatch_action: str = "dispatch"
+    dispatch_reason: str = ""
     merge_eligibility_assessed: bool = False
 
 
@@ -120,7 +122,7 @@ class RequiredRepairService:
         required = self._required(number, head_sha=current.receipt.head_sha)
         final = self._context(number, expected_receipt=current.receipt)
 
-        command = self.command.trigger_required(
+        outcome = self.command.trigger_required(
             number=number,
             branch=final.pull_request.branch,
             base_sha=final.pull_request.base_sha,
@@ -130,5 +132,8 @@ class RequiredRepairService:
             pull_request=final.pull_request,
             required=required,
             holds=final.holds,
-            dispatch_command=command,
+            dispatch_command=outcome.command,
+            dispatched=outcome.dispatched,
+            dispatch_action=outcome.action,
+            dispatch_reason=outcome.reason,
         )
