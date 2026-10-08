@@ -35,9 +35,33 @@ jobs:
         with:
           version: '0.8.23'
 
+      # HEADGREEN gates the group on its head's `required` only, and for a
+      # cumulative group (#8 behind #7) merge_group.base_sha is #7's merge, which
+      # hides #7 from the diff check and scope router.  Use origin/main's fork
+      # point (the ref agent-review bounds membership with); fail closed.
+      - name: Resolve merge-group diff base
+        id: base
+        env:
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet 'refs/remotes/origin/main^{commit}' >/dev/null; then
+            echo "origin/main is unavailable; cannot bound the cumulative merge group" >&2
+            exit 1
+          fi
+          if ! base_sha="$(git merge-base refs/remotes/origin/main "$HEAD_SHA")"; then
+            echo "no merge base between origin/main and merge-group head $HEAD_SHA" >&2
+            exit 1
+          fi
+          if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "merge base is not an exact commit SHA: $base_sha" >&2
+            exit 1
+          fi
+          echo "sha=$base_sha" >>"$GITHUB_OUTPUT"
+
       - name: Check merge-group diff
         env:
-          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
@@ -46,7 +70,7 @@ jobs:
       - name: Classify merge-group scope
         id: scope
         env:
-          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
