@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
 import secrets
 from contextvars import ContextVar
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import jwt as pyjwt
-from fastapi import FastAPI
+import pytest
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from conftest import make_jwt, make_settings
@@ -231,3 +233,55 @@ def test_full_key_table_does_not_reject_verified_users_or_auth_verify(tmp_path):
 
     assert verified.status_code == 200
     assert sign_in.status_code == 200
+
+
+def _request_id_probe_app() -> tuple[FastAPI, list[str | None], ContextVar[str]]:
+    app = FastAPI()
+    captured: list[str | None] = []
+    var: ContextVar[str] = ContextVar("request_id")
+
+    @app.get("/api/rid")
+    def rid(request: Request):
+        return {"state": request.state.request_id, "var": var.get()}
+
+    install_app_middlewares_from_dependencies(
+        dependencies=replace(
+            _dependencies(app),
+            request_id_var=var,
+            tag_request_id=lambda r: captured.append(r),
+        )
+    )
+    return app, captured, var
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["<img src=x onerror=alert(1)>", "a" * 65, "has space", "ü-non-ascii"],
+)
+def test_invalid_request_id_header_is_replaced_with_generated_id(hostile):
+    app, captured, _var = _request_id_probe_app()
+    client = TestClient(app)
+    try:
+        response = client.get("/api/rid", headers={"X-Request-ID": hostile.encode()})
+    finally:
+        client.close()
+
+    body = response.json()
+    generated = response.headers["x-request-id"]
+    assert re.fullmatch(r"[0-9a-f]{16}", generated)
+    assert body["state"] == generated
+    assert body["var"] == generated
+    assert captured == [generated]
+
+
+def test_valid_request_id_header_is_propagated_unchanged():
+    app, captured, _var = _request_id_probe_app()
+    client = TestClient(app)
+    try:
+        response = client.get("/api/rid", headers={"X-Request-ID": "abc-123_x.y"})
+    finally:
+        client.close()
+
+    assert response.headers["x-request-id"] == "abc-123_x.y"
+    assert response.json() == {"state": "abc-123_x.y", "var": "abc-123_x.y"}
+    assert captured == ["abc-123_x.y"]
