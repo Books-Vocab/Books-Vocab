@@ -157,6 +157,85 @@ def test_delete_account_removes_global_podcast_progress_for_canonical_and_linked
     assert retry.status_code == 401
 
 
+def test_delete_account_removes_global_log_stores_for_canonical_and_linked_users(isolated_api):
+    from kg import judge_log, llm_error_log, translate_log, vocab_add_link_operation
+    from kg.api import app
+    from kg.deps import _shared_deck_store
+
+    canonical_id = isolated_api.user_id
+    linked_id = "linked_log_user"
+    other_id = "other_user"
+
+    users = json.loads(isolated_api.users_file.read_text())
+    users[canonical_id]["linked_ids"] = [linked_id]
+    users[linked_id] = {"_linked_to": canonical_id, "config": {}}
+    isolated_api.users_file.write_text(json.dumps(users))
+    app.state.user_store.invalidate()
+
+    shared_store = _shared_deck_store(app.state.kg_settings)
+    for uid in (canonical_id, linked_id, other_id):
+        vocab_add_link_operation.create_operation(
+            user_id=uid, notebook_id="nb", idempotency_key=f"k-{uid}", payload={"source": "s", "context": "c"}
+        )
+        translate_log.record(
+            user_id=uid,
+            operation="translate",
+            word="w",
+            context="c",
+            context_hash="h",
+            source_lang="en",
+            target_lang="zh",
+            response_raw="r",
+            latency_ms=1,
+        )
+        translate_log.record_cache_hit(
+            user_id=uid, operation="translate", word="w", context_hash="h", source_lang="en", target_lang="zh"
+        )
+        judge_log.record(
+            user_id=uid,
+            notebook_id="nb",
+            from_id="a",
+            to_id="b",
+            similarity=0.5,
+            verdict="related",
+            confidence=0.9,
+            accepted=True,
+        )
+        llm_error_log.record(user_id=uid, call_type="judge", error_class="RateLimitError")
+        assert shared_store.record_copy(uid, f"k-{uid}", "deck", 1, "nb")
+
+    def counts() -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        for label, mod, table in (
+            ("ops", vocab_add_link_operation, "vocab_add_link_operations"),
+            ("tl", translate_log, "translate_log"),
+            ("tch", translate_log, "translate_cache_hits"),
+            ("judge", judge_log, "judge_log"),
+            ("llm", llm_error_log, "llm_errors"),
+        ):
+            with mod._lock:
+                rows = mod._get_conn().execute(f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id").fetchall()
+            out[label] = dict(rows)
+        out["copy"] = {
+            uid: int(shared_store.get_copy_log(uid, f"k-{uid}") is not None)
+            for uid in (canonical_id, linked_id, other_id)
+        }
+        return out
+
+    before = counts()
+    for label, per_user in before.items():
+        assert per_user.get(canonical_id) == 1 and per_user.get(linked_id) == 1, label
+
+    deleted = isolated_api.client.delete("/api/user/account", headers=isolated_api.headers)
+    assert deleted.status_code == 200, deleted.text
+
+    after = counts()
+    for label, per_user in after.items():
+        assert per_user.get(canonical_id, 0) == 0, label
+        assert per_user.get(linked_id, 0) == 0, label
+        assert per_user.get(other_id) == 1, label
+
+
 def test_delete_for_users_is_idempotent_and_user_scoped(tmp_path):
     podcast_progress.set_data_dir(tmp_path)
 

@@ -18,6 +18,7 @@ from ..deps import (
     _collect_account_ids_for_deletion,
     _graph_store,
     _is_pro,
+    _shared_deck_store,
     logger,
 )
 from ..external_api_keys import purge_external_api_keys
@@ -52,6 +53,7 @@ def get_user_entitlements(user: CurrentUser):
 @router.get("/api/user/quota", response_model=QuotaResponse)
 def get_user_quota(user: CurrentUser):
     from ..quota_service import get_quota_state
+
     return get_quota_state(user["id"], is_pro=_is_pro(user))
 
 
@@ -59,7 +61,8 @@ def get_user_quota(user: CurrentUser):
 def update_user_config(req: UserConfigRequest, request: Request, user: CurrentUser):
     settings = request.app.state.kg_settings
     return update_user_config_response(
-        req, user,
+        req,
+        user,
         users_lock_file=settings.users_lock_file,
         load_users=request.app.state.load_users,
         save_users=request.app.state.save_users,
@@ -78,10 +81,9 @@ def delete_user_account(request: Request, user: CurrentUser):
         data_dir=settings.data_dir,
         logger=logger,
         library_bucket=settings.library_bucket,
-        library_s3_client=(
-            _library_s3_client(settings) if settings.library_bucket else None
-        ),
+        library_s3_client=(_library_s3_client(settings) if settings.library_bucket else None),
         purge_external_api_keys=purge_external_api_keys,
+        shared_deck_store=_shared_deck_store(settings),
     )
 
 

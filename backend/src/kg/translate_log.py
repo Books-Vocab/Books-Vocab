@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -266,3 +267,28 @@ def get_log(
         conn = _get_conn()
         rows = conn.execute(sql, tuple(params)).fetchall()
     return [dict(zip(cols, row, strict=True)) for row in rows]
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every row owned by the supplied user IDs (miss log and cache-hit log).
+
+    Account erasure hook: the database lives at the data root, not under each
+    user's directory. Idempotent; unrelated user IDs are never touched.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+
+    deleted = 0
+    with _lock:
+        conn = _get_conn()
+        deleted += conn.executemany(
+            "DELETE FROM translate_log WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        deleted += conn.executemany(
+            "DELETE FROM translate_cache_hits WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        conn.commit()
+    return deleted

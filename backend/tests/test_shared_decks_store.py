@@ -191,3 +191,19 @@ def test_identical_official_republish_restores_discoverability_axes(tmp_path):
         assert [deck.id for deck in store.browse(limit=10)] == ["deck-a"]
     finally:
         store.close()
+
+
+def test_delete_copy_logs_for_is_scoped_idempotent_and_handles_empty(tmp_path):
+    store = SharedDeckStore(tmp_path / "shared_decks.db")
+    try:
+        for uid in ("gone", "linked", "keep"):
+            assert store.record_copy(uid, "k", "deck", 1, "nb")
+
+        assert store.delete_copy_logs_for([]) == 0
+        assert store.delete_copy_logs_for(["gone", "linked", "gone"]) == 2
+        assert store.delete_copy_logs_for(["gone"]) == 0
+        assert store.get_copy_log("gone", "k") is None
+        assert store.get_copy_log("linked", "k") is None
+        assert store.get_copy_log("keep", "k") is not None
+    finally:
+        store.close()
