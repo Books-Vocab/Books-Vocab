@@ -198,7 +198,7 @@ def must(
 
 
 def scope_from_name_status(text: str) -> dict[str, Any]:
-    """`git diff --name-status` -> a kg.worktree.scope.v1 document.
+    """`git diff --name-status -z` -> a kg.worktree.scope.v1 document.
 
     A rename is a delete of the old path plus an add of the new one, which is
     how Scope overlap has to see it.
@@ -753,7 +753,14 @@ class Delivery:
             self.before_claim()
             with tempfile.TemporaryDirectory() as tmp:
                 scope = scope_from_name_status(
-                    self.git("diff", "--name-status", f"{TRUNK}...HEAD")
+                    self.git(
+                        "-c",
+                        "core.quotepath=false",
+                        "diff",
+                        "--name-status",
+                        "-z",
+                        f"{TRUNK}...HEAD",
+                    )
                 )
                 scope_file, outcome_file = (
                     Path(tmp, "scope.json"),

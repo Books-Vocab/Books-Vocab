@@ -20,6 +20,7 @@ sys.path.insert(0, str(OPS))
 import deliver
 import worktree_orchestrate as coordinator
 from delivery_control.adapters.operation_lock import OperationLock
+from lib import worktree_scope
 
 HEAD = "c" * 40
 NEW_TIP = "d" * 40
@@ -63,7 +64,7 @@ class FakeWorld:
         )
         self.pr_state = list(state.get("pr_state", ["MERGED"]))
         self.merged_prs = state.get("merged_prs", {})
-        self.diff = state.get("diff", "M\tops/a.py\nA\tops/b.py\n")
+        self.diff = state.get("diff", "M\0ops/a.py\0A\0ops/b.py\0")
         self.fork = state.get("fork", "f" * 40)
         # origin/main; another delivery's fetch may move it during a lock wait
         # while HEAD (and so the merge-base) stays on the old main.
@@ -144,6 +145,8 @@ class FakeWorld:
             )
         if head == "git":
             sub = cmd[1:]
+            while sub[:1] == ["-c"]:  # git -c key=value <subcommand>
+                sub = sub[2:]
             if sub[:2] == ["rev-parse", "--abbrev-ref"]:
                 return ok(self.branch)
             if sub[0] == "status":
@@ -335,7 +338,7 @@ def ship(world: FakeWorld, *flags: str) -> tuple[int, dict[str, Any]]:
 
 def test_scope_covers_add_modify_delete_and_splits_a_rename() -> None:
     scope = deliver.scope_from_name_status(
-        "A\tnew.py\nM\told.py\nD\tgone.py\nR100\tfrom.py\tto.py\n"
+        "A\0new.py\0M\0old.py\0D\0gone.py\0R100\0from.py\0to.py\0"
     )
     assert scope["schema"] == "kg.worktree.scope.v1"
     assert scope["files"] == [
@@ -347,9 +350,27 @@ def test_scope_covers_add_modify_delete_and_splits_a_rename() -> None:
     ]
 
 
+def test_scope_from_nul_name_status_keeps_non_ascii_paths_unquoted() -> None:
+    scope = deliver.scope_from_name_status(
+        "M\0docs/reference/架構.rtf\0R100\0舊.md\0新.md\0A\0ops/x.py\0"
+    )
+    assert scope["files"] == [
+        {"operation": "modify", "path": "docs/reference/架構.rtf"},
+        {"operation": "delete", "path": "舊.md"},
+        {"operation": "add", "path": "新.md"},
+        {"operation": "add", "path": "ops/x.py"},
+    ]
+    worktree_scope.normalise_scope(scope)
+
+
+def test_a_truncated_nul_name_status_is_refused() -> None:
+    with pytest.raises(deliver.DeliverError):
+        deliver.scope_from_name_status("R100\0only-old.md\0")
+
+
 def test_an_unknown_git_status_is_refused_not_guessed() -> None:
     with pytest.raises(deliver.DeliverError):
-        deliver.scope_from_name_status("U\tconflict.py\n")
+        deliver.scope_from_name_status("U\0conflict.py\0")
 
 
 def test_lane_id_is_derived_from_the_branch() -> None:
@@ -1149,7 +1170,7 @@ def test_scope_from_diff_refreshes_a_drifted_active_claim_scope() -> None:
         branch="worktree-agent-abc123",
         record=_agent_record(
             base_sha="f" * 40,
-            scope=deliver.scope_from_name_status("M\tops/a.py\nA\tops/b.py\n"),
+            scope=deliver.scope_from_name_status("M\0ops/a.py\0A\0ops/b.py\0"),
         ),
     )
     assert ship(same, "--check", "docs=good", "--scope-from-diff")[0] == 0
