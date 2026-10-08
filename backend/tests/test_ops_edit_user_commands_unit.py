@@ -336,3 +336,89 @@ class TestRestore:
         from kg.ops_edit_support import EditError
         with pytest.raises(EditError):
             user_cmd.cmd_restore(_make_args(uid="u1"))
+
+
+# ── mark_destructive 契約(#2312)────────────────────────────────────────
+
+
+def _error_payload(capsys) -> dict:
+    return json.loads(capsys.readouterr().out)
+
+
+class TestDestructiveFailureReporting:
+    def _create(self, tmp_path, monkeypatch, uid="doomed"):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(
+            _make_args(uid=uid, email=f"{uid}@test.com", commit=True)
+        )
+
+    def test_user_delete_rmtree_failure_marks_data_mutated(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        self._create(tmp_path, monkeypatch)
+        capsys.readouterr()
+
+        def boom(*_a, **_k):
+            raise PermissionError("rmtree denied")
+
+        monkeypatch.setattr(user_cmd.shutil, "rmtree", boom)
+        rc = user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+
+        out = _error_payload(capsys)
+        assert rc == 1
+        assert out["mode"] == "error"
+        assert out["data_mutated"] is True
+        assert out["backup"]
+        assert "restore doomed" in out["recovery_path"]
+        assert out["backup"] in out["recovery_path"]
+        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
+        assert "doomed" not in users  # record 已被移除,故必須回報 data_mutated
+
+    def test_user_delete_missing_user_is_not_mutating(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from kg.ops_edit_support import EditError
+
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        with pytest.raises(EditError):
+            user_cmd.cmd_user_delete(_make_args(uid="ghost", commit=True))
+
+    def test_restore_rmtree_failure_marks_data_mutated(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        self._create(tmp_path, monkeypatch, uid="u1")
+        # 先做一次成功 delete 產生備份,再讓 user_dir 重建(restore 前提:現存目錄會被清)
+        user_cmd.cmd_user_delete(_make_args(uid="u1", commit=True))
+        user_cmd.cmd_restore(_make_args(uid="u1", commit=True))
+        capsys.readouterr()
+
+        def boom(*_a, **_k):
+            raise PermissionError("rmtree denied")
+
+        monkeypatch.setattr(user_cmd.shutil, "rmtree", boom)
+        rc = user_cmd.cmd_restore(_make_args(uid="u1", commit=True))
+
+        out = _error_payload(capsys)
+        assert rc == 1
+        assert out["data_mutated"] is True
+        assert "restore u1" in out["recovery_path"]
+        assert out["backup"] in out["recovery_path"]
+
+    def test_restore_arcname_mismatch_is_not_mutating(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        import tarfile
+
+        from kg.ops_edit_support import EditError
+
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        backup_dir = tmp_path / "_ops_backups"
+        backup_dir.mkdir()
+        wrong = tmp_path / "src" / "other"
+        wrong.mkdir(parents=True)
+        (wrong / "notebooks.db").write_text("")
+        dest = backup_dir / "u1__20240101T000000Z.tar.gz"
+        with tarfile.open(dest, "w:gz") as tar:
+            tar.add(wrong, arcname="other")
+        with pytest.raises(EditError):
+            user_cmd.cmd_restore(_make_args(uid="u1", commit=True))

@@ -276,3 +276,50 @@ def test_clone_rejects_unsafe_source_uid(tmp_path):
     _full_fixture(tmp_path)
     r = _edit(str(tmp_path), "clone-demo", "../evil", TGT, "--commit", "--json")
     assert r.returncode == 1
+
+
+def _run_clone_in_process(data_dir: Path, monkeypatch, capsys, *, fail: bool) -> dict:
+    import argparse
+
+    import kg.ops_edit_seed_commands as seed_cmd
+
+    monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
+    if fail:
+        def boom(self, *_a, **_k):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(Path, "replace", boom)
+    args = argparse.Namespace(
+        source_uid=SRC, target_uid=TGT, commit=True, json=True,
+        expect_source_fingerprint=None,
+    )
+    capsys.readouterr()
+    rc = seed_cmd.cmd_clone_demo(args)
+    out = json.loads(capsys.readouterr().out)
+    out["_rc"] = rc
+    return out
+
+
+def test_clone_failure_after_unlink_reports_data_mutated(tmp_path, monkeypatch, capsys):
+    _full_fixture(tmp_path)
+    out = _run_clone_in_process(tmp_path, monkeypatch, capsys, fail=True)
+    assert out["_rc"] == 1
+    assert out["data_mutated"] is True
+    assert out["backup"]
+    assert f"restore {TGT}" in out["recovery_path"]
+    assert out["backup"] in out["recovery_path"]
+
+
+def test_clone_staging_failure_is_not_mutating(tmp_path, monkeypatch, capsys):
+    import kg.ops_edit_seed_commands as seed_cmd
+
+    _full_fixture(tmp_path)
+
+    def boom(*_a, **_k):
+        raise OSError("copy failed")
+
+    monkeypatch.setattr(seed_cmd, "_sqlite_online_backup", boom)
+    out = _run_clone_in_process(tmp_path, monkeypatch, capsys, fail=False)
+    assert out["_rc"] == 1
+    assert out["data_mutated"] is False
+    assert out["recovery_path"] is None

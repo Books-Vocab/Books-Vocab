@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -434,3 +435,61 @@ class TestCmdCardMove:
             _make_args(card=c.id, to_notebook="default", commit=True)
         )
         assert rc == 1
+
+
+class TestCmdCardMoveDestructiveReporting:
+    """#2312:link 硬刪後才失敗必須回報 data_mutated + recovery_path。"""
+
+    def _seed(self, tmp_path: Path) -> tuple[str, str]:
+        _setup_user(tmp_path)
+        store = CardStore(tmp_path / "users" / "u1" / "cards.db")
+        nb_store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
+        try:
+            nb = nb_store.create(name="DestNB")
+            c = store.add(content="apple", meaning="蘋果", notebook_id="default")
+            return c.id, nb.id
+        finally:
+            store.close()
+            nb_store.close()
+
+    def test_failure_after_link_purge_marks_data_mutated(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from types import SimpleNamespace
+
+        cid, nbid = self._seed(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        class _Graph:
+            def get_links_for(self, _cid):
+                return [SimpleNamespace(id="l1")]
+
+            def hard_delete_link(self, *_a, **_k):
+                return None
+
+        monkeypatch.setattr(cards_cmd, "_graph_store", lambda *_a, **_k: _Graph())
+        monkeypatch.setattr(CardStore, "update", lambda *_a, **_k: None)
+        capsys.readouterr()
+
+        rc = cards_cmd.cmd_card_move(_make_args(card=cid, to_notebook=nbid, commit=True))
+
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 1
+        assert out["data_mutated"] is True
+        assert out["backup"]
+        assert "restore u1" in out["recovery_path"]
+        assert out["backup"] in out["recovery_path"]
+
+    def test_already_in_notebook_is_not_mutating(self, tmp_path, monkeypatch, capsys):
+        cid, _nbid = self._seed(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        capsys.readouterr()
+
+        rc = cards_cmd.cmd_card_move(
+            _make_args(card=cid, to_notebook="default", commit=True)
+        )
+
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 1
+        assert out["data_mutated"] is False
+        assert out["recovery_path"] is None
