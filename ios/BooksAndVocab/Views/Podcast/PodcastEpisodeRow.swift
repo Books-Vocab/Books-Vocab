@@ -11,6 +11,7 @@ struct PodcastEpisodeRow: View {
     let locked: Bool
     @Environment(\.appSkin) private var skin
     @Environment(\.kgService) private var kgService
+    @Environment(\.toastCoordinator) private var toastCoordinator
     #if os(iOS)
     @State private var downloadManager = PodcastDownloadManager.shared
     #endif
@@ -41,9 +42,19 @@ struct PodcastEpisodeRow: View {
     /// prior `failed[remoteId]` entry, so this doubles as the retry path.
     private func startDownloadTask() {
         Task {
-            guard let token = try? await Self.downloadAuthToken(kgService: kgService) else { return }
-            downloadManager.startDownload(episode: episode, authToken: token)
+            do {
+                let token = try await Self.downloadAuthToken(kgService: kgService)
+                downloadManager.startDownload(episode: episode, authToken: token)
+            } catch {
+                AppLog.app.error("download auth token failed: \(error.localizedDescription, privacy: .public)")
+                toastCoordinator.error(Self.downloadFailureMessage(for: error))
+            }
         }
+    }
+
+    /// User-facing cause when the download cannot even start (offline / expired login).
+    static func downloadFailureMessage(for error: Error) -> String {
+        SyncFailurePresentation.reason(for: error)
     }
     #endif
     private var hasProgress: Bool {
