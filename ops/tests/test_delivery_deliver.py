@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import io
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
@@ -16,7 +18,8 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 import deliver
-
+import worktree_orchestrate as coordinator
+from delivery_control.adapters.operation_lock import OperationLock
 
 HEAD = "c" * 40
 NEW_TIP = "d" * 40
@@ -1241,6 +1244,223 @@ def test_the_claim_base_stays_on_the_fork_when_origin_main_moves_on_real_git(
 
     assert contains(base) == 0  # hand-back's declared_base_sha check
     assert contains(m2) == 1
+
+
+# ---- a lane waiting on the operation lock while origin/main moves ----------
+
+
+def _flock_held(path: Path) -> bool:
+    """True when another open file description holds the exclusive lease."""
+    with path.open("a+") as probe:
+        try:
+            fcntl.flock(probe.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True
+        fcntl.flock(probe.fileno(), fcntl.LOCK_UN)
+        return False
+
+
+def test_the_trunk_fetch_runs_under_the_operation_lease_and_waits_for_it() -> None:
+    """A fetch rewrites the one shared refs/remotes/origin/main; two concurrent
+    fetches make one fail 'cannot lock ref ... is at X but expected Y', so the
+    fetch takes the lease every other ref mutation takes."""
+    world = FakeWorld()
+    lease = OperationLock(world.canon, command="test-holder").path
+    lease.parent.mkdir(parents=True, exist_ok=True)
+    holder = lease.open("a+")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    fetch_saw_lease: list[bool] = []
+
+    def runner(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        if cmd[:2] == ["git", "fetch"]:
+            fetch_saw_lease.append(_flock_held(lease))
+        return world(cmd, cwd)
+
+    def release_after_first_wait(seconds: float) -> None:
+        world.sleep(seconds)
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)  # the other operation ends
+
+    buf = io.StringIO()
+    argv = ["--timeout", "5", "--poll", "1", "--worktree", str(world.work)]
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        code = deliver.main(
+            [*argv, "--check", "docs=good"],
+            runner=runner,
+            sleep=release_after_first_wait,
+            clock=lambda: world.now,
+        )
+    holder.close()
+    result = json.loads(buf.getvalue().strip().splitlines()[-1])
+    assert code == 0, result
+    assert world.sleeps[:1] == [5]  # the fetch waited out the held lease
+    assert fetch_saw_lease == [True]  # and ran holding the lease itself
+    assert any("operation lock" in line for line in result["log"])
+
+
+class RealLane:
+    """A real lane worktree on a real bare origin, for the real registry CLI.
+
+    ``advance_main()`` is another delivery landing a commit and fetching it:
+    origin/main (the shared ref) moves to a commit the lane's HEAD lacks.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.remote = root / "origin.git"
+        self.seed = root / "seed"
+        self.repo = root / "repo"
+        self.lane = root / "lane"
+        self.state = root / "registry.json"
+        self.git("init", "-q", "--bare", "-b", "main", str(self.remote), cwd=root)
+        self.git("clone", "-q", str(self.remote), str(self.seed), cwd=root)
+        self.configure(self.seed)
+        self.base = self.land("a.txt", "B")
+        self.git("clone", "-q", str(self.remote), str(self.repo), cwd=root)
+        self.configure(self.repo)
+        self.git("worktree", "add", "-q", "-b", "lane-x", str(self.lane), cwd=self.repo)
+        (self.lane / "lane.txt").write_text("mine")
+        self.git("add", "lane.txt", cwd=self.lane)
+        self.git("commit", "-qm", "feat: the lane", cwd=self.lane)
+
+    @staticmethod
+    def git(*argv: str, cwd: Path) -> str:
+        done = subprocess.run(
+            ["git", *argv], cwd=cwd, capture_output=True, text=True, check=True
+        )
+        return done.stdout.strip()
+
+    def configure(self, repo: Path) -> None:
+        self.git("config", "user.email", "t@example.com", cwd=repo)
+        self.git("config", "user.name", "T", cwd=repo)
+
+    def land(self, name: str, text: str) -> str:
+        (self.seed / name).write_text(text)
+        self.git("add", name, cwd=self.seed)
+        self.git("commit", "-qm", f"main: {text}", cwd=self.seed)
+        self.git("push", "-q", "origin", "main", cwd=self.seed)
+        return self.git("rev-parse", "HEAD", cwd=self.seed)
+
+    def advance_main(self) -> str:
+        moved = self.land("b.txt", "B-prime")
+        self.git("fetch", "-q", "origin", "main", cwd=self.lane)
+        return moved
+
+    def registry_record(self) -> dict[str, Any]:
+        records = json.loads(self.state.read_text())["records"]
+        (record,) = [r for r in records if r["branch"] == "lane-x"]
+        return record
+
+
+def _registry_runner(
+    lane: RealLane, on_first_adopt: Callable[[], object]
+) -> deliver.Runner:
+    """Real git and the real registry CLIs; gh and delivery.py are scripted.
+
+    delivery.py fails at `receipt`, so the run stops right after adopt and
+    hand-back, whose registry state the test then reads.
+    """
+
+    def runner(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        script = Path(cmd[0]).name
+        if script == "gh":
+            if cmd[1:3] == ["repo", "view"]:
+                return deliver.Proc(0, "o/r\n", "")
+            if cmd[1:3] == ["pr", "list"]:
+                return deliver.Proc(0, "[]", "")
+            raise AssertionError(f"unscripted gh call: {cmd}")
+        if script == "delivery.py":
+            return deliver.Proc(1, "", "stopped before receipt")
+        if script in ("worktree_orchestrate.py", "worktree_registry.py"):
+            if cmd[1] == "adopt":
+                on_first_adopt()
+            cmd = [sys.executable, *cmd, "--state", str(lane.state)]
+        return deliver.run(cmd, cwd)
+
+    return runner
+
+
+def _deliver_lane(
+    lane: RealLane,
+    on_first_adopt: Callable[[], object],
+    on_wait: Callable[[], object],
+) -> tuple[int, dict[str, Any], str]:
+    ticks = iter(range(10_000))
+    buf, progress = io.StringIO(), io.StringIO()
+    argv = ["--worktree", str(lane.lane), "--check", "unit=true"]
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(progress):
+        code = deliver.main(
+            argv,
+            runner=_registry_runner(lane, on_first_adopt),
+            sleep=lambda _seconds: on_wait(),
+            clock=lambda: float(next(ticks)),
+        )
+    return (
+        code,
+        json.loads(buf.getvalue().strip().splitlines()[-1]),
+        progress.getvalue(),
+    )
+
+
+def test_a_lane_waiting_for_the_lock_while_origin_main_moves_still_hands_back(
+    tmp_path: Path,
+) -> None:
+    """The retro failure: a lane is adopted on base B, another delivery fetches
+    origin/main to B' while this one waits for the operation lock, and hand-back
+    then refused 'declared base is not an ancestor of worktree HEAD'."""
+    lane = RealLane(tmp_path)
+    anchor = coordinator.registry.common_anchor(coordinator.ROOT)
+    lease = OperationLock(anchor, command="test-holder").path
+    lease.parent.mkdir(parents=True, exist_ok=True)
+    holder = lease.open("a+")
+    moved: list[str] = []
+    taken: list[bool] = []
+
+    def take_lease() -> None:  # another operation grabs the lock before adopt
+        if not taken:
+            taken.append(True)
+            fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+
+    def main_moves_then_lock_frees() -> None:
+        if not moved:
+            moved.append(lane.advance_main())
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+
+    code, result, progress = _deliver_lane(lane, take_lease, main_moves_then_lock_frees)
+    holder.close()
+
+    assert moved, "adopt never met the held lock; the scenario did not run"
+    assert lane.git("rev-parse", "origin/main", cwd=lane.lane) == moved[0]
+    assert "adopt: another delivery mutation holds the operation lock" in progress
+    # The run stopped at the scripted receipt, i.e. past adopt and hand-back.
+    assert code == 1
+    assert "receipt failed" in result["error"], result
+    assert "not an ancestor" not in result["error"]
+    record = lane.registry_record()
+    assert record["base_sha"] == lane.base != moved[0]  # the pinned fork, not B'
+    assert record["handed_back_sha"] == lane.git("rev-parse", "HEAD", cwd=lane.lane)
+    assert record["handback_seal"]["base_sha"] == lane.base
+
+
+def test_a_symbolic_base_resolved_after_the_move_is_what_hand_back_refused(
+    tmp_path: Path,
+) -> None:
+    """Control for the test above: declaring `origin/main` (what deliver sent
+    before #2235) resolves it at adopt time, after the move, to B' - not in HEAD."""
+    lane = RealLane(tmp_path)
+    lane.advance_main()
+    scope = tmp_path / "scope.json"
+    scope.write_text(json.dumps({"files": [{"path": "lane.txt", "operation": "add"}]}))
+    outcomes = tmp_path / "outcomes.json"
+    outcomes.write_text(json.dumps([{"check": "unit", "status": "passed"}]))
+    cli = [sys.executable, str(OPS / "worktree_orchestrate.py")]
+    state = ["--state", str(lane.state), "--json"]
+    adopt = [*cli, "adopt", "--worktree", str(lane.lane), "--base", deliver.TRUNK]
+    adopt += ["--intent", "feat: the lane", "--external-id", "lane-x", *state]
+    adopt += ["--scope-file", str(scope), "--codex-thread-id", "t", "--delegated"]
+    assert deliver.run(adopt, lane.lane).returncode == 0
+    hand_back = [*cli, "hand-back", "--branch", "lane-x", "--path", str(lane.lane)]
+    refused = deliver.run([*hand_back, "--outcomes", str(outcomes), *state], lane.lane)
+    assert refused.returncode != 0
+    assert "declared base is not an ancestor of worktree HEAD" in refused.stderr
 
 
 def _format_calls(world: FakeWorld) -> list[list[str]]:
