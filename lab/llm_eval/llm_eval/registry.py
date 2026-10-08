@@ -45,13 +45,20 @@ class RenderedPrompt:
     response_format: dict[str, str] | None = None
 
 
+def _version_key(v: str) -> list[tuple[int, int | str]]:
+    """Natural sort key so 'v10' sorts after 'v9'."""
+    return [(0, int(t)) if t.isdigit() else (1, t) for t in re.split(r"(\d+)", v) if t]
+
+
 class _PromptLoader(BaseLoader):
     """Jinja2 loader that reads from the prompts/ directory."""
 
     def __init__(self, base: Path) -> None:
         self.base = base
 
-    def get_source(self, environment: Environment, template: str) -> tuple[str, str, None]:  # type: ignore[override]
+    def get_source(
+        self, environment: Environment, template: str
+    ) -> tuple[str, str, None]:  # type: ignore[override]
         path = self.base / template
         if not path.exists():
             raise TemplateNotFound(template)
@@ -94,7 +101,7 @@ class PromptRegistry:
         return sorted(self._prompts)
 
     def list_versions(self, name: str) -> list[str]:
-        return sorted(self._prompts.get(name, {}))
+        return sorted(self._prompts.get(name, {}), key=_version_key)
 
     def get_meta(self, name: str, version: str | None = None) -> PromptMeta:
         """Get metadata for a prompt. If version is None, uses latest."""
@@ -102,13 +109,15 @@ class PromptRegistry:
         if not versions:
             raise KeyError(f"Prompt {name!r} not found")
         if version is None:
-            version = max(versions)
+            version = max(versions, key=_version_key)
         meta = versions.get(version)
         if meta is None:
             raise KeyError(f"Version {version!r} not found for prompt {name!r}")
         return meta
 
-    def render(self, name: str, version: str | None = None, **kwargs: Any) -> RenderedPrompt:
+    def render(
+        self, name: str, version: str | None = None, **kwargs: Any
+    ) -> RenderedPrompt:
         """Render a prompt template with given variables."""
         meta = self.get_meta(name, version)
         tpl = self._jinja.get_template(meta.file)
@@ -125,7 +134,9 @@ class PromptRegistry:
         )
 
 
-def _parse_prompt_md(raw: str, schema: dict[str, Any]) -> tuple[str | None, str, dict[str, str] | None]:
+def _parse_prompt_md(
+    raw: str, schema: dict[str, Any]
+) -> tuple[str | None, str, dict[str, str] | None]:
     """Parse a rendered prompt markdown into system/user/response_format.
 
     Convention:
@@ -134,8 +145,16 @@ def _parse_prompt_md(raw: str, schema: dict[str, Any]) -> tuple[str | None, str,
     - If schema contains `response_format: json_object`, set response_format accordingly.
     """
     raw = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL).strip()
-    system_match = re.search(r"^##\s*System\s*\n(.*?)(?=\n##\s|\Z)", raw, re.DOTALL | re.MULTILINE | re.IGNORECASE)
-    user_match = re.search(r"^##\s*User\s*\n(.*?)(?=\n##\s|\Z)", raw, re.DOTALL | re.MULTILINE | re.IGNORECASE)
+    system_match = re.search(
+        r"^##\s*System\s*\n(.*?)(?=\n##\s|\Z)",
+        raw,
+        re.DOTALL | re.MULTILINE | re.IGNORECASE,
+    )
+    user_match = re.search(
+        r"^##\s*User\s*\n(.*?)(?=\n##\s|\Z)",
+        raw,
+        re.DOTALL | re.MULTILINE | re.IGNORECASE,
+    )
 
     system = system_match.group(1).strip() if system_match else None
     if user_match:
