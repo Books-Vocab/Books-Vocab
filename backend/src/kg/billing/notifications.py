@@ -18,13 +18,11 @@ class VerifiedJWS(Protocol):
 
 
 class VerifySignedJWS(Protocol):
-    def __call__(self, signed_jws: str, *, bundle_id: str) -> VerifiedJWS:
-        ...
+    def __call__(self, signed_jws: str, *, bundle_id: str) -> VerifiedJWS: ...
 
 
 class ParseTimestamp(Protocol):
-    def __call__(self, value: object) -> datetime | None:
-        ...
+    def __call__(self, value: object) -> datetime | None: ...
 
 
 def notification_status(notification_type: str | None, subtype: str | None) -> str | None:
@@ -127,6 +125,10 @@ def verified_transaction_snapshot(
         "expires_at": normalize_ms_timestamp(payload.get("expiresDate"), parse_datetime_fn),
         "will_renew": bool_from_any(auto_renew_status, default=status in ACTIVE_BEARING_STATUSES),
         "price_display": price_display,
+        # Apple's signing time for this JWS: the ordering key that lets a fresh
+        # verified /sync or /reconcile beat an older notification watermark.
+        # decode_notification_payload overrides it with the envelope signedDate.
+        "signed_date": normalize_ms_timestamp(payload.get("signedDate"), parse_datetime_fn),
     }
 
 
@@ -151,9 +153,7 @@ def decode_notification_payload(
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     if not req.signed_payload:
         if allow_unsigned_notifications:
-            _logger.warning(
-                "Accepting unsigned App Store notification (signature verification skipped)"
-            )
+            _logger.warning("Accepting unsigned App Store notification (signature verification skipped)")
             return (
                 {
                     "product_id": req.product_id,

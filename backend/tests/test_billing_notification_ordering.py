@@ -5,10 +5,27 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from kg.api_models import AppStoreNotificationRequest, EntitlementsResponse, SubscriptionStatusResponse
-from kg.billing.notifications import decode_notification_payload, status_from_transaction_payload
+import pytest
+
+from kg.api_models import (
+    AppStoreNotificationRequest,
+    AppStoreReconcileRequest,
+    AppStoreSyncRequest,
+    EntitlementsResponse,
+    SubscriptionStatusResponse,
+)
+from kg.billing.index import resolve_user_id_from_subscription_index
+from kg.billing.notifications import (
+    decode_notification_payload,
+    decode_signed_transaction_info,
+    status_from_transaction_payload,
+)
 from kg.billing.snapshots import write_subscription_snapshot
-from kg.billing_handlers import app_store_notifications_response
+from kg.billing_handlers import (
+    app_store_notifications_response,
+    reconcile_app_store_subscription_response,
+    sync_app_store_subscription_response,
+)
 from kg.user_store import parse_datetime
 
 
@@ -237,3 +254,200 @@ def test_same_signed_date_uses_deterministic_uuid_tie_break(tmp_path):
 
     assert users["u1"]["subscription"]["last_notification_uuid"] == "b"
     assert result["updated"] is False
+
+
+# --- Verified /sync and /reconcile against a notification watermark (#2247) ---
+#
+# These exercise the real decode_signed_transaction_info and the real
+# write_subscription_snapshot; only the Apple JWS signature check is stubbed.
+
+_NOT_EXPIRED_MS = 2_000_000_000_000  # 2033 — keeps the transaction "active".
+
+
+def _ms(iso: str) -> int:
+    return int(datetime.fromisoformat(iso).timestamp() * 1000)
+
+
+def _verified_txn(*, transaction_id: str, signed_date: str | None):
+    payload = {
+        "productId": "pro_monthly",
+        "transactionId": transaction_id,
+        "originalTransactionId": "orig-1",
+        "environment": "Production",
+        "expiresDate": _NOT_EXPIRED_MS,
+    }
+    if signed_date is not None:
+        payload["signedDate"] = _ms(signed_date)
+
+    def decode(signed_transaction_info: str):
+        return decode_signed_transaction_info(
+            signed_transaction_info,
+            bundle_id="com.example.app",
+            parse_datetime_fn=parse_datetime,
+            verify_signed_jws=lambda token, *, bundle_id: SimpleNamespace(payload=payload),
+        )
+
+    return decode
+
+
+def _sync(tmp_path: Path, users, request: AppStoreSyncRequest, *, decode, allow_unsigned_sync: bool = False):
+    return sync_app_store_subscription_response(
+        request,
+        {"id": "u1"},
+        allow_unsigned_sync=allow_unsigned_sync,
+        users_lock_file=tmp_path / "users.lock",
+        load_users=lambda: users,
+        save_users=lambda updated: None,
+        decode_signed_transaction_info=decode,
+        write_subscription_snapshot=write_subscription_snapshot,
+        build_entitlements_response=_entitlements,
+    )
+
+
+def _send_expired(tmp_path: Path, users) -> None:
+    _send_notification(
+        tmp_path,
+        users,
+        [],
+        _snapshot(status="expired", signed_date="2026-08-02T00:00:00+00:00", notification_uuid="exp"),
+        "EXPIRED",
+    )
+
+
+def test_verified_transaction_snapshot_carries_transaction_signed_date():
+    signed = _verified_txn(transaction_id="txn-1", signed_date="2026-09-01T00:00:00+00:00")("jws")
+    unsigned = _verified_txn(transaction_id="txn-1", signed_date=None)("jws")
+
+    assert signed.get("signed_date") == "2026-09-01T00:00:00+00:00"
+    assert unsigned["signed_date"] is None
+
+
+def test_notification_envelope_signed_date_wins_over_transaction_signed_date():
+    payloads = {
+        "notification": {
+            "notificationType": "DID_RENEW",
+            "signedDate": _ms("2026-08-01T00:00:00+00:00"),
+            "notificationUUID": "notification-1",
+            "data": {"signedTransactionInfo": "transaction"},
+        },
+        "transaction": {
+            "productId": "pro_monthly",
+            "transactionId": "txn-1",
+            "originalTransactionId": "orig-1",
+            "environment": "Production",
+            "expiresDate": _NOT_EXPIRED_MS,
+            "signedDate": _ms("2026-07-01T00:00:00+00:00"),
+        },
+    }
+
+    snapshot, _ = decode_notification_payload(
+        AppStoreNotificationRequest(signed_payload="notification"),
+        bundle_id="com.example.app",
+        allow_unsigned_notifications=False,
+        parse_datetime_fn=parse_datetime,
+        verify_signed_jws=lambda token, *, bundle_id: SimpleNamespace(payload=payloads[token]),
+    )
+
+    assert snapshot["signed_date"] == "2026-08-01T00:00:00+00:00"
+
+
+def test_verified_sync_after_expired_notification_restores_entitlement(tmp_path):
+    users = {}
+    events = []
+    _send_notification(
+        tmp_path,
+        users,
+        events,
+        _snapshot(status="active", signed_date="2026-08-01T00:00:00+00:00", notification_uuid="sub"),
+        "SUBSCRIBED",
+    )
+    _send_notification(
+        tmp_path,
+        users,
+        events,
+        _snapshot(status="expired", signed_date="2026-08-02T00:00:00+00:00", notification_uuid="exp"),
+        "EXPIRED",
+    )
+
+    result = _sync(
+        tmp_path,
+        users,
+        AppStoreSyncRequest(product_id="pro_monthly", signed_transaction_info="jws"),
+        decode=_verified_txn(transaction_id="txn-resub", signed_date="2026-09-01T00:00:00+00:00"),
+    )
+
+    subscription = users["u1"]["subscription"]
+    assert result.pro.is_active is True
+    assert result.pro.status == "active"
+    assert subscription["transaction_id"] == "txn-resub"
+    assert subscription["last_signed_date"] == "2026-09-01T00:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_verified_reconcile_after_expired_notification_updates_subscription_and_index(tmp_path):
+    users = {}
+    _send_expired(tmp_path, users)
+
+    async def fetch_transaction_info(transaction_id, *, bundle_id, environment=None):
+        assert transaction_id == "txn-reconciled"
+        return {"signedTransactionInfo": "jws"}
+
+    result = await reconcile_app_store_subscription_response(
+        AppStoreReconcileRequest(transaction_id="txn-reconciled", environment="production"),
+        {"id": "u1"},
+        apple_bundle_id="com.example.app",
+        users_lock_file=tmp_path / "users.lock",
+        load_users=lambda: users,
+        save_users=lambda updated: None,
+        fetch_transaction_info=fetch_transaction_info,
+        decode_signed_transaction_info=_verified_txn(
+            transaction_id="txn-reconciled", signed_date="2026-09-01T00:00:00+00:00"
+        ),
+        resolve_user_id_from_subscription_index=resolve_user_id_from_subscription_index,
+        write_subscription_snapshot=write_subscription_snapshot,
+        build_entitlements_response=_entitlements,
+    )
+
+    subscription = users["u1"]["subscription"]
+    assert result.pro.status == "active"
+    assert subscription["status"] == "active"
+    assert subscription["last_signed_date"] == "2026-09-01T00:00:00+00:00"
+    assert users["_subscription_index"]["txn-reconciled"] == "u1"
+
+
+def test_replayed_older_verified_jws_cannot_override_newer_watermark(tmp_path):
+    users = {}
+    _send_expired(tmp_path, users)
+
+    result = _sync(
+        tmp_path,
+        users,
+        AppStoreSyncRequest(product_id="pro_monthly", signed_transaction_info="jws"),
+        decode=_verified_txn(transaction_id="txn-old", signed_date="2026-07-15T00:00:00+00:00"),
+    )
+
+    subscription = users["u1"]["subscription"]
+    assert result.pro.is_active is False
+    assert result.pro.status == "expired"
+    assert subscription["last_signed_date"] == "2026-08-02T00:00:00+00:00"
+    assert "txn-old" not in users["_subscription_index"]
+
+
+def test_unsigned_dev_sync_cannot_override_signed_watermark(tmp_path):
+    users = {}
+    _send_expired(tmp_path, users)
+
+    def must_not_decode(signed_transaction_info: str):
+        raise AssertionError("unsigned sync must not decode a JWS")
+
+    result = _sync(
+        tmp_path,
+        users,
+        AppStoreSyncRequest(product_id="pro_monthly", transaction_id="txn-dev", environment="xcode"),
+        decode=must_not_decode,
+        allow_unsigned_sync=True,
+    )
+
+    assert result.pro.status == "expired"
+    assert users["u1"]["subscription"]["last_signed_date"] == "2026-08-02T00:00:00+00:00"
+    assert "txn-dev" not in users["_subscription_index"]
