@@ -19,6 +19,7 @@ final class PodcastAssetPreloader {
     static let shared = PodcastAssetPreloader()
 
     private struct Entry {
+        let id: UUID
         let asset: AVURLAsset
         let task: Task<Void, Never>
         let expires: Date
@@ -48,6 +49,7 @@ final class PodcastAssetPreloader {
             opts["AVURLAssetHTTPHeaderFieldsKey"] = headers
         }
         let asset = AVURLAsset(url: url, options: opts)
+        let id = UUID()
         let task = Task { [weak self] in
             let ok: Bool
             do {
@@ -56,12 +58,15 @@ final class PodcastAssetPreloader {
                 ok = false
             }
             // Evict on failure so the next tap retries instead of hitting a
-            // stale dead entry for the rest of the TTL window.
+            // stale dead entry for the rest of the TTL window. Match on `id`
+            // so a cancelled predecessor can't evict a fresh entry that
+            // replaced it under the same key.
             if !ok || Task.isCancelled {
-                self?.evict(key: key)
+                self?.evict(key: key, expecting: id)
             }
         }
         pending[key] = Entry(
+            id: id,
             asset: asset,
             task: task,
             expires: now.addingTimeInterval(ttl),
@@ -69,7 +74,8 @@ final class PodcastAssetPreloader {
         )
     }
 
-    private func evict(key: String) {
+    private func evict(key: String, expecting id: UUID) {
+        guard pending[key]?.id == id else { return }
         pending[key]?.task.cancel()
         pending.removeValue(forKey: key)
     }
