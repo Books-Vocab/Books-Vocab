@@ -13,6 +13,7 @@ Design notes:
   - Active job count is bounded (default 4) to keep the 2GB VPS sane if the
     user clicks "rerun" on 12 episodes at once.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,9 +65,7 @@ class WorkspaceBusyError(Exception):
     def __init__(self, workspace: str, job_id: str):
         self.workspace = workspace
         self.job_id = job_id
-        super().__init__(
-            f"a job is already running for {workspace} (job {job_id})"
-        )
+        super().__init__(f"a job is already running for {workspace} (job {job_id})")
 
 
 class JobLimitReached(Exception):
@@ -86,12 +85,12 @@ class JobLimitReached(Exception):
 @dataclass
 class Job:
     id: str
-    label: str               # human-readable: "upload:atomic_habits_..."
-    kind: str                # "upload" | "rerun" | "pipeline" | "remote-delete" | ...
+    label: str  # human-readable: "upload:atomic_habits_..."
+    kind: str  # "upload" | "rerun" | "pipeline" | "remote-delete" | ...
     cmd: list[str]
     cwd: str
-    status: str              # pending | running | succeeded | failed | killed
-    started_ts: float        # epoch seconds
+    status: str  # pending | running | succeeded | failed | killed
+    started_ts: float  # epoch seconds
     ended_ts: Optional[float] = None
     exit_code: Optional[int] = None
     log_path: str = ""
@@ -111,7 +110,8 @@ class Job:
             d["metadata"] = meta
         d["duration_s"] = (
             round((self.ended_ts or time.time()) - self.started_ts, 1)
-            if self.started_ts else None
+            if self.started_ts
+            else None
         )
         return d
 
@@ -212,20 +212,35 @@ class JobTracker:
             # Reserve the slot atomically before releasing the lock.
             self._jobs[job_id] = job
 
-        # Write a header to the log so post-mortem readers know what ran.
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write(f"# job {job_id} · {label}\n")
-            f.write(f"# kind={kind} cwd={cwd}\n")
-            f.write(f"# cmd: {shlex.join(cmd)}\n")
-            f.write(f"# started: {time.strftime('%F %T', time.localtime(job.started_ts))}\n")
-            f.write("# ─── output below ─────────────────────────────────\n")
-            f.flush()
+        # Opening the log can fail (missing/unwritable JOBS_DIR, disk full, EMFILE).
+        # The slot was reserved above, so a failure here must flip the job to
+        # 'failed' or it stays 'pending' forever, holding a MAX_ACTIVE slot and
+        # its dedup key.
+        try:
+            # Write a header to the log so post-mortem readers know what ran.
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(f"# job {job_id} · {label}\n")
+                f.write(f"# kind={kind} cwd={cwd}\n")
+                f.write(f"# cmd: {shlex.join(cmd)}\n")
+                f.write(
+                    f"# started: {time.strftime('%F %T', time.localtime(job.started_ts))}\n"
+                )
+                f.write("# ─── output below ─────────────────────────────────\n")
+                f.flush()
 
-        # Open the log for append in the parent, dup the FD into the child via
-        # Popen's stdout=, then close the parent handle. Without this close,
-        # the FileIO is held by Popen's frame for the lifetime of the Job —
-        # 100 finished-but-retained jobs would hold 100 FDs.
-        log_fh = open(log_path, "a", encoding="utf-8")
+            # Open the log for append in the parent, dup the FD into the child via
+            # Popen's stdout=, then close the parent handle. Without this close,
+            # the FileIO is held by Popen's frame for the lifetime of the Job —
+            # 100 finished-but-retained jobs would hold 100 FDs.
+            log_fh = open(log_path, "a", encoding="utf-8")
+        except OSError:
+            log.exception("spawn job_id=%s failed to open log %s", job_id, log_path)
+            job.status = "failed"
+            job.ended_ts = time.time()
+            job.exit_code = -1
+            with self._lock:
+                self._prune_locked()
+            return job
         try:
             # PODCAST_JOB_ID lets the child write a `<workspace>/.pipeline_job_id`
             # sidecar so the dashboard's "active workspace" lookup can pair a
@@ -346,7 +361,9 @@ class JobTracker:
             j.ended_ts = time.time()
             j.exit_code = rc
             if j.status == "running":
-                j.status = "succeeded" if rc == 0 else ("killed" if rc < 0 else "failed")
+                j.status = (
+                    "succeeded" if rc == 0 else ("killed" if rc < 0 else "failed")
+                )
             self._procs.pop(job_id, None)
 
     def _prune_locked(self) -> None:

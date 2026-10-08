@@ -157,7 +157,9 @@ def test_concurrent_same_dedup_key_only_one_wins(tracker):
         barrier.wait()
         try:
             successes.append(
-                tracker.spawn(_BLOCK, label=f"w{i}", kind="pipeline", dedup_key="epub:race")
+                tracker.spawn(
+                    _BLOCK, label=f"w{i}", kind="pipeline", dedup_key="epub:race"
+                )
             )
         except WorkspaceBusyError as exc:
             errors.append(exc)
@@ -172,3 +174,18 @@ def test_concurrent_same_dedup_key_only_one_wins(tracker):
     assert len(errors) == 7
     running = [j for j in tracker.list() if j.status == "running"]
     assert len(running) == 1
+
+
+def test_log_open_failure_releases_slot(tracker, monkeypatch, tmp_path):
+    """If the log file cannot be opened, the reserved job must end 'failed'
+    rather than stay 'pending' and block the workspace / MAX_ACTIVE forever."""
+    monkeypatch.setattr(jobs_mod, "JOBS_DIR", tmp_path / "missing_dir")
+    job = tracker.spawn(_BLOCK, label="a", kind="rerun", workspace="ws_log_fail")
+    assert job.status == "failed"
+    assert job.exit_code == -1
+    assert job.ended_ts is not None
+
+    # Workspace is no longer blocked once the directory is usable again.
+    monkeypatch.setattr(jobs_mod, "JOBS_DIR", tmp_path)
+    j2 = tracker.spawn(_BLOCK, label="b", kind="rerun", workspace="ws_log_fail")
+    assert j2.status == "running"
