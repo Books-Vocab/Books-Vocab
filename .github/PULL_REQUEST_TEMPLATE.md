@@ -3,10 +3,11 @@
 - [ ] Worker — direct assignment from User / IM (no Issue required)
 - [ ] Issue Solver — GitHub Issue flow
 
-## Issue
+## Issues
 
-<!-- Issue Solver flow: use `Closes #<number>` when this PR completes the Issue. Direct assignment may leave this blank. -->
+<!-- One line per Issue, spelled out (no ranges). `Closes #N` = this PR fully resolves N; merge auto-closes it. `Refs #N` = partial; N returns to `ready-for-solver`. Direct assignment may leave this section blank. See docs/reference/issue_management.md. -->
 Closes #
+Refs #
 
 ## Why
 
