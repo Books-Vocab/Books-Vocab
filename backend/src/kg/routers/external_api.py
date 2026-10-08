@@ -71,6 +71,7 @@ from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
 from ..sentry_init import capture_handled
 from ..service_factories import create_client
 from ..types import UserRecord
+from ..vocab_graph_ops import link_peer_ids, touch_peers
 from ..vocab_handlers import (
     archive_word_response,
     create_manual_link_response,
@@ -613,10 +614,13 @@ def _delete_external_card(user: UserRecord, card_id: str, notebook_id: str) -> E
     graph = _graph_store(user["dir"], notebook_id=notebook_id)
     cards.delete(card.id)
     try:
+        # Peers must be read before cleanup deprecates the links.
+        peer_ids = link_peer_ids(graph, card.id)
         graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
     except Exception:
         cards.restore(card.id, notebook_id=notebook_id)
         raise
+    touch_peers(cards, peer_ids, card)
     try:
         _embedding_store(user["dir"], llm=None, notebook_id=notebook_id).remove(card.id)
     except Exception as exc:

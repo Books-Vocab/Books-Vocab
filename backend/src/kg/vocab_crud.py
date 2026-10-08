@@ -13,6 +13,7 @@ from .api_models import CardResponse
 from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
 from .exceptions import BadRequestError, NotFoundError, ValidationError
 from .user_store import parse_datetime
+from .vocab_graph_ops import link_peer_ids, touch_peers
 from .vocab_shared import (
     MAX_BATCH_SIZE,
     MAX_WORD_LENGTH,
@@ -295,29 +296,6 @@ def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None)
     return card
 
 
-def _linked_peer_ids(graph: Any, card_id: str) -> set[str]:
-    """Ids of cards joined to ``card_id`` by an active or hidden link."""
-    return {link.to_id if link.from_id == card_id else link.from_id for link in graph.get_links_for(card_id)}
-
-
-def _touch_peers(cards_store: Any, peer_ids: set[str], card: Any) -> None:
-    """Bump ``updated_at`` on peers whose ``linksByKind`` changed with ``card``.
-
-    A peer's response hides links to archived/deleted cards, so flipping this
-    card's state changes the peer's wire form. The incremental vocab pull is
-    keyed by ``(updated_at, id)``; without the bump other devices never re-fetch
-    the peer and keep a stale ``linksByKind``. Best-effort: the card change is
-    already committed, so a touch failure must not fail the request.
-    """
-    peer_ids = peer_ids - {card.id}
-    if not peer_ids:
-        return
-    try:
-        cards_store.batch_touch(peer_ids, notebook_id=getattr(card, "notebook_id", None))
-    except Exception:
-        logger.warning("Failed to bump linked peers of card %s", card.id, exc_info=True)
-
-
 def lookup_vocab_word(
     word: str,
     *,
@@ -347,12 +325,12 @@ def archive_vocab_word(
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
         try:
-            peer_ids = _linked_peer_ids(graph, card.id) if archived else set()
+            peer_ids = link_peer_ids(graph, card.id) if archived else set()
             if archived:
                 graph.cleanup_for_card(card.id, source="manual")
             else:
                 graph.restore_links_for(card.id, cards_store, source="manual")
-                peer_ids = _linked_peer_ids(graph, card.id)
+                peer_ids = link_peer_ids(graph, card.id)
         except Exception:
             # Roll the card's archive state back to its original value so a
             # failed graph op never leaves card state and the response out of
@@ -363,7 +341,7 @@ def archive_vocab_word(
             except Exception:
                 logger.exception("Rollback failed for card %s after graph error", card.id)
             raise
-        _touch_peers(cards_store, peer_ids, card)
+        touch_peers(cards_store, peer_ids, card)
     return ArchiveWordResponse(word=word, id=card.id, archived=archived)
 
 
@@ -468,7 +446,7 @@ def delete_vocab_word(
     cards_store.delete(card.id)
     if graph is not None:
         try:
-            peer_ids = _linked_peer_ids(graph, card.id)
+            peer_ids = link_peer_ids(graph, card.id)
             graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
         except Exception:
             logger.error("Graph operation failed for card %s", card.id, exc_info=True)
@@ -477,7 +455,7 @@ def delete_vocab_word(
             except Exception:
                 logger.exception("Restore failed for card %s after graph error", card.id)
             raise
-        _touch_peers(cards_store, peer_ids, card)
+        touch_peers(cards_store, peer_ids, card)
     # Card is committed-deleted past this point — drop its embedding so it
     # stops polluting find_similar. Done after the rollback window so a
     # restored card keeps its vector.
@@ -593,7 +571,7 @@ def batch_delete_vocab_words(
         cards_store.delete(card.id)
         if graph is not None:
             try:
-                peer_ids = _linked_peer_ids(graph, card.id)
+                peer_ids = link_peer_ids(graph, card.id)
                 graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
             except Exception as exc:
                 logger.error("Graph operation failed for card %s", card.id, exc_info=True)
@@ -602,7 +580,7 @@ def batch_delete_vocab_words(
                 except Exception:
                     logger.exception("Restore failed for card %s after graph error", card.id)
                 raise _GraphOpFailed from exc
-            _touch_peers(cards_store, peer_ids, card)
+            touch_peers(cards_store, peer_ids, card)
 
     succeeded, not_found, failed = _batch_apply(words, cards_store=cards_store, notebook_id=notebook_id, apply=_delete)
     deleted_words = [word for word, _ in succeeded]
@@ -655,12 +633,12 @@ def batch_archive_vocab_words(
         cards_store.update(card.id, is_archived=archived)
         if graph is not None:
             try:
-                peer_ids = _linked_peer_ids(graph, card.id) if archived else set()
+                peer_ids = link_peer_ids(graph, card.id) if archived else set()
                 if archived:
                     graph.cleanup_for_card(card.id, source="manual")
                 else:
                     graph.restore_links_for(card.id, cards_store, source="manual")
-                    peer_ids = _linked_peer_ids(graph, card.id)
+                    peer_ids = link_peer_ids(graph, card.id)
             except Exception as exc:
                 # Roll the card's archive state back to its original value so a
                 # failed graph op never leaves card state and the response out of
@@ -671,7 +649,7 @@ def batch_archive_vocab_words(
                 except Exception:
                     logger.exception("Rollback failed for card %s after graph error", card.id)
                 raise _GraphOpFailed from exc
-            _touch_peers(cards_store, peer_ids, card)
+            touch_peers(cards_store, peer_ids, card)
 
     succeeded, not_found, failed = _batch_apply(words, cards_store=cards_store, notebook_id=notebook_id, apply=_archive)
     updated_words = [word for word, _ in succeeded]
