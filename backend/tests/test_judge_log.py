@@ -11,6 +11,7 @@ def test_record_and_retrieve(tmp_path, monkeypatch):
     import importlib
 
     from kg import judge_log
+
     importlib.reload(judge_log)
     judge_log._reset()
 
@@ -54,6 +55,7 @@ def test_record_rejection(tmp_path, monkeypatch):
     import importlib
 
     from kg import judge_log
+
     importlib.reload(judge_log)
     judge_log._reset()
 
@@ -94,6 +96,7 @@ def test_get_log_normalizes_legacy_text_boolean_values(tmp_path, monkeypatch):
     import importlib
 
     from kg import judge_log
+
     importlib.reload(judge_log)
     judge_log._reset()
 
@@ -105,9 +108,16 @@ def test_get_log_normalizes_legacy_text_boolean_values(tmp_path, monkeypatch):
         ("legacy_false", False, "low_confidence", "manual"),
     ]:
         judge_log.record(
-            user_id="u1", notebook_id="nb1", from_id="a", to_id=to_id,
-            similarity=0.8, verdict="shares_usage", confidence=0.9,
-            accepted=accepted, reject_reason=reject_reason, source=source,
+            user_id="u1",
+            notebook_id="nb1",
+            from_id="a",
+            to_id=to_id,
+            similarity=0.8,
+            verdict="shares_usage",
+            confidence=0.9,
+            accepted=accepted,
+            reject_reason=reject_reason,
+            source=source,
         )
 
     conn = judge_log._get_conn()
@@ -139,6 +149,7 @@ def test_acceptance_stats(tmp_path, monkeypatch):
     import importlib
 
     from kg import judge_log
+
     importlib.reload(judge_log)
     judge_log._reset()
 
@@ -150,16 +161,28 @@ def test_acceptance_stats(tmp_path, monkeypatch):
     # 2 accepted, 1 rejected
     for accepted, verdict in [(True, "shares_usage"), (True, "contrasts_with"), (False, "not_applicable")]:
         judge_log.record(
-            user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
-            similarity=0.8, verdict=verdict, confidence=0.9,
-            accepted=accepted, source="auto",
+            user_id="u1",
+            notebook_id="nb1",
+            from_id="a",
+            to_id="b",
+            similarity=0.8,
+            verdict=verdict,
+            confidence=0.9,
+            accepted=accepted,
+            source="auto",
         )
 
     # 1 manual (should be excluded from stats)
     judge_log.record(
-        user_id="u1", notebook_id="nb1", from_id="a", to_id="c",
-        similarity=None, verdict="shares_usage", confidence=1.0,
-        accepted=True, source="manual",
+        user_id="u1",
+        notebook_id="nb1",
+        from_id="a",
+        to_id="c",
+        similarity=None,
+        verdict="shares_usage",
+        confidence=1.0,
+        accepted=True,
+        source="manual",
     )
 
     stats = judge_log.get_acceptance_stats()
@@ -178,21 +201,34 @@ def test_acceptance_stats_per_user(tmp_path, monkeypatch):
     import importlib
 
     from kg import judge_log
+
     importlib.reload(judge_log)
     judge_log._reset()
 
     # u1: 2 accepted, 1 rejected
     for accepted, verdict in [(True, "shares_usage"), (True, "contrasts_with"), (False, "not_applicable")]:
         judge_log.record(
-            user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
-            similarity=0.8, verdict=verdict, confidence=0.9,
-            accepted=accepted, source="auto",
+            user_id="u1",
+            notebook_id="nb1",
+            from_id="a",
+            to_id="b",
+            similarity=0.8,
+            verdict=verdict,
+            confidence=0.9,
+            accepted=accepted,
+            source="auto",
         )
     # u2: 1 accepted
     judge_log.record(
-        user_id="u2", notebook_id="nb1", from_id="x", to_id="y",
-        similarity=0.7, verdict="shares_usage", confidence=0.85,
-        accepted=True, source="auto",
+        user_id="u2",
+        notebook_id="nb1",
+        from_id="x",
+        to_id="y",
+        similarity=0.7,
+        verdict="shares_usage",
+        confidence=0.85,
+        accepted=True,
+        source="auto",
     )
 
     s1 = judge_log.get_acceptance_stats(user_id="u1")
@@ -212,4 +248,29 @@ def test_acceptance_stats_per_user(tmp_path, monkeypatch):
     assert s3["total"] == 0
     assert s3["rate"] is None
 
+    judge_log._reset()
+
+
+def test_delete_for_users_is_scoped_idempotent_and_handles_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    from kg import judge_log
+
+    judge_log._reset()
+    for uid in ("gone", "linked", "keep"):
+        judge_log.record(
+            user_id=uid,
+            notebook_id="nb",
+            from_id="a",
+            to_id="b",
+            similarity=0.5,
+            verdict="shares_usage",
+            confidence=0.9,
+            accepted=True,
+        )
+
+    assert judge_log.delete_for_users([]) == 0
+    assert judge_log.delete_for_users(["gone", "linked", "gone"]) == 2
+    assert judge_log.delete_for_users(["gone"]) == 0
+    assert judge_log.get_log("gone") == [] and judge_log.get_log("linked") == []
+    assert len(judge_log.get_log("keep")) == 1
     judge_log._reset()

@@ -14,7 +14,7 @@ import json
 import logging
 import sqlite3
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -768,3 +768,24 @@ async def run_add_link_operation(
             logger.error("Add Link operation %s failed at %s: %s", operation_id, current_step, exc, exc_info=True)
             update_step(operation_id, current_step, status="error", detail_code=_error_code(current_step, exc))
             finish_operation(operation_id, status="failed", error_code=_error_code(current_step, exc))
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every row owned by the supplied user IDs (operations).
+
+    Account erasure hook: the database lives at the data root, not under each
+    user's directory. Idempotent; unrelated user IDs are never touched.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+
+    deleted = 0
+    with _lock:
+        conn = _get_conn()
+        deleted += conn.executemany(
+            "DELETE FROM vocab_add_link_operations WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        conn.commit()
+    return deleted

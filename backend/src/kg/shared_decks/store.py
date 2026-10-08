@@ -4,7 +4,8 @@ Unlike the per-user stores (cards/notebook/library), this store is a **single
 global** SQLite file at ``data_dir/shared_decks.db``. A shared deck's owner is
 the ``owner_id`` *column* (``NULL`` for official decks), never encoded in the
 path — the same cross-user shape as ``translate_log``. It is therefore OUTSIDE
-the per-user backup/erasure scope and needs its own hooks (Phase 1b / §3.5).
+the per-user backup/erasure scope and needs its own hooks (Phase 1b / §3.5);
+``delete_copy_logs_for`` is the account-erasure hook for ``shared_deck_copy_log``.
 
 Six tables (all six ``table=True`` class names are **globally unique** so
 SQLModel's shared metadata registry never trips ``InvalidRequestError``, the
@@ -27,10 +28,11 @@ import hashlib
 import json
 import secrets
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, exists, func, or_, tuple_
+from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, delete, exists, func, or_, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
@@ -427,6 +429,20 @@ class SharedDeckStore:
                 session.rollback()
                 return False
             return True
+
+    def delete_copy_logs_for(self, copier_ids: Iterable[str]) -> int:
+        """Account-erasure hook: delete every copy-log row of the given copiers.
+
+        Idempotent; rows of unrelated copiers are untouched. Returns the number
+        of rows removed.
+        """
+        ids = list(dict.fromkeys(copier_ids))
+        if not ids:
+            return 0
+        with Session(self.engine) as session:
+            result = session.execute(delete(SharedDeckCopyLog).where(SharedDeckCopyLog.copier_id.in_(ids)))
+            session.commit()
+            return int(result.rowcount or 0)
 
     def finalize_copy_download(self, copier_id: str, idempotency_key: str, deck_id: str) -> bool:
         """Count one committed copy exactly once.

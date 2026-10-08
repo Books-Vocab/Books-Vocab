@@ -8,11 +8,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from logging import Logger
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from fastapi import HTTPException
 
-from . import podcast_progress
+from . import judge_log, llm_error_log, podcast_progress, translate_log, vocab_add_link_operation
 from .account_erasure import ObjectStorageClient, delete_account_assets
 from .api_models import (
     AutoLinkConfig,
@@ -31,6 +31,9 @@ from .ops_cli_shared import _normalize_persisted_bool
 from .service_factories import evict_user_store_cache
 from .types import StoredUserRecord, UserRecord, UsersPayload
 from .users_lock import users_file_lock
+
+if TYPE_CHECKING:
+    from .shared_decks.store import SharedDeckStore
 
 _logger = logging.getLogger(__name__)
 
@@ -320,6 +323,7 @@ def delete_user_account_response(
     library_bucket: str | None = None,
     library_s3_client: ObjectStorageClient | None = None,
     purge_external_api_keys: Callable[[UsersPayload, list[str]], None] | None = None,
+    shared_deck_store: SharedDeckStore | None = None,
 ) -> DeleteAccountResponse:
     user_id = user["id"]
     erased: set[str] = set()
@@ -331,6 +335,12 @@ def delete_user_account_response(
             pending = [uid for uid in ids_to_delete if uid not in erased]
             if not pending:
                 podcast_progress.delete_for_users(ids_to_delete)
+                vocab_add_link_operation.delete_for_users(ids_to_delete)
+                translate_log.delete_for_users(ids_to_delete)
+                judge_log.delete_for_users(ids_to_delete)
+                llm_error_log.delete_for_users(ids_to_delete)
+                if shared_deck_store is not None:
+                    shared_deck_store.delete_copy_logs_for(ids_to_delete)
                 _tombstone_accounts(users, ids_to_delete, purge_external_api_keys=purge_external_api_keys)
                 save_users(users)
                 # users.json is now tombstoned: drop the cached stores at once

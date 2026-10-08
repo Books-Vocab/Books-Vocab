@@ -439,3 +439,17 @@ def test_interrupted_operation_is_not_resumed_by_late_runner(tmp_path):
 
     assert get_operation("user-1", operation_id)["status"] == "interrupted"
     assert cards.added == []
+
+
+def test_delete_for_users_is_scoped_idempotent_and_handles_empty():
+    import kg.vocab_add_link_operation as operations
+
+    for uid in ("gone", "linked", "keep"):
+        operations.create_operation(user_id=uid, notebook_id="nb", idempotency_key="k", payload=payload())
+
+    assert operations.delete_for_users([]) == 0
+    assert operations.delete_for_users(["gone", "linked", "gone"]) == 2
+    assert operations.delete_for_users(["gone"]) == 0
+    with operations._lock:
+        rows = operations._get_conn().execute("SELECT user_id FROM vocab_add_link_operations").fetchall()
+    assert [r[0] for r in rows] == ["keep"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -249,3 +250,24 @@ def get_acceptance_stats(*, user_id: str | None = None) -> dict:
         "rejected": rejected,
         "rate": round(accepted / total, 4) if total > 0 else None,
     }
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every row owned by the supplied user IDs (judge decisions).
+
+    Account erasure hook: the database lives at the data root, not under each
+    user's directory. Idempotent; unrelated user IDs are never touched.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+
+    deleted = 0
+    with _lock:
+        conn = _get_conn()
+        deleted += conn.executemany(
+            "DELETE FROM judge_log WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        conn.commit()
+    return deleted

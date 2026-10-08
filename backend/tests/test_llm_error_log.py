@@ -1,4 +1,5 @@
 """Tests for llm_error_log — real LLM failure recording."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -29,9 +30,11 @@ class TestRecord:
             status_code=429,
             message="rate limited",
         )
-        rows = llm_error_log._get_conn().execute(
-            "SELECT user_id, call_type, provider, model, error_class, status_code, message FROM llm_errors"
-        ).fetchall()
+        rows = (
+            llm_error_log._get_conn()
+            .execute("SELECT user_id, call_type, provider, model, error_class, status_code, message FROM llm_errors")
+            .fetchall()
+        )
         assert len(rows) == 1
         uid, ct, prov, mod, ec, sc, msg = rows[0]
         assert uid == "u1"
@@ -60,9 +63,9 @@ class TestRecord:
             status_code=None,
             message=None,
         )
-        row = llm_error_log._get_conn().execute(
-            "SELECT provider, model, status_code, message FROM llm_errors"
-        ).fetchone()
+        row = (
+            llm_error_log._get_conn().execute("SELECT provider, model, status_code, message FROM llm_errors").fetchone()
+        )
         assert row[0] is None
         assert row[1] is None
         assert row[2] is None
@@ -76,9 +79,7 @@ class TestRecord:
             error_class="Error",
             message=long_msg,
         )
-        msg = llm_error_log._get_conn().execute(
-            "SELECT message FROM llm_errors"
-        ).fetchone()[0]
+        msg = llm_error_log._get_conn().execute("SELECT message FROM llm_errors").fetchone()[0]
         assert len(msg) == 500
         assert msg == "x" * 500
 
@@ -87,14 +88,9 @@ class TestRecord:
             user_id="u1",
             call_type="judge",
             error_class="AuthenticationError",
-            message=(
-                "Authorization: Bearer sk-prod-secret "
-                "api_key=AIzaSySecret token=plain-token password=hunter2"
-            ),
+            message=("Authorization: Bearer sk-prod-secret api_key=AIzaSySecret token=plain-token password=hunter2"),
         )
-        msg = llm_error_log._get_conn().execute(
-            "SELECT message FROM llm_errors"
-        ).fetchone()[0]
+        msg = llm_error_log._get_conn().execute("SELECT message FROM llm_errors").fetchone()[0]
         for secret in ("sk-prod-secret", "AIzaSySecret", "plain-token", "hunter2"):
             assert secret not in msg
         assert msg.count("[REDACTED]") >= 4
@@ -105,14 +101,10 @@ class TestRecord:
             call_type="judge",
             error_class="AuthenticationError",
             message=(
-                '{"api_key": "AIzaSySecret", '
-                "'Authorization': 'Bearer eyJ.secret', "
-                '"access_token": "access-secret"}'
+                '{"api_key": "AIzaSySecret", \'Authorization\': \'Bearer eyJ.secret\', "access_token": "access-secret"}'
             ),
         )
-        msg = llm_error_log._get_conn().execute(
-            "SELECT message FROM llm_errors"
-        ).fetchone()[0]
+        msg = llm_error_log._get_conn().execute("SELECT message FROM llm_errors").fetchone()[0]
         for secret in ("AIzaSySecret", "eyJ.secret", "access-secret"):
             assert secret not in msg
         assert msg.count("[REDACTED]") >= 3
@@ -124,9 +116,7 @@ class TestRecord:
             error_class="BadRequestError",
             message="max_tokens=8192 prompt_tokens=123 completion_tokens=456 total_tokens=579",
         )
-        msg = llm_error_log._get_conn().execute(
-            "SELECT message FROM llm_errors"
-        ).fetchone()[0]
+        msg = llm_error_log._get_conn().execute("SELECT message FROM llm_errors").fetchone()[0]
         assert "max_tokens=8192" in msg
         assert "prompt_tokens=123" in msg
         assert "completion_tokens=456" in msg
@@ -141,9 +131,7 @@ class TestRecord:
             error_class="RuntimeError",
         )
         after = datetime.now(UTC).isoformat()
-        ts = llm_error_log._get_conn().execute(
-            "SELECT created_at FROM llm_errors"
-        ).fetchone()[0]
+        ts = llm_error_log._get_conn().execute("SELECT created_at FROM llm_errors").fetchone()[0]
         assert before <= ts <= after
 
     def test_count_errors_since_normalizes_offset_timestamps(self, monkeypatch):
@@ -158,8 +146,7 @@ class TestRecord:
         monkeypatch.setattr(llm_error_log, "datetime", FixedDatetime)
         conn = llm_error_log._get_conn()
         conn.executemany(
-            "INSERT INTO llm_errors (user_id, call_type, error_class, created_at) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO llm_errors (user_id, call_type, error_class, created_at) VALUES (?, ?, ?, ?)",
             [
                 ("u1", "judge", "Error", "2026-08-21T12:30:00+01:00"),
                 ("u1", "judge", "Error", "2026-08-21T12:30:00+02:00"),
@@ -167,10 +154,7 @@ class TestRecord:
         )
         conn.commit()
 
-        query = (
-            "SELECT COUNT(*) FROM llm_errors "
-            "WHERE datetime(created_at) >= datetime(?)"
-        )
+        query = "SELECT COUNT(*) FROM llm_errors WHERE datetime(created_at) >= datetime(?)"
         plan = conn.execute(
             f"EXPLAIN QUERY PLAN {query}",
             ("2026-08-21T11:00:00+00:00",),
@@ -189,14 +173,21 @@ class TestReset:
         new_path.parent.mkdir(parents=True)
         monkeypatch.setattr(llm_error_log, "DB_PATH", new_path)
         llm_error_log._get_conn()
-        new_count = llm_error_log._get_conn().execute(
-            "SELECT COUNT(*) FROM llm_errors"
-        ).fetchone()[0]
+        new_count = llm_error_log._get_conn().execute("SELECT COUNT(*) FROM llm_errors").fetchone()[0]
         assert new_count == 0
         llm_error_log._reset()
         monkeypatch.setattr(llm_error_log, "DB_PATH", old_path)
-        old_count = llm_error_log._get_conn().execute(
-            "SELECT COUNT(*) FROM llm_errors"
-        ).fetchone()[0]
+        old_count = llm_error_log._get_conn().execute("SELECT COUNT(*) FROM llm_errors").fetchone()[0]
         llm_error_log._reset()
         assert old_count == 1
+
+
+def test_delete_for_users_is_scoped_idempotent_and_handles_empty():
+    for uid in ("gone", "linked", "keep"):
+        llm_error_log.record(user_id=uid, call_type="judge", error_class="RateLimitError")
+
+    assert llm_error_log.delete_for_users([]) == 0
+    assert llm_error_log.delete_for_users(["gone", "linked", "gone"]) == 2
+    assert llm_error_log.delete_for_users(["gone"]) == 0
+    rows = llm_error_log._get_conn().execute("SELECT user_id FROM llm_errors").fetchall()
+    assert [r[0] for r in rows] == ["keep"]

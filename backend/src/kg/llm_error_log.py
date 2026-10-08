@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from . import runtime_data_root
@@ -166,3 +167,24 @@ def count_errors_since(window_min: int) -> int:
             (cutoff,),
         ).fetchone()
     return int(row[0] or 0)
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every row owned by the supplied user IDs (LLM error log).
+
+    Account erasure hook: the database lives at the data root, not under each
+    user's directory. Idempotent; unrelated user IDs are never touched.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+
+    deleted = 0
+    with _lock:
+        conn = _get_conn()
+        deleted += conn.executemany(
+            "DELETE FROM llm_errors WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        conn.commit()
+    return deleted
