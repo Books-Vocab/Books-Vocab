@@ -56,14 +56,34 @@ def resolve_and_link_user(
         now = datetime.now(tz=UTC).isoformat()
         existing_user = users.get(provider_user_id)
         linked_canonical_id = existing_user.get("_linked_to") if isinstance(existing_user, dict) else None
-
-        if (
-            email is None
-            and isinstance(linked_canonical_id, str)
+        has_valid_link = (
+            isinstance(linked_canonical_id, str)
             and linked_canonical_id != provider_user_id
-            and linked_canonical_id in users
-        ):
+            and not linked_canonical_id.startswith("_")
+            and isinstance(users.get(linked_canonical_id), dict)
+        )
+        # Email written onto the canonical record. None means "keep what is
+        # stored", exactly like Apple's email-less follow-up sign-ins.
+        profile_email = email
+
+        if has_valid_link:
+            # A linked provider id always resolves to its canonical, whatever
+            # its token's verified email is now (#1185 omitted email, #2256
+            # changed email). Splitting off `provider_user_id` would issue a
+            # session whose account deletion reaches the canonical through
+            # this `_linked_to` pointer.
             canonical_id = linked_canonical_id
+            if email:
+                email_owner = users["_email_index"].get(email)
+                if email_owner is None or email_owner == provider_user_id:
+                    # Unindexed, or still indexed to this linked id (its own
+                    # pre-merge email, or a split left by #2256): an alias of
+                    # the canonical.
+                    users["_email_index"][email] = canonical_id
+                elif email_owner != canonical_id:
+                    # Owned by a different canonical: never re-link or move the
+                    # index silently, and never copy that account's email here.
+                    profile_email = None
         elif email and email in users["_email_index"]:
             canonical_id = users["_email_index"][email]
 
@@ -87,11 +107,17 @@ def resolve_and_link_user(
         if canonical_id not in users:
             users[canonical_id] = {}
 
+        if canonical_id == provider_user_id:
+            # This id is its own canonical, so any `_linked_to` left on it is
+            # invalid (has_valid_link was false). Drop it: deletion from this
+            # session must not fan out through a pointer login ignored.
+            users[canonical_id].pop("_linked_to", None)
+
         users[canonical_id]["provider"] = provider
         # Apple omits email on follow-up sign-ins. Preserve the verified
         # canonical email instead of erasing it with that expected omission.
-        if email is not None or "email" not in users[canonical_id]:
-            users[canonical_id]["email"] = email
+        if profile_email is not None or "email" not in users[canonical_id]:
+            users[canonical_id]["email"] = profile_email
         users[canonical_id]["last_login"] = now
 
         # Clear stale revocation watermarks on a fresh login so the dict does

@@ -5,7 +5,8 @@ spoofing) and `test_auth_service.py` (basic merge semantics) by covering:
 
 1. Apple-then-Google with the same verified email merges into one canonical
    user without losing per-user data (notebook directories keyed by canonical
-   id remain accessible).
+   id remain accessible). A linked provider keeps resolving to that canonical
+   even when its later token omits or changes the verified email.
 2. After account deletion (the canonical session-invalidation pathway), the
    original JWT must be rejected even if the same provider sub re-registers
    later — the `_revoked_before` watermark must outlive the data wipe until
@@ -30,6 +31,7 @@ from kg.auth_handlers import auth_verify_response
 from kg.auth_service import resolve_and_link_user
 from kg.user_context import resolve_current_user
 from kg.user_handlers import delete_user_account_response
+from kg.user_store import collect_account_ids_for_deletion
 from kg.user_store import parse_datetime as _parse_datetime
 
 # --------------------------------------------------------------------------- #
@@ -145,9 +147,12 @@ async def test_apple_then_google_same_email_merges_without_data_loss(tmp_path):
 
     # Apple first — canonical = apple sub
     apple_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="apple-sub",
-        email=shared_email, email_verified=True,
+        users_file,
+        lock,
+        provider="apple",
+        sub="apple-sub",
+        email=shared_email,
+        email_verified=True,
     )
     apple_resp = await auth_verify_response(
         AuthVerifyRequest(provider="apple", token="a-token", email=None),
@@ -163,9 +168,12 @@ async def test_apple_then_google_same_email_merges_without_data_loss(tmp_path):
 
     # Google second — same verified email
     google_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="google", sub="google-sub",
-        email=shared_email, email_verified=True,
+        users_file,
+        lock,
+        provider="google",
+        sub="google-sub",
+        email=shared_email,
+        email_verified=True,
     )
     google_resp = await auth_verify_response(
         AuthVerifyRequest(provider="google", token="g-token", email=None),
@@ -219,9 +227,12 @@ async def test_google_then_apple_same_email_no_duplicate_account(tmp_path):
     shared_email = "swap@example.com"
 
     g_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="google", sub="g-sub",
-        email=shared_email, email_verified=True,
+        users_file,
+        lock,
+        provider="google",
+        sub="g-sub",
+        email=shared_email,
+        email_verified=True,
     )
     g_resp = await auth_verify_response(
         AuthVerifyRequest(provider="google", token="g", email=None),
@@ -230,9 +241,12 @@ async def test_google_then_apple_same_email_no_duplicate_account(tmp_path):
     assert g_resp.user_id == "g-sub"
 
     a_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="a-sub",
-        email=shared_email, email_verified=True,
+        users_file,
+        lock,
+        provider="apple",
+        sub="a-sub",
+        email=shared_email,
+        email_verified=True,
     )
     a_resp = await auth_verify_response(
         AuthVerifyRequest(provider="apple", token="a", email=None),
@@ -241,10 +255,7 @@ async def test_google_then_apple_same_email_no_duplicate_account(tmp_path):
     assert a_resp.user_id == "g-sub", "Apple login must merge into existing Google canonical"
 
     users = load()
-    canonical_keys = [
-        k for k in users
-        if not k.startswith("_") and not users[k].get("_linked_to")
-    ]
+    canonical_keys = [k for k in users if not k.startswith("_") and not users[k].get("_linked_to")]
     assert canonical_keys == ["g-sub"], (
         f"Exactly one canonical user must exist after cross-provider login, got {canonical_keys}"
     )
@@ -257,9 +268,12 @@ async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
     shared_email = "linked@example.com"
 
     google_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="google", sub="google-sub",
-        email=shared_email, email_verified=True,
+        users_file,
+        lock,
+        provider="google",
+        sub="google-sub",
+        email=shared_email,
+        email_verified=True,
     )
     google_resp = await auth_verify_response(
         AuthVerifyRequest(provider="google", token="google-token", email=None),
@@ -272,9 +286,12 @@ async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
     canonical_data.write_text(json.dumps({"title": "canonical data"}))
 
     apple_first_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="apple-sub",
-        email=shared_email, email_verified=True,
+        users_file,
+        lock,
+        provider="apple",
+        sub="apple-sub",
+        email=shared_email,
+        email_verified=True,
     )
     apple_first_resp = await auth_verify_response(
         AuthVerifyRequest(provider="apple", token="apple-first-token", email=None),
@@ -283,13 +300,18 @@ async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
     assert apple_first_resp.user_id == "google-sub"
 
     apple_follow_up_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="apple-sub",
-        email=None, email_verified=False,
+        users_file,
+        lock,
+        provider="apple",
+        sub="apple-sub",
+        email=None,
+        email_verified=False,
     )
     apple_follow_up_resp = await auth_verify_response(
         AuthVerifyRequest(
-            provider="apple", token="apple-follow-up-token", email=None,
+            provider="apple",
+            token="apple-follow-up-token",
+            email=None,
         ),
         **apple_follow_up_kwargs,
     )
@@ -305,6 +327,50 @@ async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
     assert users["apple-sub"]["_linked_to"] == "google-sub"
     assert canonical_data.exists()
     assert json.loads(canonical_data.read_text())["title"] == "canonical data"
+
+
+@pytest.mark.asyncio
+async def test_linked_apple_email_change_keeps_canonical_session(tmp_path):
+    """#2256: once Apple is linked to Google, a later Apple token carrying a
+    different verified email must still issue the canonical session. A split
+    `sub=a-sub` session would show an empty account, and Delete Account from it
+    would reach the real canonical through the stale `_linked_to` pointer."""
+    users_file, lock, load, save = _make_user_store(tmp_path)
+    settings = make_settings(tmp_path)
+
+    async def sign_in(provider: str, sub: str, email: str):
+        kwargs = _build_handler_kwargs(
+            users_file,
+            lock,
+            provider=provider,
+            sub=sub,
+            email=email,
+            email_verified=True,
+        )
+        return await auth_verify_response(
+            AuthVerifyRequest(provider=provider, token=f"{sub}-token", email=None),
+            **kwargs,
+        )
+
+    assert (await sign_in("google", "g-sub", "first@example.com")).user_id == "g-sub"
+    assert (await sign_in("apple", "a-sub", "first@example.com")).user_id == "g-sub"
+    resp = await sign_in("apple", "a-sub", "relay@privaterelay.appleid.com")
+
+    assert resp.user_id == "g-sub"
+    claims = pyjwt.decode(resp.access_token, TEST_JWT_SECRET, algorithms=[TEST_ALGORITHM])
+    assert claims["sub"] == "g-sub"
+
+    record = resolve_current_user(
+        resp.access_token,
+        settings=settings,
+        load_users=load,
+        parse_datetime=_parse_datetime,
+    )
+    assert record["id"] == "g-sub"
+    assert not (tmp_path / "users" / "a-sub").exists()
+
+    # Deletion from this session starts at the real canonical, not a split id.
+    assert collect_account_ids_for_deletion(load(), claims["sub"]) == ("g-sub", ["a-sub", "g-sub"])
 
 
 # --------------------------------------------------------------------------- #
@@ -331,9 +397,12 @@ async def test_account_deletion_invalidates_old_session_token(tmp_path):
 
     # Initial login (Apple).
     apple_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="apple-user",
-        email="alice@example.com", email_verified=True,
+        users_file,
+        lock,
+        provider="apple",
+        sub="apple-user",
+        email="alice@example.com",
+        email_verified=True,
     )
     resp1 = await auth_verify_response(
         AuthVerifyRequest(provider="apple", token="t1", email=None),
@@ -436,9 +505,12 @@ async def test_concurrent_device_login_same_user_both_valid(tmp_path):
     settings = make_settings(tmp_path)
 
     apple_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="device-user",
-        email="multi@example.com", email_verified=True,
+        users_file,
+        lock,
+        provider="apple",
+        sub="device-user",
+        email="multi@example.com",
+        email_verified=True,
     )
 
     # Device A login.
@@ -484,9 +556,12 @@ async def test_dual_device_cross_provider_both_resolve_to_canonical(tmp_path):
 
     # iPhone — Apple
     apple_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="apple", sub="iphone-apple",
-        email="dual@example.com", email_verified=True,
+        users_file,
+        lock,
+        provider="apple",
+        sub="iphone-apple",
+        email="dual@example.com",
+        email_verified=True,
     )
     iphone_resp = await auth_verify_response(
         AuthVerifyRequest(provider="apple", token="iphone", email=None),
@@ -497,9 +572,12 @@ async def test_dual_device_cross_provider_both_resolve_to_canonical(tmp_path):
 
     # Mac — Google with same email
     google_kwargs = _build_handler_kwargs(
-        users_file, lock,
-        provider="google", sub="mac-google",
-        email="dual@example.com", email_verified=True,
+        users_file,
+        lock,
+        provider="google",
+        sub="mac-google",
+        email="dual@example.com",
+        email_verified=True,
     )
     mac_resp = await auth_verify_response(
         AuthVerifyRequest(provider="google", token="mac", email=None),
