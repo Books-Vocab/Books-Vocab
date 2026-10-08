@@ -307,12 +307,12 @@ struct SettingsPlanComparisonTable: View {
             Text("Free")
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.tertiaryText)
-                .frame(width: 52, alignment: .center)
+                .frame(minWidth: 52, alignment: .center)
 
             Text("Pro")
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.accent)
-                .frame(width: 52, alignment: .center)
+                .frame(minWidth: 52, alignment: .center)
         }
     }
 
@@ -325,10 +325,10 @@ struct SettingsPlanComparisonTable: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             markView(row.freeMark, isProColumn: false)
-                .frame(width: 52, alignment: .center)
+                .frame(minWidth: 52, alignment: .center)
 
             markView(row.proMark, isProColumn: true)
-                .frame(width: 52, alignment: .center)
+                .frame(minWidth: 52, alignment: .center)
         }
     }
 
@@ -347,6 +347,9 @@ struct SettingsPlanComparisonTable: View {
             Text(text)
                 .font(appSkin.typography.caption)
                 .foregroundStyle(isProColumn ? appSkin.palette.accent : appSkin.palette.secondaryText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
         }
     }
 }
