@@ -96,9 +96,9 @@ class ExternalCardReviewRequest(BaseModel):
     reviewIntervalHours: float = Field(ge=0, allow_inf_nan=False)
     nextReviewAt: str
     lastReviewedAt: str
-    reviewCount: int = Field(ge=0)
-    lapseCount: int = Field(ge=0)
-    reviewStreak: int = Field(ge=0)
+    reviewCount: int = Field(ge=0, le=2_147_483_647)
+    lapseCount: int = Field(ge=0, le=2_147_483_647)
+    reviewStreak: int = Field(ge=0, le=2_147_483_647)
     lastReviewFeedback: int = Field(ge=-1, le=1)
 
     @field_validator("nextReviewAt", "lastReviewedAt")
