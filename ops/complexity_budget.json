@@ -1,14 +1,14 @@
 {
   "schema": "kg.complexity-budget.v1",
-  "note": "2026-10-09: ops ceiling raised by 1,079 for #2638 (wedged pr-gate run policy + its 470-line regression suite), after #2639 deleted 471 dead lines; ratchet reclaims slack later. Prior reset 2026-10-08: measured 198,421 + 3,000 slack.",
+  "note": "2026-10-09: one-shot raise for the release-tooling wave (release_train fix, prod promote, env-check, changelog; ops +1,500, workflows +100), done to avoid per-lane bumps racing in the merge queue; ratchet reclaims the slack later. Prior: 2026-10-09 ops +1,079 for #2638 after #2639 deleted 471 dead lines; reset 2026-10-08 measured 198,421 + 3,000 slack.",
   "slack": {
     "ops": 2000,
     "docs": 1000,
     "workflows": 250
   },
   "ceilings": {
-    "ops": 202500,
+    "ops": 204000,
     "docs": 15633,
-    "workflows": 1997
+    "workflows": 2097
   }
 }
