@@ -61,13 +61,9 @@ class FreeDictionaryProvider:
     )
 
     def __init__(self, *, client: httpx.Client | None = None) -> None:
-        self.client = client or httpx.Client(
-            base_url="https://freedictionaryapi.com/api/v1", timeout=5.0
-        )
+        self.client = client or httpx.Client(base_url="https://freedictionaryapi.com/api/v1", timeout=5.0)
 
-    def search(
-        self, query: str, *, source_language: str, target_language: str
-    ) -> LexicalEntry | None:
+    def search(self, query: str, *, source_language: str, target_language: str) -> LexicalEntry | None:
         word = query.strip()
         if not word:
             return None
@@ -86,7 +82,12 @@ class FreeDictionaryProvider:
                 "dictionary_provider_rate_limited", headers={"Retry-After": response.headers.get("Retry-After", "60")}
             )
         if response.status_code >= 500:
-            raise ExternalServiceError("dictionary_provider_unavailable")
+            raise ExternalServiceError(
+                "dictionary_provider_unavailable",
+                exc=httpx.HTTPStatusError(
+                    f"upstream status {response.status_code}", request=response.request, response=response
+                ),
+            )
         try:
             response.raise_for_status()
             payload = response.json()
@@ -96,9 +97,7 @@ class FreeDictionaryProvider:
             raise ExternalServiceError("dictionary_provider_invalid_response")
         return self._normalize(payload, source_language=source_language, target_language=target_language)
 
-    def get_entry(
-        self, entry_key: str, *, target_language: str = "zh-Hant"
-    ) -> LexicalEntry | None:
+    def get_entry(self, entry_key: str, *, target_language: str = "zh-Hant") -> LexicalEntry | None:
         try:
             language, word = _decode_entry_key(entry_key)
         except (ValueError, UnicodeError) as exc:
@@ -107,9 +106,7 @@ class FreeDictionaryProvider:
             raise NotFoundError("Dictionary entry", entry_key)
         return self.search(word, source_language=language, target_language=target_language)
 
-    def _normalize(
-        self, payload: dict, *, source_language: str, target_language: str
-    ) -> LexicalEntry:
+    def _normalize(self, payload: dict, *, source_language: str, target_language: str) -> LexicalEntry:
         raw_word = payload.get("word")
         raw_entries = payload.get("entries")
         if not isinstance(raw_word, str) or not raw_word.strip():
@@ -125,8 +122,7 @@ class FreeDictionaryProvider:
             provider=self.provider_id,
             source_url=source_url,
             license_name=_text(license_data.get("name"), 200) or "CC BY-SA 4.0",
-            license_url=_text(license_data.get("url"), 2000)
-            or "https://creativecommons.org/licenses/by-sa/4.0/",
+            license_url=_text(license_data.get("url"), 2000) or "https://creativecommons.org/licenses/by-sa/4.0/",
             attribution_text="Dictionary data from Wiktionary via FreeDictionaryAPI.com",
         )
         pronunciations: list[str] = []
@@ -152,7 +148,10 @@ class FreeDictionaryProvider:
             return values
 
         def append_senses(
-            raw_senses: object, part_of_speech: str | None, *, depth: int = 0,
+            raw_senses: object,
+            part_of_speech: str | None,
+            *,
+            depth: int = 0,
         ) -> None:
             nonlocal sense_nodes, was_truncated
             if raw_senses is None:
@@ -182,9 +181,7 @@ class FreeDictionaryProvider:
                 if isinstance(raw_definition, str) and len(raw_definition.strip()) > 4000:
                     was_truncated = True
                 if definition:
-                    raw_examples = string_list(
-                        raw.get("examples"), limit=MAX_EXAMPLES_PER_SENSE, item_limit=1000
-                    )
+                    raw_examples = string_list(raw.get("examples"), limit=MAX_EXAMPLES_PER_SENSE, item_limit=1000)
                     examples: list[LexicalExample] = []
                     for text in raw_examples:
                         if text:
@@ -295,12 +292,8 @@ class CambridgeProvider:
         cache_policy="none",
     )
 
-    def search(
-        self, query: str, *, source_language: str, target_language: str
-    ) -> LexicalEntry | None:
+    def search(self, query: str, *, source_language: str, target_language: str) -> LexicalEntry | None:
         raise ForbiddenError("Cambridge dictionary provider is not licensed for persistence")
 
-    def get_entry(
-        self, entry_key: str, *, target_language: str = "zh-Hant"
-    ) -> LexicalEntry | None:
+    def get_entry(self, entry_key: str, *, target_language: str = "zh-Hant") -> LexicalEntry | None:
         raise ForbiddenError("Cambridge dictionary provider is not licensed for persistence")
