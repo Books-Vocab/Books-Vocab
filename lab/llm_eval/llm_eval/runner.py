@@ -331,6 +331,7 @@ async def run_eval(
     Returns dict[model_name, EvalSummary].
     """
     config = config or EvalConfig(prompt_name=prompt.name)
+    models = list(dict.fromkeys(models))  # duplicates would double-call and double-count
 
     # Filter samples
     if config.sample_ids:
