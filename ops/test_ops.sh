@@ -359,7 +359,6 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_demo_backend_emitter.py \
         ops/tests/test_demo_ios_emitter.py \
-        ops/tests/test_demo_ios_spec_emitter.py \
         ops/tests/test_shape_history.py \
         ops/tests/test_apply_curation.py \
         ops/tests/test_ui_world_manifest.py \
@@ -372,7 +371,9 @@ run_one() {
         ops/tests/test_uitest_evidence_contract.py \
         ops/tests/test_uitest_manifest_normalize.py \
         ops/tests/test_png_integrity.py \
-        ops/tests/test_uitest_review_attest.py
+        ops/tests/test_uitest_review_attest.py \
+        && KG_REQUIRE_BACKEND_E2E=1 "$UV_BIN" run --project backend python -m pytest -q \
+          ops/tests/test_demo_ios_spec_emitter.py
       ;;
     catalog-agent)
       ./ops/tests/test_catalog_agent_boundary.sh \
