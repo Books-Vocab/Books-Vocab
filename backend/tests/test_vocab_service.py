@@ -144,6 +144,9 @@ class _FakeArchiveGraph:
         self.restored_for = []
         self.removed_blocked_for = []
 
+    def get_links_for(self, card_id):
+        return []
+
     def deprecate_links_for(self, card_id, *, source="auto"):
         self.deprecated_for.append(card_id)
         return 1
@@ -196,6 +199,9 @@ class _PartialFailingGraph:
     def __init__(self, fail_for: str):
         self._fail_for = fail_for
         self.cleaned: list[str] = []
+
+    def get_links_for(self, card_id):
+        return []
 
     def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
         if card_id == self._fail_for:
