@@ -17,6 +17,7 @@ accepts the `--` inside the XML comments of com.kg.reconcile / com.kg.uisweep
 
 from __future__ import annotations
 
+import plistlib
 import re
 import subprocess
 from pathlib import Path
@@ -47,9 +48,83 @@ def test_manifest_is_documented_elsewhere(manifest):
         + ["--", ".", f":(exclude){rel}", f":(exclude){this_test}"],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert hits.returncode in (0, 1), hits.stderr
     assert hits.stdout.split(), (
         f"{rel} is named by no other tracked file — document where it is installed "
         "(docs/reference/host_topology.md) or delete it"
+    )
+
+
+# ── com.kg.log-retention: the only scheduler of kg.log_retention (#2091) ──
+#
+# Before it existed the log DBs were pruned only by the manual admin endpoint,
+# so they grew without limit. Each assertion below is a way the job can be
+# loaded, exit, and never prune: launchd itself reports nothing either way.
+
+_LOG_RETENTION = _ROOT / "ops" / "launchd" / "com.kg.log-retention.plist"
+_BACKUP = _ROOT / "ops" / "launchd" / "com.kg.backup.plist"
+_COMPOSE = _ROOT / "backend" / "docker-compose.yml"
+_CONTAINER_RE = re.compile(r"^\s*container_name:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def _load(manifest: Path) -> dict:
+    """plistlib (strict expat) is safe here: these two manifests keep `--` out of their comments."""
+    assert manifest.is_file(), f"{manifest.relative_to(_ROOT)} is missing"
+    with manifest.open("rb") as fh:
+        return plistlib.load(fh)
+
+
+def test_log_retention_runs_the_pruner_for_every_db_inside_the_api_container():
+    # Production Python exists only inside the compose container (KG_DATA_DIR,
+    # *_RETENTION_DAYS, appuser), so the job is `docker exec`, never host
+    # Python. A stale container name, a renamed module or a missing --all (the
+    # CLI then prints help and exits 2) fails every night. The CLI flags are
+    # covered by backend/tests/test_log_retention.py.
+    containers = _CONTAINER_RE.findall(_COMPOSE.read_text(encoding="utf-8"))
+    assert len(containers) == 1, containers
+    assert _load(_LOG_RETENTION)["ProgramArguments"] == [
+        "/usr/bin/env",
+        "docker",
+        "exec",
+        containers[0],
+        "python",
+        "-m",
+        "kg.log_retention",
+        "--all",
+        "--json",
+    ]
+    # `-m kg.log_retention` resolves against the image's PYTHONPATH=/app/src.
+    assert (_ROOT / "backend" / "src" / "kg" / "log_retention.py").is_file()
+
+
+def test_log_retention_resolves_docker_like_the_reconciler():
+    # launchd starts with a bare PATH; OrbStack installs the docker CLI here.
+    path = _load(_LOG_RETENTION)["EnvironmentVariables"]["PATH"].split(":")
+    assert "/Users/chenliangyu/.orbstack/bin" in path
+
+
+def test_log_retention_is_a_daily_one_shot_away_from_the_backup():
+    job = _load(_LOG_RETENTION)
+    schedule = job["StartCalendarInterval"]
+    assert sorted(schedule) == ["Hour", "Minute"], "Hour+Minute only = once a day"
+    # The backup tars the same live SQLite files; a mass DELETE in the same
+    # hour risks a torn copy.
+    assert schedule["Hour"] != _load(_BACKUP)["StartCalendarInterval"]["Hour"]
+    assert job["RunAtLoad"] is False, (
+        "the first (largest) prune must wait for the off-peak slot"
+    )
+    assert "KeepAlive" not in job, "one-shot: KeepAlive would re-run it in a loop"
+
+
+def test_log_retention_keeps_its_report():
+    job = _load(_LOG_RETENTION)
+    assert (
+        job["StandardOutPath"]
+        == "/Users/chenliangyu/Library/Logs/kg_log_retention.out.log"
+    )
+    assert (
+        job["StandardErrorPath"]
+        == "/Users/chenliangyu/Library/Logs/kg_log_retention.err.log"
     )
