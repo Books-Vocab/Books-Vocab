@@ -336,6 +336,7 @@ run_one() {
         ops/tests/test_podcast_backfill_disk.py \
         ops/tests/test_podcast_cover_publish.py \
         ops/tests/test_podcast_preview_backfill.py \
+        ops/tests/test_podcast_publish_skill.py \
         ops/tests/test_podcast_upload.py
       ;;
     # ── shared offline ops groups ───────────────────────────────────────────
