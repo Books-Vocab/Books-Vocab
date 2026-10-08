@@ -20,12 +20,11 @@
 # 複製 .env 範本並填入系統層必要變數（例如 GEMINI_API_KEY）
 cp .env.example .env
 
-# 本地開發（需要 Python 3.11+）
-python -m venv .venv
-source .venv/bin/activate  # or `activate` on Windows
-pip install -r requirements.txt
-uvicorn src.kg.api:app --reload --port 8000
+# 本地開發（需要 Python 3.13 與 uv）；.env 的 JWT_SECRET 必須自行產生（>=32 字元）
+uv sync
+uv run uvicorn kg.api:app --reload --port 8000
 
+# Docker 部署前務必在 .env 設定唯一的 JWT_SECRET（placeholder 或 <32 字元會拒絕啟動）
 # Docker 部署（推薦用於生產環境）
 docker compose up -d --build
 ```
