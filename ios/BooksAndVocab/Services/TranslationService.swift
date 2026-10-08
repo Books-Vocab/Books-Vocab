@@ -62,7 +62,7 @@ final class TranslationService: Translating {
                 let r: String?
             }
 
-            let quick = try JSONDecoder().decode(QuickResult.self, from: data)
+            let quick = try Self.decodeResponse(QuickResult.self, from: data)
             AppLog.translation.info("Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
 
             result = TranslationResult(
@@ -108,7 +108,7 @@ final class TranslationService: Translating {
                 let t: String
             }
 
-            let result = try JSONDecoder().decode(PhraseResult.self, from: data)
+            let result = try Self.decodeResponse(PhraseResult.self, from: data)
             AppLog.translation.info("短語翻譯: \(phrase) → \(result.t)")
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             AppAnalytics.track(.translationCompleted(word: phrase, type: .phrase, latencyMs: latencyMs))
@@ -141,7 +141,7 @@ final class TranslationService: Translating {
                 let e: String
             }
 
-            let result = try JSONDecoder().decode(ExplanationResult.self, from: data)
+            let result = try Self.decodeResponse(ExplanationResult.self, from: data)
             AppLog.translation.info("解釋完成: \(result.e.prefix(50))...")
 
             let endTime = Date()
@@ -176,7 +176,7 @@ final class TranslationService: Translating {
             switch tErr {
             case .quotaExhausted, .userRecoverable:
                 return
-            case .apiError, .parseError:
+            case .apiError, .parseError, .clientError:
                 break
             }
         }
@@ -216,7 +216,7 @@ final class TranslationService: Translating {
             } catch let error as TranslationError {
                 // quota_exhausted / 401 / user-recoverable 不重試
                 switch error {
-                case .quotaExhausted, .parseError, .userRecoverable:
+                case .quotaExhausted, .parseError, .userRecoverable, .clientError:
                     throw error
                 case .apiError:
                     lastError = error
@@ -315,10 +315,29 @@ final class TranslationService: Translating {
                 }
                 throw TranslationError.userRecoverable(L10n.string("請求過於頻繁，請稍後再試"))
             }
-            throw TranslationError.apiError(L10n.format("後端伺服器錯誤 (%@)", "\(httpResponse.statusCode)"))
+            let message = L10n.format("後端伺服器錯誤 (%@)", "\(httpResponse.statusCode)")
+            // 4xx 是永久性的請求錯誤，重試只會白等並多耗一次 rate limit。
+            if Self.isPermanentClientStatus(httpResponse.statusCode) {
+                throw TranslationError.clientError(message)
+            }
+            throw TranslationError.apiError(message)
         }
 
         return data
+    }
+
+    /// 4xx（401/429 已在上方分流）不可重試；5xx 與其他狀態維持 `.apiError` 可重試。
+    static func isPermanentClientStatus(_ status: Int) -> Bool {
+        (400..<500).contains(status)
+    }
+
+    /// 解碼失敗統一轉成 `.parseError`，避免 raw DecodingError 外洩。
+    static func decodeResponse<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw TranslationError.parseError(String(describing: error))
+        }
     }
 
 
@@ -333,6 +352,8 @@ enum TranslationError: LocalizedError {
     case quotaExhausted(String)
     /// 使用者可自行恢復的條件：離線、未登入、登入過期、429 限速。**不**進 Sentry。
     case userRecoverable(String)
+    /// 4xx 永久性請求錯誤：不重試，但仍屬缺陷訊號，進 Sentry。
+    case clientError(String)
 
     var errorDescription: String? {
         switch self {
@@ -340,6 +361,7 @@ enum TranslationError: LocalizedError {
         case .parseError(let msg): return L10n.format("解析錯誤：%@", msg)
         case .quotaExhausted(let resetText): return L10n.format("今日額度已用完，%@", resetText)
         case .userRecoverable(let msg): return msg
+        case .clientError(let msg): return L10n.format("API 錯誤：%@", msg)
         }
     }
 }
