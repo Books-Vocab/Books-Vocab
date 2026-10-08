@@ -15,10 +15,7 @@ def _setup_user(tmp_path: Path, uid: str) -> Path:
     udir = tmp_path / "users" / uid
     udir.mkdir(parents=True)
     conn = sqlite3.connect(str(udir / "cards.db"))
-    conn.execute(
-        "CREATE TABLE card (id TEXT PRIMARY KEY, content TEXT, meaning TEXT, "
-        "is_deleted INTEGER DEFAULT 0)"
-    )
+    conn.execute("CREATE TABLE card (id TEXT PRIMARY KEY, content TEXT, meaning TEXT, is_deleted INTEGER DEFAULT 0)")
     conn.execute("INSERT INTO card VALUES ('c1', 'hello', '你好', 0)")
     conn.commit()
     conn.close()
@@ -38,16 +35,22 @@ def _run(data_dir: str, *args: str) -> subprocess.CompletedProcess:
     }
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
 class TestLevel1:
     def test_level_1_smoke(self, tmp_path):
         _setup_user(tmp_path, "user1")
-        _create_token_usage_db(tmp_path, [
-            ("user1", "translate", 1_000_000, 1_000_000, _now_iso()),
-        ], with_provider=False)
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("user1", "translate", 1_000_000, 1_000_000, _now_iso()),
+            ],
+            with_provider=False,
+        )
         result = _run(str(tmp_path), "user1", "1")
         assert result.returncode == 0
         # gemini routed: 0.10 + 0.40 = 0.5000
@@ -57,9 +60,13 @@ class TestLevel1:
 class TestLevel2:
     def test_level_2_smoke(self, tmp_path):
         _setup_user(tmp_path, "user1")
-        _create_token_usage_db(tmp_path, [
-            ("user1", "translate", 1_000_000, 1_000_000, _now_iso()),
-        ], with_provider=False)
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("user1", "translate", 1_000_000, 1_000_000, _now_iso()),
+            ],
+            with_provider=False,
+        )
         result = _run(str(tmp_path), "user1", "2")
         assert result.returncode == 0
         assert "0.5000" in result.stdout
@@ -69,9 +76,13 @@ class TestProviderAware:
     def test_deepseek_priced_provider_aware(self, tmp_path):
         """provider='deepseek' row → deepseek 費率 0.42,非 gemini 0.50。"""
         _setup_user(tmp_path, "user1")
-        _create_token_usage_db(tmp_path, [
-            ("user1", "translate", 1_000_000, 1_000_000, _now_iso(), "deepseek"),
-        ], with_provider=True)
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("user1", "translate", 1_000_000, 1_000_000, _now_iso(), "deepseek"),
+            ],
+            with_provider=True,
+        )
         result = _run(str(tmp_path), "user1", "2")
         assert result.returncode == 0
         assert "0.4200" in result.stdout
@@ -79,9 +90,13 @@ class TestProviderAware:
     def test_legacy_no_provider_column(self, tmp_path):
         """無 provider 欄 → gemini fallback,不報錯。"""
         _setup_user(tmp_path, "user1")
-        _create_token_usage_db(tmp_path, [
-            ("user1", "translate", 1_000_000, 1_000_000, _now_iso()),
-        ], with_provider=False)
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("user1", "translate", 1_000_000, 1_000_000, _now_iso()),
+            ],
+            with_provider=False,
+        )
         result = _run(str(tmp_path), "user1", "1")
         assert result.returncode == 0
         assert "0.5000" in result.stdout
@@ -89,8 +104,12 @@ class TestProviderAware:
 
 def _link(lid: str, a: str, b: str, status: str | None = "active") -> dict:
     link = {
-        "id": lid, "from_id": a, "to_id": b, "kind": "synonym",
-        "confidence": 0.9, "created_at": _now_iso(),
+        "id": lid,
+        "from_id": a,
+        "to_id": b,
+        "kind": "synonym",
+        "confidence": 0.9,
+        "created_at": _now_iso(),
     }
     if status is not None:
         link["status"] = status
@@ -215,7 +234,9 @@ class TestActiveLinksAndDefaultNotebook:
         import numpy as np
 
         udir = tmp_path / "users" / "user1"
-        sqlite3.connect(str(udir / "cards.db")).execute("INSERT INTO card VALUES ('c2', 'b', 'x', 0)").connection.commit()
+        sqlite3.connect(str(udir / "cards.db")).execute(
+            "INSERT INTO card VALUES ('c2', 'b', 'x', 0)"
+        ).connection.commit()
         (udir / "card_ids_default.json").write_text(json.dumps(["c1", "c2"]))
         np.save(str(udir / "embeddings_default.npy"), np.eye(2, 4))
         r = _run(str(tmp_path), "user1", "5")
