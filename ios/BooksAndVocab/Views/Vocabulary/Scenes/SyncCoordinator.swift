@@ -190,10 +190,49 @@ final class SyncCoordinator: SyncCoordinating {
             }
             sanitized += 1
         }
-        if sanitized > 0 {
+        let collapsed = collapseRecapturedDeletes(
+            pendingEntries: pendingEntries.filter { !deletedEntryIds.contains($0.id) },
+            modelContext: modelContext
+        )
+        deletedEntryIds.formUnion(collapsed)
+        if sanitized > 0 || !collapsed.isEmpty {
             modelContext.safeSave()
         }
         return deletedEntryIds
+    }
+
+    /// 同 notebook 同字的「待刪 + 待新增」收斂成還原待刪那筆（#2105 defense-in-depth）。
+    ///
+    /// 若照原樣上傳，delete 先跑會刪掉 server card（SRS 歷史、AI 內容、graph links），
+    /// add 再建一張沒有歷史的新卡。收斂規則：待刪那筆 `restorePendingEntry()` 並承接
+    /// 新擷取的 translation／rootForm，新增那筆本機刪除（它從未上過 server），其 id
+    /// 回傳給呼叫端排除在上傳批次外。只碰「從未同步的 add」，不碰 edit。
+    private static func collapseRecapturedDeletes(
+        pendingEntries: [VocabularyEntry],
+        modelContext: ModelContext
+    ) -> Set<UUID> {
+        let uploadable = pendingEntries.filter(\.shouldUploadOnNextSync)
+        var deletesByKey: [String: VocabularyEntry] = [:]
+        for entry in uploadable where entry.syncAction == .delete {
+            deletesByKey[outboxKey(entry)] = deletesByKey[outboxKey(entry)] ?? entry
+        }
+        guard !deletesByKey.isEmpty else { return [] }
+
+        var removed: Set<UUID> = []
+        for add in uploadable where add.syncAction == .add && add.kgCardId == nil {
+            guard let queuedDelete = deletesByKey[outboxKey(add)] else { continue }
+            AppLog.kg.warning("collapse delete+add into restore: \(add.word) in \(add.notebookId)")
+            queuedDelete.restorePendingEntry()
+            queuedDelete.translation = add.translation
+            if let rootForm = add.rootForm { queuedDelete.rootForm = rootForm }
+            removed.insert(add.id)
+            modelContext.delete(add)
+        }
+        return removed
+    }
+
+    private static func outboxKey(_ entry: VocabularyEntry) -> String {
+        "\(entry.notebookId)\u{1F}\(entry.word.lowercased())"
     }
 
     /// Batch-delete 回應中「可在本地安全收斂(刪除)」的字集合。
