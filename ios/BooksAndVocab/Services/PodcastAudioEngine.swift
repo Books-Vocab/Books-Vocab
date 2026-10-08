@@ -50,8 +50,12 @@ final class PodcastAudioEngine: NSObject {
     /// Furthest absolute time (seconds) AVPlayer has buffered. Drives the
     /// YouTube-style "loaded" overlay on the seek bar.
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
-    /// System forced playback to pause (interruption began, headphones unplugged).
+    /// System forced playback to pause (interruption began). A matching
+    /// `onSystemResume` may follow.
     var onSystemPause: (() -> Void)?
+    /// Output route lost (headphones unplugged): the engine paused and no
+    /// resume will follow, so the owner must not treat it as an interruption.
+    var onRouteLost: (() -> Void)?
     /// Interruption ended with `.shouldResume`. The engine does NOT restart
     /// audio itself: only the owner knows whether the user was playing when
     /// the interruption began, so it decides and calls `play()`.
@@ -451,7 +455,7 @@ final class PodcastAudioEngine: NSObject {
                 self?.player?.pause()
                 self?.stallWatchdog?.cancel()
                 self?.stallWatchdog = nil
-                self?.onSystemPause?()
+                self?.onRouteLost?()
             }
         }
     }

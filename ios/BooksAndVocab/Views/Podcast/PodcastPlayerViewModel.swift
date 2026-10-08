@@ -62,6 +62,7 @@ protocol PodcastAudioPlaying: AnyObject {
     var onBufferedEndChanged: ((TimeInterval) -> Void)? { get set }
     var onSystemPause: (() -> Void)? { get set }
     var onSystemResume: (() -> Void)? { get set }
+    var onRouteLost: (() -> Void)? { get set }
     var onRemotePlay: (() -> Void)? { get set }
     var onRemotePause: (() -> Void)? { get set }
 
@@ -173,7 +174,7 @@ final class PodcastPlayerViewModel {
     private let subtitleEngine: any PodcastSubtitling
     @ObservationIgnored
     private var sleepTimerSource: DispatchSourceTimer?
-    /// True only when a system pause (interruption began / route lost) hit
+    /// True only when a system pause (interruption began) hit
     /// while the user was actually playing. Consumed by `onSystemResume`; any
     /// explicit play/pause/teardown clears it, so `.shouldResume` never
     /// restarts audio the user had paused.
@@ -261,14 +262,32 @@ final class PodcastPlayerViewModel {
         // Lock-screen / Control Center commands go through the same path as
         // the in-app button so `state` (progress ticks, pause saves, icon)
         // never desyncs from the engine.
+        // Route loss (headphones unplugged) pauses for good: no `.shouldResume`
+        // ever follows, so it must NOT arm the interruption resume latch and
+        // must clear a stale one (a later phone call must not restart audio
+        // on the speaker).
+        audioEngine.onRouteLost = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.resumeAfterSystemPause = false
+                if self.state == .playing || self.state == .loading {
+                    self.state = .paused
+                }
+            }
+        }
+        // Remote commands stay registered through .loading / .error, so only
+        // act from states where play/pause is meaningful; otherwise they would
+        // clobber the loading card / retry card and strand `.loading`.
         audioEngine.onRemotePlay = { [weak self] in
             MainActor.assumeIsolated {
-                self?.play()
+                guard let self, self.state == .ready || self.state == .paused else { return }
+                self.play()
             }
         }
         audioEngine.onRemotePause = { [weak self] in
             MainActor.assumeIsolated {
-                self?.pause()
+                guard let self, self.state == .playing else { return }
+                self.pause()
             }
         }
     }

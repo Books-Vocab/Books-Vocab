@@ -9,7 +9,8 @@ import SwiftUI
 
 /// Accessibility increment/decrement for the seek bar. Same ±15 s step as the
 /// skip buttons; `viewModel.skip` clamps to `[0, duration]` and goes through
-/// `viewModel.seek`, so resume-while-playing semantics match a drag.
+/// `viewModel.seek`, so resume-while-playing semantics match a drag. No-op while
+/// `duration == 0` (same as the drag guard).
 @MainActor
 enum PodcastSeekBarAccessibility {
     static let step: TimeInterval = 15
@@ -23,7 +24,8 @@ enum PodcastSeekBarAccessibility {
     }
 
     static func adjust(_ direction: AccessibilityAdjustmentDirection, viewModel: PodcastPlayerViewModel) {
-        guard let delta = skipDelta(for: direction) else { return }
+        // Unknown duration: no valid seek range (matches the drag guard).
+        guard viewModel.duration > 0, let delta = skipDelta(for: direction) else { return }
         viewModel.skip(seconds: delta)
     }
 }

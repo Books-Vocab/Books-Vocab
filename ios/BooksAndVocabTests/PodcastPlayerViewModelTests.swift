@@ -127,6 +127,76 @@ struct PodcastPlayerViewModelTests {
         #expect(viewModel.state == .playing)
     }
 
+    // Route loss (headphones unplugged) is not an interruption: a later
+    // interruption's `.shouldResume` must not restart audio on the speaker.
+    @Test
+    func routeLossDoesNotArmTheInterruptionResumeLatch() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitRouteLost()
+        #expect(viewModel.state == .paused)
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    @Test
+    func routeLossClearsALatchArmedByAnEarlierInterruption() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        audio.emitRouteLost()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    // Remote commands must not clobber the loading / error UI.
+    @Test
+    func remoteCommandsAreIgnoredWhileLoadingOrFailed() {
+        let audio = FakeAudioEngine()
+        let viewModel = PodcastPlayerViewModel(
+            hostNames: [], audioEngine: audio, subtitleEngine: FakeSubtitleEngine()
+        )
+        viewModel.loadEpisode(
+            audioURL: URL(string: "https://example.com/episode.mp3")!,
+            subtitleContent: nil
+        )
+        #expect(viewModel.state == .loading)
+
+        audio.emitRemotePlay()
+        #expect(viewModel.state == .loading)
+        audio.emitRemotePause()
+        #expect(viewModel.state == .loading)
+        #expect(audio.playCount == 0)
+        #expect(audio.pauseCount == 0)
+
+        audio.emitLoadFailure("boom")
+        audio.emitRemotePlay()
+        audio.emitRemotePause()
+        #expect(viewModel.state == .error("boom"))
+        #expect(audio.playCount == 0)
+        #expect(audio.pauseCount == 0)
+    }
+
+    @Test
+    func remotePauseWhenAlreadyPausedAndRemotePlayWhenPlayingAreNoOps() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitRemotePlay()
+        #expect(audio.playCount == 1)
+
+        viewModel.pause()
+        audio.emitRemotePause()
+        #expect(audio.pauseCount == 1)
+    }
+
     // #2109: VoiceOver swipe up/down on the seek bar (adjustable trait) must
     // seek ±15 s through viewModel.seek, clamped to the episode bounds.
     @Test
@@ -157,6 +227,21 @@ struct PodcastPlayerViewModelTests {
         audio.emitTimeUpdate(5)
         PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
         #expect(viewModel.currentTime == 0)
+    }
+
+    // #2109: while the duration is unknown (0) adjust is a no-op, like the drag.
+    @Test
+    func seekBarAccessibilityAdjustmentIsNoOpWhileDurationUnknown() {
+        let (audio, viewModel) = makeReadyViewModel()
+        audio.emitTimeUpdate(20)
+        #expect(viewModel.duration == 0)
+        let currentBefore = audio.currentTime
+
+        PodcastSeekBarAccessibility.adjust(.increment, viewModel: viewModel)
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+
+        #expect(viewModel.currentTime == 20)
+        #expect(audio.currentTime == currentBefore)
     }
 
     @Test
@@ -268,6 +353,7 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
     var onSystemPause: (() -> Void)?
     var onSystemResume: (() -> Void)?
+    var onRouteLost: (() -> Void)?
     var onRemotePlay: (() -> Void)?
     var onRemotePause: (() -> Void)?
 
@@ -307,6 +393,11 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
         onSystemPause?()
     }
     func emitSystemResume() { onSystemResume?() }
+    /// Real engine: route loss pauses the player, then reports it (no resume follows).
+    func emitRouteLost() {
+        isPlaying = false
+        onRouteLost?()
+    }
     /// Lock-screen / Control Center command routed to the owner (engine falls
     /// back to its own play()/pause() only when no owner handler is set).
     func emitRemotePlay() { if let onRemotePlay { onRemotePlay() } else { play() } }

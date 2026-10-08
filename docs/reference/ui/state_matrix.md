@@ -473,7 +473,7 @@ Preview matrix 已補齊：
 | 未取得 audio URL | `loadEpisode` 找不到 local 或 remote URL | `vm.reportError("無音訊 URL")` → `.error` | 已覆蓋 |
 | 認證 token 失敗 | `kgService.currentAuthToken()` throw | `.error` 帶錯誤訊息 | 已覆蓋 |
 | Local file 播放 | `episode.localAudioPath` 存在 | 無 auth header，直接 file:// | 已覆蓋（無顯式 indicator） |
-| 系統中斷 / route change | engine `onSystemPause` | VM 從 `.loading` / `.playing` 拉回 `.paused` | 已覆蓋 |
+| 系統中斷 / route change | engine `onSystemPause`(中斷)/ `onRouteLost`(拔耳機,不武裝續播 latch) | VM 從 `.loading` / `.playing` 拉回 `.paused` | 已覆蓋 |
 | Mid-stream 失敗後 didEnd | engine `onPlaybackFinished` 與 `.error` 競爭 | 守 `if case .error` 不 clobber error UI | 已覆蓋 |
 
 ### Subtitle State（`PodcastSubtitleLoadState`）
