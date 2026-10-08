@@ -247,3 +247,137 @@ def test_every_save_uses_its_own_temp_files(tmp_path: Path, monkeypatch):
     assert len(replaced_from) >= 7  # (npy + ids) x 3 saves + first sidecar
     assert len(set(replaced_from)) == len(replaced_from), f"temp path reused: {replaced_from}"
     assert all(Path(src).parent == tmp_path for src in replaced_from), "temp must live beside its target"
+
+
+# ---------------------------------------------------------------------------
+# Two instances over one notebook's files (service-factory LRU eviction during
+# a pipeline run, scripts/rebuild_embeddings.py beside the API).
+# ---------------------------------------------------------------------------
+class _CountingLLM(_GatedLLM):
+    """Deterministic embedder (text "7" -> all-7.0) that records every input."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inputs: list[str] = []
+
+    def embed(self, call_type: str, *, input: list[str], model: str):  # noqa: A002 - SDK kwarg name
+        self.inputs.extend(input)
+        return super().embed(call_type, input=input, model=model)
+
+
+def _two_stores(tmp_path: Path) -> tuple[EmbeddingStore, EmbeddingStore, _CountingLLM]:
+    emb_path, ids_path = _paths(tmp_path)
+    llm = _CountingLLM()
+    a = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    b = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    return a, b, llm
+
+
+def test_two_instances_adding_different_rows_keep_both(tmp_path: Path):
+    a, b, _ = _two_stores(tmp_path)  # b is built before a's add -> stale
+    a.add("a1", "1")
+    b.add("b1", "2")
+    assert a.refresh_if_stale() is True
+    _assert_aligned(a, {"a1", "b1"})
+    _assert_aligned(b, {"a1", "b1"})
+    _assert_disk_matches(tmp_path, {"a1", "b1"})
+
+
+def test_stale_instance_does_not_resurrect_removed_row(tmp_path: Path):
+    emb_path, ids_path = _paths(tmp_path)
+    llm = _CountingLLM()
+    seed = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    seed.add_batch([("x", "1"), ("keep", "2")])
+    a = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    b = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    assert a.remove_batch(["x"]) == 1
+    b.add("y", "3")  # b still believes x exists
+    _assert_disk_matches(tmp_path, {"keep", "y"})
+    _assert_aligned(b, {"keep", "y"})
+
+
+def test_add_batch_skips_ids_another_instance_already_embedded(tmp_path: Path):
+    a, b, llm = _two_stores(tmp_path)
+    a.add("shared", "5")
+    llm.inputs.clear()
+    b.add_batch([("shared", "5")])
+    assert llm.inputs == [], "provider called (and billed) for an id already on disk"
+    _assert_disk_matches(tmp_path, {"shared"})
+
+
+def test_stale_update_then_flush_keeps_new_vector_and_other_rows(tmp_path: Path):
+    emb_path, ids_path = _paths(tmp_path)
+    llm = _CountingLLM()
+    seed = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    seed.add_batch([("u", "1")])
+    a = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    b = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    b.update("u", "9")  # deferred, not flushed
+    a.add("other", "2")
+    b.flush()
+    reloaded = EmbeddingStore(emb_path, ids_path, None, model="m", dim=_DIM)
+    _assert_aligned(reloaded, {"u", "other"})
+    assert np.allclose(_row(reloaded, "u"), 9.0)
+    assert np.allclose(_row(reloaded, "other"), 2.0)
+
+
+def test_two_instances_threaded_mixed_add_remove(tmp_path: Path):
+    emb_path, ids_path = _paths(tmp_path)
+    llm = _CountingLLM()
+    stores = [EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM) for _ in range(2)]
+
+    def work(i: int) -> None:
+        store = stores[i % 2]
+        for r in range(3):
+            store.add_batch([(f"w{i}-{r}-{j}", "1") for j in range(3)])
+        store.remove_batch([f"w{i}-0-0", f"w{i}-1-0"])
+
+    assert _run_threads(work, 8) == []
+    expected = {f"w{i}-{r}-{j}" for i in range(8) for r in range(3) for j in range(3)}
+    expected -= {f"w{i}-0-0" for i in range(8)} | {f"w{i}-1-0" for i in range(8)}
+    for s in stores:
+        s.refresh_if_stale()
+        _assert_aligned(s, expected)
+    _assert_disk_matches(tmp_path, expected)
+
+
+def test_refresh_if_stale_is_stat_only_when_unchanged(tmp_path: Path, monkeypatch):
+    a, _, _ = _two_stores(tmp_path)
+    a.add("a1", "1")
+
+    def boom(*args, **kwargs):
+        raise AssertionError("np.load called for unchanged files")
+
+    monkeypatch.setattr(np, "load", boom)
+    assert a.refresh_if_stale() is False
+    assert a.find_similar("a1") == []
+
+
+def test_chunked_add_batch_keeps_other_instance_rows_and_skips_its_ids(tmp_path: Path, monkeypatch):
+    """#2264 chunking x #2500: another instance persists rows (one of them
+    belonging to a later chunk) while chunk 1 is embedding. Every chunk's
+    append must re-read the disk, keep the foreign rows, and not re-embed
+    the id that already landed."""
+    import kg.embeddings as embeddings_mod
+
+    monkeypatch.setattr(embeddings_mod, "_EMBED_BATCH_LIMIT", 2)
+    emb_path, ids_path = _paths(tmp_path)
+    other_llm = _CountingLLM()
+    other = EmbeddingStore(emb_path, ids_path, other_llm, model="m", dim=_DIM)
+    fired: list[bool] = []
+
+    class _LandingLLM(_CountingLLM):
+        def embed(self, call_type: str, *, input: list[str], model: str):  # noqa: A002 - SDK kwarg name
+            if not fired:
+                fired.append(True)
+                other.add_batch([("foreign", "9"), ("c3", "4")])
+            return super().embed(call_type, input=input, model=model)
+
+    llm = _LandingLLM()
+    store = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    store.add_batch([(f"c{i}", str(i)) for i in range(6)])
+
+    expected = {"c0", "c1", "c2", "c3", "c4", "c5", "foreign"}
+    assert llm.inputs.count("3") == 0, "c3 landed via the other instance but was embedded again"
+    _assert_aligned(store, expected)
+    _assert_disk_matches(tmp_path, expected)
