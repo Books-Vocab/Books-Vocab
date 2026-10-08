@@ -32,17 +32,12 @@ struct AuthProviderFailureTests {
         func clearLocalData(container: ModelContainer, reason: String) async {}
     }
 
-    private final class NoopPreferenceLifecycle: AccountPreferenceLifecycle {
-        func activate(accountID: String?) {}
-        func suspend() {}
-    }
-
     @Test func providerFailureIsSurfacedForLoginSheet() {
         let manager = AuthManager(
             verifier: NoopVerifier(),
             localDataCleaner: NoopCleaner(),
             sessionStore: EmptySessionStore(),
-            accountPreferenceLifecycle: NoopPreferenceLifecycle()
+            accountPreferenceLifecycle: NoopAccountPreferenceLifecycle()
         )
 
         manager.recordProviderAuthenticationFailure()

@@ -170,7 +170,8 @@ struct AuthSessionStoreIsolationTests {
         let defaults = scratch.defaults
         let keychain = SpyKeychain()
         let auth = AuthManager(
-            sessionStore: AuthSessionStore(defaults: defaults, keychain: keychain)
+            sessionStore: AuthSessionStore(defaults: defaults, keychain: keychain),
+            accountPreferenceLifecycle: NoopAccountPreferenceLifecycle()
         )
 
         let didSeed = UITestFixtureSeed.seedSignedInLoginFromWorld(
