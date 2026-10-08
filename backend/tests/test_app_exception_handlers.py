@@ -4,6 +4,7 @@ import json
 import logging
 from dataclasses import replace
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -18,7 +19,7 @@ from kg.app_exception_handlers import (
     install_app_exception_handlers,
     install_app_exception_handlers_from_dependencies,
 )
-from kg.exceptions import BadRequestError
+from kg.exceptions import BadRequestError, ExternalServiceError
 
 
 class _Payload(BaseModel):
@@ -183,3 +184,43 @@ def test_sanitize_non_finite_recurses_through_dict_list_and_tuple():
         "b": ["Infinity", {"c": "-Infinity"}, 1.5],
         "d": ("NaN", "x"),
     }
+
+
+def _kg_error_client(error: Exception) -> tuple[TestClient, FastAPI]:
+    app = FastAPI()
+    install_app_exception_handlers_from_dependencies(dependencies=_dependencies(app))
+
+    @app.get("/fail")
+    def fail():
+        raise error
+
+    return TestClient(app, raise_server_exceptions=False), app
+
+
+def test_5xx_kg_error_logs_cause_but_response_stays_opaque(caplog):
+    client, _app = _kg_error_client(ExternalServiceError("x", exc=httpx.ConnectError("boom")))
+    try:
+        with caplog.at_level(logging.WARNING, logger="kg.api"):
+            response = client.get("/fail")
+    finally:
+        client.close()
+
+    assert response.status_code == 502
+    assert response.json() == {"code": "EXTERNAL_SERVICE_ERROR", "label": "x"}
+    record = next(r for r in caplog.records if r.name == "kg.api" and r.levelno == logging.ERROR)
+    assert record.exc_info is not None
+    assert record.exc_info[0] is httpx.ConnectError
+    assert "boom" in str(record.exc_info[1])
+
+
+def test_4xx_kg_error_does_not_attach_exc_info(caplog):
+    client, _app = _kg_error_client(BadRequestError("nope"))
+    try:
+        with caplog.at_level(logging.WARNING, logger="kg.api"):
+            response = client.get("/fail")
+    finally:
+        client.close()
+
+    assert response.status_code == 400
+    record = next(r for r in caplog.records if r.name == "kg.api")
+    assert record.exc_info is None

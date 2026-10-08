@@ -152,7 +152,11 @@ def install_app_exception_handlers_from_dependencies(
     @app.exception_handler(KGError)
     async def kg_error_handler(request: Request, exc: KGError):
         request_id = getattr(request.state, "request_id", "unknown")
-        log = logger.error if exc.status_code >= 500 else logger.warning
+        is_server_error = exc.status_code >= 500
+        log = logger.error if is_server_error else logger.warning
+        # Cause stays in logs only; to_detail() never serializes it.
+        cause = getattr(exc, "exc", None)
+        log_kwargs = {"exc_info": cause or exc} if is_server_error else {}
         log(
             "%s [%s] %s %s -> %d: %s",
             type(exc).__name__,
@@ -161,6 +165,7 @@ def install_app_exception_handlers_from_dependencies(
             request.url.path,
             exc.status_code,
             exc,
+            **log_kwargs,
         )
         return JSONResponse(
             status_code=exc.status_code,

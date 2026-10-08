@@ -441,3 +441,18 @@ def test_dictionary_entry_endpoint_returns_404_for_cached_negative_lookup(isolat
         headers=isolated_api.headers,
     )
     assert response.status_code == 404
+
+
+def test_provider_5xx_error_carries_upstream_status_for_logging():
+    from kg.exceptions import ExternalServiceError
+    from kg.lexical import FreeDictionaryProvider
+
+    provider = FreeDictionaryProvider(
+        client=httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(503)))
+    )
+    with pytest.raises(ExternalServiceError) as excinfo:
+        provider.search("invoke", source_language="en", target_language="zh-Hant")
+
+    assert excinfo.value.to_detail()["label"] == "dictionary_provider_unavailable"
+    assert isinstance(excinfo.value.exc, httpx.HTTPStatusError)
+    assert "503" in str(excinfo.value.exc)
