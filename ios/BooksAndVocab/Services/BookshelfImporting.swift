@@ -82,7 +82,10 @@ final class BookshelfImportService: BookshelfImporting {
         // 保留原始檔
         let origDir = Book.booksDirectory.appendingPathComponent("Originals")
         try? fm.createDirectory(at: origDir, withIntermediateDirectories: true)
-        try? fm.copyItem(at: url, to: origDir.appendingPathComponent(url.lastPathComponent))
+        try? fm.copyItem(
+            at: url,
+            to: origDir.appendingPathComponent(LocalBookFileManager.originalCopyName(forEpub: fileName, sourceExt: "txt"))
+        )
 
         return ImportedBookDraft(
             title: title,
@@ -114,7 +117,10 @@ final class BookshelfImportService: BookshelfImporting {
         // 保留原始檔
         let origDir = Book.booksDirectory.appendingPathComponent("Originals")
         try? fm.createDirectory(at: origDir, withIntermediateDirectories: true)
-        try? fm.copyItem(at: url, to: origDir.appendingPathComponent(url.lastPathComponent))
+        try? fm.copyItem(
+            at: url,
+            to: origDir.appendingPathComponent(LocalBookFileManager.originalCopyName(forEpub: fileName, sourceExt: "md"))
+        )
 
         return ImportedBookDraft(
             title: title,
