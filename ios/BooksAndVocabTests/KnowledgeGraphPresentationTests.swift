@@ -113,41 +113,41 @@ struct KnowledgeGraphPresentationTests {
         #expect(retryCount == 1, "triggering the empty-state action must re-run the load closure")
     }
 
-    @Test func errorState_withoutRetryClosure_hasNoAction() {
+    @Test func errorState_withoutRetryClosure_hasNoAction() throws {
         // When no retry closure is supplied the error card degrades gracefully
         // to a plain message rather than a dead button.
-        let state = KnowledgeGraphPresentation.emptyState(
+        let state = try #require(KnowledgeGraphPresentation.emptyState(
             isLoggedIn: true,
             isLoading: false,
             errorMessage: "失敗",
             nodes: [],
             onRetry: nil
-        )
-        #expect(state?.action == nil)
+        ))
+        #expect(state.action == nil)
     }
 
     // MARK: - Non-error branches carry no retry action
 
-    @Test func loggedOutState_hasNoRetryAction() {
-        let state = KnowledgeGraphPresentation.emptyState(
+    @Test func loggedOutState_hasNoRetryAction() throws {
+        let state = try #require(KnowledgeGraphPresentation.emptyState(
             isLoggedIn: false,
             isLoading: false,
             errorMessage: nil,
             nodes: [],
             onRetry: {}
-        )
-        #expect(state?.action == nil, "the logged-out prompt is not a retryable failure")
+        ))
+        #expect(state.action == nil, "the logged-out prompt is not a retryable failure")
     }
 
-    @Test func loadingState_hasNoRetryAction() {
-        let state = KnowledgeGraphPresentation.emptyState(
+    @Test func loadingState_hasNoRetryAction() throws {
+        let state = try #require(KnowledgeGraphPresentation.emptyState(
             isLoggedIn: true,
             isLoading: true,
             errorMessage: nil,
             nodes: [],
             onRetry: {}
-        )
-        #expect(state?.action == nil, "a load in progress must not show a retry button")
+        ))
+        #expect(state.action == nil, "a load in progress must not show a retry button")
     }
 
     @Test func emptyGraphState_hasNoRetryAction() {
