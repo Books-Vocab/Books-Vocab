@@ -23,6 +23,10 @@ the barrier and roll the graph mutation back on failure, keeping graph and card
 state consistent. ``delete`` and the create-new-link path are not cleanly
 reversible (hard_delete is destructive; add_link's inverse adds a blocked pair),
 so they rely on the barrier's observability + re-raise contract alone.
+
+Card archive / unarchive / delete also change *other* cards' ``linksByKind``
+(the server drops a peer that is archived or deleted), yet only the card itself
+moves. Those paths bump the peers via ``link_peer_ids`` + ``touch_peers``.
 """
 
 from __future__ import annotations
@@ -61,6 +65,41 @@ def _touch_both(cards_store: Any, from_id: str, to_id: str) -> None:
             )
     if first_error is not None:
         raise first_error
+
+
+def link_peer_ids(graph: Any, card_id: str) -> set[str]:
+    """Ids of cards joined to ``card_id`` by an active or hidden link.
+
+    Re-syncs the store first: ``get_links_for`` only reads the in-memory indexes,
+    while the ``cleanup_for_card`` that follows this snapshot refreshes before it
+    deprecates. A cached instance that missed another process's new link would
+    therefore deprecate a link whose peer was never snapshotted, leaving that peer
+    with a stale ``linksByKind`` until a full resync.
+    """
+    graph.refresh_if_stale()
+    return {link.to_id if link.from_id == card_id else link.from_id for link in graph.get_links_for(card_id)}
+
+
+def touch_peers(cards_store: Any, peer_ids: set[str], card: Any) -> None:
+    """Bump ``updated_at`` on peers whose ``linksByKind`` changed with ``card``.
+
+    A peer's response hides links to archived/deleted cards, so flipping this
+    card's state changes the peer's wire form. The incremental vocab pull is
+    keyed by ``(updated_at, id)``; without the bump other devices never re-fetch
+    the peer and keep a stale ``linksByKind``.
+
+    Best-effort by design: the card change is already committed and is not
+    cleanly reversible (delete hard-removes blocked pairs), unlike the
+    reversible hide/unhide ops guarded by ``_touch_both``. A failure is logged
+    at ERROR and swallowed; peers then heal on the next full resync.
+    """
+    peer_ids = peer_ids - {card.id}
+    if not peer_ids:
+        return
+    try:
+        cards_store.batch_touch(peer_ids, notebook_id=getattr(card, "notebook_id", None))
+    except Exception:
+        logger.error("Failed to bump linked peers of card %s", card.id, exc_info=True)
 
 
 def _get_link_or_404(link_id: str, graph: Any) -> Any:

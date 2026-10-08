@@ -87,6 +87,9 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
     card_id = card.id
 
     class _FailingGraph:
+        def refresh_if_stale(self):
+            return False
+
         def get_links_for(self, cid):
             return []
 
@@ -344,6 +347,9 @@ class TestDeleteEvictsEmbedding:
         emb = _FakeEmbeddingStore(ids=[card.id])
 
         class _FailingGraph:
+            def refresh_if_stale(self):
+                return False
+
             def get_links_for(self, cid):
                 return []
 
