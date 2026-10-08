@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
+from ..domain.candidate_issues import issue_number_from_external_id
 from ..domain.errors import InvalidReceipt, PolicyViolation
 from ..domain.models import HandbackOutcome, HandbackReceipt
 from ..domain.observations import PullRequestSnapshot
@@ -18,8 +18,6 @@ _HOLDS_BEGIN = "<!-- kg.delivery.holds.v1\n"
 _HOLDS_END = "\n-->"
 _ISSUES_HEADING = "## Issues"
 _ISSUE_LINE = re.compile(r"(?P<kind>Closes|Refs) #(?P<number>[1-9][0-9]*)")
-_ISSUE_ID = re.compile(r"#(?P<number>[1-9][0-9]*)")
-_ISSUE_URL_PATH = re.compile(r"/issues/(?P<number>[1-9][0-9]*)")
 _HOLD_LABELS = {
     "delivery-hold:p0": HoldKind.P0,
     "delivery-hold:p1": HoldKind.P1,
@@ -48,16 +46,9 @@ class IssueLinks:
 
     @classmethod
     def from_external_ids(cls, external_ids: tuple[str, ...]) -> IssueLinks:
-        """Registry external IDs naming an issue (`#N` or an issue URL) close it."""
-        numbers: list[int] = []
-        for value in external_ids:
-            text = value.strip()
-            match = _ISSUE_ID.fullmatch(text) or _ISSUE_URL_PATH.search(
-                urlsplit(text).path.rstrip("/")
-            )
-            if match is not None:
-                numbers.append(int(match["number"]))
-        return cls(closes=tuple(numbers))
+        """Registry external IDs naming an Issue close it (same rule as claims)."""
+        numbers = (issue_number_from_external_id(value) for value in external_ids)
+        return cls(closes=tuple(n for n in numbers if n is not None))
 
     def __bool__(self) -> bool:
         return bool(self.closes or self.refs)

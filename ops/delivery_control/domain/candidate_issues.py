@@ -184,13 +184,22 @@ class CandidateIssueInventory:
         )
 
 
+def issue_number_from_external_id(external_id: str) -> int | None:
+    """The one external_id -> Issue number rule: strict URL, else `N`/`#N`/`issue-N`."""
+    value = external_id.strip()
+    url_key = _issue_url_key(value)
+    if url_key is not None:
+        return url_key[2]
+    match = _ISSUE_REFERENCE_RE.fullmatch(value)
+    return int(match.group("number")) if match is not None else None
+
+
 def _claims_issue(issue: CandidateIssue, external_id: str) -> bool:
     value = external_id.strip()
     url_key = _issue_url_key(value)
     if url_key is not None:
         return url_key == _issue_url_key(issue.url)
-    match = _ISSUE_REFERENCE_RE.fullmatch(value)
-    return match is not None and int(match.group("number")) == issue.number
+    return issue_number_from_external_id(value) == issue.number
 
 
 def unclaimed_candidate_issues(

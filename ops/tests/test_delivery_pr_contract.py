@@ -248,10 +248,34 @@ def test_external_ids_yield_closing_issues_only_for_issue_references() -> None:
         (
             "lane-issue-mgmt-w4",
             "#2392",
-            "https://github.com/Books-Vocab/Books-Vocab/issues/2393",
-            "ISSUE-1",
+            "https://github.com/Books-Vocab/Books-Vocab/issues/2393/",
             "https://example.test/pull/5",
         )
     )
 
     assert links == IssueLinks(closes=(2392, 2393))
+
+
+@pytest.mark.parametrize(
+    ("external_id", "number"),
+    [("2309", 2309), ("issue-2310", 2310), ("issue:2311", 2311), ("ISSUE-1", 1)],
+)
+def test_external_ids_share_the_claim_rule_for_bare_forms(
+    external_id: str, number: int
+) -> None:
+    assert IssueLinks.from_external_ids((external_id,)) == IssueLinks(closes=(number,))
+
+
+@pytest.mark.parametrize(
+    "external_id",
+    [
+        "https://github.com/o/r/issues/2393/events",
+        "https://x/issues/12abc",
+        "ftp://github.com/o/r/issues/5",
+        "/o/r/issues/5",
+        "github.com/o/r/issues/5",
+        "https://github.com/o/r/pull/5",
+    ],
+)
+def test_malformed_issue_urls_never_close_anything(external_id: str) -> None:
+    assert IssueLinks.from_external_ids((external_id,)) == IssueLinks()
