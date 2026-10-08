@@ -8,6 +8,9 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
+_JWT_SECRET_MIN_LENGTH = 32
+_JWT_SECRET_PLACEHOLDERS = frozenset({"your-secret-key-change-in-production", "changeme", "change-me", "secret"})
+
 DEFAULT_PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
 _GOOGLE_WEB_CALLBACK_PATH = "/auth/web/google/callback"
 _APPLE_WEB_CALLBACK_PATH = "/auth/web/apple/callback"
@@ -256,10 +259,17 @@ def load_settings() -> KGSettings:
     default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
 
     jwt_secret = os.getenv("JWT_SECRET")
-    if not jwt_secret or len(jwt_secret) < 16:
+    if not jwt_secret:
+        raise RuntimeError("JWT_SECRET env var is required. Set it in your .env file.")
+    if jwt_secret.strip().lower() in _JWT_SECRET_PLACEHOLDERS:
         raise RuntimeError(
-            "JWT_SECRET env var is required and must be at least 16 characters. "
-            "Set it in your .env file."
+            "JWT_SECRET is a placeholder value; generate a unique secret: "
+            'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )
+    if len(jwt_secret) < _JWT_SECRET_MIN_LENGTH:
+        raise RuntimeError(
+            f"JWT_SECRET must be at least {_JWT_SECRET_MIN_LENGTH} characters; generate one: "
+            'python -c "import secrets; print(secrets.token_urlsafe(48))"'
         )
 
     app_store_allow_unsigned_notifications = _env_truthy("APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS")
