@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from typing import Any
 
 from .api_models import VocabAddResponse, VocabEntry
@@ -19,21 +20,27 @@ from .vocab_shared import (
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 
 
+def _boundary_pattern(term: str) -> re.Pattern[str]:
+    return re.compile(r"(?<!\w)" + re.escape(term) + r"(?!\w)", re.IGNORECASE)
+
+
+def _fold(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).casefold().strip().rstrip(".,;:!?")
+
+
 def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
     if not context:
         return ""
-    # Strip pre-existing markdown bold markers to avoid double-wrapping
-    context = _BOLD.sub(r"\1", context)
-    pattern = re.compile(re.escape(word), re.IGNORECASE)
-    if pattern.search(context):
-        return pattern.sub(f"**{word}**", context, count=1)
-    if alternatives:
-        for alt in alternatives:
-            alt_pattern = re.compile(re.escape(alt), re.IGNORECASE)
-            match = alt_pattern.search(context)
-            if match:
-                actual = match.group()
-                return alt_pattern.sub(f"**{actual}**", context, count=1)
+    # Client already highlighted exactly the target word: keep it verbatim.
+    spans = _BOLD.findall(context)
+    if len(spans) == 1 and _fold(spans[0]) == _fold(word):
+        return context
+    # Otherwise strip markers (avoid double-wrapping) and search with boundaries.
+    context = unicodedata.normalize("NFKC", _BOLD.sub(r"\1", context))
+    for term in [word, *(alternatives or [])]:
+        match = _boundary_pattern(unicodedata.normalize("NFKC", term)).search(context)
+        if match:
+            return f"{context[: match.start()]}**{match.group()}**{context[match.end() :]}"
     return context
 
 

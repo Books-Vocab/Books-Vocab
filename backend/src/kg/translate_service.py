@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from typing import Any
@@ -42,17 +43,28 @@ from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES
 from .languages import SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
 from .vocab_shared import _normalize_pos
 
+_MARKED_SPAN = re.compile(r"\*\*.+?\*\*")
+
+
+def _boundary_pattern(term: str) -> re.Pattern[str]:
+    return re.compile(r"(?<!\w)" + re.escape(term) + r"(?!\w)", re.IGNORECASE)
+
 
 def _context_around_word(context: str, word: str, max_len: int = 300) -> str:
     """Truncate context centered on the target word."""
     if len(context) <= max_len:
         return context
-    pos = context.lower().find(word.lower())
-    if pos < 0:
-        return context[:max_len]
-    half = (max_len - len(word)) // 2
+    span = _MARKED_SPAN.search(context)
+    if span:
+        pos, word_len = span.start(), span.end() - span.start()
+    else:
+        match = _boundary_pattern(word).search(context)
+        if not match:
+            return context[:max_len]
+        pos, word_len = match.start(), len(word)
+    half = (max_len - word_len) // 2
     start = max(0, pos - half)
-    end = min(len(context), pos + len(word) + half)
+    end = min(len(context), pos + word_len + half)
     return context[start:end].strip()
 
 
