@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 ADMIN_TOKEN = "test-admin-token-observability"
-EXPECTED_ADMIN_APP_CLIENTS = 21
+EXPECTED_ADMIN_APP_CLIENTS = 22
 admin_app_constructed = 0
 admin_app_explicit_close = 0
 
@@ -296,7 +296,7 @@ def test_pipeline_failure_rate_counts_failed_vs_total(admin_app):
     import kg.pipeline_log as pl
 
     pl.start_run("r1", "u1", "nb1", "manual")
-    pl.end_run("r1", "ok")
+    pl.end_run("r1", "completed")
     pl.start_run("r2", "u1", "nb1", "manual")
     pl.end_run("r2", "failed")
     pl.start_run("r3", "u1", "nb1", "manual")
@@ -307,6 +307,23 @@ def test_pipeline_failure_rate_counts_failed_vs_total(admin_app):
     assert m["total"] == 3
     assert m["failed"] == 2
     assert m["rate"] == pytest.approx(2 / 3, abs=1e-3)
+
+
+def test_pipeline_failure_rate_counts_production_terminal_statuses(admin_app):
+    """runner 實際寫 'completed' / 'quota_exhausted';它們必須入分母,running/interrupted 不入。"""
+    import kg.pipeline_log as pl
+
+    for rid, status in [("c1", "completed"), ("c2", "completed"), ("q1", "quota_exhausted"), ("f1", "failed")]:
+        pl.start_run(rid, "u1", "nb1", "manual")
+        pl.end_run(rid, status)
+    pl.start_run("i1", "u1", "nb1", "manual")
+    pl.end_run("i1", "interrupted")
+    pl.start_run("run1", "u1", "nb1", "manual")
+
+    m = _get(admin_app.client).json()["pipeline_failure_rate_24h"]
+    assert m["total"] == 4
+    assert m["failed"] == 1
+    assert m["rate"] == pytest.approx(0.25, abs=1e-3)
 
 
 def test_pipeline_failure_rate_excludes_old_runs(admin_app):
@@ -320,7 +337,7 @@ def test_pipeline_failure_rate_excludes_old_runs(admin_app):
     conn.execute("UPDATE pipeline_runs SET started_at = ? WHERE run_id = 'old'", (long_ago,))
     conn.commit()
     pl.start_run("new", "u1", "nb1", "manual")
-    pl.end_run("new", "ok")
+    pl.end_run("new", "completed")
 
     body = _get(admin_app.client).json()
     m = body["pipeline_failure_rate_24h"]

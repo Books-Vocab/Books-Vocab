@@ -9,6 +9,7 @@ degree_cap 排除字面硬編,與 judge_log 的 SoT 常數脫鉤而靜默 drift)
 
 純字串字面,不開連線、不依賴 DATA_DIR,可安全被任一面 import。
 """
+
 from __future__ import annotations
 
 from .judge_log import DEGREE_CAP_EXCLUSION_SQL
@@ -19,11 +20,14 @@ from .judge_log import DEGREE_CAP_EXCLUSION_SQL
 PIPELINE_FAILURE_STATUS = "failed"
 PIPELINE_FAILURE_WHERE = f"status = '{PIPELINE_FAILURE_STATUS}'"
 
+# 非終態(仍在跑 / 被取消回收):不計入失敗率分母。runner 成功終態寫
+# 'completed' 或 'quota_exhausted',故分母以「排除非終態」定義,不枚舉成功值。
+PIPELINE_NON_TERMINAL_STATUSES = ("running", "interrupted")
+PIPELINE_TERMINAL_WHERE = "status NOT IN (" + ", ".join(f"'{s}'" for s in PIPELINE_NON_TERMINAL_STATUSES) + ")"
+
 # auto-judge 拒絕 = 一次業務錯誤,但排除 degree_cap(容量保護,非品質問題)。
 # 拆成原子謂詞:不同 query 形狀(WHERE 串接 / CASE WHEN 計數)組合同一組 SoT。
 # degree_cap 排除沿用 judge_log 的 SoT 常數,改一處即同步所有消費面。
 JUDGE_AUTO_SOURCE_WHERE = "source = 'auto'"
 JUDGE_REJECTED_WHERE = "accepted = 0"
-JUDGE_AUTO_REJECT_WHERE = (
-    f"{JUDGE_AUTO_SOURCE_WHERE} AND {JUDGE_REJECTED_WHERE} AND {DEGREE_CAP_EXCLUSION_SQL}"
-)
+JUDGE_AUTO_REJECT_WHERE = f"{JUDGE_AUTO_SOURCE_WHERE} AND {JUDGE_REJECTED_WHERE} AND {DEGREE_CAP_EXCLUSION_SQL}"
