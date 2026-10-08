@@ -17,6 +17,7 @@
 
 #if os(iOS)
 import Foundation
+import JavaScriptCore
 import Testing
 import ReadiumNavigator
 @testable import BooksAndVocab
@@ -58,6 +59,36 @@ struct ReaderJSEvalTests {
                 "the Unicode character class must be emitted as a JavaScript regex with the u flag")
         #expect(!script.contains("[a-zA-Z'\\\\-]"),
                 "selection must not truncate non-ASCII Latin words")
+    }
+
+    // MARK: - Vocab bridge script encoding (#2443)
+
+    private static let hostileWords = ["alpha", "line1\nline2\r", "a\u{2028}b\u{2029}c", "q\"uote\\"]
+
+    private func makeContext() -> JSContext {
+        let context = JSContext()!
+        context.evaluateScript("var window = {}; window.__markVocabWords = function(w){ window.got = w };"
+            + " window.__markVocabWord = function(w){ window.got = w };")
+        return context
+    }
+
+    /// Control chars / U+2028/2029 in one word must neither break the script
+    /// nor drop the other words of the batch.
+    @Test func markVocabWordsScriptSurvivesLineTerminators() {
+        let context = makeContext()
+        context.evaluateScript(ReaderJSEval.markVocabWordsScript(Self.hostileWords))
+        #expect(context.exception == nil)
+        let got = context.evaluateScript("window.got")?.toArray() as? [String]
+        #expect(got == Self.hostileWords)
+    }
+
+    @Test func singleWordScriptRoundTripsHostileWords() {
+        for word in Self.hostileWords {
+            let context = makeContext()
+            context.evaluateScript(ReaderJSEval.singleWordScript(function: "__markVocabWord", word: word))
+            #expect(context.exception == nil)
+            #expect(context.evaluateScript("window.got")?.toString() == word)
+        }
     }
 }
 #endif
