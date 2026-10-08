@@ -79,7 +79,7 @@ EVIDENCE = {
     },
     "issue-planning": {
         "GitHub Issue": "#123",
-        "Project priority/triage": "P1",
+        "Issue priority/state labels": "P1 ready-for-solver",
     },
 }
 

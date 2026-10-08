@@ -35,7 +35,7 @@ description: "KG agent onboarding kernel：先確認 canonical identity、assign
 
 ## Authority boundaries
 
-- GitHub Issue／Project／PR／Actions／`main` 是交付真相；本地 coordinator 只保護 worktree ownership、Scope、驗證與 hand-back。
+- GitHub Issue／PR／Actions／`main` 是交付真相；本地 coordinator 只保護 worktree ownership、Scope、驗證與 hand-back。
 - route 只是 navigation。它不授予 GitHub API、merge、release、deploy、帳號或 production 寫入權限。
 - code／tests 定義產品行為；`docs/registry.yml` 定義文件 authority／impact；domain SOP 定義不可逆操作。
 - hand-back 是本機 evidence，不是 mergeability、release readiness 或 production approval。
