@@ -39,7 +39,7 @@ enum ReaderFont: String, CaseIterable, Identifiable {
         return ReaderFont(rawValue: raw)
     }
 
-    /// WebView 端的 CSS family。`buildFontFaceCSS()` 用同名 `@font-face` 把
+    /// WebView 端的 CSS family。`ReaderFontFaceCSSCache` 用同名 `@font-face` 把
     /// bundle 裡的 TTF 餵給 WKWebView。
     var family: FontFamily {
         switch self {

@@ -2,7 +2,7 @@
 import Foundation
 import os
 
-/// Process-wide cache of the bundled reader `@font-face` CSS (16 TTF → base64, ~6 MB).
+/// Process-wide cache of the bundled reader `@font-face` CSS (16 TTF, ~3.4 MB → ~4.5 MB base64).
 ///
 /// The fonts are bundled resources that never change at runtime, so the CSS is built
 /// once. Building it costs 16 × `Data(contentsOf:)` + base64, which must never happen
@@ -101,7 +101,9 @@ final class ReaderFontFaceCSSCache: @unchecked Sendable {
         buildLock.lock()
         defer { buildLock.unlock() }
         if let cached = cachedCSS() { return cached }
+        let span = PerfLog.reader.interval("fontFaceCSS.build")
         let rendered = Self.render(loader: loader)
+        span.end()
         stateLock.withLock { built = rendered }
         return rendered
     }

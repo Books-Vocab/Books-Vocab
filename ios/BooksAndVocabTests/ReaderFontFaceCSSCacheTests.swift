@@ -2,7 +2,7 @@
 //  ReaderFontFaceCSSCacheTests.swift
 //  Books & Vocab Tests
 //
-//  Issue #2052: the Readium `setupUserScripts` delegate used to build the ~6 MB
+//  Issue #2052: the Readium `setupUserScripts` delegate used to build the ~4.5 MB
 //  base64 `@font-face` CSS (16 × `Data(contentsOf:)`) synchronously on the main
 //  thread the first time a book opened. The build now happens in a detached
 //  `.utility` prewarm; the delegate path only reads the cached value.
