@@ -13,13 +13,6 @@ KG_IOS_DISK_BUDGET_EXIT=75
 KG_IOS_DISK_STRUCTURAL_EXIT=77
 KG_IOS_DISK_GUARD_STATE_DEFAULT="${HOME}/Library/Application Support/KG/disk_guard.json"
 
-kg_ios_disk_budget_number() {
-  case "${1:-}" in
-    ''|*[!0-9]*) printf '0' ;;
-    *) printf '%s' "$1" ;;
-  esac
-}
-
 kg_ios_disk_budget_roots() {
   local project_root="${1:?project root is required}"
   local configured_root

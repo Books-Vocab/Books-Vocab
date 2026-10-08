@@ -78,7 +78,6 @@ _LINK_LABELS = {"shares_usage": "相關", "contrasts_with": "對比"}
 # ---- bounded deterministic selection constants ------------------------------
 _TODAY_SESSION_MAX = 12      # todayReview 一場 session 的卡數上限
 _DECK_MULTI_MAX = 3          # reviewDeck.phaseMulti
-_LIST_LONG_MAX = 40          # vocabListLong（長列表捲動語意）
 _STATS_ENTRIES_MAX = 8       # statsPopulated / shellNavigation entries
 _SYNCING_MAX = 5             # vocabListSyncing
 _PENDING_MIXED_MAX = 4       # syncPendingMixed

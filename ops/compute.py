@@ -28,7 +28,6 @@ DEFAULT_REPO = OPS_DIR.parent
 DEFAULT_REGISTRY = OPS_DIR / "compute_profiles.yml"
 SCHEMA = "kg.compute.cli.v1"
 ERROR_EXIT = 2
-EXECUTION_ERROR_EXIT = 127
 TIMEOUT_EXIT = 124
 
 if str(OPS_DIR) not in sys.path:

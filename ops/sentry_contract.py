@@ -18,7 +18,6 @@ REGRESSIONS_SCHEMA = "kg.sentry.regressions.v1"
 RELEASE_HEALTH_SCHEMA = "kg.sentry.release_health.v1"
 ERROR_SCHEMA = "kg.sentry.error.v1"
 
-VERDICTS = {"ready", "partial", "blocked", "unchecked"}
 _ID = re.compile(r"^[A-Za-z0-9._:/+@-]{1,256}$")
 _SPACED_ID = re.compile(r"^[A-Za-z0-9._:/+@ -]{1,256}$")
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
