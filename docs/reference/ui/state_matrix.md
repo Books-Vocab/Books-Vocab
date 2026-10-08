@@ -483,7 +483,7 @@ Preview matrix 已補齊：
 | `.idle` | 未啟動（初始 / pre-load 過渡） | 無 overlay，純句子層渲染 | 已覆蓋 |
 | `.loading` | `setSubtitleLoading()`（無 inline、有 URL） | Capsule hint overlay：spinner + `字幕載入中…`（`podcast.subtitleLoading`） | 已覆蓋 |
 | `.loaded` | fetch 成功 / inline subtitle | 句子層 + 高亮字 + cue tracking | 已覆蓋 |
-| `.failed` | fetch / decode 失敗 | `AppStateMessageCard` overlay：`字幕載入失敗` + `音訊仍可正常播放` + 重試 CTA（`onRetrySubtitle`） | 已覆蓋 |
+| `.failed` | fetch / decode 失敗，或 non-2xx response（`authedData` 拋 `URLError(.badServerResponse)`） | `AppStateMessageCard` overlay：`字幕載入失敗` + `音訊仍可正常播放` + 重試 CTA（`onRetrySubtitle`） | 已覆蓋 |
 | `.unavailable` | `markSubtitleUnavailable()`（episode 無 subtitle URL） | `AppStateMessageCard` overlay：`此集無逐句字幕` + `音訊仍可正常播放`（無重試 CTA；`podcast.subtitleUnavailable`） | 已覆蓋 |
 
 ### Translation Panel State（podcast surface）
