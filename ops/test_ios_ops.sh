@@ -579,16 +579,35 @@ grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS_RELEASE
   || ok "workflow stays orchestration/read-only"
 
 section "Release gate surface"
-gate_pass_json="$(sentry_gate_fixture gate release --json)"
+# A non-pass gate exits 2/3 by design, so a bare `x="$(gate ...)"` would end this
+# whole script silently under `set -e` (CI saw only "rc=3" with no payload).
+# Capture the exit code and fail with the verdict payload instead.
+gate_pass_rc=0
+gate_pass_json="$(sentry_gate_fixture gate release --json)" || gate_pass_rc=$?
 echo "$gate_pass_json" | jq -e '.schema=="kg.ios.gate.v1" and .name=="release" and .verdict=="pass" and .exitCode==0 and .summary.blocks==0 and (.todos|length >= 1) and (.manual|length == 1)' >/dev/null \
-  && ok "gate release --json emits pass verdict" || fail_t "gate release pass invalid: $gate_pass_json"
+  && [[ "$gate_pass_rc" -eq 0 ]] \
+  && ok "gate release --json emits pass verdict" || fail_t "gate release pass invalid rc=$gate_pass_rc: $gate_pass_json"
+# The hosted macOS runner image ships jq and grep but neither ripgrep nor uv. A
+# readiness probe that needs rg demotes to warn there (gate exit 3), so the
+# release gate must stay pass with no working `rg` on PATH.
+gate_norg_tmp="$(mktemp -d)"
+printf '#!/bin/sh\nexit 127\n' >"$gate_norg_tmp/rg"
+chmod +x "$gate_norg_tmp/rg"
+gate_norg_rc=0
+PATH="$gate_norg_tmp:$PATH" sentry_gate_fixture gate release --json >"$gate_norg_tmp/out" 2>"$gate_norg_tmp/err" || gate_norg_rc=$?
+jq -e '.verdict=="pass" and .exitCode==0 and .summary.warnings==0' "$gate_norg_tmp/out" >/dev/null \
+  && [[ "$gate_norg_rc" -eq 0 ]] \
+  && ok "gate release passes without ripgrep on PATH" \
+  || fail_t "gate release depends on ripgrep rc=$gate_norg_rc: $(jq -c '[.warnings[]? | {key,detail}]' "$gate_norg_tmp/out" 2>/dev/null || cat "$gate_norg_tmp/out") stderr=$(cat "$gate_norg_tmp/err")"
+rm -rf "$gate_norg_tmp"
 sentry_fixture_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sentry --json)"
 echo "$sentry_fixture_json" | jq -e '.readiness.build_can_import == true and .build_evidence.source == "fixture"' >/dev/null \
   && ok "fixture Sentry readiness supplies deterministic build evidence" \
   || fail_t "fixture Sentry readiness lacks deterministic build evidence: $sentry_fixture_json"
-gate_text="$(sentry_gate_fixture gate release)"
+gate_text_rc=0
+gate_text="$(sentry_gate_fixture gate release)" || gate_text_rc=$?
 echo "$gate_text" | grep -q 'verdict=pass' \
-  && ok "gate release text emits verdict" || fail_t "gate release text missing verdict: $gate_text"
+  && ok "gate release text emits verdict" || fail_t "gate release text missing verdict rc=$gate_text_rc: $gate_text"
 gate_warn_tmp="$(mktemp -d)"
 if KG_IOS_OPS_FIXTURE_TF_LATEST=unknown sentry_gate_fixture gate release --json >"$gate_warn_tmp/out" 2>"$gate_warn_tmp/err"; then
   fail_t "gate release warns on unknown TestFlight build"
