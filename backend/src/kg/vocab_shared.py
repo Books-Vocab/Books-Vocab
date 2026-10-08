@@ -223,4 +223,6 @@ def card_response(
         lapseCount=card.lapse_count,
         reviewStreak=card.review_streak,
         lastReviewFeedback=card.last_review_feedback,
+        isReaderHidden=getattr(card, "is_reader_hidden", False),
+        isReviewExcluded=getattr(card, "is_review_excluded", False),
     )

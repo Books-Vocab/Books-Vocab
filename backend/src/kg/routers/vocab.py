@@ -78,11 +78,8 @@ router = APIRouter(tags=["vocab"])
 
 
 def _card_response(card, graph, cards_by_id):
-    """Expose per-card preferences on every vocabulary response surface."""
-    result = _build_card_response(card, graph, cards_by_id)
-    result.isReaderHidden = getattr(card, "is_reader_hidden", False)
-    result.isReviewExcluded = getattr(card, "is_review_excluded", False)
-    return result
+    """Pass-through; the shared builder projects per-card preferences."""
+    return _build_card_response(card, graph, cards_by_id)
 
 
 @router.get("/api/vocab", response_model=list[CardResponse])
