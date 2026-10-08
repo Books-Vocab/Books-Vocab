@@ -1,17 +1,25 @@
-"""Versioned Pro-only external API for card capture and enrichment."""
+"""Versioned Pro-only external API for card capture and enrichment.
+
+Routes are ``async def`` only because rate-limit admission (``_admit_external``)
+awaits an ``asyncio.Lock``. Everything after admission touches stores, SQLite,
+``pipeline_log`` or the LLM, so each route hands it to a sync helper through
+``run_in_threadpool``; ``tests/test_async_route_blocking_guard.py`` enforces this.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import sqlite3
 import threading
+import time
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from copy import copy
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy.exc import OperationalError
+from starlette.concurrency import run_in_threadpool
 
 from ..api_models.cards import CardResponse
 from ..api_models.external_api import (
@@ -157,10 +165,7 @@ def _persisted_operation(operation_id: str, user_id: str) -> dict[str, Any] | No
     """Find an operation in durable telemetry after process-local state is lost."""
     from .. import pipeline_log
 
-    for run in pipeline_log.get_runs(user_id, limit=_MAX_REMEMBERED_OPERATIONS):
-        if run.get("run_id") == operation_id:
-            return run
-    return None
+    return pipeline_log.get_run(operation_id, user_id)
 
 
 def get_external_api_user(
@@ -297,14 +302,14 @@ def _ingest_card(
 async def list_external_notebooks(response: Response, user: ExternalUser, since: str | None = None):
     _require_pro(user)
     await _admit_external(response, user, read_limiter)
-    return _list_notebooks(user, since=since)
+    return await run_in_threadpool(_list_notebooks, user, since=since)
 
 
 @router.post("/api/v1/notebooks", response_model=NotebookResponse, status_code=201)
 async def create_external_notebook(req: NotebookCreateRequest, response: Response, user: ExternalUser):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    return _create_notebook(req, user)
+    return await run_in_threadpool(_create_notebook, req, user)
 
 
 @router.patch("/api/v1/notebooks/{notebook_id}", response_model=NotebookResponse)
@@ -316,14 +321,14 @@ async def update_external_notebook(
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    return _update_notebook(notebook_id, req, user)
+    return await run_in_threadpool(_update_notebook, notebook_id, req, user)
 
 
 @router.delete("/api/v1/notebooks/{notebook_id}")
 async def delete_external_notebook(notebook_id: str, response: Response, user: ExternalUser):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    return _delete_notebook(notebook_id, user)
+    return await run_in_threadpool(_delete_notebook, notebook_id, user)
 
 
 def _operation_from_run(run: dict[str, Any]) -> ExternalOperationResponse:
@@ -434,10 +439,7 @@ def delete_external_api_key(key_id: str, request: Request, user: CurrentUser):
     return record
 
 
-@router.post("/api/v1/cards/batch", response_model=ExternalCardBatchResponse, status_code=201)
-async def ingest_card_batch(req: ExternalCardBatchRequest, response: Response, user: ExternalUser):
-    _require_pro(user)
-    await _admit_external(response, user, write_limiter)
+def _ingest_card_batch(req: ExternalCardBatchRequest, user: UserRecord) -> ExternalCardBatchResponse:
     cards = _card_store(user["dir"])
     for attempt in range(_BATCH_WRITE_MAX_ATTEMPTS):
         items: list[ExternalCardIngestResponse] = []
@@ -456,29 +458,38 @@ async def ingest_card_batch(req: ExternalCardBatchRequest, response: Response, u
         except OperationalError as exc:
             if attempt + 1 == _BATCH_WRITE_MAX_ATTEMPTS or not _is_retryable_sqlite_lock(exc):
                 raise
-            await asyncio.sleep(0.01 * (2**attempt))
+            time.sleep(0.01 * (2**attempt))
     return ExternalCardBatchResponse(items=items, created=created, duplicates=len(items) - created)
+
+
+@router.post("/api/v1/cards/batch", response_model=ExternalCardBatchResponse, status_code=201)
+async def ingest_card_batch(req: ExternalCardBatchRequest, response: Response, user: ExternalUser):
+    _require_pro(user)
+    await _admit_external(response, user, write_limiter)
+    return await run_in_threadpool(_ingest_card_batch, req, user)
+
+
+def _ingest_single_card(req: ExternalCardCreateRequest, user: UserRecord) -> ExternalCardIngestResponse:
+    card, created = _ingest_card(user, req, write_lock=_external_card_write_lock(user))
+    return ExternalCardIngestResponse(card=card, created=created, clientId=req.clientId)
 
 
 @router.post("/api/v1/cards", response_model=ExternalCardIngestResponse, status_code=201)
 async def ingest_card(req: ExternalCardCreateRequest, response: Response, user: ExternalUser):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    card, created = _ingest_card(user, req, write_lock=_external_card_write_lock(user))
-    return ExternalCardIngestResponse(card=card, created=created, clientId=req.clientId)
+    return await run_in_threadpool(_ingest_single_card, req, user)
 
 
-@router.get("/api/v1/cards", response_model=ExternalCardListResponse)
-async def list_external_cards(
+def _list_external_cards(
     response: Response,
-    user: ExternalUser,
-    notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
-    since: str | None = None,
-    limit: int = Query(100, ge=1, le=1000),
-    cursor: str | None = None,
-):
-    _require_pro(user)
-    await _admit_external(response, user, read_limiter)
+    user: UserRecord,
+    *,
+    notebook_id: str,
+    since: str | None,
+    limit: int,
+    cursor: str | None,
+) -> ExternalCardListResponse:
     _validate_notebook(user, notebook_id)
     cards, next_cursor = list_vocab_response(
         since=since,
@@ -496,6 +507,27 @@ async def list_external_cards(
     return ExternalCardListResponse(items=cards, nextCursor=next_cursor)
 
 
+@router.get("/api/v1/cards", response_model=ExternalCardListResponse)
+async def list_external_cards(
+    response: Response,
+    user: ExternalUser,
+    notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+    since: str | None = None,
+    limit: int = Query(100, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    _require_pro(user)
+    await _admit_external(response, user, read_limiter)
+    return await run_in_threadpool(
+        _list_external_cards, response, user, notebook_id=notebook_id, since=since, limit=limit, cursor=cursor
+    )
+
+
+def _get_external_card(user: UserRecord, card_id: str, notebook_id: str) -> CardResponse:
+    _validate_notebook(user, notebook_id)
+    return _render_card(user, _card_or_404(user, card_id, notebook_id), notebook_id)
+
+
 @router.get("/api/v1/cards/{card_id}", response_model=CardResponse)
 async def get_external_card(
     card_id: str,
@@ -505,20 +537,12 @@ async def get_external_card(
 ):
     _require_pro(user)
     await _admit_external(response, user, read_limiter)
-    _validate_notebook(user, notebook_id)
-    return _render_card(user, _card_or_404(user, card_id, notebook_id), notebook_id)
+    return await run_in_threadpool(_get_external_card, user, card_id, notebook_id)
 
 
-@router.patch("/api/v1/cards/{card_id}", response_model=CardResponse)
-async def update_external_card(
-    card_id: str,
-    req: ExternalCardUpdateRequest,
-    response: Response,
-    user: ExternalUser,
-    notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
-):
-    _require_pro(user)
-    await _admit_external(response, user, write_limiter)
+def _update_external_card(
+    user: UserRecord, card_id: str, req: ExternalCardUpdateRequest, notebook_id: str
+) -> CardResponse:
     _validate_notebook(user, notebook_id)
     card = _card_or_404(user, card_id, notebook_id)
     updates: dict[str, Any] = {}
@@ -536,16 +560,22 @@ async def update_external_card(
     return _render_card(user, updated, notebook_id)
 
 
-@router.post("/api/v1/cards/{card_id}/archive", response_model=CardResponse)
-async def archive_external_card(
+@router.patch("/api/v1/cards/{card_id}", response_model=CardResponse)
+async def update_external_card(
     card_id: str,
-    req: ExternalCardArchiveRequest,
+    req: ExternalCardUpdateRequest,
     response: Response,
     user: ExternalUser,
     notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
+    return await run_in_threadpool(_update_external_card, user, card_id, req, notebook_id)
+
+
+def _archive_external_card(
+    user: UserRecord, card_id: str, req: ExternalCardArchiveRequest, notebook_id: str
+) -> CardResponse:
     _validate_notebook(user, notebook_id)
     card = _card_or_404(user, card_id, notebook_id)
     archive_word_response(
@@ -563,15 +593,20 @@ async def archive_external_card(
     return _render_card(user, updated, notebook_id)
 
 
-@router.delete("/api/v1/cards/{card_id}", response_model=ExternalCardDeleteResponse)
-async def delete_external_card(
+@router.post("/api/v1/cards/{card_id}/archive", response_model=CardResponse)
+async def archive_external_card(
     card_id: str,
+    req: ExternalCardArchiveRequest,
     response: Response,
     user: ExternalUser,
     notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
+    return await run_in_threadpool(_archive_external_card, user, card_id, req, notebook_id)
+
+
+def _delete_external_card(user: UserRecord, card_id: str, notebook_id: str) -> ExternalCardDeleteResponse:
     _validate_notebook(user, notebook_id)
     card = _card_or_404(user, card_id, notebook_id)
     cards = _card_store(user["dir"])
@@ -598,16 +633,21 @@ async def delete_external_card(
     return ExternalCardDeleteResponse(cardId=card.id, deleted=True)
 
 
-@router.post("/api/v1/cards/{card_id}/review", response_model=CardResponse)
-async def review_external_card(
+@router.delete("/api/v1/cards/{card_id}", response_model=ExternalCardDeleteResponse)
+async def delete_external_card(
     card_id: str,
-    req: ExternalCardReviewRequest,
     response: Response,
     user: ExternalUser,
     notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
+    return await run_in_threadpool(_delete_external_card, user, card_id, notebook_id)
+
+
+def _review_external_card(
+    user: UserRecord, card_id: str, req: ExternalCardReviewRequest, notebook_id: str
+) -> CardResponse:
     _validate_notebook(user, notebook_id)
     card = _card_or_404(user, card_id, notebook_id)
     push_review_response(
@@ -637,14 +677,20 @@ async def review_external_card(
     return _render_card(user, updated, notebook_id)
 
 
-@router.get("/api/v1/links", response_model=ExternalLinkListResponse)
-async def list_external_links(
+@router.post("/api/v1/cards/{card_id}/review", response_model=CardResponse)
+async def review_external_card(
+    card_id: str,
+    req: ExternalCardReviewRequest,
     response: Response,
     user: ExternalUser,
     notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
 ):
     _require_pro(user)
-    await _admit_external(response, user, read_limiter)
+    await _admit_external(response, user, write_limiter)
+    return await run_in_threadpool(_review_external_card, user, card_id, req, notebook_id)
+
+
+def _list_external_links(user: UserRecord, notebook_id: str) -> ExternalLinkListResponse:
     _validate_notebook(user, notebook_id)
     return ExternalLinkListResponse(
         items=get_graph_links_response(
@@ -657,17 +703,20 @@ async def list_external_links(
     )
 
 
-@router.post("/api/v1/links", response_model=GraphLinkResponse)
-async def create_external_link(
-    req: ExternalManualLinkRequest,
+@router.get("/api/v1/links", response_model=ExternalLinkListResponse)
+async def list_external_links(
     response: Response,
     user: ExternalUser,
     notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
 ):
     _require_pro(user)
-    # Manual linking invokes the LLM judge, so use the expensive-operation
-    # bucket rather than the cheap card-write bucket.
-    await _admit_external(response, user, enrich_limiter)
+    await _admit_external(response, user, read_limiter)
+    return await run_in_threadpool(_list_external_links, user, notebook_id)
+
+
+def _create_external_link(
+    req: ExternalManualLinkRequest, response: Response, user: UserRecord, notebook_id: str
+) -> GraphLinkResponse:
     _validate_notebook(user, notebook_id)
     quota = _check_quota(user, "manual_link", response)
     result = create_manual_link_response(
@@ -683,6 +732,33 @@ async def create_external_link(
     return result
 
 
+@router.post("/api/v1/links", response_model=GraphLinkResponse)
+async def create_external_link(
+    req: ExternalManualLinkRequest,
+    response: Response,
+    user: ExternalUser,
+    notebook_id: str = Query("default", alias="notebookId", pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+):
+    _require_pro(user)
+    # Manual linking invokes the LLM judge, so use the expensive-operation
+    # bucket rather than the cheap card-write bucket.
+    await _admit_external(response, user, enrich_limiter)
+    return await run_in_threadpool(_create_external_link, req, response, user, notebook_id)
+
+
+def _change_external_link(handler: Callable[..., None], link_id: str, user: UserRecord, notebook_id: str) -> None:
+    """Run a hide/unhide/delete graph-link handler against the caller's notebook."""
+    _validate_notebook(user, notebook_id)
+    handler(
+        link_id,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
 @router.patch("/api/v1/links/{link_id}/hide", status_code=204)
 async def hide_external_link(
     link_id: str,
@@ -692,15 +768,7 @@ async def hide_external_link(
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    _validate_notebook(user, notebook_id)
-    hide_graph_link_response(
-        link_id,
-        user,
-        card_store_factory=_card_store,
-        graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store,
-        notebook_id=notebook_id,
-    )
+    await run_in_threadpool(_change_external_link, hide_graph_link_response, link_id, user, notebook_id)
 
 
 @router.patch("/api/v1/links/{link_id}/unhide", status_code=204)
@@ -712,15 +780,7 @@ async def unhide_external_link(
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    _validate_notebook(user, notebook_id)
-    unhide_graph_link_response(
-        link_id,
-        user,
-        card_store_factory=_card_store,
-        graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store,
-        notebook_id=notebook_id,
-    )
+    await run_in_threadpool(_change_external_link, unhide_graph_link_response, link_id, user, notebook_id)
 
 
 @router.delete("/api/v1/links/{link_id}", status_code=204)
@@ -732,26 +792,12 @@ async def delete_external_link(
 ):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    _validate_notebook(user, notebook_id)
-    delete_graph_link_response(
-        link_id,
-        user,
-        card_store_factory=_card_store,
-        graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store,
-        notebook_id=notebook_id,
-    )
+    await run_in_threadpool(_change_external_link, delete_graph_link_response, link_id, user, notebook_id)
 
 
-@router.post("/api/v1/enrich", response_model=ExternalOperationResponse, status_code=202)
-async def enqueue_external_enrich(
-    req: ExternalEnrichRequest,
-    background_tasks: BackgroundTasks,
-    response: Response,
-    user: ExternalUser,
-):
-    _require_pro(user)
-    await _admit_external(response, user, enrich_limiter)
+def _enqueue_external_enrich(
+    req: ExternalEnrichRequest, background_tasks: BackgroundTasks, response: Response, user: UserRecord
+) -> ExternalOperationResponse:
     _validate_notebook(user, req.notebookId)
     quota = _check_quota(user, "pipeline", response)
     operation_id = uuid.uuid4().hex[:12]
@@ -775,10 +821,19 @@ async def enqueue_external_enrich(
     )
 
 
-@router.get("/api/v1/operations/{operation_id}", response_model=ExternalOperationResponse)
-async def get_external_operation(operation_id: str, response: Response, user: ExternalUser):
+@router.post("/api/v1/enrich", response_model=ExternalOperationResponse, status_code=202)
+async def enqueue_external_enrich(
+    req: ExternalEnrichRequest,
+    background_tasks: BackgroundTasks,
+    response: Response,
+    user: ExternalUser,
+):
     _require_pro(user)
-    await _admit_external(response, user, read_limiter)
+    await _admit_external(response, user, enrich_limiter)
+    return await run_in_threadpool(_enqueue_external_enrich, req, background_tasks, response, user)
+
+
+def _get_external_operation(operation_id: str, user: UserRecord) -> ExternalOperationResponse:
     owner = _operation_owner(operation_id)
     if owner is not None and owner.get("user_id") != user["id"]:
         raise NotFoundError("Operation", operation_id)
@@ -790,6 +845,21 @@ async def get_external_operation(operation_id: str, response: Response, user: Ex
     return _queued_operation(operation_id, owner)
 
 
+@router.get("/api/v1/operations/{operation_id}", response_model=ExternalOperationResponse)
+async def get_external_operation(operation_id: str, response: Response, user: ExternalUser):
+    _require_pro(user)
+    await _admit_external(response, user, read_limiter)
+    return await run_in_threadpool(_get_external_operation, operation_id, user)
+
+
+def _list_external_enrich_runs(user: UserRecord, limit: int) -> ExternalOperationListResponse:
+    from .. import pipeline_log
+
+    return ExternalOperationListResponse(
+        items=[_operation_from_run(run) for run in pipeline_log.get_runs(user["id"], limit=limit)]
+    )
+
+
 @router.get("/api/v1/enrich/runs", response_model=ExternalOperationListResponse)
 async def list_external_enrich_runs(
     response: Response,
@@ -798,8 +868,4 @@ async def list_external_enrich_runs(
 ):
     _require_pro(user)
     await _admit_external(response, user, read_limiter)
-    from .. import pipeline_log
-
-    return ExternalOperationListResponse(
-        items=[_operation_from_run(run) for run in pipeline_log.get_runs(user["id"], limit=limit)]
-    )
+    return await run_in_threadpool(_list_external_enrich_runs, user, limit)

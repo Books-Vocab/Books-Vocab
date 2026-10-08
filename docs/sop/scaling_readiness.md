@@ -85,7 +85,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 在以下訊號出現**之前**，single-worker 是正解，不要為了「未來可能」提前引入 Redis
 的維運與失效模式複雜度。任一門檻觸發 = 升級評估，不是自動開工。
 
-- **threadpool 飽和**：FastAPI 把 sync handler 丟 threadpool（≈`min(32, cpu+4)`）。
+- **threadpool 飽和**：FastAPI 把 sync handler 丟 threadpool（anyio 預設 40 個 token）；
+  external API 的 `async def` route 在 admission 後也經 `run_in_threadpool` 共用這個池。
   觀測到 threadpool 佇列持續積壓、請求在等執行緒（而非等 I/O）→ 單 worker 的並行度
   封頂訊號。
 - **並發用戶 > X**：實測單 worker 在目標 p95 下能穩定服務的並發上限被逼近

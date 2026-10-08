@@ -170,3 +170,42 @@ def test_get_runs_orders_offset_timestamps_before_applying_limit():
     runs = pipeline_log.get_runs("u1", limit=1)
 
     assert [run["run_id"] for run in runs] == ["newer-real"]
+
+
+def _seed_runs(rows: list[tuple[str, str, str]]) -> None:
+    """Bulk-insert (run_id, user_id, started_at) rows without per-row commits."""
+    conn = pipeline_log._get_conn()
+    conn.executemany(
+        "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger, started_at) VALUES (?, ?, 'nb1', 'manual', ?)",
+        rows,
+    )
+    conn.commit()
+
+
+def test_get_run_scoped_to_user_beyond_the_newest_10000():
+    """#2085: a point lookup must not depend on the user's run-history depth."""
+    _seed_runs(
+        [("oldest", "u1", "2026-01-01T00:00:00+00:00")]
+        + [(f"r{i}", "u1", f"2026-02-01T00:{i // 60 % 60:02d}:{i % 60:02d}+00:00") for i in range(10_001)]
+        + [("theirs", "u2", "2026-03-01T00:00:00+00:00")]
+    )
+
+    run = pipeline_log.get_run("oldest", "u1")
+
+    assert run is not None
+    assert run["run_id"] == "oldest"
+    assert run["user_id"] == "u1"
+    assert run["duration_s"] is None
+    assert run["steps"] == []
+    assert pipeline_log.get_run("theirs", "u1") is None
+    assert pipeline_log.get_run("missing", "u1") is None
+    assert pipeline_log.get_run("theirs", "u2")["run_id"] == "theirs"
+
+
+def test_get_run_matches_get_runs_row_shape():
+    pipeline_log.start_run("shape", "u1", "nb1", "manual")
+    pipeline_log.start_step("shape", "Enrich")
+    pipeline_log.end_step("shape", "Enrich", items=3)
+    pipeline_log.end_run("shape", "completed")
+
+    assert pipeline_log.get_run("shape", "u1") == pipeline_log.get_runs("u1")[0]

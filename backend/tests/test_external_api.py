@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -762,3 +763,194 @@ def test_account_erasure_removes_external_api_keys(external_api):
         headers={"X-KG-API-Key": api_key},
     )
     assert rejected.status_code == 401
+
+
+# --- #2085: async external routes keep blocking work off the event loop -------
+
+_BLOCK_SECONDS = 1.0
+_PROBE_BUDGET_SECONDS = 0.2
+
+
+class _BlockingStub:
+    """Wrap a sync callable so it blocks for ``_BLOCK_SECONDS`` and records when it returned."""
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.returned_at: float | None = None
+
+    def wrap(self, original):
+        def blocking(*args, **kwargs):
+            self.entered.set()
+            time.sleep(_BLOCK_SECONDS)
+            self.returned_at = time.monotonic()
+            return original(*args, **kwargs)
+
+        return blocking
+
+
+async def _request_while_probing(stub: _BlockingStub, slow_request) -> httpx.Response:
+    """Probe ``GET /api/system/info`` while ``slow_request`` is inside ``stub``.
+
+    ASGITransport runs the app on this test's event loop. When the stub runs on
+    that loop, this coroutine cannot observe ``stub.entered`` until the stub has
+    returned, so the probe is served after the blocking call instead of during it.
+    """
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        slow = asyncio.create_task(slow_request(client))
+        deadline = time.monotonic() + 5.0
+        while not stub.entered.is_set():
+            if slow.done():
+                early = slow.result()
+                pytest.fail(f"request finished before its blocking call: {early.status_code} {early.text}")
+            assert time.monotonic() < deadline, "request never reached its blocking call"
+            await asyncio.sleep(0.005)
+        probe_started = time.monotonic()
+        probe = await client.get("/api/system/info")
+        probe_finished = time.monotonic()
+        response = await slow
+
+    assert probe.status_code == 200, probe.text
+    assert stub.returned_at is not None
+    assert probe_finished < stub.returned_at, "the probe was served only after the blocking call returned"
+    probe_elapsed = probe_finished - probe_started
+    assert probe_elapsed < _PROBE_BUDGET_SECONDS, f"/api/system/info took {probe_elapsed:.2f}s"
+    return response
+
+
+@pytest.fixture()
+def external_pipeline_log(external_api, monkeypatch):
+    from kg import pipeline_log
+
+    pipeline_log._reset()
+    monkeypatch.setattr(pipeline_log, "DB_PATH", external_api.data_dir / "pipeline_runs.db")
+    try:
+        yield pipeline_log
+    finally:
+        pipeline_log._reset()
+
+
+def _seed_two_cards(ctx, headers) -> tuple[str, str]:
+    ids = []
+    for content in ("alpha", "beta"):
+        created = ctx.client.post("/api/v1/cards", json={"content": content, "meaning": content}, headers=headers)
+        assert created.status_code == 201, created.text
+        ids.append(created.json()["card"]["id"])
+    return ids[0], ids[1]
+
+
+@pytest.mark.asyncio
+async def test_create_link_does_not_block_event_loop(external_api, monkeypatch):
+    from kg.judge import ManualLinkJudge
+    from kg.judge.models import Judgement
+
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    from_id, to_id = _seed_two_cards(external_api, headers)
+
+    def judge(self, *args, **kwargs):
+        return Judgement(link="shares_usage", confidence=0.9, reason="slow judge")
+
+    stub = _BlockingStub()
+    monkeypatch.setattr(ManualLinkJudge, "evaluate", stub.wrap(judge))
+    monkeypatch.setattr(external_router, "create_client", lambda _provider: SimpleNamespace())
+
+    response = await _request_while_probing(
+        stub,
+        lambda client: client.post("/api/v1/links", json={"fromId": from_id, "toId": to_id}, headers=headers),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["reason"] == "slow judge"
+    assert "X-Quota-Fraction" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_card_batch_does_not_block_event_loop(external_api, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    store_cls = type(external_router._card_store(external_api.data_dir / "users" / external_api.user_id))
+    stub = _BlockingStub()
+    monkeypatch.setattr(store_cls, "find_by_content", stub.wrap(store_cls.find_by_content))
+
+    response = await _request_while_probing(
+        stub,
+        lambda client: client.post(
+            "/api/v1/cards/batch",
+            json={"items": [{"content": "gamma", "meaning": "g", "clientId": "c-1"}]},
+            headers=headers,
+        ),
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["created"] == 1
+    assert response.json()["items"][0]["clientId"] == "c-1"
+
+
+@pytest.mark.asyncio
+async def test_card_list_does_not_block_event_loop(external_api, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    stub = _BlockingStub()
+    monkeypatch.setattr(external_router, "list_vocab_response", stub.wrap(external_router.list_vocab_response))
+
+    response = await _request_while_probing(stub, lambda client: client.get("/api/v1/cards", headers=headers))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+    assert response.headers["X-RateLimit-Limit"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_enqueue_does_not_block_event_loop(external_api, external_pipeline_log, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    monkeypatch.setattr(external_router, "_run_external_pipeline", AsyncMock())
+    stub = _BlockingStub()
+    monkeypatch.setattr(external_pipeline_log, "start_run", stub.wrap(external_pipeline_log.start_run))
+
+    response = await _request_while_probing(
+        stub, lambda client: client.post("/api/v1/enrich", json={"notebookId": "default"}, headers=headers)
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "queued"
+    assert external_pipeline_log.get_run(response.json()["operationId"], external_api.user_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_operation_lookup_does_not_block_event_loop(external_api, external_pipeline_log, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    external_pipeline_log.start_run("slowlookup", external_api.user_id, "default", "background")
+    stub = _BlockingStub()
+    monkeypatch.setattr(external_pipeline_log, "get_run", stub.wrap(external_pipeline_log.get_run))
+
+    response = await _request_while_probing(
+        stub, lambda client: client.get("/api/v1/operations/slowlookup", headers=headers)
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["operationId"] == "slowlookup"
+    assert response.json()["status"] == "running"
+
+
+def test_operation_lookup_finds_runs_older_than_the_newest_10000(external_api, external_pipeline_log):
+    """#2085: the lookup used to scan get_runs(limit=10_000) and 404 past that depth."""
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    user_id = external_api.user_id
+    conn = external_pipeline_log._get_conn()
+    conn.executemany(
+        "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger, started_at, status) "
+        "VALUES (?, ?, 'default', 'background', ?, 'completed')",
+        [("oldestrun", user_id, "2026-01-01T00:00:00+00:00")]
+        + [
+            (f"run{i}", user_id, f"2026-02-01T{i // 3600:02d}:{i // 60 % 60:02d}:{i % 60:02d}+00:00")
+            for i in range(10_001)
+        ]
+        + [("othersrun", "someone_else", "2026-03-01T00:00:00+00:00")],
+    )
+    conn.commit()
+
+    oldest = external_api.client.get("/api/v1/operations/oldestrun", headers=headers)
+    other = external_api.client.get("/api/v1/operations/othersrun", headers=headers)
+
+    assert oldest.status_code == 200, oldest.text
+    assert oldest.json()["operationId"] == "oldestrun"
+    assert oldest.json()["status"] == "succeeded"
+    assert other.status_code == 404, other.text

@@ -35,6 +35,7 @@ verified_against: af224fa2d86d76db01efe47b092706c80988e82e
 
 ### 3) Contract & safety checks
 - 不允許 pipeline 核心模組出現 `print()`
+- 受管 router 的 `async def` route 不得在 event loop 直接呼叫 store／SQLite／`pipeline_log`／LLM（`tests/test_async_route_blocking_guard.py` 的 AST guard；新模組在 `GUARDED_ROUTE_MODULES` 加一列）
 - 背景任務失敗必須寫入 `ERROR` logs
 - concurrent config writes 不得損壞 `users.json`
 

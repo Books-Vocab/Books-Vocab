@@ -71,7 +71,7 @@ X-KG-API-Key: kg_<key-id>.<secret>
 
 ## Enrich lifecycle
 
-`POST /api/v1/enrich` 回 `202` 與 `operationId`，並在排入 background task 前先建立既有 `pipeline_runs` 紀錄。operation ID 因此可跨 process restart 查到 `running`、`succeeded`、`failed`、`quota_exhausted` 或 `interrupted`，不需要解析 log；服務重啟時，startup recovery 會把未完成的 `running` run 標成 `interrupted`。pipeline 尚未開始執行時，建立 request 的回應仍會先回 `queued`。enrich 完成後，client 通常依序：
+`POST /api/v1/enrich` 回 `202` 與 `operationId`，並在排入 background task 前先建立既有 `pipeline_runs` 紀錄。operation ID 因此可跨 process restart 查到 `running`、`succeeded`、`failed`、`quota_exhausted` 或 `interrupted`，不需要解析 log；服務重啟時，startup recovery 會把未完成的 `running` run 標成 `interrupted`。查詢以 `run_id` 加呼叫者 `user_id` 點查 `pipeline_runs`，不受該使用者歷史 run 數量影響；其他使用者的 operation 一律回 404。pipeline 尚未開始執行時，建立 request 的回應仍會先回 `queued`。enrich 完成後，client 通常依序：
 
 1. `GET /api/v1/operations/{operation_id}` 確認 terminal status。
 2. `GET /api/v1/cards/{card_id}` 或用 `GET /api/v1/cards?since=...` 取得 meaning/pos/note/collocations/difficulty/links。
@@ -80,3 +80,7 @@ X-KG-API-Key: kg_<key-id>.<secret>
 ## Rate limits
 
 每支 API key、每個類別使用 process-local sliding window；external API 的 cards、notebooks、links、enrich、operations 路由不再套用 generic IP limiter，避免同一 NAT 下的不同 key 互相消耗額度。回應包含 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`Retry-After`。預設值：read 120/60s、write 30/60s、enrich 5/300s；手動建立 graph link 也屬於 enrich 類別，因為會呼叫 LLM judge。可用 `KG_EXTERNAL_API_*` 環境值調整；目前部署是 single-worker，未來多 worker 前必須改 shared limiter。
+
+## Event loop
+
+cards、notebooks、links、enrich、operations 路由是 `async def`，只因 rate-limit admission 要 await `asyncio.Lock`。admission 之後的 store、SQLite、`pipeline_log`、quota 與 LLM judge 都經 `run_in_threadpool` 執行，所以單一 request（例如 `POST /api/v1/links` 的 LLM 呼叫與 retry backoff）不會凍住 single worker 的其他請求。`backend/tests/test_async_route_blocking_guard.py` 以 AST 守住這條規則：受管模組的 async route 只能 await，或呼叫 `GUARDED_ROUTE_MODULES` 列為 loop-safe 的函式。
