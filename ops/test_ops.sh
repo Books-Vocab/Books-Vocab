@@ -139,8 +139,11 @@ run_one() {
       # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
       # 主體與 test_devops.sh 同源（都測 wrapper），先前不屬於任何 group。
       ./ops/tests/test_devops_safe_lightsail_guard.sh &&
+      # Issue #2327：成本文件引用的 ops-cli 子命令／旗標必須真實存在，
+      # 與 devops command contract 同屬「文件宣稱的命令 vs 實作」守衛。
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_env_drift.py &&
+        ops/tests/test_env_drift.py \
+        ops/tests/test_cost_docs_commands.py &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
