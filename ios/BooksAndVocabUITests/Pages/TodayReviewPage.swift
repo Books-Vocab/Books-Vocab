@@ -329,6 +329,50 @@ struct TodayReviewPage {
         element("todayReview.feedback.forgot")
     }
 
+    // MARK: - Swipe markers (#2045)
+
+    /// 卡面上的方向標記。id 與 `TodayReviewSwipeMarkerKind.accessibilityID` 同一份契約
+    /// （UITest target 不 import App，故以字串鏡射；App 端有單元測試鎖定）。
+    enum SwipeMarker: String {
+        case remembered
+        case forgot
+
+        var identifier: String { "todayReview.swipeMarker.\(rawValue)" }
+    }
+
+    /// 標記當下強度（0 … 1）。標記常駐、只有不透明度變；a11y 樹裡不存在（尚未 materialize
+    /// 或被系統當成不可見）一律視為 0，避免把「元素不存在」誤判成讀取失敗。
+    func swipeMarkerIntensity(_ marker: SwipeMarker) -> Double {
+        let node = queryElement(marker.identifier)
+        guard node.exists, let raw = node.value as? String, let intensity = Double(raw) else { return 0 }
+        return intensity
+    }
+
+    /// 兩個標記皆歸 0（放開回彈 / 飛出 / settle 之後的「無殘影」判準）。輪詢重新解析 query，
+    /// 與 `waitUntilLabel` 同模式。
+    @discardableResult
+    func waitForSwipeMarkersCleared(timeout: TimeInterval = 5) -> Bool {
+        let cleared = {
+            swipeMarkerIntensity(.remembered) == 0 && swipeMarkerIntensity(.forgot) == 0
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cleared() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return cleared()
+    }
+
+    /// 在卡片正面水平拖動 `dx` pt（正＝右滑「記得」、負＝左滑「忘記」）後放開。
+    /// XCUITest 的 press-drag 在放開後才返回，無法在手指仍按住時斷言；
+    /// 放開後的行為（回彈 / 飛出 / 歸 0）才是這裡可決定性驗證的。
+    func dragCard(by dx: CGFloat, file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        cardFront.assertExists(file: file, line: line)
+        let start = cardFront.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = start.withOffset(CGVector(dx: dx, dy: 0))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0)
+    }
+
     /// Add-link entry point on the current card's graph-link section.
     var addLinkButton: XCUIElement {
         // This element is mounted only after the reveal transition. Keep the

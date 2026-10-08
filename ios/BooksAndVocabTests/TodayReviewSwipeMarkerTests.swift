@@ -80,6 +80,33 @@ struct TodayReviewSwipeMarkerTests {
         }
     }
 
+    // MARK: UITest 契約（id + 強度值格式）
+
+    @Test func accessibilityIDsAreStableAndDistinct() {
+        #expect(TodayReviewSwipeMarkerKind.remembered.accessibilityID == "todayReview.swipeMarker.remembered")
+        #expect(TodayReviewSwipeMarkerKind.forgot.accessibilityID == "todayReview.swipeMarker.forgot")
+        #expect(Set(TodayReviewSwipeMarkerKind.allCases.map(\.accessibilityID)).count == 2)
+    }
+
+    @Test func accessibilityValueIsFixedTwoDecimalsClampedToUnit() {
+        typealias K = TodayReviewSwipeMarkerKind
+        #expect(K.accessibilityValue(opacity: 0) == "0.00")
+        #expect(K.accessibilityValue(opacity: 0.5) == "0.50")
+        #expect(K.accessibilityValue(opacity: 1) == "1.00")
+        #expect(K.accessibilityValue(opacity: 1.7) == "1.00")
+        #expect(K.accessibilityValue(opacity: -0.2) == "0.00")
+    }
+
+    @Test func settledRestPublishesZeroForBothMarkers() {
+        // settle no-anim 把 swipeOffset 歸 0 → 兩個標記的發布值同幀為 "0.00"（無殘影）。
+        for direction: CGFloat in [-1, 1] {
+            let value = TodayReviewSwipeMarkerKind.accessibilityValue(
+                opacity: F.markerOpacity(swipeOffset: 0, threshold: threshold, direction: direction)
+            )
+            #expect(value == "0.00")
+        }
+    }
+
     @Test func degenerateThresholdDoesNotDivideByZero() {
         #expect(F.markerOpacity(swipeOffset: 0.5, threshold: 0, direction: 1) == 0.5)
         #expect(F.markerOpacity(swipeOffset: 5, threshold: 0, direction: 1) == 1)
