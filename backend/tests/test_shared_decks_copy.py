@@ -205,6 +205,31 @@ def test_midcopy_crash_leaves_no_halfproduct(tmp_path):
     assert _dictionary_sidecar_count(user_dir / "cards.db") == 0
 
 
+def test_midcopy_crash_with_failed_cleanup_keeps_notebook_staged_and_cards_hidden(tmp_path, monkeypatch):
+    """The original fault still propagates, but if the cards cannot be tombstoned
+    the notebook must stay staged: deleting it would strip the only marker hiding
+    the partial cards from global pulls, and nothing would ever retry the cleanup."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+
+    def boom(i):
+        if i == 1:
+            raise RuntimeError("injected mid-copy crash")
+
+    def locked(self, notebook_id):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(CardStore, "soft_delete_by_notebook", locked)
+    with pytest.raises(RuntimeError, match="injected mid-copy crash"):
+        _copy(shared, cards, nbs, user_dir, on_card=boom)
+
+    staged = nbs.staged_ids()
+    assert len(staged) == 1
+    rows = list(cards.all(include_deleted=True))
+    assert len(rows) == 2 and not any(c.is_deleted for c in rows)
+    assert cards.get_modified_since(datetime(2000, 1, 1), exclude_notebook_ids=staged) == []
+
+
 # ── 4. two copies → unique names → world-export succeeds ───────────
 
 

@@ -190,3 +190,72 @@ def test_replay_reveal_delivers_cards_to_late_incremental_pull(tmp_path, monkeyp
     since = (now + timedelta(seconds=10)).isoformat()
     got, _ = _list(tmp_path, cards, nbs, since=since)
     assert sorted(got) == ["w0", "w1", "w2"]
+
+
+def _recopy(tmp_path, *, now, key="k1"):
+    """Retry the copy started by :func:`_copy_old` on fresh store handles, as a
+    transport retry after a server crash would."""
+    from kg.shared_decks.copy import copy_shared_deck
+    from kg.shared_decks.store import SharedDeckStore
+
+    user_dir = tmp_path / "users" / "u1"
+    shared = SharedDeckStore(tmp_path / "shared_decks.db")
+    cards = CardStore(user_dir / "cards.db")
+    nbs = NotebookStore(user_dir / "notebooks.db")
+    outcome = copy_shared_deck(
+        shared_store=shared,
+        card_store=cards,
+        notebook_store=nbs,
+        user_dir=user_dir,
+        deck_id="deck_a",
+        copier_id="u1",
+        idempotency_key=key,
+        now=now,
+    )
+    return shared, cards, nbs, outcome
+
+
+def test_restamp_failure_after_reveal_is_recovered_by_retry(tmp_path, monkeypatch):
+    """A raise from the restamp AFTER materialize committed leaves the notebook
+    visible but its cards on their pre-reveal stamps. The retry lands in _replay,
+    where materialize is already a no-op; it must still re-stamp the cards so an
+    incremental puller whose boundary fell inside the copy window receives them."""
+    now = datetime.now(UTC) - timedelta(seconds=30)
+    real = CardStore.restamp_by_notebook
+    calls = {"n": 0}
+
+    def flaky(self, notebook_id, start):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("injected crash after reveal")
+        return real(self, notebook_id, start)
+
+    monkeypatch.setattr(CardStore, "restamp_by_notebook", flaky)
+    with pytest.raises(RuntimeError, match="injected"):
+        _copy_old(tmp_path, now=now)
+
+    user_dir = tmp_path / "users" / "u1"
+    survivor = NotebookStore(user_dir / "notebooks.db").all(include_staged=True)
+    assert len(survivor) == 1 and survivor[0].is_staged is False  # revealed, cards not yet re-stamped
+
+    shared, cards, nbs, outcome = _recopy(tmp_path, now=now)
+    assert outcome.already_copied is True
+    assert outcome.notebook_id == survivor[0].id
+    since = (now + timedelta(seconds=10)).isoformat()
+    got, _ = _list(tmp_path, cards, nbs, since=since)
+    assert sorted(got) == ["w0", "w1", "w2"]
+    assert len(nbs.all(include_staged=True)) == 1  # the retry never mints a second notebook
+    assert shared.get("deck_a").download_count == 1
+
+
+def test_settled_replay_does_not_restamp_again(tmp_path):
+    """Once the copy fully finished (reveal + restamp + download counted) an
+    idempotent replay is a pure read: it must not bump the deck's cards."""
+    now = datetime.now(UTC) - timedelta(seconds=30)
+    _shared, cards, _nbs, _dir, outcome = _copy_old(tmp_path, now=now)
+    stamps = {c.id: c.updated_at for c in cards.all(notebook_id=outcome.notebook_id)}
+
+    _shared2, cards2, _nbs2, replay = _recopy(tmp_path, now=now)
+
+    assert replay.already_copied is True
+    assert {c.id: c.updated_at for c in cards2.all(notebook_id=outcome.notebook_id)} == stamps

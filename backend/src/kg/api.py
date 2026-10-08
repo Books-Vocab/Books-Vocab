@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+from functools import partial
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -87,7 +88,9 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
                 release_worker_lock_fn=release_worker_lock,
                 reset_clients_fn=reset_clients,
                 reset_async_clients_fn=reset_async_clients,
-                reap_stale_staged_copies_fn=reap_stale_staged_copies,
+                reap_stale_staged_copies_fn=partial(
+                    reap_stale_staged_copies, shared_decks_path=settings.shared_decks_path
+                ),
             )
         ),
     )

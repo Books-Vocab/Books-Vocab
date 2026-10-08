@@ -307,3 +307,31 @@ def test_lifespan_reaps_staged_copies_after_worker_lock(tmp_path):
     names = [e[0] if isinstance(e, tuple) else e for e in events]
     assert names.index("assert_single_worker") < names.index("reap_staged") < names.index("bind_runtime_data_root")
     assert ("reap_staged", tmp_path) in events
+
+
+def test_create_app_startup_reaps_orphaned_staged_copy_via_settings_catalog_path(tmp_path, monkeypatch):
+    """End-to-end wiring (#2269): the real create_app hands the reaper the
+    catalog path from settings, so a staged notebook with a committed copy-log
+    survives startup while an un-logged orphan is reaped."""
+    from kg.api import create_app
+    from kg.notebook import NotebookStore
+    from kg.shared_decks.store import SharedDeckStore
+    from test_shared_decks_reaper import _age
+
+    _clear_llm_env(monkeypatch)
+    settings = _settings(tmp_path)
+    user_dir = tmp_path / "users" / "u1"
+    user_dir.mkdir(parents=True)
+    nbs = NotebookStore(user_dir / "notebooks.db")
+    orphan = nbs.create(name="orphan", is_staged=True)
+    logged = nbs.create(name="logged", is_staged=True)
+    for nb in (orphan, logged):
+        _age(nbs, nb.id, 60)
+    catalog = SharedDeckStore(settings.shared_decks_path)
+    assert catalog.record_copy("u1", "k", "deck", 1, logged.id)
+    catalog.close()
+
+    with TestClient(create_app(settings)):
+        pass
+
+    assert NotebookStore(user_dir / "notebooks.db").staged_ids() == [logged.id]
