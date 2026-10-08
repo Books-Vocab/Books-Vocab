@@ -312,41 +312,6 @@ struct NotebookCard: View {
         }
     }
 
-    /// D2 — Editorial metadata：ProgressCapsule (永遠 render) + 條件 due chip。
-    /// cardCount 已上移至 cover D1;pendingCount / unlearnedCount 移至 notebook 內頁 + TipView。
-    ///
-    /// **Stable-height guarantee**: HStack 永遠由 invisible placeholder chip 撐高,
-    /// 確保 grid 中 dueCount=0 / >0 兩本卡片高度一致(原 opacity=0 占位策略延續)。
-    @ViewBuilder
-    private var metadataArea: some View {
-        HStack(spacing: AppSpacing.s2) {
-            ProgressCapsule(
-                progress: totalSynced > 0 ? reviewProgress : 0,
-                label: nil,
-                fillColor: coverColor,  // editorial「閱讀進度條跟書同色」族群感
-                trackColor: skin.palette.progressBarBackground,
-                height: 5
-            )
-            .frame(maxWidth: .infinity)
-
-            if data.dueCount > 0 {
-                Label(L10n.format("%@ 到期", "\(data.dueCount)"), systemImage: "clock.badge")
-                    .font(skin.typography.monoLabel)
-                    .monospacedDigit()
-                    .foregroundStyle(skin.palette.warning)
-                    .fixedSize(horizontal: true, vertical: false)
-            } else {
-                // Invisible placeholder — 同 font 撐高,grid 兩卡 height 一致
-                Label("0", systemImage: "clock.badge")
-                    .font(skin.typography.monoLabel)
-                    .monospacedDigit()
-                    .opacity(0)
-                    .accessibilityHidden(true)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-        }
-    }
-
     private var accessibilityDescription: String {
         var parts = [data.name, "\(data.cardCount) \(data.cardCountLabel)"]
         if data.dueCount > 0 {
