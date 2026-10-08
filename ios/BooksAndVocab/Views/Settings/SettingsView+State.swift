@@ -49,28 +49,6 @@ extension SettingsView {
         return L10n.format("settings.sync.lastSynced", lastSync.formatted(.relative(presentation: .named)))
     }
 
-    var hasCustomSettingsPreferences: Bool {
-        let review = reviewSettingsStore.settings
-        let defaults = ReviewSettings.default
-        return appLanguage.selection != .system
-            || appearanceStore.selection != .system
-            || coordinator.translationSourceLang != .en
-            || coordinator.translationTargetLang != .zhHant
-            || review.mode != defaults.mode
-            || review.customInitialIntervalHours != defaults.customInitialIntervalHours
-            || review.customRememberedMultiplier != defaults.customRememberedMultiplier
-            || review.customForgotMultiplier != defaults.customForgotMultiplier
-            || review.customMinimumIntervalHours != defaults.customMinimumIntervalHours
-            || review.customMaximumIntervalHours != defaults.customMaximumIntervalHours
-            || review.isProgressPaused != defaults.isProgressPaused
-            || review.autoplaySpeed != defaults.autoplaySpeed
-            || review.autoplaySoundEnabled != defaults.autoplaySoundEnabled
-            || autoSyncSettingsStore.isEnabled
-            || !autoLinkSettingsStore.isEnabled
-            || feedbackSettingsStore.soundFeedbackEnabled
-            || !feedbackSettingsStore.hapticFeedbackEnabled
-    }
-
     var resetBeforeSnapshot: SettingsResetLifecycle.Snapshot {
         coordinator.readResetSnapshot(authManager: authManager, modelContext: modelContext)
     }
