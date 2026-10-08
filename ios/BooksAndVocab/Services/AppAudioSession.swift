@@ -15,7 +15,6 @@
 //
 
 import AVFoundation
-import MediaPlayer
 
 /// What the app is about to play through the shared audio session.
 enum AppAudioUse: Equatable {
@@ -84,22 +83,43 @@ final class AppAudioSession {
     static let shared = AppAudioSession()
 
     private let controller: AudioSessionControlling
-    private let isLongFormPlaybackActive: () -> Bool
     private let lock = NSLock()
     private var speechActive = false
+    /// Identity of the podcast engine that owns the shared session. Explicit
+    /// state tied to the engine's session lifetime (claim in
+    /// `configureAudioSession`, release in `shutdown`/`deinit`), not inferred
+    /// from lock-screen metadata that late callbacks can resurrect.
+    private var podcastOwner: ObjectIdentifier?
 
-    /// - Parameter isLongFormPlaybackActive: true while a podcast player
-    ///   session owns the shared session. Default reads the lock-screen
-    ///   now-playing info, which `PodcastAudioEngine` sets on load and clears
-    ///   on `shutdown()`.
-    init(
-        controller: AudioSessionControlling = SystemAudioSessionController(),
-        isLongFormPlaybackActive: @escaping () -> Bool = {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo != nil
-        }
-    ) {
+    init(controller: AudioSessionControlling = SystemAudioSessionController()) {
         self.controller = controller
-        self.isLongFormPlaybackActive = isLongFormPlaybackActive
+    }
+
+    /// True while a podcast player session owns the shared session.
+    var podcastOwnsSession: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return podcastOwner != nil
+    }
+
+    /// `PodcastAudioEngine` is about to configure `.playback` / `.spokenAudio`.
+    /// A newer engine replaces an older owner (episode swap / retry).
+    func claimPodcastSession(owner: AnyObject) {
+        lock.lock()
+        defer { lock.unlock() }
+        podcastOwner = ObjectIdentifier(owner)
+        // Speech in flight is now under the podcast's category; its
+        // `endSpeech()` must not deactivate the podcast's session.
+        speechActive = false
+    }
+
+    /// The owning engine shut down. No-op for a stale engine whose ownership a
+    /// newer engine already took over, so a late teardown can't free the session.
+    func releasePodcastSession(owner: AnyObject) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard podcastOwner == ObjectIdentifier(owner) else { return }
+        podcastOwner = nil
     }
 
     /// Configure the shared session for `use`. Returns whether this call
@@ -107,9 +127,9 @@ final class AppAudioSession {
     /// owner, or the configuration was already in place).
     @discardableResult
     func prepare(for use: AppAudioUse) -> Bool {
-        guard !isLongFormPlaybackActive() else { return false }
         lock.lock()
         defer { lock.unlock() }
+        guard podcastOwner == nil else { return false }
         // A tone fired mid-utterance must not demote speech to `.ambient`.
         if use == .uiTone, speechActive { return false }
 
@@ -141,7 +161,7 @@ final class AppAudioSession {
         defer { lock.unlock() }
         guard speechActive else { return }
         speechActive = false
-        guard !isLongFormPlaybackActive() else { return }
+        guard podcastOwner == nil else { return }
         do {
             try controller.setActive(false, notifyOthersOnDeactivation: true)
         } catch {

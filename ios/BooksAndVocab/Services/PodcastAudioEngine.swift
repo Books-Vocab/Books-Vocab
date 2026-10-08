@@ -64,8 +64,23 @@ final class PodcastAudioEngine: NSObject {
         return rateSteps[(idx + 1) % rateSteps.count]
     }
 
+    /// Set by `shutdown()`, cleared by the next `loadAudio`. Late async
+    /// callbacks (seek completion, KVO hops) must not resurrect lock-screen
+    /// info after the player was closed.
+    private var isShutDown = false
+    private let appAudioSession: AppAudioSession
+
+    init(appAudioSession: AppAudioSession = .shared) {
+        self.appAudioSession = appAudioSession
+        super.init()
+    }
+
     deinit {
         removeObservers()
+        // An engine dropped without `shutdown()` must not leave the app
+        // believing a podcast still owns the session (no-op if a newer engine
+        // already took over).
+        appAudioSession.releasePodcastSession(owner: self)
     }
 
     func loadAudio(
@@ -74,6 +89,7 @@ final class PodcastAudioEngine: NSObject {
         prefetchedDuration: TimeInterval? = nil
     ) {
         removeObservers()
+        isShutDown = false
         configureAudioSession()
         loadGeneration &+= 1
         let gen = loadGeneration
@@ -364,6 +380,10 @@ final class PodcastAudioEngine: NSObject {
 
     private func configureAudioSession() {
         #if os(iOS)
+        // Claim before touching the category so TTS / UI tones (#2110) defer
+        // from the very start of the podcast session, not only once lock-screen
+        // metadata exists.
+        appAudioSession.claimPodcastSession(owner: self)
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .spokenAudio)
         try? session.setActive(true)
@@ -454,6 +474,7 @@ final class PodcastAudioEngine: NSObject {
     /// Also deactivates the audio session + clears lock-screen info + removes
     /// remote-command targets so other apps (Spotify, etc.) regain audio focus.
     func shutdown() {
+        isShutDown = true
         stop()
         #if os(iOS)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -461,6 +482,9 @@ final class PodcastAudioEngine: NSObject {
             false,
             options: [.notifyOthersOnDeactivation]
         )
+        // Release only after deactivation so a pronunciation that races in
+        // can't be activated and then killed by the line above.
+        appAudioSession.releasePodcastSession(owner: self)
         #endif
     }
 
@@ -469,6 +493,9 @@ final class PodcastAudioEngine: NSObject {
     /// with the episode title + host names.
     func configureNowPlaying(title: String, artist: String) {
         #if os(iOS)
+        // VM calls this before `loadAudio`, so it is the (re)start signal for
+        // an engine reused after `shutdown()`.
+        isShutDown = false
         nowPlayingTitle = title
         nowPlayingArtist = artist
         registerRemoteCommands()
@@ -539,7 +566,9 @@ final class PodcastAudioEngine: NSObject {
     /// pass what the user *intends* so the lock-screen icon flips immediately,
     /// rather than sampling `timeControlStatus` which typically lags by one RTT
     /// while AVPlayer buffers the first segment.
-    private func updateNowPlayingInfo(rateOverride: Double? = nil) {
+    /// Internal for tests.
+    func updateNowPlayingInfo(rateOverride: Double? = nil) {
+        guard !isShutDown else { return }
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = nowPlayingTitle
         info[MPMediaItemPropertyArtist] = nowPlayingArtist
