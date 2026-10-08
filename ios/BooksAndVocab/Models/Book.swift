@@ -174,12 +174,6 @@ final class Book {
         return booksDirectory.appendingPathComponent(fileName)
     }
 
-    /// URL 是否位於 iCloud ubiquity container 內
-    static func isInICloudContainer(_ url: URL) -> Bool {
-        guard let iCloudDir = _iCloudDirLock.withLock({ $0 }) else { return false }
-        return url.path.hasPrefix(iCloudDir.path)
-    }
-
     /// 書籍檔案是否已在本機可讀（用於書架顯示 iCloud 狀態）
     var isFileLocal: Bool {
         FileManager.default.isReadableFile(atPath: fileURL.path)

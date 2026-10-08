@@ -76,11 +76,6 @@ extension View {
     }
 
     @ViewBuilder
-    func platformListButtonStyle() -> some View {
-        self.buttonStyle(.pressable)
-    }
-
-    @ViewBuilder
     func platformContentMaxWidth(for layoutMode: LayoutMode) -> some View {
         self.frame(maxWidth: layoutMode.contentMaxWidth)
             .frame(maxWidth: .infinity)
