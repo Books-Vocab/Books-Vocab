@@ -197,23 +197,30 @@ _STATUS_OPERATIONS = {"A": "add", "M": "modify", "D": "delete", "T": "modify"}
 
 
 def scope_from_name_status(text: str) -> dict:
-    """Name-status diff output -> a structured Scope.
+    """`git diff --name-status -z` output -> a structured Scope.
 
-    A rename is a delete of the old path plus an add of the new one, which is
-    how Scope overlap has to see it.
+    Input is NUL-delimited (status token, then one path, or two for R/C), so
+    non-ASCII paths arrive raw instead of C-quoted. A rename is a delete of the
+    old path plus an add of the new one, which is how Scope overlap has to see
+    it. Empty tokens (a trailing NUL) are dropped.
     """
     files: list[dict[str, str]] = []
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        code = parts[0][0]
+    tokens = [token for token in text.split("\0") if token]
+    index = 0
+    while index < len(tokens):
+        status = tokens[index]
+        code = status[0]
+        width = 2 if code in "RC" else 1
+        paths = tokens[index + 1 : index + 1 + width]
+        if code not in "RC" and code not in _STATUS_OPERATIONS:
+            raise ValueError(f"unrecognised git status {status!r} for {paths[:1]!r}")
+        if len(paths) != width:
+            raise ValueError(f"truncated git name-status entry {status!r}")
+        index += 1 + width
         if code in "RC":
             if code == "R":
-                files.append({"operation": "delete", "path": parts[1]})
-            files.append({"operation": "add", "path": parts[2]})
-        elif code in _STATUS_OPERATIONS:
-            files.append({"operation": _STATUS_OPERATIONS[code], "path": parts[1]})
+                files.append({"operation": "delete", "path": paths[0]})
+            files.append({"operation": "add", "path": paths[1]})
         else:
-            raise ValueError(f"unrecognised git status {parts[0]!r} for {parts[-1]!r}")
+            files.append({"operation": _STATUS_OPERATIONS[code], "path": paths[0]})
     return {"schema": SCOPE_SCHEMA, "files": files}

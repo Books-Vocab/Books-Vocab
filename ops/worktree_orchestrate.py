@@ -411,7 +411,17 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         if args.scope is not None or args.scope_file is not None:
             reason = "--scope-from-diff conflicts with --scope/--scope-file"
         else:
-            rc, names = _git(["diff", "--name-status", f"{args.base}...HEAD"], worktree)
+            rc, names = _git(
+                [
+                    "-c",
+                    "core.quotepath=false",
+                    "diff",
+                    "--name-status",
+                    "-z",
+                    f"{args.base}...HEAD",
+                ],
+                worktree,
+            )
             if rc != 0:
                 reason = f"cannot diff against {args.base}: {names}"
             else:
@@ -821,11 +831,11 @@ def cmd_recover_published_remote(args: argparse.Namespace) -> int:
 
 
 def _changed_files(worktree: Path, base: str) -> list[str]:
-    rc, output = _git(["diff", "--name-only", base], worktree)
-    files = set(output.splitlines()) if rc == 0 else set()
-    rc, output = _git(["ls-files", "--others", "--exclude-standard"], worktree)
+    rc, output = _git(["diff", "--name-only", "-z", base], worktree)
+    files = set(output.split("\0")) if rc == 0 else set()
+    rc, output = _git(["ls-files", "--others", "--exclude-standard", "-z"], worktree)
     if rc == 0:
-        files.update(output.splitlines())
+        files.update(output.split("\0"))
     return sorted(item for item in files if item)
 
 

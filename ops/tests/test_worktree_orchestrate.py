@@ -3052,6 +3052,50 @@ def test_adopt_scope_from_diff_derives_scope_from_the_branch_diff(
     assert "conflicts" in capsys.readouterr().out
 
 
+def test_adopt_scope_from_diff_handles_non_ascii_paths(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    _commit(repo, "docs/reference/架構.rtf", "x\n", "non-ascii")
+    state_path = tmp_path / "worktree_registry.json"
+    rc = coordinator.main(
+        [
+            "adopt",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--intent",
+            "agent worktree",
+            "--base",
+            "base",
+            "--external-id",
+            "ISSUE-9",
+            "--codex-thread-id",
+            "worker-thread",
+            "--delegated",
+            "--scope-from-diff",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    assert rc == coordinator.EXIT_OK
+    [record] = coordinator.registry.load_state(state_path)["records"]
+    assert {"path": "docs/reference/架構.rtf", "operation": "add"} in record["scope"][
+        "files"
+    ]
+
+
+def test_changed_files_returns_raw_non_ascii_names(tmp_path: Path) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    _commit(repo, "架構.rtf", "x\n", "tracked")
+    (repo / "架構.rtf").write_text("changed\n", encoding="utf-8")
+    (repo / "新增.md").write_text("new\n", encoding="utf-8")
+
+    assert coordinator._changed_files(repo, "HEAD") == ["新增.md", "架構.rtf"]
+
+
 def test_adopt_scope_from_diff_refuses_an_empty_diff(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
