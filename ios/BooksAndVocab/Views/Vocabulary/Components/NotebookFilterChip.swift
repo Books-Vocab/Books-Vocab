@@ -92,9 +92,11 @@ struct NotebookFilterPickerSheet: View {
                         if !filter.isFiltered {
                             Image(systemName: "checkmark")
                                 .foregroundStyle(skin.palette.accent)
+                                .accessibilityHidden(true)
                         }
                     }
                 }
+                .accessibilityAddTraits(!filter.isFiltered ? .isSelected : [])
 
                 ForEach(notebooks) { notebook in
                     Button {
@@ -112,9 +114,11 @@ struct NotebookFilterPickerSheet: View {
                             if filter.selectedIds.contains(notebook.remoteId) {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(skin.palette.accent)
+                                    .accessibilityHidden(true)
                             }
                         }
                     }
+                    .accessibilityAddTraits(filter.selectedIds.contains(notebook.remoteId) ? .isSelected : [])
                 }
             }
             .navigationTitle(L10n.string("篩選單字本"))
