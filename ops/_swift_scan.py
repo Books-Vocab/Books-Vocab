@@ -2,12 +2,16 @@
 
 Comment/string blanking (newline-preserving), balanced-bracket matching and the
 SwiftUI modifier-chain walker used by `plain_deadzone_lint.py` and
-`tap_a11y_lint.py`. Import-only module: no CLI, no I/O, no env.
+`tap_a11y_lint.py`, plus the file-collection, baseline and CLI-mode scaffolding
+shared with `ui_token_lint.py`. Import-only module: no env, no import-time I/O.
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime as dt
 import re
+import sys
 from pathlib import Path
 
 SKIP_PATH_FRAGMENTS = ("/Debug/",)
@@ -21,12 +25,117 @@ def normalize(snippet: str) -> str:
     return _WS.sub(" ", snippet.strip())
 
 
-def should_skip(path: Path) -> bool:
-    """File-level exclusions shared by the UI lints: Debug/, *Preview*, *Tests*."""
+def should_skip(path: Path, skip_basenames: tuple[str, ...] = ()) -> bool:
+    """File-level exclusions shared by the UI lints: Debug/, *Preview*, *Tests*,
+    plus any exact basenames the caller excludes."""
     s = str(path)
     if any(frag in s for frag in SKIP_PATH_FRAGMENTS):
         return True
+    if path.name in skip_basenames:
+        return True
     return any(path.match(g) for g in SKIP_NAME_GLOBS)
+
+
+def collect_findings(
+    src: Path,
+    scan_file,
+    skip_basenames: tuple[str, ...] = (),
+    require_files: bool = False,
+) -> list:
+    """Scan every non-skipped `*.swift` under `src` with `scan_file(path, rel)`."""
+    if not src.exists():
+        print(f"ERROR: {src} not found", file=sys.stderr)
+        sys.exit(2)
+    files = [
+        f for f in sorted(src.rglob("*.swift")) if not should_skip(f, skip_basenames)
+    ]
+    if require_files and not files:
+        print(f"ERROR: {src} contains no scannable .swift files", file=sys.stderr)
+        sys.exit(2)
+    findings: list = []
+    for f in files:
+        findings.extend(scan_file(f, str(f.relative_to(src))))
+    return findings
+
+
+def read_baseline(baseline_file: Path) -> set[str]:
+    if not baseline_file.exists():
+        return set()
+    items: set[str] = set()
+    for raw in baseline_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        items.add(line)
+    return items
+
+
+def run_modes(
+    tag: str,
+    findings: list,
+    baseline_file: Path,
+    header_lines: list[str],
+    fail_hint: str,
+    description: str | None = None,
+    blank_when_empty: bool = True,
+) -> int:
+    """Shared CLI: --report (default) / --baseline / --baseline-check / --strict.
+
+    `findings` items expose key() and display(). `header_lines` are the baseline
+    comment lines (sans the blank separator, added before the keys).
+    """
+    ap = argparse.ArgumentParser(description=description)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--report", action="store_true", default=True)
+    g.add_argument("--baseline", action="store_true")
+    g.add_argument("--baseline-check", action="store_true")
+    g.add_argument("--strict", action="store_true")
+    args = ap.parse_args()
+
+    if args.baseline:
+        baseline_file.parent.mkdir(parents=True, exist_ok=True)
+        keys = sorted({f.key() for f in findings})
+        stamp = f"# {tag} baseline — generated {dt.date.today().isoformat()}"
+        body = [stamp, *header_lines] + (
+            [""] + keys if keys or blank_when_empty else []
+        )
+        baseline_file.write_text("\n".join(body) + "\n", encoding="utf-8")
+        print(f"[{tag}] wrote baseline: {len(keys)} findings → {baseline_file}")
+        return 0
+
+    if args.baseline_check:
+        baseline = read_baseline(baseline_file)
+        current = {f.key(): f for f in findings}
+        new_keys = sorted(set(current) - baseline)
+        if new_keys:
+            print(
+                f"[{tag}] REGRESSION — {len(new_keys)} new finding(s):", file=sys.stderr
+            )
+            for k in new_keys:
+                print(f"  {current[k].display()}", file=sys.stderr)
+            return 1
+        print(
+            f"[{tag}] OK — {len(current)} finding(s), all within "
+            f"baseline of {len(baseline)}."
+        )
+        return 0
+
+    if args.strict:
+        for f in findings:
+            print(f.display(), file=sys.stderr)
+        if findings:
+            print(
+                f"[{tag}] FAIL — {len(findings)} finding(s). {fail_hint}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"[{tag}] OK — no findings.")
+        return 0
+
+    for f in findings:
+        print(f.display())
+    print(f"\n[{tag}] total: {len(findings)} findings", file=sys.stderr)
+    return 0
 
 
 def blank_comments_and_strings(text: str, keep_comments: bool = False) -> str:

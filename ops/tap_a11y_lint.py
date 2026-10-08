@@ -49,8 +49,6 @@ Env overrides (for tests): KG_TAP_A11Y_SRC, KG_TAP_A11Y_BASELINE.
 
 from __future__ import annotations
 
-import argparse
-import datetime as dt
 import os
 import re
 import sys
@@ -58,9 +56,10 @@ from pathlib import Path
 
 from _swift_scan import (
     blank_comments_and_strings,
+    collect_findings,
     match_balanced,
     normalize,
-    should_skip,
+    run_modes,
     skip_ws,
     walk_modifier_chain,
 )
@@ -163,93 +162,24 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
 
 
 def collect() -> list[Finding]:
-    if not SRC.exists():
-        print(f"ERROR: {SRC} not found", file=sys.stderr)
-        sys.exit(2)
-    files = [f for f in sorted(SRC.rglob("*.swift")) if not should_skip(f)]
-    if not files:
-        print(f"ERROR: {SRC} contains no scannable .swift files", file=sys.stderr)
-        sys.exit(2)
-    findings: list[Finding] = []
-    for f in files:
-        findings.extend(scan_file(f, str(f.relative_to(SRC))))
-    return findings
-
-
-def read_baseline() -> set[str]:
-    if not BASELINE_FILE.exists():
-        return set()
-    items: set[str] = set()
-    for raw in BASELINE_FILE.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        items.add(line)
-    return items
+    return collect_findings(SRC, scan_file, require_files=True)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    g = ap.add_mutually_exclusive_group()
-    g.add_argument("--report", action="store_true", default=True)
-    g.add_argument("--baseline", action="store_true")
-    g.add_argument("--baseline-check", action="store_true")
-    g.add_argument("--strict", action="store_true")
-    args = ap.parse_args()
-
-    findings = collect()
-
-    if args.baseline:
-        BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        keys = sorted({f.key() for f in findings})
-        header = [
-            f"# tap_a11y_lint baseline — generated {dt.date.today().isoformat()}",
+    return run_modes(
+        "tap_a11y_lint",
+        collect(),
+        BASELINE_FILE,
+        [
             "# Line-number-free finding keys: <relpath>::tap-a11y::<normalized-call-text>.",
             "# Regenerate after a sanctioned sweep:  bash ops/tap_a11y_lint.sh --baseline",
             "# Zero tolerance: every .onTapGesture must use Button / declare a trait or action /",
             "# be accessibilityHidden / carry // a11y-allow: <reason> — do not add keys here.",
-        ]
-        # Blank separator only when keys follow, so an empty baseline has no EOF blank line.
-        body = header + ([""] + keys if keys else [])
-        BASELINE_FILE.write_text("\n".join(body) + "\n", encoding="utf-8")
-        print(f"[tap_a11y_lint] wrote baseline: {len(keys)} findings → {BASELINE_FILE}")
-        return 0
-
-    if args.baseline_check:
-        baseline = read_baseline()
-        current = {f.key(): f for f in findings}
-        new_keys = sorted(set(current) - baseline)
-        if new_keys:
-            print(
-                f"[tap_a11y_lint] REGRESSION — {len(new_keys)} new finding(s):",
-                file=sys.stderr,
-            )
-            for k in new_keys:
-                print(f"  {current[k].display()}", file=sys.stderr)
-            return 1
-        print(
-            f"[tap_a11y_lint] OK — {len(current)} finding(s), all within "
-            f"baseline of {len(baseline)}."
-        )
-        return 0
-
-    if args.strict:
-        for f in findings:
-            print(f.display(), file=sys.stderr)
-        if findings:
-            print(
-                f"[tap_a11y_lint] FAIL — {len(findings)} finding(s). Use Button, add "
-                ".accessibilityAddTraits(.isButton), or annotate // a11y-allow: <reason>.",
-                file=sys.stderr,
-            )
-            return 1
-        print("[tap_a11y_lint] OK — no findings.")
-        return 0
-
-    for f in findings:
-        print(f.display())
-    print(f"\n[tap_a11y_lint] total: {len(findings)} findings", file=sys.stderr)
-    return 0
+        ],
+        "Use Button, add .accessibilityAddTraits(.isButton), or annotate // a11y-allow: <reason>.",
+        description=__doc__.splitlines()[0],
+        blank_when_empty=False,
+    )
 
 
 if __name__ == "__main__":
