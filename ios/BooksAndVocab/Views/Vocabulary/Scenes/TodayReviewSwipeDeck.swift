@@ -211,8 +211,37 @@ extension TodayReviewPresenter {
             .accessibilityValue(TodayReviewSwipeMarkerKind.accessibilityValue(opacity: forgot))
         }
         .padding(TodayReviewMetrics.swipeMarkerInset)
+        .background { swipeMarkerPeakProbes() }
         .allowsHitTesting(false)
         .accessibilityHidden(!swipeMarkersExposedToUITest)
+    }
+
+    /// 累計手勢峰值（見 `TodayReviewSwipeMarkerPeak`）。非 UITest 進程直接返回，不增加 body 失效。
+    private func recordSwipeMarkerPeak(to newOffset: CGFloat) {
+        guard swipeMarkersExposedToUITest else { return }
+        let next = swipeMarkerPeak.recording(
+            from: swipeOffset,
+            to: newOffset,
+            threshold: TodayReviewMetrics.swipeThreshold
+        )
+        if next != swipeMarkerPeak { swipeMarkerPeak = next }
+    }
+
+    /// UITest-only 峰值探針：1pt 透明元素，id + 值（`%.2f`）。以 background 掛在標記 HStack 上，
+    /// 不影響 layout；因峰值住在 presenter（不隨 slot 輪替），卡片飛出推進後仍可讀。
+    @ViewBuilder
+    private func swipeMarkerPeakProbes() -> some View {
+        if swipeMarkersExposedToUITest {
+            VStack(spacing: 0) {
+                ForEach(TodayReviewSwipeMarkerKind.allCases, id: \.self) { kind in
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier(kind.peakAccessibilityID)
+                        .accessibilityValue(TodayReviewSwipeMarkerKind.accessibilityValue(opacity: swipeMarkerPeak.value(for: kind)))
+                }
+            }
+        }
     }
 
     private func swipeMarker(title: String, tint: Color, tilt: Double) -> some View {
@@ -319,6 +348,7 @@ extension TodayReviewPresenter {
                     return
                 }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                recordSwipeMarkerPeak(to: value.translation.width)
                 withAnimation(AppMotion.swipeTrackingSpring) {
                     swipeOffset = value.translation.width
                 }
@@ -366,6 +396,7 @@ extension TodayReviewPresenter {
             threshold: TodayReviewMetrics.swipeThreshold,
             baseDuration: Double(DesignTokens.Motion.Spring.SwipeFling.response)
         )
+        recordSwipeMarkerPeak(to: plan.targetOffset)
         dismissPhase = .animatingOut
         frozenSwipeIntensity = plan.frozenIntensity
         flingHapticTrigger += 1

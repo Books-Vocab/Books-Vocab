@@ -111,4 +111,56 @@ struct TodayReviewSwipeMarkerTests {
         #expect(F.markerOpacity(swipeOffset: 0.5, threshold: 0, direction: 1) == 0.5)
         #expect(F.markerOpacity(swipeOffset: 5, threshold: 0, direction: 1) == 1)
     }
+
+    // MARK: 峰值探針（UITest 正控）
+
+    @Test func peakAccessibilityIDsAreStableAndDistinctFromMarkerIDs() {
+        #expect(TodayReviewSwipeMarkerKind.remembered.peakAccessibilityID == "todayReview.swipeMarkerPeak.remembered")
+        #expect(TodayReviewSwipeMarkerKind.forgot.peakAccessibilityID == "todayReview.swipeMarkerPeak.forgot")
+        let all = TodayReviewSwipeMarkerKind.allCases.flatMap { [$0.accessibilityID, $0.peakAccessibilityID] }
+        #expect(Set(all).count == 4)
+    }
+
+    @Test func peakTracksMaxAlongDragAndSurvivesRelease() {
+        typealias P = TodayReviewSwipeMarkerPeak
+        var peak = P.zero
+        var previous: CGFloat = 0
+        for offset: CGFloat in [20, 60, 40] {
+            peak = peak.recording(from: previous, to: offset, threshold: threshold)
+            previous = offset
+        }
+        #expect(peak.remembered == 0.6)
+        #expect(peak.forgot == 0)
+        // 放開 fling：起點非 0 → 累計取 max，飽和。
+        peak = peak.recording(from: previous, to: 393, threshold: threshold)
+        #expect(peak.remembered == 1)
+        #expect(peak.forgot == 0)
+    }
+
+    @Test func peakRestartsWhenAGestureStartsFromRest() {
+        typealias P = TodayReviewSwipeMarkerPeak
+        let first = P.zero.recording(from: 0, to: 60, threshold: threshold)
+        #expect(first.remembered == 0.6)
+        // 下一次手勢（offset 由 0 起）清掉上一次的峰值，改記左滑。
+        let second = first.recording(from: 0, to: -30, threshold: threshold)
+        #expect(second.remembered == 0)
+        #expect(second.forgot == 0.3)
+    }
+
+    @Test func buttonFlingFromRestSaturatesOnlyTheChosenDirection() {
+        for kind in TodayReviewSwipeMarkerKind.allCases {
+            let plan = F.plan(
+                direction: kind.direction,
+                startOffset: 0,
+                releaseVelocity: nil,
+                screenWidth: 393,
+                threshold: threshold,
+                baseDuration: 0.18
+            )
+            let peak = TodayReviewSwipeMarkerPeak.zero.recording(from: 0, to: plan.targetOffset, threshold: threshold)
+            #expect(peak.value(for: kind) == 1)
+            let other = TodayReviewSwipeMarkerKind.allCases.first { $0 != kind }!
+            #expect(peak.value(for: other) == 0)
+        }
+    }
 }

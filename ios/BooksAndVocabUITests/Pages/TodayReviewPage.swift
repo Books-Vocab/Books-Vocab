@@ -340,20 +340,42 @@ struct TodayReviewPage {
         var identifier: String { "todayReview.swipeMarker.\(rawValue)" }
     }
 
-    /// 標記當下強度（0 … 1）。標記常駐、只有不透明度變；a11y 樹裡不存在（尚未 materialize
-    /// 或被系統當成不可見）一律視為 0，避免把「元素不存在」誤判成讀取失敗。
-    func swipeMarkerIntensity(_ marker: SwipeMarker) -> Double {
-        let node = queryElement(marker.identifier)
-        guard node.exists, let raw = node.value as? String, let intensity = Double(raw) else { return 0 }
+    /// 讀 id 對應元素的 `%.2f` 值。元素不存在或值無法解析 → nil（呼叫端決定是失敗還是繼續輪詢）。
+    /// 標記 / 峰值探針在 `-ui-testing` 進程必定存在於 a11y 樹，缺席代表 overlay 沒掛上、
+    /// id 被改錯或旗標缺席，絕不能當成 0 —— 否則「歸 0」類斷言對壞掉的實作也綠燈。
+    private func swipeReading(_ identifier: String) -> Double? {
+        let node = queryElement(identifier)
+        guard node.exists, let raw = node.value as? String else { return nil }
+        return Double(raw)
+    }
+
+    /// 標記當下強度（0 … 1）。元素缺席 / 值無法解析 → XCTFail（不回傳 0 掩蓋）。
+    func swipeMarkerIntensity(_ marker: SwipeMarker, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Double {
+        guard let intensity = swipeReading(marker.identifier) else {
+            XCTFail("swipe marker \(marker.identifier) 必須存在於 a11y 樹且值可解析（-ui-testing 進程）", file: file, line: line)
+            return 0
+        }
         return intensity
     }
 
-    /// 兩個標記皆歸 0（放開回彈 / 飛出 / settle 之後的「無殘影」判準）。輪詢重新解析 query，
+    /// 最近一次手勢（拖動 / 放開 / fling / 按鈕）期間該標記達到的最大強度。放開後仍保留，
+    /// 是 press-drag 阻塞下唯一能決定性斷言「標記確實出現過」的讀數（正控）。
+    func swipeMarkerPeak(_ marker: SwipeMarker, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Double {
+        let identifier = "todayReview.swipeMarkerPeak.\(marker.rawValue)"
+        guard let peak = swipeReading(identifier) else {
+            XCTFail("swipe marker peak probe \(identifier) 必須存在於 a11y 樹且值可解析（-ui-testing 進程）", file: file, line: line)
+            return 0
+        }
+        return peak
+    }
+
+    /// 兩個標記皆「讀得到且為 0」（放開回彈 / 飛出 / settle 之後的「無殘影」判準）。
+    /// 讀不到視為未歸 0（逾時 → 呼叫端斷言失敗），不會把缺席誤判成已清空。輪詢重新解析 query，
     /// 與 `waitUntilLabel` 同模式。
     @discardableResult
     func waitForSwipeMarkersCleared(timeout: TimeInterval = 5) -> Bool {
         let cleared = {
-            swipeMarkerIntensity(.remembered) == 0 && swipeMarkerIntensity(.forgot) == 0
+            swipeReading(SwipeMarker.remembered.identifier) == 0 && swipeReading(SwipeMarker.forgot.identifier) == 0
         }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -364,8 +386,8 @@ struct TodayReviewPage {
     }
 
     /// 在卡片正面水平拖動 `dx` pt（正＝右滑「記得」、負＝左滑「忘記」）後放開。
-    /// XCUITest 的 press-drag 在放開後才返回，無法在手指仍按住時斷言；
-    /// 放開後的行為（回彈 / 飛出 / 歸 0）才是這裡可決定性驗證的。
+    /// XCUITest 的 press-drag 在放開後才返回，無法在手指仍按住時取樣；
+    /// 「曾出現多強」改讀 `swipeMarkerPeak`，放開後的終態（回彈 / 飛出 / 歸 0）讀 `swipeMarkerIntensity`。
     func dragCard(by dx: CGFloat, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         cardFront.assertExists(file: file, line: line)
         let start = cardFront.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))

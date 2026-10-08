@@ -8,9 +8,10 @@
 //  標記在 UITest 進程以 `todayReview.swipeMarker.{remembered,forgot}` 暴露，
 //  accessibilityValue = 當下不透明度（"0.00" … "1.00"）。
 //
-//  已知限制：XCUITest 的 press-drag 在手指放開後才返回，無法在「按住」期間斷言標記漸入；
-//  漸入曲線（連續、單調、閾值飽和）由 TodayReviewSwipeMarkerTests 純函數單元測試鎖定，
-//  這裡只驗證放開之後的終態（回彈歸 0、飛出歸 0、卡片照常推進）。
+//  XCUITest 的 press-drag 在手指放開後才返回，無法在「按住」期間取樣標記。出現的正控改讀
+//  `todayReview.swipeMarkerPeak.*`（UITest-only 探針）：手勢期間各標記的最大強度，放開後保留到
+//  下一次手勢；與「放開後歸 0」搭配 = 完整的出現 → 消失判準。標記 / 探針缺席一律 XCTFail，
+//  不當成 0。漸入曲線（連續、單調、閾值飽和）由 TodayReviewSwipeMarkerTests 純函數單元測試鎖定。
 //
 
 import XCTest
@@ -69,7 +70,14 @@ final class TodayReviewSwipeMarkerUITests: UITestCase {
 
         // 閾值 100pt：右、左各拖 60pt（未達閾值）放開 → 回彈、不評分。
         for dx: CGFloat in [60, -60] {
+            let shown: TodayReviewPage.SwipeMarker = dx > 0 ? .remembered : .forgot
+            let other: TodayReviewPage.SwipeMarker = dx > 0 ? .forgot : .remembered
             review.dragCard(by: dx)
+            // 正控：拖動期間對應標記確實漸入（0 < 峰值 < 1，未達閾值不飽和）、反向標記從未出現。
+            let peak = review.swipeMarkerPeak(shown)
+            XCTAssertGreaterThan(peak, 0.2, "拖動 \(abs(dx))pt 期間對應標記必須漸入（dx=\(dx)）")
+            XCTAssertLessThan(peak, 1, "未達閾值標記不得飽和（dx=\(dx)）")
+            XCTAssertEqual(review.swipeMarkerPeak(other), 0, "反向標記不得出現（dx=\(dx)）")
             XCTAssertTrue(
                 review.waitForSwipeMarkersCleared(timeout: 5),
                 "未達閾值放開後標記必須沿回彈淡出歸 0（dx=\(dx)）"
@@ -89,6 +97,9 @@ final class TodayReviewSwipeMarkerUITests: UITestCase {
         let initialProgress = review.progressText
 
         review.dragCard(by: 220)
+
+        XCTAssertEqual(review.swipeMarkerPeak(.remembered), 1, accuracy: 0.001, "超過閾值右滑期間「記得」必須飽和")
+        XCTAssertEqual(review.swipeMarkerPeak(.forgot), 0, "右滑不得出現「忘記」")
 
         XCTAssertTrue(
             waitForProgressChange(from: initialProgress, review: review),
@@ -111,6 +122,10 @@ final class TodayReviewSwipeMarkerUITests: UITestCase {
         for button in ["forgot", "remembered"] {
             let before = review.progressText
             if button == "forgot" { review.tapForgot() } else { review.tapRemembered() }
+            let (shown, other): (TodayReviewPage.SwipeMarker, TodayReviewPage.SwipeMarker) =
+                button == "forgot" ? (.forgot, .remembered) : (.remembered, .forgot)
+            XCTAssertEqual(review.swipeMarkerPeak(shown), 1, accuracy: 0.001, "按鈕 fling 對應標記必須沿 fling 漸入到飽和（\(button)）")
+            XCTAssertEqual(review.swipeMarkerPeak(other), 0, "按鈕 fling 反向標記不得出現（\(button)）")
             XCTAssertTrue(
                 waitForProgressChange(from: before, review: review),
                 "按鈕 fling 後卡片必須推進（\(button)）"
