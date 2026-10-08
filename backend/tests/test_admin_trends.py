@@ -5,6 +5,7 @@ sets up the per-log SQLite paths via monkeypatch on DATA_DIR. This file
 focuses on the date-window math and the empty-DB shape invariants that
 the renderer relies on.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -19,10 +20,12 @@ from kg.admin_trends import (
     MAX_WINDOW_DAYS,
     _count_by_day,
     _date_range,
+    _judge_rejects_by_day,
     collect_trends,
 )
 
 # ---- _date_range -----------------------------------------------------------
+
 
 def test_date_range_length_matches_window_days():
     assert len(_date_range(30)) == 30
@@ -67,6 +70,7 @@ def test_count_by_day_filters_fixed_offset_rows_by_utc_instant():
 
 
 # ---- collect_trends shape on empty DB --------------------------------------
+
 
 @pytest.fixture()
 def empty_log_dbs(tmp_path, monkeypatch):
@@ -153,3 +157,39 @@ def test_collect_trends_days_are_iso_oldest_first(empty_log_dbs):
     # Last day is today UTC
     today_utc = datetime.now(UTC).date().isoformat()
     assert days[-1] == today_utc
+
+
+# ---- judge rejects read the DB the store resolves --------------------------
+
+
+def test_judge_rejects_follow_the_resolved_judge_log_path(tmp_path, monkeypatch):
+    """Rejects land in the judge_log DB under the bound runtime root; the path
+    frozen from KG_DATA_DIR at import does not exist there and must not hide them."""
+    import kg.judge_log as jl
+    from kg import runtime_data_root
+
+    import_time_path = tmp_path / "import-time-root" / "judge_log.db"
+    monkeypatch.setattr(jl, "DB_PATH", import_time_path)
+    monkeypatch.setattr(jl, "_INITIAL_DB_PATH", import_time_path)
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path / "env-root"))
+    root = tmp_path / "bound-root"
+    root.mkdir()
+    jl.reset()
+    runtime_data_root.bind(root)
+    try:
+        jl.record(
+            user_id="u1",
+            notebook_id="default",
+            from_id="from",
+            to_id="to",
+            similarity=0.5,
+            verdict="reject",
+            confidence=0.9,
+            accepted=False,
+        )
+        rejects = _judge_rejects_by_day((datetime.now(UTC) - timedelta(days=1)).isoformat())
+    finally:
+        runtime_data_root.release(root)
+        jl.reset()
+
+    assert sum(rejects.values()) == 1, "judge-reject trend read the import-time path instead of the resolved DB"

@@ -7,12 +7,14 @@ could not recover from. Best-effort recording: the tracked_llm wrapper
 swallows any recording error so an LLM outage can never be masked by a
 logging fault.
 """
+
 from __future__ import annotations
 
 import re
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+from . import runtime_data_root
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
@@ -49,14 +51,15 @@ def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None and _lifecycle.connection is not None:
         _lifecycle.reset()
-    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "llm_errors.db"
+    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else runtime_data_root.current() / "llm_errors.db"
     _conn = _lifecycle.get_connection(db_path, _initialize_schema)
     return _conn
 
 
 def _initialize_schema(conn: sqlite3.Connection) -> None:
-        from .sqlite_utils import ensure_columns
-        conn.execute("""
+    from .sqlite_utils import ensure_columns
+
+    conn.execute("""
             CREATE TABLE IF NOT EXISTS llm_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -69,22 +72,23 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 created_at TEXT NOT NULL
             )
         """)
-        # Ensure columns for future migrations (mirrors token_tracker pattern).
-        ensure_columns(conn, "llm_errors", {
+    # Ensure columns for future migrations (mirrors token_tracker pattern).
+    ensure_columns(
+        conn,
+        "llm_errors",
+        {
             "provider": "TEXT",
             "model": "TEXT",
             "status_code": "INTEGER",
             "message": "TEXT",
-        })
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user ON llm_errors(user_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user_created ON llm_errors(user_id, created_at)")
-        # Bare created_at index for the retention pruner.
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created ON llm_errors(created_at)")
-        # Match count_errors_since's UTC-normalizing expression index.
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_le_created_utc "
-            "ON llm_errors(datetime(created_at))"
-        )
+        },
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user ON llm_errors(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user_created ON llm_errors(user_id, created_at)")
+    # Bare created_at index for the retention pruner.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created ON llm_errors(created_at)")
+    # Match count_errors_since's UTC-normalizing expression index.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created_utc ON llm_errors(datetime(created_at))")
 
 
 def _reset() -> None:
@@ -140,8 +144,7 @@ def record(
             "INSERT INTO llm_errors "
             "(user_id, call_type, provider, model, error_class, status_code, message, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, call_type, provider, model, error_class, status_code,
-             redact_message(message)[:500], now),
+            (user_id, call_type, provider, model, error_class, status_code, redact_message(message)[:500], now),
         )
         conn.commit()
 
@@ -159,8 +162,7 @@ def count_errors_since(window_min: int) -> int:
     with _lock:
         conn = _get_conn()
         row = conn.execute(
-            "SELECT COUNT(*) FROM llm_errors "
-            "WHERE datetime(created_at) >= datetime(?)",
+            "SELECT COUNT(*) FROM llm_errors WHERE datetime(created_at) >= datetime(?)",
             (cutoff,),
         ).fetchone()
     return int(row[0] or 0)

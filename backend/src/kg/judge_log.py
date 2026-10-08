@@ -6,6 +6,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import runtime_data_root
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
@@ -22,8 +23,21 @@ _INITIAL_DB_PATH = DB_PATH
 # limit), not a judge quality signal, so it is excluded from rejection counts.
 DEGREE_CAP_EXCLUSION_SQL = "(reject_reason IS NULL OR reject_reason != 'degree_cap')"
 
-_LOG_COLS = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
-             "verdict", "confidence", "accepted", "reject_reason", "reason", "source", "created_at"]
+_LOG_COLS = [
+    "id",
+    "user_id",
+    "notebook_id",
+    "from_id",
+    "to_id",
+    "similarity",
+    "verdict",
+    "confidence",
+    "accepted",
+    "reject_reason",
+    "reason",
+    "source",
+    "created_at",
+]
 _COLS_SQL = ", ".join(_LOG_COLS)
 
 
@@ -35,9 +49,10 @@ def _accepted_from_storage(value: object) -> bool:
 
 
 def _initialize_schema(conn: sqlite3.Connection) -> None:
-        from .sqlite_utils import init_sqlite_pragmas
-        init_sqlite_pragmas(conn)
-        conn.execute("""
+    from .sqlite_utils import init_sqlite_pragmas
+
+    init_sqlite_pragmas(conn)
+    conn.execute("""
             CREATE TABLE IF NOT EXISTS judge_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -54,13 +69,13 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 created_at TEXT NOT NULL
             )
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_nb ON judge_log(user_id, notebook_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_created ON judge_log(created_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_source ON judge_log(user_id, source)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_nb ON judge_log(user_id, notebook_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_created ON judge_log(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_source ON judge_log(user_id, source)")
 
 
 def _db_path() -> Path:
-    return DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "judge_log.db"
+    return DB_PATH if DB_PATH != _INITIAL_DB_PATH else runtime_data_root.current() / "judge_log.db"
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -107,8 +122,20 @@ def record(
                (user_id, notebook_id, from_id, to_id, similarity,
                 verdict, confidence, accepted, reject_reason, reason, source, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, notebook_id, from_id, to_id, similarity,
-             verdict, float(confidence), int(accepted), reject_reason, reason, source, now),
+            (
+                user_id,
+                notebook_id,
+                from_id,
+                to_id,
+                similarity,
+                verdict,
+                float(confidence),
+                int(accepted),
+                reject_reason,
+                reason,
+                source,
+                now,
+            ),
         )
         conn.commit()
 
@@ -145,8 +172,21 @@ def update_to_rejected(
         return cur.rowcount > 0
 
 
-_LOG_COLS = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
-             "verdict", "confidence", "accepted", "reject_reason", "reason", "source", "created_at"]
+_LOG_COLS = [
+    "id",
+    "user_id",
+    "notebook_id",
+    "from_id",
+    "to_id",
+    "similarity",
+    "verdict",
+    "confidence",
+    "accepted",
+    "reject_reason",
+    "reason",
+    "source",
+    "created_at",
+]
 _COLS_SQL = ", ".join(_LOG_COLS)
 
 
@@ -198,8 +238,7 @@ def get_acceptance_stats(*, user_id: str | None = None) -> dict:
             ).fetchone()
         else:
             row = conn.execute(
-                f"SELECT COUNT(*) AS total, SUM(accepted) AS accepted "
-                f"FROM judge_log WHERE {base_where}"
+                f"SELECT COUNT(*) AS total, SUM(accepted) AS accepted FROM judge_log WHERE {base_where}"
             ).fetchone()
     total = row[0] or 0
     accepted = row[1] or 0

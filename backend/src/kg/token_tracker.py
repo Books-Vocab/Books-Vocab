@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
+from . import runtime_data_root
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
@@ -21,14 +22,15 @@ def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None and _lifecycle.connection is not None:
         _lifecycle.reset()
-    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "token_usage.db"
+    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else runtime_data_root.current() / "token_usage.db"
     _conn = _lifecycle.get_connection(db_path, _initialize_schema)
     return _conn
 
 
 def _initialize_schema(conn: sqlite3.Connection) -> None:
-        from .sqlite_utils import ensure_columns
-        conn.execute("""
+    from .sqlite_utils import ensure_columns
+
+    conn.execute("""
             CREATE TABLE IF NOT EXISTS token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -40,16 +42,16 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 model TEXT
             )
         """)
-        # Migrate pre-existing DBs: provider/model were added so each row
-        # carries the truth used to price it. Older rows stay NULL and fall
-        # back to the currently-routed provider in token_cost_usd().
-        ensure_columns(conn, "token_usage", {"provider": "TEXT", "model": "TEXT"})
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
-        # Bare created_at index for the retention pruner's
-        # `DELETE ... WHERE created_at < ?`; the two composite indexes lead
-        # with user_id so SQLite can't use them for a bare-created_at predicate.
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tu_created ON token_usage(created_at)")
+    # Migrate pre-existing DBs: provider/model were added so each row
+    # carries the truth used to price it. Older rows stay NULL and fall
+    # back to the currently-routed provider in token_cost_usd().
+    ensure_columns(conn, "token_usage", {"provider": "TEXT", "model": "TEXT"})
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
+    # Bare created_at index for the retention pruner's
+    # `DELETE ... WHERE created_at < ?`; the two composite indexes lead
+    # with user_id so SQLite can't use them for a bare-created_at predicate.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tu_created ON token_usage(created_at)")
 
 
 def reset() -> None:
@@ -82,8 +84,7 @@ def record(
             "INSERT INTO token_usage "
             "(user_id, call_type, input_tokens, output_tokens, created_at, provider, model) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, call_type, int(input_tokens or 0), int(output_tokens or 0),
-             now, provider, model),
+            (user_id, call_type, int(input_tokens or 0), int(output_tokens or 0), now, provider, model),
         )
         conn.commit()
 
