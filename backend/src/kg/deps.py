@@ -51,6 +51,7 @@ logger = logging.getLogger("kg.api")
 # Auth infrastructure
 # ---------------------------------------------------------------------------
 
+
 def _get_settings(request: Request) -> KGSettings:
     return request.app.state.kg_settings
 
@@ -161,6 +162,7 @@ type OptionalCurrentUser = Annotated[UserRecord | None, Depends(get_current_user
 # Factory wrappers
 # ---------------------------------------------------------------------------
 
+
 def _card_store(user_dir: Path):
     return create_card_store(user_dir)
 
@@ -192,8 +194,12 @@ def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):
 
 def _card_response(card, graph: GraphStore, cards_by_id: CardsById):
     return card_response(
-        card, graph=graph, cards_by_id=cards_by_id,
-        tier_getter=get_tier, link_kinds=list(LinkKind), link_labels=LINK_LABELS,
+        card,
+        graph=graph,
+        cards_by_id=cards_by_id,
+        tier_getter=get_tier,
+        link_kinds=list(LinkKind),
+        link_labels=LINK_LABELS,
     )
 
 
@@ -217,27 +223,48 @@ def _current_subscription_record(user_record: StoredUserRecord | None) -> Subscr
     return current_subscription_record(user_record)
 
 
-
 def _resolve_user_id_from_subscription_index(
-    users: UsersPayload, original_transaction_id: str | None, transaction_id: str | None,
+    users: UsersPayload,
+    original_transaction_id: str | None,
+    transaction_id: str | None,
 ) -> str | None:
     return resolve_user_id_from_subscription_index(users, original_transaction_id, transaction_id)
 
 
 def _write_subscription_snapshot(
-    users: UsersPayload, user_id: str, *,
-    product_id: str, status: str, is_trial: bool, expires_at: str | None,
-    will_renew: bool, environment: str, transaction_id: str | None,
-    original_transaction_id: str | None, price_display: str | None, source: str,
-    signed_date: str | None = None, notification_uuid: str | None = None,
+    users: UsersPayload,
+    user_id: str,
+    *,
+    product_id: str,
+    status: str,
+    is_trial: bool,
+    expires_at: str | None,
+    will_renew: bool,
+    environment: str,
+    transaction_id: str | None,
+    original_transaction_id: str | None,
+    price_display: str | None,
+    source: str,
+    signed_date: str | None = None,
+    notification_uuid: str | None = None,
+    grace_period_expires_at: str | None = None,
 ) -> StoredUserRecord:
     return write_subscription_snapshot(
-        users, user_id, product_id=product_id, status=status,
-        is_trial=is_trial, expires_at=expires_at, will_renew=will_renew,
-        environment=environment, transaction_id=transaction_id,
+        users,
+        user_id,
+        product_id=product_id,
+        status=status,
+        is_trial=is_trial,
+        expires_at=expires_at,
+        will_renew=will_renew,
+        environment=environment,
+        transaction_id=transaction_id,
         original_transaction_id=original_transaction_id,
-        price_display=price_display, source=source,
-        signed_date=signed_date, notification_uuid=notification_uuid,
+        price_display=price_display,
+        source=source,
+        signed_date=signed_date,
+        notification_uuid=notification_uuid,
+        grace_period_expires_at=grace_period_expires_at,
     )
 
 
@@ -254,26 +281,37 @@ from .deps_quota import _apply_quota_headers, _check_quota, _is_pro, _with_quota
 
 def _create_jwt_token(user_id: str, provider: str, *, settings: KGSettings) -> str:
     return create_jwt_token(
-        user_id, provider,
-        jwt_secret=settings.jwt_secret, jwt_algorithm=settings.jwt_algorithm,
+        user_id,
+        provider,
+        jwt_secret=settings.jwt_secret,
+        jwt_algorithm=settings.jwt_algorithm,
         jwt_expiry_minutes=settings.jwt_expiry_minutes,
     )
 
 
 def _resolve_and_link_user(
-    provider_user_id: str, provider: str, email: str | None = None, *,
-    settings: KGSettings, load_users_fn: Callable, save_users_fn: Callable,
+    provider_user_id: str,
+    provider: str,
+    email: str | None = None,
+    *,
+    settings: KGSettings,
+    load_users_fn: Callable,
+    save_users_fn: Callable,
 ) -> str:
     return resolve_and_link_user(
-        provider_user_id, provider,
+        provider_user_id,
+        provider,
         users_lock_file=str(settings.users_lock_file),
-        load_users_fn=load_users_fn, save_users_fn=save_users_fn, email=email,
+        load_users_fn=load_users_fn,
+        save_users_fn=save_users_fn,
+        email=email,
     )
 
 
 # ---------------------------------------------------------------------------
 # Admin auth dependency
 # ---------------------------------------------------------------------------
+
 
 async def get_admin_user(
     request: Request,

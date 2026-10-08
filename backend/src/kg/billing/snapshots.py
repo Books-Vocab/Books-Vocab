@@ -88,6 +88,7 @@ def write_subscription_snapshot(
     source: str,
     signed_date: str | None = None,
     notification_uuid: str | None = None,
+    grace_period_expires_at: str | None = None,
 ) -> StoredUserRecord:
     record = users.setdefault(user_id, {})
     existing = record.get("subscription")
@@ -116,6 +117,8 @@ def write_subscription_snapshot(
             "trial_days": subscription.get("trial_days") or 7,
             "will_renew": will_renew,
             "expires_at": expires_at,
+            # Always overwritten so a stale grace deadline cannot outlive grace.
+            "grace_period_expires_at": grace_period_expires_at,
             "source": source,
             "last_synced_at": now_iso,
             "transaction_id": transaction_id,

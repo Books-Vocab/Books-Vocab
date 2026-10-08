@@ -112,8 +112,12 @@ def verified_transaction_snapshot(
     original_transaction_id = payload.get("originalTransactionId")
     status = status_from_transaction_payload(payload, parse_datetime_fn, renewal_payload)
     auto_renew_status = None
+    grace_period_expires_at = None
     if isinstance(renewal_payload, dict):
         auto_renew_status = renewal_payload.get("autoRenewStatus")
+        grace_period_expires_at = normalize_ms_timestamp(
+            renewal_payload.get("gracePeriodExpiresDate"), parse_datetime_fn
+        )
 
     return {
         "product_id": product_id.strip(),
@@ -123,6 +127,7 @@ def verified_transaction_snapshot(
         "status": status,
         "is_trial": status == "trial",
         "expires_at": normalize_ms_timestamp(payload.get("expiresDate"), parse_datetime_fn),
+        "grace_period_expires_at": grace_period_expires_at,
         "will_renew": bool_from_any(auto_renew_status, default=status in ACTIVE_BEARING_STATUSES),
         "price_display": price_display,
         # Apple's signing time for this JWS: the ordering key that lets a fresh
