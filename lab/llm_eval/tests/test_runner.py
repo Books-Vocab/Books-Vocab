@@ -342,6 +342,26 @@ async def test_run_eval_basic(mock_prompt):
 
 
 @pytest.mark.asyncio
+async def test_run_eval_duplicate_models_are_called_once(mock_prompt):
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(message=MagicMock(content='{"t":"x"}'))]
+    mock_resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+    with patch("llm_eval.runner.create_eval_async_client") as factory:
+        client = AsyncMock()
+        client.chat.completions.create = AsyncMock(return_value=mock_resp)
+        factory.return_value = client
+        samples = [{"id": "s1", "word": "a"}, {"id": "s2", "word": "b"}]
+        m = "gemini-2.5-flash-lite"
+        results = await run_eval(mock_prompt, samples, [m, m])
+
+    assert list(results) == [m]
+    assert results[m].sample_count == 2
+    assert results[m].total_input_tokens == 20
+    assert client.chat.completions.create.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_run_eval_scores_each_result_for_prompt_name():
     prompt = RenderedPrompt(
         name="translate_quick",
