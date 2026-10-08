@@ -155,6 +155,8 @@ vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-r
 
 伺服器端對應：`ReviewEventStore.insert_many` 以分塊 `IN` 查詢一次取回已存在的 `event_id`（chunk 500，低於 SQLite 3.32 前 999 個繫結變數上限），取代逐筆 `session.get`。同一批 payload 內重複的 `event_id` 由迴圈內累加的 id 集合擋下（舊版靠 autoflush，改批次取回後必須顯式維持）。
 
+`ReviewEventStore` 啟動時把 legacy `ingested_at` 文字（含 offset、`T`/`Z` 形式、缺小數位）一次性改寫為 canonical naive-UTC（`YYYY-MM-DD HH:MM:SS.ffffff`，冪等），使 `get_since` 的過濾與 `(ingested_at, event_id)` 排序、以及 `insert_many` 的 `SELECT max(ingested_at)` 都在 SQL 內走 `ix_reviewevent_ingested_at` 索引，不再全表載入後在 Python 排序。
+
 ## logout-cleanup gate 不變式（重登↔sync 競態防線）
 
 `AuthManager.logout` 排程的本地清理（`clearLocalData`）會跳 `BackgroundSyncActor`、是真實 suspension。快速「登出→重登」時，若 sync 在 cleanup 收尾前動工，會搶用尚未清乾淨的 sync boundary 跑 incremental（後端全部 skip → 本地空庫卻自認最新），且拉回的資料又被 resume 的 cleanup 再清一遍 —— 2026-06-09 帳號 000287 單字本事故根因。防線：
