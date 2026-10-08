@@ -575,8 +575,9 @@ class TestFindByContent:
 
     def test_perf_with_large_dataset(self, tmp_path):
         """find_by_content must use index, not scan whole table."""
-        import time
+        import sqlite3
 
+        from sqlalchemy import event as sa_event
         from sqlmodel import Session
 
         from kg.text_utils import normalize_nfc_lower
@@ -598,14 +599,26 @@ class TestFindByContent:
             # through to the full-scan fallback
             store.add(content="café", meaning="咖啡館")
 
-            # Lookup with decomposed form — old code path scanned all 5001 rows
-            start = time.perf_counter()
-            for _ in range(50):
-                found = store.find_by_content("café")
-                assert found is not None
-            elapsed = time.perf_counter() - start
-            # 50 lookups should be well under 50ms total with an index
-            assert elapsed < 0.05, f"find_by_content too slow: {elapsed:.3f}s for 50 lookups"
+            # Capture the exact SQL find_by_content issues, then check its plan
+            # (deterministic; wall-clock budgets are flaky under load).
+            captured: list[tuple[str, object]] = []
+
+            def _before(conn, cursor, statement, parameters, context, executemany):
+                if statement.lstrip().lower().startswith("select"):
+                    captured.append((statement, parameters))
+
+            sa_event.listen(store.engine, "before_cursor_execute", _before)
+            try:
+                found = store.find_by_content("café")
+            finally:
+                sa_event.remove(store.engine, "before_cursor_execute", _before)
+            assert found is not None
+            assert len(captured) == 1, captured
+            statement, parameters = captured[0]
+            with closing(sqlite3.connect(tmp_path / "cards_perf.db")) as conn:
+                plan = [row[3] for row in conn.execute(f"EXPLAIN QUERY PLAN {statement}", parameters)]
+            assert any("ix_card_content_nfc_lower" in d for d in plan), plan
+            assert not any(d.strip() == "SCAN card" for d in plan), plan
 
 
 class TestNfcLowerMigration:
