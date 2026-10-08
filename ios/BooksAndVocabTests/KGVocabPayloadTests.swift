@@ -15,13 +15,11 @@ import Testing
 /// - backend `kg/api_models/common.py` `VocabSource`（type/title/url/chapter）
 /// - 後端目前 `extra='ignore'`：flag off 時 source_lang/target_lang
 ///   必須整個 key 不出現（不是 null），否則 flag 誤開時無法用 wire 證據區分。
-struct KGVocabPayloadTests {
-
-    init() {
-        // The hosted app suspends account-bound preferences before tests run.
-        // These tests exercise the guest-compatible nil-account namespace.
-        TranslationLanguage.activateAccount(nil)
-    }
+///
+/// 讀寫 `TranslationLanguage` 全域語言狀態，故掛在 serialized 的
+/// `TranslationLanguageTests` 下（其 `init()` 進入 nil-account namespace），
+/// 避免與 account 測試並行互踩（#2117）。
+extension TranslationLanguageTests {
 
     private func makeEntry(
         word: String = "ephemeral",
