@@ -28,6 +28,7 @@ def _make_client(response_json: str):
     client.chat.completions.create.return_value = resp
     return client
 
+
 class TestManualLinkJudge:
     def test_returns_judgement_with_kind_and_reason(self):
         client = _make_client('{"link": "contrasts_with", "confidence": 0.9, "reason": "測試原因"}')
@@ -58,8 +59,25 @@ class TestManualLinkJudge:
         result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
         assert result.link == "shares_usage"
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"link": "shares_usage", "reason": null}',
+            '{"link": "shares_usage", "reason": 123}',
+            '{"link": "shares_usage", "reason": "  "}',
+            '["shares_usage"]',
+            '"shares_usage"',
+            "42",
+        ],
+    )
+    def test_malformed_reason_or_non_object_degrades_without_raising(self, payload):
+        judge = ManualLinkJudge(TrackedLLM(_make_client(payload), "test_user"))
+        result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
+        assert result.link == "shares_usage"
+        assert isinstance(result.reason, str) and result.reason
+
     def test_empty_response_returns_fallback(self):
-        client = _make_client('')
+        client = _make_client("")
         judge = ManualLinkJudge(TrackedLLM(client, "test_user"))
         result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
         assert result is not None
@@ -73,9 +91,7 @@ class TestManualLinkJudge:
 
         request = httpx.Request("POST", "https://api.test/chat")
         client = MagicMock()
-        client.chat.completions.create.side_effect = APIError(
-            "provider 5xx", request, body=None
-        )
+        client.chat.completions.create.side_effect = APIError("provider 5xx", request, body=None)
         judge = ManualLinkJudge(TrackedLLM(client, "test_user"))
 
         # sync_retry sleeps 2 s → 4 s between attempts; mock it out so the
