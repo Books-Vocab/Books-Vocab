@@ -519,7 +519,15 @@ final class PodcastEpisodeSessionController {
         modelContext: ModelContext,
         kgService: any KGServing
     ) {
-        guard phase != .active else { return }
+        if phase == .active {
+            // 回前景後重新武裝：下一次退背景要再存一次（期間可能暫停＋seek）。
+            if let loadedEpisodeId {
+                lifecyclePersisted.remove(
+                    LifecyclePersistenceKey(episodeId: loadedEpisodeId, event: .background)
+                )
+            }
+            return
+        }
         persistLifecycle(
             .background,
             modelContext: modelContext,
