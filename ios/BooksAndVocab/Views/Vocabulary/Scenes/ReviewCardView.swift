@@ -119,6 +119,15 @@ final class ReviewCardMeasurementCache {
         return true
     }
 
+    /// Drops the graph-links section's measured heights (every variant, including
+    /// the expanded ones) after the card's link items changed; every other section
+    /// and the front height stay, so only the strip re-measures.
+    func invalidateGraphLinksMeasurements() {
+        naturalSectionHeights = naturalSectionHeights.filter { $0.key.section != .graphLinks }
+        intermediateSectionHeights = intermediateSectionHeights.filter { $0.key.section != .graphLinks }
+        compactSectionHeights = compactSectionHeights.filter { $0.key.section != .graphLinks }
+    }
+
     @discardableResult
     func recordFront(_ measurement: ReviewCardFrontMeasurement) -> Bool {
         guard measurement.height > 0 else { return false }

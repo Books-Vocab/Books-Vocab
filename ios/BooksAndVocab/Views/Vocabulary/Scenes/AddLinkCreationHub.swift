@@ -29,15 +29,20 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
     @ObservationIgnored private let store: any PendingLinkCreationStoring
     @ObservationIgnored private let projection: PendingLinkProjection
     @ObservationIgnored private let environment: AddLinkCreationEnvironment
+    /// The signed-in account, read when a job is stamped and when stored jobs are
+    /// resumed (never cached: an account switch changes it under a long-lived hub).
+    @ObservationIgnored private let userIDProvider: @MainActor () -> String?
 
     init(
         store: any PendingLinkCreationStoring = PendingLinkCreationStores.makeDefault(),
         projection: PendingLinkProjection = .shared,
-        environment: AddLinkCreationEnvironment = .live
+        environment: AddLinkCreationEnvironment = .live,
+        userIDProvider: @escaping @MainActor () -> String? = { AuthManager.shared.userId }
     ) {
         self.store = store
         self.projection = projection
         self.environment = environment
+        self.userIDProvider = userIDProvider
         for record in store.load() {
             jobs[record.jobKey] = Job(record: record, coordinator: nil, context: nil)
         }
@@ -128,6 +133,23 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
         remove(jobKey: jobKey)
     }
 
+    // MARK: - Account boundary
+
+    /// Logout / account switch: forget every job, in memory and on disk. Live
+    /// coordinators are cancelled (the hub no longer owns them, so their
+    /// `.cancelled` callback is ignored) and the pending placeholders leave the
+    /// projection, so nothing the previous account typed survives the boundary.
+    func clearAll() {
+        let coordinators = jobs.values.compactMap(\.coordinator)
+        let sourceCardIDs = jobs.values.map(\.record.sourceCardID)
+        jobs.removeAll()
+        for coordinator in coordinators { coordinator.cancel() }
+        store.save([])
+        publishProjection()
+        dirtySourceCardIDs.formUnion(sourceCardIDs)
+        revision += 1
+    }
+
     // MARK: - Resume after relaunch
 
     /// Re-attaches every durable job that has no live coordinator. A job that
@@ -136,6 +158,7 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
     /// warning one only regains the context its retry button needs. Jobs whose source card is
     /// gone (account switch, deletion) are dropped.
     func resume(services: AddLinkCreationServices) {
+        dropJobsOfOtherAccounts()
         let context = services.container.mainContext
         for (jobKey, job) in jobs where job.coordinator == nil {
             guard let source = Self.sourceEntry(cardID: job.record.sourceCardID, in: context) else {
@@ -156,7 +179,29 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
         }
     }
 
+    /// Convenience for screens that only hold the app's service: resumes with the
+    /// operation API when the service offers it (previews / fakes do not).
+    func resume(kgService: any KGServing, container: ModelContainer) {
+        guard let operationService = kgService as? any AddLinkOperationServing else { return }
+        resume(services: AddLinkCreationServices(
+            operationService: operationService,
+            syncService: kgService,
+            container: container
+        ))
+    }
+
     // MARK: - Internals
+
+    /// A stored job belongs to the account that started it; whatever another
+    /// account (or an older, unstamped record) left behind is discarded, never resumed.
+    private func dropJobsOfOtherAccounts() {
+        let owner = userIDProvider()
+        let foreign = jobs.filter { $0.value.record.userId != owner }.map(\.key)
+        for jobKey in foreign {
+            jobs[jobKey]?.coordinator?.cancel()
+            remove(jobKey: jobKey)
+        }
+    }
 
     private func owns(_ coordinator: AddLinkCreationCoordinator, jobKey: String) -> Bool {
         guard let live = jobs[jobKey]?.coordinator else { return false }
@@ -181,7 +226,8 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
             message: recordState == .creating ? nil : state.message,
             createdAt: existing?.record.createdAt ?? Date(),
             failureReason: recordState == .failed ? state.failureReason : nil,
-            warnings: recordState == .warning ? state.warnings.map(\.rawValue) : nil
+            warnings: recordState == .warning ? state.warnings.map(\.rawValue) : nil,
+            userId: existing?.record.userId ?? userIDProvider()
         )
         let visibleChange = existing?.record.state != recordState
             || existing?.record.word != record.word

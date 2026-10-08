@@ -176,6 +176,8 @@ final class AddLinkCoordinator {
         actionPhase == .failed && actionError?.isRetryable == true && lastRequest != nil
     }
 
+    nonisolated static let candidateLimit = 20
+
     nonisolated static func localCandidates(
         query: String,
         sourceEntry: VocabularyEntry,
@@ -190,20 +192,34 @@ final class AddLinkCoordinator {
             options: [.caseInsensitive, .diacriticInsensitive],
             locale: .current
         )
-        return Array(allEntries.lazy.filter { entry in
-            Self.isEligibleTarget(entry, for: sourceEntry)
-                && !(entry.kgCardId.map(linkedIDs.contains) ?? false)
-                && (
-                    entry.word.folding(
-                        options: [.caseInsensitive, .diacriticInsensitive],
-                        locale: .current
-                    ).contains(folded)
-                    || entry.translation.folding(
-                        options: [.caseInsensitive, .diacriticInsensitive],
-                        locale: .current
-                    ).contains(folded)
-                )
-        }.prefix(20))
+        // The exact word is listed first and kept even when 20+ partial matches
+        // precede it in store order: Return links only an exact match (#2038), so
+        // an exact word that fell outside the cap would be neither visible nor
+        // linkable. Partial matches keep store order and fill the rest of the cap.
+        let typed = AddLinkCreationCoordinator.normalizeWord(trimmed)
+        var exact: [VocabularyEntry] = []
+        var partial: [VocabularyEntry] = []
+        for entry in allEntries {
+            guard Self.isEligibleTarget(entry, for: sourceEntry),
+                  !(entry.kgCardId.map(linkedIDs.contains) ?? false),
+                  (
+                      entry.word.folding(
+                          options: [.caseInsensitive, .diacriticInsensitive],
+                          locale: .current
+                      ).contains(folded)
+                          || entry.translation.folding(
+                              options: [.caseInsensitive, .diacriticInsensitive],
+                              locale: .current
+                          ).contains(folded)
+                  )
+            else { continue }
+            if AddLinkCreationCoordinator.normalizeWord(entry.word) == typed {
+                exact.append(entry)
+            } else if partial.count < candidateLimit {
+                partial.append(entry)
+            }
+        }
+        return Array((exact + partial).prefix(candidateLimit))
     }
 
     nonisolated static func lookupState(

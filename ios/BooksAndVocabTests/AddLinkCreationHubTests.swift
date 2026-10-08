@@ -355,7 +355,14 @@ struct AddLinkCreationCoordinatorSeamTests {
 @Suite("Add Link creation hub", .serialized)
 @MainActor
 struct AddLinkCreationHubTests {
+    /// The "signed-in account" the hub reads; tests flip it to simulate a switch.
+    private final class UserBox {
+        var id: String?
+        init(_ id: String? = nil) { self.id = id }
+    }
+
     private struct Rig {
+        let user: UserBox
         let hub: AddLinkCreationHub
         let store: EphemeralPendingLinkCreationStore
         let projection: PendingLinkProjection
@@ -366,18 +373,20 @@ struct AddLinkCreationHubTests {
 
     private func makeRig(
         service: ScriptedCreationService,
-        records: [PendingLinkCreationRecord] = []
+        records: [PendingLinkCreationRecord] = [],
+        user: String? = nil
     ) throws -> Rig {
+        let userBox = UserBox(user)
         let store = EphemeralPendingLinkCreationStore(records: records)
         let projection = PendingLinkProjection()
         let hub = AddLinkCreationHub(
-            store: store, projection: projection, environment: CreationFixtures.environment()
+            store: store, projection: projection, environment: CreationFixtures.environment(), userIDProvider: { userBox.id }
         )
         let container = try CreationFixtures.container()
         let source = CreationFixtures.entry("source", cardID: "src")
         container.mainContext.insert(source)
         try container.mainContext.save()
-        return Rig(hub: hub, store: store, projection: projection, service: service, container: container, source: source)
+        return Rig(user: userBox, hub: hub, store: store, projection: projection, service: service, container: container, source: source)
     }
 
     /// Starts a creation and drops every reference to the coordinator, the way
@@ -398,7 +407,8 @@ struct AddLinkCreationHubTests {
         state: PendingLinkCreationRecord.State = .creating,
         operationId: String? = nil,
         terminal: Bool = false,
-        key: String = "persisted-key"
+        key: String = "persisted-key",
+        userId: String? = nil
     ) -> PendingLinkCreationRecord {
         PendingLinkCreationRecord(
             jobKey: AddLinkCreationCoordinator.jobKey(sourceCardID: "src", word: "luminous"),
@@ -410,7 +420,8 @@ struct AddLinkCreationHubTests {
             operationTerminal: terminal,
             state: state,
             message: state == .failed ? "failed message" : nil,
-            createdAt: Date(timeIntervalSince1970: 1)
+            createdAt: Date(timeIntervalSince1970: 1),
+            userId: userId
         )
     }
 
@@ -484,6 +495,106 @@ struct AddLinkCreationHubTests {
         #expect(saved.idempotencyKey == "key-1")
         await gate.release()
         #expect(await CreationFixtures.eventually { rig.store.records.isEmpty })
+    }
+
+    // MARK: Account boundary (#2132)
+
+    @Test("a job is stamped with the account that started it")
+    func recordsAreStampedWithTheAccount() async throws {
+        let gate = Gate()
+        let service = ScriptedCreationService(
+            onStart: { _, _ in CreationFixtures.status("op-1", "running", sequence: 1) },
+            onFetch: { _, _ in
+                await gate.wait()
+                return CreationFixtures.status("op-1", "succeeded", sequence: 3)
+            }
+        )
+        let rig = try makeRig(service: service, user: "user-a")
+
+        startAndAbandon(rig)
+        #expect(await CreationFixtures.eventually { rig.store.records.first?.userId == "user-a" })
+        await gate.release()
+        #expect(await CreationFixtures.eventually { rig.store.records.isEmpty })
+    }
+
+    @Test("resume never touches another account's job: no poll, no POST, record erased")
+    func resumeDropsOtherAccountsJobs() throws {
+        let service = ScriptedCreationService(
+            onStart: { _, _ in CreationFixtures.status("x", "running") },
+            onFetch: { _, _ in CreationFixtures.status("x", "running") }
+        )
+        // A record written before accounts were stamped has no owner either.
+        var legacy = record(operationId: "op-legacy")
+        legacy.jobKey = AddLinkCreationCoordinator.jobKey(sourceCardID: "src", word: "legacy")
+        legacy.word = "legacy"
+        let rig = try makeRig(
+            service: service,
+            records: [record(operationId: "op-7", userId: "user-a"), legacy],
+            user: "user-b"
+        )
+
+        rig.hub.resume(services: AddLinkCreationServices(
+            operationService: service, syncService: service, container: rig.container
+        ))
+
+        #expect(rig.hub.jobs.isEmpty)
+        #expect(rig.store.records.isEmpty, "the previous account's typed word must not stay on disk")
+        #expect(rig.projection.links(forSourceCardID: "src").isEmpty)
+        #expect(service.fetchedOperationIds.isEmpty)
+        #expect(service.startKeys.isEmpty)
+    }
+
+    @Test("resume still continues the signed-in account's own job")
+    func resumeKeepsOwnAccountsJobs() async throws {
+        let service = ScriptedCreationService(
+            onStart: { _, _ in CreationFixtures.status("never", "failed") },
+            onFetch: { _, id in CreationFixtures.status(id, "succeeded", sequence: 9) }
+        )
+        let rig = try makeRig(
+            service: service,
+            records: [record(operationId: "op-7", userId: "user-a")],
+            user: "user-a"
+        )
+
+        rig.hub.resume(services: AddLinkCreationServices(
+            operationService: service, syncService: service, container: rig.container
+        ))
+
+        #expect(await CreationFixtures.eventually { rig.hub.jobs.isEmpty })
+        #expect(service.fetchedOperationIds.first == "op-7")
+    }
+
+    @Test("clearAll (logout / account switch) drops live and stored jobs and cancels the live one")
+    func clearAllDropsEverything() async throws {
+        let gate = Gate()
+        let service = ScriptedCreationService(
+            onStart: { _, _ in CreationFixtures.status("op-1", "running", sequence: 1) },
+            onFetch: { _, _ in
+                await gate.wait()
+                return CreationFixtures.status("op-1", "succeeded", sequence: 3)
+            }
+        )
+        let rig = try makeRig(service: service, user: "user-a")
+        startAndAbandon(rig)
+        #expect(await CreationFixtures.eventually { rig.hub.jobs.count == 1 })
+        _ = rig.hub.takeDirtySourceCardIDs()
+        let revisionBefore = rig.hub.revision
+
+        rig.hub.clearAll()
+
+        #expect(rig.hub.jobs.isEmpty)
+        #expect(rig.store.records.isEmpty)
+        #expect(rig.projection.links(forSourceCardID: "src").isEmpty)
+        #expect(rig.hub.takeDirtySourceCardIDs() == ["src"], "screens holding that card must rebuild it")
+        #expect(rig.hub.revision > revisionBefore)
+
+        // The cancelled operation finishing late must neither resurrect the job
+        // nor pull data into the next account's store.
+        await gate.release()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(rig.hub.jobs.isEmpty)
+        #expect(rig.store.records.isEmpty)
+        #expect(service.pullCount == 0)
     }
 
     @Test("failure keeps a failed item with its message; retry uses a fresh key and recovers")
@@ -705,21 +816,44 @@ struct PendingLinkProjectionTests {
     @Test("pending items are never pushed into the overflow of the compact strip")
     func pendingSurvivesShuffleAndLimit() {
         let pending = KGCardLinkSummary.pendingCreation(jobKey: "k", word: "lum", state: .creating)
+        let secondPending = KGCardLinkSummary.pendingCreation(jobKey: "k2", word: "lux", state: .failed)
         let normals = (0..<5).map {
             KGCardLinkSummary(id: "l\($0)", cardId: "c\($0)", word: "w\($0)", kind: "shares_usage",
                               label: "x", confidence: 1, reason: "r")
         }
-        let group = CardLinkGroupPresentation(id: "shares_usage", label: "x", items: normals + [pending])
+        let allPresentations: [ReviewCardLayoutSolver.GraphLinkPresentation] = [.twoPerGroup, .onePerGroup, .summary]
 
-        for _ in 0..<50 {
-            // The prepared card keeps every link; the strip cuts per presentation.
-            let ordered = group.shuffled().pendingFirst()
-            let prepared = ReviewCardLinkGroup(id: ordered.id, label: ordered.label, items: ordered.items, overflowCount: 0)
-            for presentation in [ReviewCardLayoutSolver.GraphLinkPresentation.twoPerGroup, .onePerGroup] {
-                let row = ReviewCardLinkStripLayout.row(for: prepared, presentation: presentation, isExpanded: false)
-                #expect(row.leading.first?.isPendingCreation == true)
+        for pendingItems in [[pending], [pending, secondPending]] {
+            let group = CardLinkGroupPresentation(id: "shares_usage", label: "x", items: normals + pendingItems)
+            for _ in 0..<50 {
+                // The prepared card keeps every link; the strip cuts per presentation.
+                let ordered = group.shuffled().pendingFirst()
+                let prepared = ReviewCardLinkGroup(id: ordered.id, label: ordered.label, items: ordered.items, overflowCount: 0)
+                for presentation in allPresentations {
+                    let row = ReviewCardLinkStripLayout.row(for: prepared, presentation: presentation, isExpanded: false)
+                    let leadingIDs = Set(row.leading.map(\.id))
+                    for item in pendingItems {
+                        #expect(leadingIDs.contains(item.id), "\(presentation): pending \(item.word) hidden behind +N")
+                    }
+                    // Only real links are counted in "+N"; nothing is lost or duplicated.
+                    #expect(row.leading.count + row.overflowCount == normals.count + pendingItems.count)
+                }
             }
         }
+    }
+
+    @Test("a pending item stays visible even when the caller did not order it first")
+    func pendingLeadsWithoutPendingFirst() {
+        let pending = KGCardLinkSummary.pendingCreation(jobKey: "k", word: "lum", state: .creating)
+        let normals = (0..<4).map {
+            KGCardLinkSummary(id: "l\($0)", cardId: "c\($0)", word: "w\($0)", kind: "shares_usage",
+                              label: "x", confidence: 1, reason: "r")
+        }
+        let group = ReviewCardLinkGroup(id: "shares_usage", label: "x", items: normals + [pending], overflowCount: 0)
+        let summary = ReviewCardLinkStripLayout.row(for: group, presentation: .summary, isExpanded: false)
+        #expect(summary.leading.map(\.id) == [pending.id])
+        #expect(summary.overflowCount == normals.count)
+        #expect(summary.isExpandable)
     }
 
     @Test("projection is a plain replace-all store keyed by source card")

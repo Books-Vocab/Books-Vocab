@@ -12,7 +12,12 @@ struct WordDetailSheet: View {
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
     @State private var showAddLink = false
+    @State private var pendingLinkDetail: PendingLinkDetailRequest?
     @State private var isConfirmingDelete = false
+
+    // Long-lived owner of link creations: read so the pending rows follow the jobs
+    // (appear, fail, turn into real links) even while this sheet stays open.
+    private let creationHub = AddLinkCreationHub.shared
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -80,7 +85,8 @@ struct WordDetailSheet: View {
                     },
                     onUnhideLink: { link in
                         state.unhideLink(link, from: entry, allEntries: allEntries, kgService: kgService)
-                    }
+                    },
+                    onPendingLinkTapped: { pendingLinkDetail = PendingLinkDetailRequest(link: $0) }
                 )
                 .overlay(alignment: .top) {
                     if let actionError = state.actionError {
@@ -110,6 +116,17 @@ struct WordDetailSheet: View {
             await Task.yield()
             state.refreshPresentation(for: entry, in: allEntries)
         }
+        .task {
+            // Same re-attach as the review screen: a pending link restored from disk
+            // gets its context back here too, so its retry works from this sheet.
+            creationHub.resume(kgService: kgService, container: modelContext.container)
+        }
+        .onChange(of: creationHub.revision) { _, _ in
+            // A pending link appeared, failed, or became a real one: rebuild the
+            // presentation (the id-keyed task above only watches the graph JSON).
+            guard state.presenterState != nil else { return }
+            state.refreshPresentation(for: entry, in: allEntries)
+        }
         .overlay {
             if shouldUseLinkedOverlayStack {
                 LinkedCardOverlayStack(stack: linkedCardStack, allEntries: allEntries)
@@ -134,8 +151,13 @@ struct WordDetailSheet: View {
         .toastSheet(isPresented: $showAddLink) {
             AddLinkSheet(
                 sourceEntry: entry,
-                allEntries: allEntries
+                allEntries: allEntries,
+                onLinked: { state.refreshPresentation(for: entry, in: allEntries) }
             )
+        }
+        .toastSheet(item: $pendingLinkDetail) { request in
+            PendingLinkDetailSheet(link: request.link)
+                .appSheet(.medium)
         }
         .enableInjection()
     }

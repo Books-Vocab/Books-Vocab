@@ -38,6 +38,27 @@ struct AddLinkReturnKeyTests {
         #expect(result.submitLabel == .go)
     }
 
+    @Test("an exact word beyond the candidate cap is listed first and still linkable on Return")
+    func exactMatchBeyondCandidateCapIsFirstAndLinkable() {
+        let source = source()
+        // 25 partial matches precede the exact word in store order.
+        let partials = (0..<25).map { CreationFixtures.entry("set\($0)", cardID: "c-partial-\($0)") }
+        let exact = CreationFixtures.entry("set", cardID: "c-set")
+
+        let snapshot = AddLinkSearchSnapshot.make(
+            query: "set",
+            sourceEntry: source,
+            allEntries: [source] + partials + [exact]
+        )
+        #expect(snapshot.candidates.first?.id == exact.id, "exact match sorts first")
+        #expect(snapshot.candidates.count == AddLinkCoordinator.candidateLimit, "the cap still bounds the list")
+        #expect(AddLinkReturnBehavior.resolve(snapshot) == .linkExact(exact.id))
+        #expect(
+            snapshot.candidates.dropFirst().map(\.word) == (0..<19).map { "set\($0)" },
+            "partial matches keep store order behind the exact word"
+        )
+    }
+
     @Test("exactness uses the backend's normalization: case, whitespace, trailing punctuation")
     func exactMatchIsNormalized() {
         let source = source()

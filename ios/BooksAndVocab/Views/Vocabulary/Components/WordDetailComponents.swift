@@ -10,10 +10,16 @@ struct WordDetailGraphLinkRow: View {
     let onDelete: (() -> Void)?
     var onHide: (() -> Void)?
     var onUnhide: (() -> Void)?
+    /// Opens the creation detail (status, retry, remove) of a link whose target is
+    /// still being created, failed, or finished with warnings (#2133). Nil = the
+    /// row is plain status text.
+    var onPendingTap: (() -> Void)?
 
     var body: some View {
         Group {
-            if link.isPending {
+            if let creationState = link.pendingCreationState {
+                pendingCreationRow(creationState)
+            } else if link.isPending {
                 pendingRowContent
             } else if link.isHidden {
                 hiddenRowContent
@@ -65,6 +71,64 @@ struct WordDetailGraphLinkRow: View {
             .opacity(0.5)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, appSkin.metrics.linkRowVerticalPadding)
+    }
+
+    /// A link being created in the background. Creating = shimmer (it will become a
+    /// normal row by itself); failed / warning = a visible status icon, so it never
+    /// reads as "loading forever". Tapping opens the same detail as on the review card.
+    @ViewBuilder
+    private func pendingCreationRow(_ state: KGCardLinkSummary.CreationState) -> some View {
+        if let onPendingTap {
+            Button(action: onPendingTap) {
+                pendingCreationContent(state)
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("wordDetail.link.pending.\(state.rawValue)")
+        } else {
+            pendingCreationContent(state)
+        }
+    }
+
+    private func pendingCreationContent(_ state: KGCardLinkSummary.CreationState) -> some View {
+        HStack(alignment: .top, spacing: appSkin.metrics.linkRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: appSkin.metrics.linkDetailGap) {
+                Text(link.word)
+                    .font(appSkin.typography.rowWord)
+                    .foregroundStyle(appSkin.palette.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                switch state {
+                case .creating:
+                    ShimmerLine()
+                case .failed:
+                    Text(L10n.string("todayReview.link.pending.failed"))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.destructive)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .warning:
+                    Text(L10n.string("addLink.creation.warning.summary"))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.warning)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            switch state {
+            case .creating:
+                EmptyView()
+            case .failed:
+                Image(systemName: "exclamationmark.triangle")
+                    .font(appSkin.typography.iconTiny)
+                    .foregroundStyle(appSkin.palette.destructive)
+            case .warning:
+                Image(systemName: "exclamationmark.circle")
+                    .font(appSkin.typography.iconTiny)
+                    .foregroundStyle(appSkin.palette.warning)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, appSkin.metrics.linkRowVerticalPadding)
     }
 
     private var pendingRowContent: some View {

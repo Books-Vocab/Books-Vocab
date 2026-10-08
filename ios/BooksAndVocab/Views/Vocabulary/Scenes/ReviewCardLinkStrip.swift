@@ -24,13 +24,20 @@ enum ReviewCardLinkStripLayout {
         presentation: ReviewCardLayoutSolver.GraphLinkPresentation,
         isExpanded: Bool
     ) -> Row {
-        let limit: Int = switch presentation {
+        let presentationLimit: Int = switch presentation {
         case .twoPerGroup: 2
         case .onePerGroup: 1
         case .summary: 0
         }
-        let leading = Array(group.items.prefix(limit))
-        let hidden = Array(group.items.dropFirst(limit))
+        // A link being created must be visible the moment the user starts it
+        // (#2133): whatever the presentation cut is, every pending item stays beside
+        // the label and only real links fall into "+N". Pending items lead the group
+        // even if the caller did not order them first.
+        let pending = group.items.filter(\.isPendingCreation)
+        let ordered = pending + group.items.filter { !$0.isPendingCreation }
+        let limit = max(presentationLimit, pending.count)
+        let leading = Array(ordered.prefix(limit))
+        let hidden = Array(ordered.dropFirst(limit))
         let unavailable = max(group.overflowCount, 0)
         let shownWhenExpanded = Array(hidden.prefix(expandedLimit))
         return Row(

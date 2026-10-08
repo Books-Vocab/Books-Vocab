@@ -487,7 +487,9 @@ struct AddLinkCreationHubP1Tests {
     private func makeRig(records: [PendingLinkCreationRecord] = []) throws -> Rig {
         let store = EphemeralPendingLinkCreationStore(records: records)
         let projection = PendingLinkProjection()
-        let hub = AddLinkCreationHub(store: store, projection: projection, environment: P1Fixtures.environment())
+        let hub = AddLinkCreationHub(
+            store: store, projection: projection, environment: P1Fixtures.environment(), userIDProvider: { nil }
+        )
         let container = try CreationFixtures.container()
         let source = CreationFixtures.entry("source", cardID: "src")
         container.mainContext.insert(source)

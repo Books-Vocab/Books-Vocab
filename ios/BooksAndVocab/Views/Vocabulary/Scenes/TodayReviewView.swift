@@ -62,8 +62,6 @@ struct TodayReviewView: View {
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @Environment(\.reviewCardLayoutStore) private var reviewCardLayoutStore
     @Query private var notebookSettings: [NotebookSettingsProjection]
-    // 卡上單字本標示的名稱／顏色來源（#2040）。單字本數量小，查全部即可。
-    @Query private var notebooks: [Notebook]
     @Environment(\.toastCoordinator) private var toastCoordinator
 
     @State private var state: TodayReviewState
@@ -79,6 +77,10 @@ struct TodayReviewView: View {
     @State private var addLinkRequest: AddLinkSheetRequest?
     @State private var pendingLinkDetail: PendingLinkDetailRequest?
     @State private var showLayoutEditor = false
+    // 卡上單字本標示（#2040）。刻意不用 @Query：複習頁對 body 重算敏感（翻卡手感戰役），
+    // Notebook 任何寫入（同步、改色、換封面）都不該讓它重算。session 開始時查一次，
+    // 之後只在明確事件才重算（目前僅 session 開始，見 `refreshNotebookBadges`）。
+    @State private var notebookBadges: [String: ReviewCardNotebookBadge] = [:]
     @State private var explainSheetItem: CollocationExplainItem? = nil
     #if targetEnvironment(macCatalyst)
     @State private var hasConsumedShortcutHint = false
@@ -119,12 +121,6 @@ struct TodayReviewView: View {
         )
         let notebookSettingsSnapshot = notebookSettingsResolver.snapshot(
             for: allEntries.map(\.notebookId)
-        )
-        // 判斷看的是 session 自己的卡（queue），不是 allEntries：後者是連結查詢用的
-        // 候選池，單一單字本入口也可能混進其他本，拿它判會在單本入口誤畫標示。
-        let notebookBadges = ReviewCardNotebookBadgeResolver.badges(
-            sessionNotebookIDs: state.queue.map(\.notebookId),
-            notebooks: notebooks
         )
         return TodayReviewPresenter(
             state: state.presenterState,
@@ -202,6 +198,9 @@ struct TodayReviewView: View {
         )
         .toastOverlay()
         .task {
+            refreshNotebookBadges()
+        }
+        .task {
             // A restored session may hold answers whose background DB flush
             // failed last run (flushed=false). Re-flush them so the card
             // schedule catches up; idempotent, so a clean restore is a no-op.
@@ -216,20 +215,17 @@ struct TodayReviewView: View {
             // Links being created when the app last died are re-attached here:
             // polled by operation id (or re-sent with the same key), then
             // projected locally. Idempotent for jobs that already have a coordinator.
-            guard let operationService = kgService as? any AddLinkOperationServing else { return }
-            creationHub.resume(services: AddLinkCreationServices(
-                operationService: operationService,
-                syncService: kgService,
-                container: modelContext.container
-            ))
+            creationHub.resume(kgService: kgService, container: modelContext.container)
         }
         .onChange(of: creationHub.revision) { _, _ in
             // A pending link appeared, failed, or turned into a real one (sheet
             // open or not): rebuild only the affected source cards.
             let dirty = creationHub.takeDirtySourceCardIDs()
             guard !dirty.isEmpty else { return }
+            // Light update, not a rebuild: a full rebuild resets the card's measured
+            // heights and the open card would jump for a frame (#2133).
             for entry in state.queue where entry.kgCardId.map(dirty.contains) == true {
-                state.rebuildCacheForEntry(entry)
+                state.refreshPendingLinksForEntry(entry)
             }
         }
         .task {
@@ -377,6 +373,31 @@ struct TodayReviewView: View {
         .focusedSceneValue(\.showReviewHelp, ShowReviewHelpAction { isHelpPresented = true })
         #endif
         .enableInjection()
+    }
+
+    /// 判斷看的是 session 自己的卡（queue），不是 allEntries：後者是連結查詢用的
+    /// 候選池，單一單字本入口也可能混進其他本，拿它判會在單本入口誤畫標示。
+    /// 單一單字本入口根本不查庫。
+    private func refreshNotebookBadges() {
+        let sessionNotebookIDs = state.queue.map(\.notebookId)
+        guard ReviewCardNotebookBadgeResolver.spansMultipleNotebooks(sessionNotebookIDs) else {
+            notebookBadges = [:]
+            return
+        }
+        let notebooks: [Notebook]
+        do {
+            notebooks = try modelContext.fetch(
+                FetchDescriptor<Notebook>(predicate: #Predicate { !$0.isSoftDeleted })
+            )
+        } catch {
+            // 標示退回本地化備援名稱（永遠不是 id 字串），複習本身不受影響。
+            AppLog.kg.error("review notebook badges fetch failed: \(error.localizedDescription)")
+            notebooks = []
+        }
+        notebookBadges = ReviewCardNotebookBadgeResolver.badges(
+            sessionNotebookIDs: sessionNotebookIDs,
+            notebooks: notebooks
+        )
     }
 
     /// Resolves the target against the live store (the session's lookup is a

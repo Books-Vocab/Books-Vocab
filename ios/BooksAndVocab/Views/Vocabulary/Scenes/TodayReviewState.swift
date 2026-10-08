@@ -264,6 +264,12 @@ final class TodayReviewState {
         cardCache.rebuild(for: entry)
     }
 
+    /// Pending link creation changed this card's strip: update its links in place
+    /// and keep its measurements (see `TodayReviewCardCache.refreshLinks`).
+    func refreshPendingLinksForEntry(_ entry: VocabularyEntry) {
+        cardCache.refreshLinks(for: entry)
+    }
+
     func handleDetailTap() {
         guard let current = currentEntry else { return }
         linkedCardStack.append(current)

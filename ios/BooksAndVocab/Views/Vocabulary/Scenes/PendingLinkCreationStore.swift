@@ -31,6 +31,12 @@ struct PendingLinkCreationRecord: Codable, Equatable, Identifiable {
     /// `AddLinkCreationWarning` raw values of a `.warning` job (raw strings so an
     /// unknown future code never makes the whole list undecodable).
     var warnings: [String]? = nil
+    /// Account that started the job. The record holds the typed word in plain text
+    /// and the operation/idempotency keys of that account's server session, so a
+    /// different account (or a record from before this field existed) must never
+    /// resume or surface it. Optional so older records still decode — they simply
+    /// belong to no signed-in account and are dropped on resume.
+    var userId: String? = nil
 
     var id: String { jobKey }
 
