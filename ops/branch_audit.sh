@@ -5,8 +5,8 @@
 #   ./ops/branch_audit.sh
 #   ./ops/branch_audit.sh --json
 #   ./ops/branch_audit.sh --fetch
-#   ./ops/branch_audit.sh --delete-merged --dry-run
-#   ./ops/branch_audit.sh --delete-merged --yes
+#
+# Read-only: this script never deletes or pushes anything.
 #
 # Exit codes:
 #   0 = only safe-delete / open-pr branches
@@ -28,8 +28,6 @@ BASE="origin/main"
 REMOTE="origin"
 JSON=0
 FETCH=0
-DELETE_MERGED=0
-YES=0
 STALE_DAYS="${STALE_DAYS:-30}"
 
 usage() {
@@ -77,18 +75,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-fetch)
       FETCH=0
-      shift
-      ;;
-    --delete-merged)
-      DELETE_MERGED=1
-      shift
-      ;;
-    --dry-run)
-      YES=0
-      shift
-      ;;
-    --yes)
-      YES=1
       shift
       ;;
     --stale-days)
@@ -203,14 +189,6 @@ while IFS= read -r branch; do
     if [[ "$ahead" -gt 0 && "$level" != "ok" ]]; then
       git log --oneline --decorate "$BASE..$branch" | sed 's/^/  /'
     fi
-    if [[ "$DELETE_MERGED" -eq 1 && "$status" == "safe-delete" ]]; then
-      if [[ "$YES" -eq 1 ]]; then
-        git push "$REMOTE" --delete "$short"
-        printf '[branch][delete] %s deleted from %s\n' "$branch" "$REMOTE"
-      else
-        printf '[branch][delete][dry-run] would run: git push %s --delete %s\n' "$REMOTE" "$short"
-      fi
-    fi
   fi
 done < <(git for-each-ref --format='%(refname:short)' "refs/remotes/$REMOTE" | sort)
 
@@ -219,15 +197,11 @@ if [[ "$JSON" -eq 1 ]]; then
     --arg base "$BASE" \
     --arg remote "$REMOTE" \
     --argjson staleDays "$STALE_DAYS" \
-    --argjson deleteMerged "$(json_bool "$DELETE_MERGED")" \
-    --argjson dryRun "$(json_bool "$((1 - YES))")" \
     '{
       schema:"kg.branch_audit.v1",
       base:$base,
       remote:$remote,
       staleDays:$staleDays,
-      deleteMerged:$deleteMerged,
-      dryRun:$dryRun,
       summary:{
         total:length,
         ok:([.[] | select(.level=="ok")] | length),
