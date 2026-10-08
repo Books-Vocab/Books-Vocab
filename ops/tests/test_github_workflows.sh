@@ -445,6 +445,8 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     git init -q -b main "$membership_repo"
     mfx commit -q --allow-empty -m base
     m_base="$(mfx rev-parse HEAD)"
+    # actions/checkout (fetch-depth: 0) materialises refs/remotes/origin/main.
+    mfx update-ref refs/remotes/origin/main "$m_base"
     mfx checkout -q -b pr11
     mfx commit -q --allow-empty -m "Merge pull request #99 from evil/forged-subject-on-plain-commit"
     mfx checkout -q main
@@ -467,7 +469,119 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     if run_membership "refs/heads/gh-readonly-queue/main/no-pr-here" "$m_base" "$m_solo" >/dev/null; then
       fail "membership step accepts a head_ref that names no PR"
     fi
+    # Cumulative group (review P1 on #2621): PR #12 is queued behind #11 and
+    # GitHub sets base_sha to #11's synthetic merge, so base_sha..head_sha holds
+    # only #12.  Membership must still name #11, whose changes are in the ref.
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_solo" "$m_solo" "$m_group" || true)"
+    [[ "$out" == "pr_numbers=11,12" ]] \
+      || fail "membership step, cumulative group (base_sha = preceding PR's merge): expected pr_numbers=11,12, got '$out'"
+    # Once #11 is on origin/main it is no longer part of the pending group.
+    mfx update-ref refs/remotes/origin/main "$m_solo"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_solo" "$m_solo" "$m_group" || true)"
+    [[ "$out" == "pr_numbers=12" ]] \
+      || fail "membership step must drop a PR already merged into origin/main, got '$out'"
+    # A base that is not an ancestor of the head cannot bound the group.
+    if run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_solo" "$m_group" "$m_solo" >/dev/null; then
+      fail "membership step accepts a base_sha that is not an ancestor of head_sha"
+    fi
+    # Without origin/main the group cannot be bounded: fail closed.
+    mfx update-ref -d refs/remotes/origin/main
+    if run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_base" "$m_base" "$m_group" >/dev/null; then
+      fail "membership step derives a group without origin/main to bound it"
+    fi
     rm -rf "$membership_tmp"
+  fi
+
+  # Behavioural check of the live-queue cross-check: run the verify step's own
+  # script against a fake gh so completeness is proven, not just grepped.
+  verify_step="$(awk '
+    /^      - name: Verify exact queued PR has independent review evidence$/ { in_step=1; next }
+    in_step && /^      - name:/ { exit }
+    in_step && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_step { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  verify_script="$(awk '
+    /^        run: \|$/ { grab=1; next }
+    grab { sub(/^          /, ""); print }
+  ' <<<"$verify_step")"
+  if [[ -z "$verify_script" ]]; then
+    fail "merge-group verify step has no run script"
+  else
+    verify_tmp="$(mktemp -d)"
+    mkdir -p "$verify_tmp/bin"
+    cat >"$verify_tmp/bin/gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+# Fake gh: PR N has head sha %040x(N) and a passing trusted agent-review run 9000+N.
+set -euo pipefail
+[[ "${1:-}" == "api" ]] || exit 2
+endpoint="${2:-}"
+case "$endpoint" in
+  graphql)
+    [[ -s "$FAKE_QUEUE_FILE" ]] || { echo "fake gh: merge queue unreadable" >&2; exit 1; }
+    cat "$FAKE_QUEUE_FILE" ;;
+  repos/*/actions/workflows/agent-review.yml) echo 4242 ;;
+  repos/*/commits/*/check-runs*)
+    sha="${endpoint#*/commits/}"; sha="${sha%%/*}"
+    n=$((16#${sha: -8}))
+    jq -n --arg sha "$sha" --argjson run "$((9000 + n))" '{check_runs: [{
+      id: $run, name: "agent-review", head_sha: $sha, status: "completed", conclusion: "success",
+      external_id: "kg.agent-review.v1:\($run):\($sha)",
+      details_url: "https://github.com/Books-Vocab/Books-Vocab/actions/runs/\($run)",
+      output: {title: "Independent agent review passed", summary: "Exact head \($sha) reviewed"}}]}' ;;
+  repos/*/actions/runs/*)
+    jq -n '{path: ".github/workflows/agent-review.yml", event: "issue_comment", head_branch: "main", workflow_id: 4242, pull_requests: []}' ;;
+  repos/*/pulls/*)
+    n="${endpoint##*/}"
+    jq -n --arg sha "$(printf '%040x' "$n")" '{state: "open", base: {ref: "main"}, head: {sha: $sha}}' ;;
+  *) echo "fake gh: unexpected endpoint $endpoint" >&2; exit 2 ;;
+esac
+FAKE_GH
+    chmod +x "$verify_tmp/bin/gh"
+    mk_queue() { # solo pos:pr ... -> graphql payload for the fake gh
+      local solo="$1" pair nodes="[]"
+      shift
+      for pair in "$@"; do
+        nodes="$(jq -c --argjson pos "${pair%%:*}" --argjson pr "${pair##*:}" --argjson solo "$solo" \
+          --arg sha "$(printf '%040x' "${pair##*:}")" \
+          '. + [{position: $pos, solo: $solo, state: "QUEUED", headCommit: {oid: $sha},
+                 pullRequest: {number: $pr, headRefOid: $sha, baseRefName: "main", state: "OPEN"}}]' <<<"$nodes")"
+      done
+      jq -n --argjson nodes "$nodes" \
+        '{data: {repository: {mergeQueue: {entries: {pageInfo: {hasNextPage: false}, nodes: $nodes}}}}}' \
+        >"$verify_tmp/queue.json"
+    }
+    run_verify() { # target_pr group_numbers -> status of the verify step script
+      (cd "$verify_tmp" && PATH="$verify_tmp/bin:$PATH" FAKE_QUEUE_FILE="$verify_tmp/queue.json" \
+        GH_TOKEN=fake GITHUB_REF="" REPOSITORY="Books-Vocab/Books-Vocab" \
+        MERGE_GROUP_HEAD_SHA="$(printf '%040x' 99)" \
+        MERGE_GROUP_HEAD_REF="refs/heads/gh-readonly-queue/main/pr-$1-$(printf '%040x' 98)" \
+        MERGE_GROUP_PR_NUMBERS="$2" bash -c "$verify_script") >"$verify_tmp/log" 2>&1
+    }
+    verify_expect_pass() { # label target group
+      run_verify "$2" "$3" || fail "verify step, $1: expected pass, got failure: $(tail -n 3 "$verify_tmp/log")"
+    }
+    verify_expect_reject() { # label target group message-fragment
+      if run_verify "$2" "$3"; then
+        fail "verify step, $1: accepted a membership that must be rejected"
+      elif ! grep -Fq -- "$4" "$verify_tmp/log"; then
+        fail "verify step, $1: rejected for the wrong reason (wanted '$4'): $(tail -n 3 "$verify_tmp/log")"
+      fi
+    }
+    mk_queue false 1:7 2:8
+    verify_expect_pass "cumulative group #7,#8 (positive control)" 8 "7,8"
+    verify_expect_reject "singleton subset of a cumulative group (review P1)" 8 "8" "at or ahead of the target"
+    mk_queue false 1:6 2:7 3:8
+    verify_expect_reject "group omitting an earlier queued PR" 8 "7,8" "at or ahead of the target"
+    mk_queue false 1:7 2:8 3:9
+    verify_expect_pass "entries queued behind the target are not members" 8 "7,8"
+    mk_queue false 1:8
+    verify_expect_pass "single-entry queue" 8 "8"
+    mk_queue true 1:7 2:8
+    verify_expect_reject "solo target hiding a preceding PR" 8 "8" "at or ahead of the target"
+    verify_expect_pass "solo target whose ref carries the preceding PR" 8 "7,8"
+    rm -f "$verify_tmp/queue.json"
+    verify_expect_reject "unreadable merge queue" 8 "7,8" "merge queue unreadable"
+    rm -rf "$verify_tmp"
   fi
   if grep -q 'maximumEntriesToMerge\|maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED"; then
     fail "merge-group independent review gate infers membership from a configured ceiling"
@@ -515,11 +629,11 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   grep -q '== "success"' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not require successful exact-head evidence"
   queue_membership_fixture='[{"position":2},{"position":3},{"position":4},{"position":5}]'
-  jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+  jq -e 'map(.position) as $positions | ($positions | length) > 0 and (($positions | max) as $target_position | ($positions | sort) == [range(($positions | min); ($target_position + 1))])' \
     <<<"$queue_membership_fixture" >/dev/null \
     || fail "merge-group fixture rejects a valid group larger than three entries"
   noncontiguous_fixture='[{"position":2},{"position":4}]'
-  if jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+  if jq -e 'map(.position) as $positions | ($positions | length) > 0 and (($positions | max) as $target_position | ($positions | sort) == [range(($positions | min); ($target_position + 1))])' \
     <<<"$noncontiguous_fixture" >/dev/null; then
     fail "merge-group fixture accepts non-contiguous membership"
   fi
