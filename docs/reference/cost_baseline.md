@@ -36,7 +36,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 | Provider | 模型 | Pricing 快照(USD per M tokens) | 來源 |
 |---|---|---|---|
-| Gemini | `gemini-2.5-flash-lite` | input **$0.10** / output **$0.40** / cache **$0.01** / embed **$0.00025** | `backend/src/kg/llm/providers.py:REGISTRY` |
+| Gemini | `gemini-2.5-flash-lite` | input **$0.10** / output **$0.40** / cache **$0.01** / embed **$0.20** | `backend/src/kg/llm/providers.py:REGISTRY` |
 | DeepSeek | `deepseek-v4-flash` | input **$0.14** / output **$0.28** / cache **$0.0028** / embed n/a(無 endpoint) | 同上 |
 
 embeddings 預設 provider = Gemini（DeepSeek 無 embeddings endpoint）。cache token 走 `cache_price_per_m`（命中快取的輸入 token 以此費率計，遠低於 input）。

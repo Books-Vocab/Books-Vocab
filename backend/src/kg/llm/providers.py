@@ -62,7 +62,9 @@ REGISTRY: dict[str, LLMProvider] = {
         input_price_per_m=0.10,
         output_price_per_m=0.40,
         cache_price_per_m=0.01,
-        embed_price_per_m=0.00025,
+        # gemini-embedding-2-preview (settings.embedding_model default): $0.20/1M tokens
+        # (Google AI pricing, 2026-10); revisit when the embedding model changes.
+        embed_price_per_m=0.20,
         max_tokens_default=None,
         extra_body={},
         supports_embeddings=True,
