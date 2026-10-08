@@ -184,17 +184,48 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     in_required && /^  [A-Za-z0-9_-]+:/ { exit }
     in_required { print }
   ' "$MERGE_GROUP_REQUIRED")"
-  grep -q 'timeout-minutes: 3' <<<"$merge_group_required_block" \
-    || fail "merge-group required gate is not hard-bounded to three minutes"
+  grep -q 'timeout-minutes: 15' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not hard-bounded to fifteen minutes"
+  # ubuntu-latest is a moving label; the apt ffmpeg series follows the image and
+  # the podcast preview skip allowlist turns a changed series into a red queue.
+  grep -Eq '^    runs-on: ubuntu-24\.04$' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not pinned to ubuntu-24.04"
+  grep -Fq "version: '0.8.23'" <<<"$merge_group_required_block" \
+    || fail "merge-group required gate does not pin uv to the backend-quality version"
   grep -q 'github.event.merge_group.base_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required gate does not use the merge-group base SHA"
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required gate does not use the merge-group head SHA"
   grep -Fq './ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control' <<<"$merge_group_required_block" \
     || fail "merge-group required gate does not execute the delivery-control regression group"
-  if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
+  if grep -Eq 'ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
     fail "merge-group required gate imports slow confidence jobs"
   fi
+  if grep -Eq 'uses:[[:space:]]*\./\.github/workflows/backend-quality\.yml' <<<"$merge_group_required_block"; then
+    fail "merge-group required gate must run the backend suite inline, not import backend-quality"
+  fi
+  # Backend suite runs inline, but only behind the fail-closed scope router.
+  scope_step_id="$(awk '
+    /^      - name:/ { id="" }
+    /^        id:/ { id=$2 }
+    /ci_scope_router\.sh --base "\$BASE_SHA" --head "\$HEAD_SHA" --format github-output/ { print id; exit }
+  ' <<<"$merge_group_required_block")"
+  [[ -n "$scope_step_id" ]] \
+    || fail "merge-group required gate has no id'd step running ci_scope_router.sh --format github-output"
+  backend_pytest_step="$(awk '
+    /^      - / { if (in_step && has_pytest) { printf "%s", buf; exit } in_step=1; has_pytest=0; buf="" }
+    in_step { buf = buf $0 "\n" }
+    /uv run python -m pytest -q -rs --skip-allowlist=tests\/skip_allowlist\.json/ { has_pytest=1 }
+    END { if (in_step && has_pytest) printf "%s", buf }
+  ' <<<"$merge_group_required_block")"
+  [[ -n "$backend_pytest_step" ]] \
+    || fail "merge-group required gate does not run the backend pytest suite"
+  grep -Fq "if: steps.${scope_step_id}.outputs.backend == 'true'" <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest step is not guarded by the router backend output"
+  grep -Fq 'working-directory: backend' <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest step does not run in backend/"
+  grep -Fq 'uv sync --locked' <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest step does not sync the locked environment"
   grep -q '^  agent-review:' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required workflow has no independent review gate"
   agent_review_block="$(awk '

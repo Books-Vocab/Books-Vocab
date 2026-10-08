@@ -2,7 +2,9 @@ name: merge-group-required
 
 # Merge queue's blocking contract is deliberately independent from the PR
 # confidence fan-out.  A merge group must receive the same short repository
-# gate, but it must not schedule backend, LLM, UI, iOS, or confidence jobs.
+# gate, but it must not schedule LLM, UI, iOS, or confidence jobs.  The backend
+# pytest suite runs inline, only when the fail-closed scope router reports
+# backend=true (docs/ops-only groups stay on the short gate).
 on:
   merge_group:
     types: [checks_requested]
@@ -20,8 +22,8 @@ concurrency:
 jobs:
   required:
     name: required
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Checkout merge group
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +32,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.8.23'
 
       - name: Check merge-group diff
         env:
@@ -39,11 +43,38 @@ jobs:
           set -euo pipefail
           git diff --check "$BASE_SHA" "$HEAD_SHA"
 
+      - name: Classify merge-group scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          ./ops/ci_scope_router.sh --base "$BASE_SHA" --head "$HEAD_SHA" --format github-output >> "$GITHUB_OUTPUT"
+
       - name: Check ops test coverage classification
         run: ./ops/tests/test_ops_ci_coverage.sh
 
       - name: Run short repository gate
         run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control
+
+      - name: Install ffmpeg and ffprobe
+        if: steps.scope.outputs.backend == 'true'
+        timeout-minutes: 5
+        # Podcast preview tests skip without both binaries and the skip
+        # allowlist turns a skip into a red run (#2115).
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg
+
+      - name: Run backend suite
+        if: steps.scope.outputs.backend == 'true'
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          uv sync --locked
+          uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json
 
   agent-review:
     name: agent-review
