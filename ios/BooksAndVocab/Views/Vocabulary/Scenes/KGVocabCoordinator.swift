@@ -24,9 +24,16 @@ import SwiftUI
 final class KGVocabCoordinator: KGVocabCoordinating {
     var isLoading = false
     /// 錯誤 banner 的單一真相；`errorMessage` 由它衍生（保持 protocol / 既有讀者不變）。
-    /// banner 呈現交給純函式 `KGVocabBanner.make`，依實際 error 型別決定文案 / glyph / 可否重試。
+    /// 呈現交給純函式 `KGVocabBanner.panel` / `.pill`，依實際 error 型別決定文案 / glyph / 可否重試。
     var bannerError: KGVocabBannerError?
     var refreshSuccessMessage: String?
+    /// 每次操作寫下終態結果（成功／失敗）就 +1。頂端 pill 是「事件」不是「狀態」：
+    /// 連續兩次相同結果（例如兩次下拉都「已是最新」）值不變，view 只能靠這個序號
+    /// 知道又發生了一次、該再通知一次。取消不算終態，不前進。
+    private(set) var noticeRevision = 0
+    /// 最近一次 refresh 終態的觸發來源。可重試的錯誤一律進面板；只有使用者主動
+    /// 觸發（`.explicit`）時才另彈 pill —— 進頁自動載入的失敗只顯示面板。
+    private(set) var lastRefreshTrigger: RefreshTrigger?
     var selectedEntry: VocabularyEntry?
 
     /// 衍生自 `bannerError`。滿足 `KGVocabCoordinating.errorMessage` 唯讀契約，
@@ -109,6 +116,8 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             try Task.checkCancellation()
             bannerError = nil
             refreshSuccessMessage = Self.successMessage(for: outcome, trigger: trigger)
+            lastRefreshTrigger = trigger
+            noticeRevision += 1
         } catch is CancellationError {
             // 換頁、view 重建、或這一輪被取代。那是生命週期事件，不是故障：使用者什麼
             // 都沒做錯，網路也沒壞。保持畫面原狀（不覆寫既有 banner、不謊報網路錯誤）。
@@ -118,6 +127,8 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             // 依實際 error 型別分類，而非一律「離線模式」（見 KGVocabBanner）。
             bannerError = KGVocabBannerErrorClassifier.refreshError(from: error)
             refreshSuccessMessage = nil
+            lastRefreshTrigger = trigger
+            noticeRevision += 1
         }
     }
 
@@ -188,6 +199,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             bannerError = nil
             refreshSuccessMessage = L10n.string("待刪除項目已同步")
         }
+        noticeRevision += 1
 
         await kgService.healthCheck()
     }
@@ -249,11 +261,14 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 bannerError = .archivePartial(
                     message: L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
                 )
+                noticeRevision += 1
             } else {
-                // 全數封存成功 → 清空前次部分失敗殘留的 error banner，
+                // 全數封存成功 → 清空前次部分失敗殘留的 error 狀態，
                 // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
+                // 成功回饋只發這一則 pill；不再另寫 `refreshSuccessMessage`，否則同一動作
+                // 會連續排出兩則成功 pill（#2047：一個事件一則通知）。
                 bannerError = nil
-                refreshSuccessMessage = L10n.string("封存已同步")
+                refreshSuccessMessage = nil
                 toastCoordinator.success(L10n.format("已封存 %@ 個", String(entries.count)))
             }
         }

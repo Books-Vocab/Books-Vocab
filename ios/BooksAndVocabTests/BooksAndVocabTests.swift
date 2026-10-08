@@ -315,9 +315,12 @@ struct BooksAndVocabTests {
 
         let entry = try context.fetch(FetchDescriptor<VocabularyEntry>()).first { $0.kgCardId == "card-lucid" }
 
+        // Remember → back → Forget: the new answer REPLACES the old one (issue #2025);
+        // still exactly one review / one record for the card.
         #expect(entry?.reviewCount == 1)
-        #expect(entry?.lastReviewFeedbackRaw == ReviewFeedback.remembered.rawValue)
+        #expect(entry?.lastReviewFeedbackRaw == ReviewFeedback.forgot.rawValue)
         #expect(records.count == 1)
+        #expect(records.first?.feedback == ReviewFeedback.forgot.rawValue)
         #expect(state.currentIndex == 1)
         TodayReviewSessionSnapshotStore.clear(for: nil)
     }

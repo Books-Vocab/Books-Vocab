@@ -45,6 +45,7 @@ final class TodayReviewState {
     // MARK: - Analytics
 
     let sessionStartTime: Date
+    private var sessionEndReported = false
 
     // MARK: - Immutable Lookup
 
@@ -381,6 +382,26 @@ final class TodayReviewState {
         modelContext.safeSave()
     }
 
+    /// 自動播放中會被擋掉的操作（#2046）：評分與洗牌要等使用者先關閉自動播放（暫停不算：`isAutoPlaying` 在暫停時仍為 true，
+    /// 擋的範圍與提示文案都以「關閉」為準，否則提示會叫人做一件解不開的事）。單一真相 ——
+    /// `performReviewIntent` 的守衛與 view 層「為何沒反應」的 pill 提示都問它，
+    /// 兩邊不會對「哪些操作被擋」各說各話。
+    static func autoplayBlocks(_ intent: ReviewIntent, isAutoPlaying: Bool) -> Bool {
+        guard isAutoPlaying else { return false }
+        switch intent {
+        case .forgot, .remembered, .shuffle: return true
+        default: return false
+        }
+    }
+
+    /// 「自動播放中請先關閉」pill 的事件鍵：按鈕 / 鍵盤 / 滑動三個入口共用同一個 key，
+    /// 連點取代而非堆疊（pill 規範見 docs/sop/ui-design.md「暫時性提示」）。
+    static let autoplayBlockedNoticeKey = "todayReview.autoplayBlocked"
+
+    func autoplayBlocks(_ intent: ReviewIntent) -> Bool {
+        Self.autoplayBlocks(intent, isAutoPlaying: isAutoPlaying)
+    }
+
     @discardableResult
     func performReviewIntent(
         _ intent: ReviewIntent,
@@ -403,12 +424,12 @@ final class TodayReviewState {
             return true
 
         case .forgot:
-            guard !isAutoPlaying, currentEntry != nil else { return false }
+            guard !autoplayBlocks(.forgot), currentEntry != nil else { return false }
             submit(.forgot, container: container, reviewSettings: reviewSettings)
             return true
 
         case .remembered:
-            guard !isAutoPlaying, currentEntry != nil else { return false }
+            guard !autoplayBlocks(.remembered), currentEntry != nil else { return false }
             submit(.remembered, container: container, reviewSettings: reviewSettings)
             return true
 
@@ -423,7 +444,7 @@ final class TodayReviewState {
             return true
 
         case .shuffle:
-            guard !isAutoPlaying, queue.count - currentIndex > 1 else { return false }
+            guard !autoplayBlocks(.shuffle), queue.count - currentIndex > 1 else { return false }
             shuffleQueue()
             return true
 
@@ -485,19 +506,30 @@ final class TodayReviewState {
         reviewSettings: ReviewSettings
     ) {
         guard currentEntry != nil else { return }
-        if scoring.hasAnswer(at: currentIndex) {
+        PerfLog.review.mark("submit.enter", "idx=\(currentIndex) fb=\(feedback == .remembered ? "R" : "F")")
+        // Replace semantics (#2025): a different feedback on an already-scored card
+        // (user went back) replaces the old answer; the same feedback is an
+        // idempotent advance (also what lets a repeated tap on the last card finish).
+        switch scoring.score(feedback, at: currentIndex) {
+        case .unchanged:
             advancePastAlreadyScoredCard()
             return
+        case .recorded:
+            AppAnalytics.track(.reviewCardSubmitted(
+                feedback: feedback == .remembered ? "remembered" : "forgot",
+                cardIndex: currentIndex,
+                totalCards: queue.count
+            ))
+        case .replaced(let previous):
+            // Not a new submission: keep `reviewCardSubmitted` 1:1 with cards and
+            // report the change as its own event so aggregates move, not inflate.
+            AppAnalytics.track(.reviewAnswerCorrected(
+                from: previous == .remembered ? "remembered" : "forgot",
+                to: feedback == .remembered ? "remembered" : "forgot",
+                cardIndex: currentIndex,
+                totalCards: queue.count
+            ))
         }
-
-        PerfLog.review.mark("submit.enter", "idx=\(currentIndex) fb=\(feedback == .remembered ? "R" : "F")")
-        scoring.record(feedback, at: currentIndex)
-
-        AppAnalytics.track(.reviewCardSubmitted(
-            feedback: feedback == .remembered ? "remembered" : "forgot",
-            cardIndex: currentIndex,
-            totalCards: queue.count
-        ))
 
         let didComplete = session.advanceAfterSubmission()
         syncCurrentEntryDerivedState()
@@ -574,7 +606,13 @@ final class TodayReviewState {
     /// funnel through here so the completion contract stays single-sourced.
     private func finishSessionIfComplete(completed: Bool? = nil) {
         guard completed ?? session.isComplete else { return }
+        // Always clear: going back and shuffling re-saves the order, so every
+        // transition into completion must drop it again.
         ReviewSessionStore.clear(userID: currentUserID)
+        // Re-completing after back + replace must not re-report the session
+        // (the correction already travelled as `reviewAnswerCorrected`).
+        guard !sessionEndReported else { return }
+        sessionEndReported = true
         // NOTE: the crash-recovery snapshot is deliberately NOT cleared here. With
         // persistence deferred to dismiss, the snapshot is the only record of the
         // session's answers until `flushPendingAnswers` confirms the store write —

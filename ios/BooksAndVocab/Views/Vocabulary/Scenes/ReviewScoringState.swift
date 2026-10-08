@@ -10,6 +10,37 @@ final class ReviewScoringState {
     var rememberedFeedbackTrigger = 0
     var forgotFeedbackTrigger = 0
 
+    enum ScoreOutcome: Equatable {
+        /// First answer for this card.
+        case recorded
+        /// Same feedback pressed again — idempotent, nothing changed.
+        case unchanged
+        /// A different feedback replaced the earlier answer (user went back and changed their mind).
+        case replaced(previous: ReviewFeedback)
+    }
+
+    /// Score `feedback` for the card at `index`, with replace semantics (#2025).
+    /// - First answer → recorded. Same feedback → no-op. Different feedback →
+    ///   the old answer's count is taken back, the new one added, the
+    ///   `reviewRecordID` is kept (so a later flush updates the same DB record in
+    ///   place) and `flushed` resets to false so the store catches up.
+    /// Haptic triggers are monotonic: a replacement fires the NEW feedback's
+    /// trigger and never decrements the old one.
+    @discardableResult
+    func score(_ feedback: ReviewFeedback, at index: Int) -> ScoreOutcome {
+        guard let existing = submittedAnswers[index] else {
+            record(feedback, at: index)
+            return .recorded
+        }
+        guard existing.feedback != feedback else { return .unchanged }
+        switch existing.feedback {
+        case .remembered: rememberedCount -= 1
+        case .forgot: forgotCount -= 1
+        }
+        record(feedback, at: index, reviewRecordID: existing.reviewRecordID)
+        return .replaced(previous: existing.feedback)
+    }
+
     @discardableResult
     func record(
         _ feedback: ReviewFeedback,

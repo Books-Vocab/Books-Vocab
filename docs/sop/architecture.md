@@ -303,8 +303,9 @@ LLM provider/SDK 的 terminal failure（429/5xx/timeout 等）另寫入 `llm_err
 
 ### Toast Notification System
 
-全 app 操作回饋走 `AppToastCoordinator`（EnvironmentKey 注入）：
-- `AppToast`：capsule 形狀，支援 swipe dismiss，4 種 style（success/info/warning/error）
+全 app 暫時性提示走 `AppToastCoordinator`（EnvironmentKey 注入）；pill vs 畫面內面板、時長、佇列與文案上限的規範在 `docs/sop/ui-design.md`「暫時性提示」：
+- `AppToast`：頂端 pill，單行、無動作按鈕，支援 swipe dismiss，4 種 style（success/info/warning/error）
+- `AppToastQueue`：同一事件（`key`）就地取代、不同事件排隊（最多 2 則）
 - `toastSheet` / `toastFullScreenCover`：自動注入 `toastOverlay()` 的 sheet wrapper
 - `safeSaveWithToast()`：`ModelContext` 安全存檔 + toast 回饋
 - 22 個 View 已接入

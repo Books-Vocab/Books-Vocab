@@ -223,7 +223,6 @@
 "單字庫已更新" = "単語帳を更新しました";
 "單字庫已是最新" = "単語帳は最新です";
 "待刪除項目已同步" = "削除待ちの項目を同期しました";
-"封存已同步" = "アーカイブを同期しました";
 "%@ 個待處理動作" = "%@ 個の保留中アクション";
 "%@ 個連結" = "%@ 個のリンク";
 "%@ 張" = "%@ 枚";
@@ -958,6 +957,7 @@
 "todayReview.card.notebook.default" = "デフォルトの単語帳";
 "todayReview.card.notebook.unnamed" = "名前のない単語帳";
 "todayReview.saveFailure" = "復習結果が保存されませんでした。後でもう一度お試しください。";
+"todayReview.autoplay.blockedHint" = "自動再生中は先に自動再生をオフにしてください";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "エクスポートに失敗しました";

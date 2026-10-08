@@ -223,7 +223,6 @@
 "單字庫已更新" = "단어장이 업데이트되었습니다";
 "單字庫已是最新" = "단어장이 최신 상태입니다";
 "待刪除項目已同步" = "삭제 대기 항목을 동기화했습니다";
-"封存已同步" = "보관함을 동기화했습니다";
 "%@ 個待處理動作" = "%@ 개 보류 중 작업";
 "%@ 個連結" = "%@ 개 링크";
 "%@ 張" = "%@ 장";
@@ -958,6 +957,7 @@
 "todayReview.card.notebook.default" = "기본 단어장";
 "todayReview.card.notebook.unnamed" = "이름 없는 단어장";
 "todayReview.saveFailure" = "복습 결과가 저장되지 않았습니다. 잠시 후 다시 시도해 주세요.";
+"todayReview.autoplay.blockedHint" = "자동 재생 중에는 먼저 자동 재생을 끄세요";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "내보내기 실패";

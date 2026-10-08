@@ -142,6 +142,8 @@ struct PodcastEpisodeListView: View {
                     staleDataBanner
                     episodesSection
                 }
+                // 失敗面板進出要順滑，不得跳變。
+                .animation(AppMotion.phaseChange, value: loadError != nil)
                 .padding(.horizontal, skin.spacing.cardPadding)
                 .padding(.bottom, skin.spacing.sheetSectionSpacing)
             }
@@ -306,25 +308,30 @@ struct PodcastEpisodeListView: View {
         }
     }
 
-    // MARK: - Stale data banner
+    // MARK: - Stale data panel
 
     /// Reload from store failed but we still have cached episodes — surface
     /// the staleness inline with a retry CTA instead of silently letting the
     /// user think the cached list is fresh (state matrix L384, track-3).
-    /// `.error` phase only fires when `rawEpisodes.isEmpty`, so this banner
+    /// `.error` phase only fires when `rawEpisodes.isEmpty`, so this panel
     /// is the only signal users get when `loadError != nil` overlaps with
-    /// cached content.
+    /// cached content. It is a persistent, actionable state, so it lives in an
+    /// in-screen panel rather than the transient top pill (docs/sop/ui-design.md
+    /// 「暫時性提示」).
     @ViewBuilder
     private var staleDataBanner: some View {
         if loadError != nil && !rawEpisodes.isEmpty {
-            AppBanner(
-                message: L10n.string("podcast.episodeList.staleBanner.message"),
-                systemImage: "exclamationmark.triangle",
-                onRetry: {
+            VocabStateMessageCard(
+                title: L10n.string("podcast.episodeList.staleBanner.message"),
+                systemImage: "exclamationmark.triangle"
+            ) {
+                Button(L10n.string("banner.action.retry")) {
                     Task { await reloadFromStore() }
                 }
-            )
+                .buttonStyle(.appCompactAction(.primary))
+            }
             .accessibilityIdentifier("podcast.episodeList.staleBanner")
+            .transition(.statusRowReveal)
         }
     }
 

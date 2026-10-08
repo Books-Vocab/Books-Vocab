@@ -2,21 +2,28 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
-// Tests for the toast notification system: AppToastItem model + AppToastCoordinator
-// queueing / auto-dismiss lifecycle.
+// Tests for the unified top-pill notification system (#2047):
+// AppToastItem model, the pure AppToastQueue state machine, and the
+// AppToastCoordinator timing wrapper around it.
+//
+// Contract under test (docs/sop/ui-design.md「暫時性提示」):
+// - same event (same `key`) → replace in place, never stack a duplicate;
+// - different events → queue, at most `AppToastQueue.capacity` (2) held in total
+//   (one visible + one waiting); overflow keeps the more severe notice;
+// - a queued pill only enters after the previous one has left (handoff gap),
+//   so two pills never swap content in place.
 //
 // Trade-offs:
 // - AppToast / ToastOverlayModifier are SwiftUI Views with no extractable pure
-//   state seam (tintColor / dragOffset are private @State driven by gestures),
-//   so they are not unit-tested here; the testable seam is the @Observable
-//   AppToastCoordinator and the AppToastItem value type.
-// - AppToastCoordinator has no de-dup: show() unconditionally replaces `current`.
-//   Tests below assert this replace-latest behavior rather than de-dup.
-// - Auto-dismiss timing runs on an injected `ManualToastScheduler`: tests advance
-//   fake time to exactly the deadline instead of sleeping against real timers,
-//   so they neither pass late nor fail on a stalled main queue (#2118). The
-//   production `AppToastTaskScheduler` is pinned separately on its own
-//   contract (runs after the delay, a cancelled action never runs).
+//   state seam, so they are not unit-tested here; the testable seams are the
+//   value types and the @Observable coordinator.
+// - Queue semantics are pinned on the pure `AppToastQueue` (deterministic, no
+//   clock). Auto-dismiss and handoff timing run on an injected
+//   `ManualToastScheduler`: tests advance fake time to exactly the deadline
+//   instead of sleeping against real timers (#2118). The production
+//   `AppToastTaskScheduler` is pinned separately on its own contract. The
+//   coordinator schedules auto-dismiss regardless of VoiceOver (announce is a
+//   side effect only), so these assertions hold on any simulator configuration.
 
 @Suite("ToastNotification")
 @MainActor
@@ -51,14 +58,218 @@ struct ToastNotificationTests {
         #expect(a != b)
     }
 
-    // MARK: - Coordinator enqueue
+    @Test func itemDefaultKeyIdentifiesEventByStyleAndMessage() {
+        let a = AppToastItem(message: "已複製", style: .success)
+        let b = AppToastItem(message: "已複製", style: .success)
+        let otherStyle = AppToastItem(message: "已複製", style: .info)
+        let otherMessage = AppToastItem(message: "已刪除", style: .success)
+        #expect(a.key == b.key)
+        #expect(a.key != otherStyle.key)
+        #expect(a.key != otherMessage.key)
+    }
+
+    @Test func itemExplicitKeyGroupsChangingMessagesIntoOneEvent() {
+        let first = AppToastItem(message: "已匯入 1 本", style: .success, key: "bookshelf.import")
+        let second = AppToastItem(message: "已匯入 2 本", style: .success, key: "bookshelf.import")
+        #expect(first.key == second.key)
+    }
+
+    @Test func styleSeverityOrdersErrorAboveWarningAboveRoutine() {
+        #expect(AppToastItem.Style.error.severity > AppToastItem.Style.warning.severity)
+        #expect(AppToastItem.Style.warning.severity > AppToastItem.Style.info.severity)
+        #expect(AppToastItem.Style.info.severity == AppToastItem.Style.success.severity)
+    }
+
+    // MARK: - Copy budget (single line, no wrapping)
+
+    @Test func displayWidthCountsWideScriptsAsTwoColumns() {
+        #expect(AppToastItem.displayWidth(of: "Copied") == 6)
+        #expect(AppToastItem.displayWidth(of: "已複製") == 6)
+        #expect(AppToastItem.displayWidth(of: "已匯入 3 本") == 11)
+        #expect(AppToastItem.displayWidth(of: "コピー") == 6)
+        #expect(AppToastItem.displayWidth(of: "복사됨") == 6)
+    }
+
+    @Test func copyBudgetIsTwentyWideOrFortyNarrowCharacters() {
+        #expect(AppToastItem.copyBudgetColumns == 40)
+        #expect(!AppToastItem.exceedsCopyBudget(String(repeating: "字", count: 20)))
+        #expect(AppToastItem.exceedsCopyBudget(String(repeating: "字", count: 21)))
+        #expect(!AppToastItem.exceedsCopyBudget(String(repeating: "a", count: 40)))
+        #expect(AppToastItem.exceedsCopyBudget(String(repeating: "a", count: 41)))
+    }
+
+    // MARK: - AppToastQueue: present / replace
+
+    @Test func queueReceiveIntoEmptyPresents() {
+        var queue = AppToastQueue()
+        let item = AppToastItem(message: "hello", style: .info)
+        #expect(queue.receive(item) == .presented)
+        #expect(queue.current == item)
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func queueSameEventReplacesCurrentInPlace() {
+        var queue = AppToastQueue()
+        let first = AppToastItem(message: "已匯入 1 本", style: .success, key: "import")
+        let second = AppToastItem(message: "已匯入 2 本", style: .success, key: "import")
+        _ = queue.receive(first)
+        #expect(queue.receive(second) == .replacedCurrent)
+        #expect(queue.current == second)
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func queueIdenticalNoticeCollapsesIntoCurrent() {
+        var queue = AppToastQueue()
+        _ = queue.receive(AppToastItem(message: "dup", style: .info))
+        for _ in 0..<5 {
+            #expect(queue.receive(AppToastItem(message: "dup", style: .info)) == .replacedCurrent)
+        }
+        #expect(queue.pending.isEmpty)
+        #expect(queue.current?.message == "dup")
+    }
+
+    @Test func queueDifferentEventWaitsBehindCurrent() {
+        var queue = AppToastQueue()
+        let first = AppToastItem(message: "first", style: .info)
+        let second = AppToastItem(message: "second", style: .warning)
+        _ = queue.receive(first)
+        #expect(queue.receive(second) == .queued(evicted: nil))
+        #expect(queue.current == first)
+        #expect(queue.pending == [second])
+    }
+
+    @Test func queueSameEventReplacesWaitingItem() {
+        var queue = AppToastQueue()
+        let visible = AppToastItem(message: "visible", style: .info)
+        let waiting = AppToastItem(message: "同步中 1/3", style: .info, key: "sync")
+        let update = AppToastItem(message: "同步中 2/3", style: .info, key: "sync")
+        _ = queue.receive(visible)
+        _ = queue.receive(waiting)
+        #expect(queue.receive(update) == .replacedPending)
+        #expect(queue.current == visible)
+        #expect(queue.pending == [update])
+    }
+
+    // MARK: - AppToastQueue: capacity / overflow
+
+    @Test func queueHoldsAtMostTwoNotices() {
+        #expect(AppToastQueue.capacity == 2)
+        var queue = AppToastQueue()
+        for i in 0..<10 {
+            _ = queue.receive(AppToastItem(message: "msg-\(i)", style: .info))
+        }
+        // The visible pill keeps its slot (it is already being read); the single
+        // waiting slot holds the newest notice of equal severity.
+        #expect(queue.current?.message == "msg-0")
+        #expect(queue.pending.map(\.message) == ["msg-9"])
+    }
+
+    @Test func queueOverflowEvictsLessSevereWaitingNotice() {
+        var queue = AppToastQueue()
+        let visible = AppToastItem(message: "visible", style: .info)
+        let routine = AppToastItem(message: "已複製", style: .success)
+        let failure = AppToastItem(message: "儲存失敗", style: .error)
+        _ = queue.receive(visible)
+        _ = queue.receive(routine)
+        #expect(queue.receive(failure) == .queued(evicted: routine))
+        #expect(queue.pending == [failure])
+    }
+
+    @Test func queueOverflowDropsLessSevereNewcomer() {
+        var queue = AppToastQueue()
+        let visible = AppToastItem(message: "visible", style: .info)
+        let failure = AppToastItem(message: "儲存失敗", style: .error)
+        let routine = AppToastItem(message: "已複製", style: .success)
+        _ = queue.receive(visible)
+        _ = queue.receive(failure)
+        #expect(queue.receive(routine) == .dropped)
+        #expect(queue.current == visible)
+        #expect(queue.pending == [failure])
+    }
+
+    // MARK: - AppToastQueue: retire / handoff
+
+    @Test func queueRetireWithoutWaitingNoticeNeedsNoHandoff() {
+        var queue = AppToastQueue()
+        _ = queue.receive(AppToastItem(message: "only", style: .success))
+        #expect(queue.retireCurrent() == false)
+        #expect(queue.current == nil)
+        #expect(!queue.isHandingOff)
+    }
+
+    @Test func queueRetireOnEmptyIsNoOp() {
+        var queue = AppToastQueue()
+        #expect(queue.retireCurrent() == false)
+        #expect(queue.current == nil)
+    }
+
+    @Test func queueRetireWithWaitingNoticeHandsOffInsteadOfSwappingInPlace() {
+        var queue = AppToastQueue()
+        let first = AppToastItem(message: "first", style: .info)
+        let second = AppToastItem(message: "second", style: .info)
+        _ = queue.receive(first)
+        _ = queue.receive(second)
+
+        #expect(queue.retireCurrent() == true)
+        // The outgoing pill leaves first; the next one is not on screen yet.
+        #expect(queue.current == nil)
+        #expect(queue.isHandingOff)
+        #expect(queue.pending == [second])
+
+        #expect(queue.completeHandoff() == second)
+        #expect(queue.current == second)
+        #expect(queue.pending.isEmpty)
+        #expect(!queue.isHandingOff)
+    }
+
+    @Test func queueNewNoticeDuringHandoffWaitsItsTurn() {
+        var queue = AppToastQueue()
+        let first = AppToastItem(message: "first", style: .info)
+        let second = AppToastItem(message: "second", style: .info)
+        let third = AppToastItem(message: "third", style: .info)
+        _ = queue.receive(first)
+        _ = queue.receive(second)
+        _ = queue.retireCurrent()
+
+        // Mid-handoff nothing is visible, but `third` must not jump the queue.
+        #expect(queue.receive(third) == .queued(evicted: nil))
+        #expect(queue.current == nil)
+        #expect(queue.pending == [second, third])
+
+        #expect(queue.completeHandoff() == second)
+        #expect(queue.pending == [third])
+    }
+
+    @Test func queueRetiredEventReappearingDuringHandoffQueuesAsNewOccurrence() {
+        var queue = AppToastQueue()
+        let first = AppToastItem(message: "first", style: .info)
+        let second = AppToastItem(message: "second", style: .info)
+        _ = queue.receive(first)
+        _ = queue.receive(second)
+        _ = queue.retireCurrent()
+
+        let firstAgain = AppToastItem(message: "first", style: .info)
+        #expect(queue.receive(firstAgain) == .queued(evicted: nil))
+        #expect(queue.pending == [second, firstAgain])
+    }
+
+    @Test func queueCompleteHandoffWithoutHandoffIsNoOp() {
+        var queue = AppToastQueue()
+        let item = AppToastItem(message: "visible", style: .info)
+        _ = queue.receive(item)
+        #expect(queue.completeHandoff() == nil)
+        #expect(queue.current == item)
+    }
+
+    // MARK: - Coordinator: present / replace / queue
 
     @Test func coordinatorStartsEmpty() {
         let coordinator = AppToastCoordinator()
         #expect(coordinator.current == nil)
+        #expect(coordinator.pending.isEmpty)
     }
 
-    @Test func showEnqueuesItem() {
+    @Test func showPresentsItem() {
         let coordinator = AppToastCoordinator()
         let item = AppToastItem(message: "hello", style: .info)
         coordinator.show(item)
@@ -66,24 +277,52 @@ struct ToastNotificationTests {
     }
 
     @Test func convenienceHelpersSetStyle() {
-        let coordinator = AppToastCoordinator()
+        // Fresh coordinator per style: different events would queue, not replace.
+        let success = AppToastCoordinator()
+        success.success("done")
+        #expect(success.current?.style == .success)
+        #expect(success.current?.message == "done")
 
-        coordinator.success("done")
-        #expect(coordinator.current?.style == .success)
-        #expect(coordinator.current?.message == "done")
+        let info = AppToastCoordinator()
+        info.info("fyi")
+        #expect(info.current?.style == .info)
 
-        coordinator.info("fyi")
-        #expect(coordinator.current?.style == .info)
+        let warning = AppToastCoordinator()
+        warning.warning("careful")
+        #expect(warning.current?.style == .warning)
 
-        coordinator.warning("careful")
-        #expect(coordinator.current?.style == .warning)
-
-        coordinator.error("oops")
-        #expect(coordinator.current?.style == .error)
-        #expect(coordinator.current?.message == "oops")
+        let error = AppToastCoordinator()
+        error.error("oops")
+        #expect(error.current?.style == .error)
+        #expect(error.current?.message == "oops")
     }
 
-    // MARK: - Coordinator dequeue / dismiss
+    @Test func convenienceHelpersForwardExplicitEventKey() {
+        let coordinator = AppToastCoordinator()
+        coordinator.success("已匯入 1 本", key: "bookshelf.import")
+        coordinator.success("已匯入 2 本", key: "bookshelf.import")
+        #expect(coordinator.current?.message == "已匯入 2 本")
+        #expect(coordinator.pending.isEmpty)
+    }
+
+    @Test func coordinatorDifferentEventWaitsForCurrent() {
+        let coordinator = AppToastCoordinator()
+        coordinator.info("first")
+        coordinator.warning("second")
+        #expect(coordinator.current?.message == "first")
+        #expect(coordinator.pending.map(\.message) == ["second"])
+    }
+
+    @Test func coordinatorRepeatedEventIsCollapsed() {
+        let coordinator = AppToastCoordinator()
+        for _ in 0..<10 {
+            coordinator.success("已複製")
+        }
+        #expect(coordinator.current?.message == "已複製")
+        #expect(coordinator.pending.isEmpty)
+    }
+
+    // MARK: - Coordinator: dismiss / handoff
 
     @Test func dismissClearsCurrent() {
         let coordinator = AppToastCoordinator()
@@ -99,46 +338,34 @@ struct ToastNotificationTests {
         #expect(coordinator.current == nil)
     }
 
-    // MARK: - Multi-toast queueing (replace-latest semantics)
+    @Test func dismissHandsOffToWaitingNoticeAfterExitGap() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.info("first")
+        coordinator.info("second")
+        coordinator.dismiss()
 
-    @Test func secondShowReplacesFirst() {
-        let coordinator = AppToastCoordinator()
-        let first = AppToastItem(message: "first", style: .info)
-        let second = AppToastItem(message: "second", style: .warning)
-        coordinator.show(first)
-        coordinator.show(second)
-        // No real queue: latest wins, only one toast is ever visible.
-        #expect(coordinator.current == second)
+        // Exit animation window: nothing on screen, next notice still waiting.
+        #expect(coordinator.current == nil)
+        #expect(coordinator.pending.map(\.message) == ["second"])
+
+        clock.advance(by: AppToastCoordinator.handoffDelay)
+        #expect(coordinator.current?.message == "second")
+        #expect(coordinator.pending.isEmpty)
     }
 
-    @Test func rapidShowsKeepOnlyLatest() {
-        let coordinator = AppToastCoordinator()
-        for i in 0..<10 {
-            coordinator.show(AppToastItem(message: "msg-\(i)", style: .info))
-        }
-        #expect(coordinator.current?.message == "msg-9")
+    @Test func waitingNoticeDoesNotEnterBeforeExitGapElapses() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.info("first")
+        coordinator.info("second")
+        coordinator.dismiss()
+        clock.advance(by: AppToastCoordinator.handoffDelay - .milliseconds(1))
+        #expect(coordinator.current == nil)
+        #expect(coordinator.pending.map(\.message) == ["second"])
     }
 
-    @Test func duplicateMessageIsNotDeduped() {
-        let coordinator = AppToastCoordinator()
-        let first = AppToastItem(message: "dup", style: .info)
-        coordinator.show(first)
-        let firstID = coordinator.current?.id
-
-        let second = AppToastItem(message: "dup", style: .info)
-        coordinator.show(second)
-        let secondID = coordinator.current?.id
-
-        // Same message but the coordinator replaces with the new item (distinct id).
-        #expect(firstID != secondID)
-        #expect(coordinator.current?.message == "dup")
-    }
-
-    // MARK: - Auto-dismiss timing (fake time)
-    //
-    // `show()` schedules the auto-dismiss whether or not VoiceOver is on
-    // (the announcement is a side effect only), so these hold on any
-    // simulator configuration.
+    // MARK: - Coordinator: auto-dismiss timing (fake time)
 
     @Test func toastPersistsUntilJustBeforeDeadline() {
         let clock = ManualToastScheduler()
@@ -167,21 +394,37 @@ struct ToastNotificationTests {
         #expect(coordinator.current == nil)
     }
 
-    @Test func newShowResetsAutoDismissTimer() {
+    @Test func sameEventResetsAutoDismissTimer() {
         let clock = ManualToastScheduler()
         let coordinator = AppToastCoordinator(scheduler: clock)
-        coordinator.success("first") // deadline t=2.5s
+        coordinator.success("saved") // deadline t=2.5s
+        let firstID = coordinator.current?.id
         clock.advance(by: .seconds(2))
-        // Re-show before the first deadline: the first timer is cancelled and a
-        // fresh 2.5s timer replaces it, so only one dismissal is ever pending.
-        coordinator.success("second") // deadline t=4.5s
+        // Same event again before the first deadline: replace in place and
+        // restart the timer instead of queueing a duplicate.
+        coordinator.success("saved") // deadline t=4.5s
+        #expect(coordinator.pending.isEmpty)
+        #expect(coordinator.current?.id != firstID)
         #expect(clock.scheduledCount == 1)
-        // Past the original deadline (t=2.8s) — the second toast survives.
+        // Past the original deadline (t=2.8s) — the refreshed occurrence must survive.
         clock.advance(by: .milliseconds(800))
-        #expect(coordinator.current?.message == "second")
+        #expect(coordinator.current?.message == "saved")
         // Its own deadline still dismisses it.
         clock.advance(by: .milliseconds(1_700))
         #expect(coordinator.current == nil)
+    }
+
+    @Test func queuedNoticeIsShownAfterCurrentExpires() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.success("first") // 2.5s, then handoff gap
+        coordinator.success("second")
+        clock.advance(by: .milliseconds(2_500))
+        #expect(coordinator.current == nil)
+        #expect(coordinator.pending.map(\.message) == ["second"])
+        clock.advance(by: AppToastCoordinator.handoffDelay)
+        #expect(coordinator.current?.message == "second")
+        #expect(coordinator.pending.isEmpty)
     }
 
     @Test func manualDismissCancelsPendingAutoDismiss() {

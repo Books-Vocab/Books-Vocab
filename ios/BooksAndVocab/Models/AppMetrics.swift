@@ -45,6 +45,12 @@ enum AppMotion {
     // MARK: - Micro-interaction Springs
     /// 卡片甩出畫面（臨界阻尼、極短時長 — 瞬間飛離，露出已預渲染的下一張，消除中間等待）
     static let swipeFlingSpring = Animation.spring(response: DesignTokens.Motion.Spring.SwipeFling.response, dampingFraction: DesignTokens.Motion.Spring.SwipeFling.damping)
+    /// 同一條 swipeFling 曲線（臨界阻尼 = bounce 0），時長由 `TodayReviewFling.plan` 依
+    /// 牌堆升頂剩餘量決定（#2027：swipe 放手與按鈕共用）；duration == SwipeFling.response
+    /// 時與 `swipeFlingSpring` 等價。
+    static func swipeFling(duration: Double) -> Animation {
+        .spring(duration: duration, bounce: 0)
+    }
     /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
     static let feedbackButtonSpring = Animation.spring(response: DesignTokens.Motion.Spring.FeedbackButton.response, dampingFraction: DesignTokens.Motion.Spring.FeedbackButton.damping)
     /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）

@@ -61,6 +61,7 @@ extension TodayReviewPresenter {
             )
             let borderOpacity = TodayReviewCardSlotLayout.borderOpacity(role: role, dismissProgress: dismissProgress)
             let slotShowsAnswer = isActive && state.revealStage.showsAnswer
+            let slotHeight = deckSlotHeight(isActive: isActive)
             let _ = { if role == .preview, dismissProgress > 0 || dismissPhase != .idle {
                 PerfLog.review.mark(
                     "stack.preview",
@@ -102,23 +103,33 @@ extension TodayReviewPresenter {
                 // 供非 active slot cap（見下方的 .frame）。量測只有卡片自己做得到，
                 // 所以由它回吐；deck 這邊不再重覆量一次。
                 onFrontHeightChange: { h in
+                    // 比對 slot 自己上次記的值（不是卡片量測快取）：slot 回收成別張卡後
+                    // 存的是舊卡高度，必須被新量測覆寫（#2026 第三種跳法）。
                     guard slotFrontHeights.indices.contains(slot),
-                          abs(slotFrontHeights[slot] - h) > 0.5 else { return }
-                    slotFrontHeights[slot] = h
+                          let updated = TodayReviewDeckHeight.slotHeightUpdate(
+                              stored: slotFrontHeights[slot], measured: h
+                          ) else { return }
+                    slotFrontHeights[slot] = updated
                 }
             )
             // FIX(review-flip-gap)：非 active slot 的 layout 高度 cap 到 active 卡
             // 高度，讓 ZStack(alignment:.top) 只由 active 卡決定高度、不被較高的背景
-            // 卡撐大。active slot 傳 nil（自然高度，反而定義 activeCardHeight）。
-            // 這一步就修好 layout 縫隙（fixed frame 對 parent 恆報 activeCardHeight）。
-            .frame(height: isActive ? nil : activeCardHeight, alignment: .top)
+            // 卡撐大。active slot 穩態傳 nil（自然高度，反而定義 activeCardHeight）。
+            // #2026：role 翻面 / 高度過渡期間 active 改釘成過渡值（`deckShellHeight`，
+            // spring 驅動），nil ↔ 固定值的硬切因此只發生在「兩者相等」的瞬間。
+            // 規則（含「為何這樣取」）與單元測試見 TodayReviewDeckHeight。
+            .frame(height: slotHeight, alignment: .top)
             // 內容溢出收斂：多數較高背景卡（如 production 長例句）會被 ReviewFoldSurface
             // 內部 .clipShape + cap frame 自然截斷、不溢出；但 fixedSize 內容（多行
             // recognition 長單字）會堅持自然高度而溢出 frame 往下渲染。統一 clip 掉
             // 非 active slot 超出 cap 的部分。active slot 給超大負 inset = 不裁切，
             // 保留卡片陰影（appElevation）。value-conditional 單一 modifier → 不破壞
             // Phase 4 常駐 slot 身分。
-            .clipShape(Rectangle().inset(by: isActive ? -3000 : 0))
+            // #2026：active 被釘高（過渡中）時只裁底邊 —— 變高時新卡自然高度 > 釘高，
+            // 內容會越過 frame 底邊蓋住「點一下展開」區（規則見 TodayReviewDeckHeight.clipBleed）。
+            .clipShape(DeckSlotClipShape(
+                bleed: TodayReviewDeckHeight.clipBleed(isActive: isActive, pinned: slotHeight != nil)
+            ))
             .geometryGroup()
             #if DEBUG
             // gap 調查（slot 整體）：量整個 slot VStack 的 layout 高度（transform 前）。
@@ -130,6 +141,11 @@ extension TodayReviewPresenter {
             #endif
             .animation((dismissPhase == .idle && !suppressFoldAnimation) ? AppMotion.reviewRevealSpring : nil,
                        value: slotShowsAnswer)
+            // #2045 方向標記：常駐 overlay（不改 slot 結構與 layout 高度），只有 active
+            // 吃 swipeOffset，其餘 slot 恆 0。放在姿態 modifier 之前 → 跟著卡片位移與旋轉。
+            .overlay(alignment: .top) {
+                swipeMarkers(swipeOffset: isActive ? swipeOffset : 0)
+            }
             // 姿態 = 純值 diff（modifier 結構固定）。順序對齊舊雙軌：
             // scale → offset → rotation → opacity；rotation anchor 在 role 翻面
             // 時切換（active=.bottom / preview=.center），翻面瞬間角度恆 0，無跳動。
@@ -162,13 +178,122 @@ extension TodayReviewPresenter {
     }
     #endif
 
+    /// 「記得 / 忘記」方向標記（#2045）。兩個標記常駐、不透明度連續由 swipeOffset 推導
+    /// （`TodayReviewFling.markerOpacity`），無 if/else 結構切換：拖動漸入、回彈沿 snap-back
+    /// spring 淡出、fling（swipe 或按鈕）沿同一條 fling spring 漸入、settle no-anim 同幀歸 0。
+    /// 純裝飾：不吃命中、不進 a11y（評分語意由下方按鈕承載）。
+    func swipeMarkers(swipeOffset: CGFloat) -> some View {
+        let threshold = TodayReviewMetrics.swipeThreshold
+        return HStack(alignment: .top, spacing: 0) {
+            swipeMarker(
+                title: L10n.string("記得"),
+                tint: appSkin.palette.success,
+                tilt: -TodayReviewMetrics.swipeMarkerTilt
+            )
+            .opacity(TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: 1))
+            Spacer(minLength: 0)
+            swipeMarker(
+                title: L10n.string("忘記"),
+                tint: appSkin.palette.destructive,
+                tilt: TodayReviewMetrics.swipeMarkerTilt
+            )
+            .opacity(TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: -1))
+        }
+        .padding(TodayReviewMetrics.swipeMarkerInset)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func swipeMarker(title: String, tint: Color, tilt: Double) -> some View {
+        Text(title)
+            .font(appSkin.typography.sectionTitle)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, AppSpacing.s3)
+            .padding(.vertical, AppSpacing.s1)
+            .background(
+                AppRoundedRect(roundness: appSkin.roundness.control)
+                    .fill(appSkin.palette.cardBackground.opacity(TodayReviewMetrics.swipeMarkerFillOpacity))
+            )
+            .overlay(
+                AppRoundedRect(roundness: appSkin.roundness.control)
+                    .stroke(tint, lineWidth: TodayReviewMetrics.swipeMarkerBorderWidth)
+            )
+            .rotationEffect(.degrees(tilt))
+    }
+
+    // MARK: Settle seam（fling 完成時刻的 role 輪替）
+
+    /// fling 完成、**在 no-anim transaction 內**把牌堆推進一格。
+    /// 共用 settle 縫 —— #2026（卡片區高度過渡）與 #2027（progress / 按鈕回饋）
+    /// 都只能改這裡的「單一職責步驟」，不得在 `completeFling` 內另開分支：
+    ///
+    /// 1. `releaseSwipePose`：swipeOffset 歸零、輪替被回收 slot 的隨機旋轉。凍結的
+    ///    toolbar intensity **不在此歸零**（#2027）：由 `completeFling` 下一個 runloop
+    ///    以 spring 放鬆，否則 no-anim transaction 會讓按鈕放大 / 發光硬切回原狀。
+    /// 2. `gateBackContent`：背面樹放閘（必須在推進「前」）。
+    /// 3. `pinDeckHeight`：把卡片區高度釘在畫面上當下的 layout 高度 —— 新 active
+    ///    當幀取舊高度（零跳變），隨後由 `.onChange(of: deckHeightKey)` 觸發 spring
+    ///    過渡到新卡高度。高度過渡**不**走 dismissProgress（見 #2026）。
+    /// 4. `advance`：`callback()` 推進 currentIndex，role 三向輪替，隨後 dismissPhase=idle。
+    ///
+    /// 呼叫端負責包 `disablesAnimations` 的 Transaction 與 settle 後的 suppress.reset。
+    func settleDeckAfterFling(callback: () -> Void) {
+        releaseSwipePose()
+        gateBackContent()
+        pinDeckHeight()
+        // promote（Phase 4）：callback() 推進 currentIndex → slot role
+        // 在本 no-anim transaction 內三向輪替。preview→active 與
+        // underPreview→preview 兩個存活 slot 的 transform 已被 fling
+        // 動畫推到目標值、內容 index 不變 → settle 幀零內容 diff；
+        // 唯一內容 diff 落在被回收、沉到 depth-2 的舊 active slot
+        // （被殼層位置遮蔽）。模型推進時序與舊雙軌完全相同
+        // （submit 仍在 fling 完成時刻，非樂觀預推）。
+        callback()
+        dismissPhase = .idle
+    }
+
+    private func releaseSwipePose() {
+        swipeOffset = 0
+        // 只重隨機被回收的舊 active slot（settle 後換內容、沉到
+        // depth-2）—— 存活的 preview/underPreview slot rotation 持久，
+        // 角色輪替跨 settle 連續不跳動。
+        if let recycled = state.slots.firstIndex(where: { $0.assignment.role == .active }),
+           recycled < stackRotations.count {
+            stackRotations[recycled] = .random(in: -1...1)
+        }
+    }
+
+    /// 幽靈背面樹（device trace 證據：settle burst 內
+    /// CardDocumentExampleBlock/CardRichTextRenderer 樣本）：
+    /// 從背面送出時 backContentMounted 仍 true，callback() 推進
+    /// currentIndex 後 settle 幀會替「新卡」完整建出背面樹，下一幀
+    /// 又被 onChange(currentCardKey) 放閘拆毀——同幀建、次幀拆的
+    /// 純白工。閘必須在推進「前」放下；onChange 仍在（冪等，收
+    /// previous/shuffle 等其他推進路徑）。
+    private func gateBackContent() {
+        backMountGeneration += 1
+        backContentMounted = false
+        suppressFoldAnimation = true
+    }
+
+    /// 起點 = 畫面上當下的卡片區 layout 高度（含背面展開後的總高；動畫尚未收尾時
+    /// 也是畫面當下值）。`layoutHeight == 0`（尚未 layout）時不動，退回啟動規則。
+    private func pinDeckHeight() {
+        let height = deckHeightProbe.layoutHeight
+        guard height > 0 else { return }
+        deckHeightGeneration += 1
+        deckHeightInFlight = false
+        deckShellHeight = height
+    }
+
     // MARK: Swipe Gesture + Fling Animation
 
     var screenWidth: CGFloat { containerWidth }
 
-    /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
+    /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂（規則見 TodayReviewFling）
     var dismissProgress: CGFloat {
-        min(abs(swipeOffset) / 200, 1.0)
+        TodayReviewFling.dismissProgress(swipeOffset: swipeOffset)
     }
 
     var swipeEnabled: Bool {
@@ -178,13 +303,17 @@ extension TodayReviewPresenter {
     var swipeDragGesture: some Gesture {
         DragGesture(minimumDistance: 15, coordinateSpace: .local)
             .onChanged { value in
-                guard swipeEnabled else { return }
+                guard swipeEnabled else {
+                    hintAutoplayBlockedSwipe(translation: value.translation)
+                    return
+                }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 withAnimation(AppMotion.swipeTrackingSpring) {
                     swipeOffset = value.translation.width
                 }
             }
             .onEnded { value in
+                if autoplayBlockedHintShown { autoplayBlockedHintShown = false }
                 guard swipeEnabled else { return }
                 let threshold = TodayReviewMetrics.swipeThreshold
                 if value.translation.width < -threshold {
@@ -199,14 +328,42 @@ extension TodayReviewPresenter {
             }
     }
 
-    /// 統一的甩出動畫 — swipe 和按鈕共用
-    func flingCard(direction: CGFloat, velocity: CGFloat = 1200, source: String = "swipe", callback: @escaping () -> Void) {
+    /// 自動播放中水平滑動被 `swipeEnabled` 擋下時說出原因（#2046）：每次手勢一次、
+    /// 水平主導才算（垂直捲動不提示）。被擋時 `swipeOffset` 從不寫入，卡片不會位移；
+    /// 事件鍵與按鈕 / 鍵盤入口共用，連續操作取代而非堆疊。
+    private func hintAutoplayBlockedSwipe(translation: CGSize) {
+        guard state.isAutoPlaying,
+              !autoplayBlockedHintShown,
+              abs(translation.width) > abs(translation.height) else { return }
+        autoplayBlockedHintShown = true
+        toastCoordinator.warning(
+            L10n.string("todayReview.autoplay.blockedHint"),
+            key: TodayReviewState.autoplayBlockedNoticeKey
+        )
+    }
+
+    /// 統一的甩出動畫 — swipe 放手、按鈕、ReviewProbe 共用**同一條過渡**（#2027）：
+    /// 終點 / 凍結 intensity / spring 時長全由 `TodayReviewFling.plan` 算出，
+    /// 入口之間只差起點 offset 與手指速度（按鈕 / probe 為 nil → 名目速度）。
+    func flingCard(direction: CGFloat, velocity: CGFloat? = nil, source: String = "swipe", callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
+        let plan = TodayReviewFling.plan(
+            direction: direction,
+            startOffset: swipeOffset,
+            releaseVelocity: velocity,
+            screenWidth: screenWidth,
+            threshold: TodayReviewMetrics.swipeThreshold,
+            baseDuration: Double(DesignTokens.Motion.Spring.SwipeFling.response)
+        )
         dismissPhase = .animatingOut
-        frozenSwipeIntensity = swipeIntensity
+        frozenSwipeIntensity = plan.frozenIntensity
         flingHapticTrigger += 1
         let _flingStart = DispatchTime.now()
-        PerfLog.review.mark("fling.start", "source=\(source) dir=\(direction) vel=\(velocity)")
+        let velocityText = velocity.map { "\(Int($0))" } ?? "nil"
+        PerfLog.review.mark(
+            "fling.start",
+            "source=\(source) dir=\(direction) vel=\(velocityText) start=\(Int(swipeOffset)) target=\(Int(plan.targetOffset)) dur=\(String(format: "%.3f", plan.duration))"
+        )
         // Record the real per-frame cadence across the fly-off window. Distinguishes
         // "animation ran smoothly to completion" from "main thread idle, advance gated
         // by the 0.8s safety net" — body-eval marks can't see this (CA interpolates the
@@ -219,8 +376,6 @@ extension TodayReviewPresenter {
         // capture whether that storm actually drops frames — the link the earlier
         // measurement window structurally missed.
         PerfLog.review.startFrameSampler("settle.frames")
-
-        let distance = screenWidth * 1.3 + min(velocity / 2000, 0.5) * screenWidth * 0.4
 
         // Completion block — shared between animation callback and safety fallback.
         // `caller` tags WHICH path fired it: `animation` = withAnimation completion
@@ -239,44 +394,25 @@ extension TodayReviewPresenter {
             TodayReviewState.flingClock = .now()
             PerfLog.review.measure("fling.transaction") {
                 withTransaction(noAnim) {
-                    frozenSwipeIntensity = 0
-                    swipeOffset = 0
-                    // 只重隨機被回收的舊 active slot（settle 後換內容、沉到
-                    // depth-2）—— 存活的 preview/underPreview slot rotation 持久，
-                    // 角色輪替跨 settle 連續不跳動。
-                    if let recycled = state.slots.firstIndex(where: { $0.assignment.role == .active }),
-                       recycled < stackRotations.count {
-                        stackRotations[recycled] = .random(in: -1...1)
-                    }
-                    // 幽靈背面樹（device trace 證據：settle burst 內
-                    // CardDocumentExampleBlock/CardRichTextRenderer 樣本）：
-                    // 從背面送出時 backContentMounted 仍 true，callback() 推進
-                    // currentIndex 後 settle 幀會替「新卡」完整建出背面樹，下一幀
-                    // 又被 onChange(currentCardKey) 放閘拆毀——同幀建、次幀拆的
-                    // 純白工。閘必須在推進「前」放下；onChange 仍在（冪等，收
-                    // previous/shuffle 等其他推進路徑）。
-                    backMountGeneration += 1
-                    backContentMounted = false
-                    suppressFoldAnimation = true
-                    // promote（Phase 4）：callback() 推進 currentIndex → slot role
-                    // 在本 no-anim transaction 內三向輪替。preview→active 與
-                    // underPreview→preview 兩個存活 slot 的 transform 已被 fling
-                    // 動畫推到目標值、內容 index 不變 → settle 幀零內容 diff；
-                    // 唯一內容 diff 落在被回收、沉到 depth-2 的舊 active slot
-                    // （被殼層位置遮蔽）。模型推進時序與舊雙軌完全相同
-                    // （submit 仍在 fling 完成時刻，非樂觀預推）。
-                    callback()
-                    dismissPhase = .idle
+                    settleDeckAfterFling(callback: callback)
                 }
             }
             DispatchQueue.main.async {
                 suppressFoldAnimation = false
                 PerfLog.review.mark("suppress.reset", "at=\(PerfChannel.ms(since: _flingStart))ms (fling.start->suppressOff)")
+                // toolbar 回饋放鬆（#2027）：凍結值撐過 settle 幀後才以 spring 歸零；
+                // 期間 swipeIntensity 讀凍結值（TodayReviewFling.toolbarIntensity）。
+                // 守門：下一次 fling 若已開始，不覆寫它的凍結值。
+                if dismissPhase == .idle {
+                    withAnimation(AppMotion.swipeSnapBackSpring) {
+                        frozenSwipeIntensity = 0
+                    }
+                }
             }
         }
 
-        withAnimation(AppMotion.swipeFlingSpring, completionCriteria: .logicallyComplete) {
-            swipeOffset = direction * distance
+        withAnimation(AppMotion.swipeFling(duration: plan.duration), completionCriteria: .logicallyComplete) {
+            swipeOffset = plan.targetOffset
         } completion: {
             completeFling("animation")
         }
@@ -291,5 +427,22 @@ extension TodayReviewPresenter {
             // reinit storm.
             PerfLog.review.stopFrameSampler("settle.frames")
         }
+    }
+}
+
+// MARK: - Slot clip（#2026）
+
+/// slot 的裁切形狀：`side` 外擴上/左/右、`bottom` 外擴底邊。外擴量為值參數，
+/// modifier 結構固定（不破壞 Phase 4 常駐 slot 身分）；量變只在 role / 過渡邊界發生。
+struct DeckSlotClipShape: Shape {
+    let bleed: TodayReviewDeckHeight.ClipBleed
+
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(
+            x: rect.minX - bleed.side,
+            y: rect.minY - bleed.side,
+            width: rect.width + 2 * bleed.side,
+            height: rect.height + bleed.side + bleed.bottom
+        ))
     }
 }

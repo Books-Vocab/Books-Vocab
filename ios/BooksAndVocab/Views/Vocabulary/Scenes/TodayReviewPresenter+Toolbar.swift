@@ -563,9 +563,13 @@ extension TodayReviewPresenter {
     // MARK: - Swipe ↔ Button Linkage（model 供料；feedback 按鈕的推導已隨子 view 下沉）
 
     var swipeIntensity: Double {
-        if dismissPhase == .animatingOut { return frozenSwipeIntensity }
-        guard swipeEnabled else { return 0 }
-        return max(-1, min(1, Double(swipeOffset / TodayReviewMetrics.swipeThreshold)))
+        TodayReviewFling.toolbarIntensity(
+            animatingOut: dismissPhase == .animatingOut,
+            frozen: frozenSwipeIntensity,
+            swipeEnabled: swipeEnabled,
+            swipeOffset: swipeOffset,
+            threshold: TodayReviewMetrics.swipeThreshold
+        )
     }
 }
 

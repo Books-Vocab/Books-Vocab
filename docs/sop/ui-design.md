@@ -179,7 +179,7 @@ Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.e
 | `reviewRevealSpring` | review front/back/details 展開 | Today Review |
 | `reviewNavigationSpring` | review 上一張 / 下一張 / 洗牌 | Today Review |
 | `reviewCardSwapSpring` | review 回答後換卡 | Today Review |
-| `toastPresent` | toast capsule 進出 | AppToast（全 app） |
+| `panelState` + `AnyTransition.bannerReveal` | toast pill 進出（Reduce Motion 改 `overlayFade`） | AppToast（全 app，見「暫時性提示」） |
 | `emphasizedDecelerate` | 非對稱進場曲線（Material 3） | AppOfflineBanner、未來 sheet/panel 進場 |
 | `emphasizedAccelerate` | 非對稱退場曲線（Material 3） | 未來 sheet/panel 退場 |
 | `subtleBreath` | 2.4s easeInOut autoreverse | `AppSkeleton` pulse、empty state 呼吸 |
@@ -216,7 +216,7 @@ Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.e
 - Settings：
   `modalSwap`、`statusRowReveal`
 - Toast：
-  `toastPresent`、`feedbackPulse`
+  `panelState` + `bannerReveal`（Reduce Motion：`overlayFade`）；畫面內面板：`phaseChange` + `statusRowReveal`
 - Graph：
   `panelState`（settings panel）、`linkedOverlayCard`
 
@@ -237,6 +237,47 @@ Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.e
   短邊 ≲30pt → `pill`；30–70pt → `control`；>70pt → `card`；方形圖示 → `icon`。
   尺度規則優先於角色名稱：比例制下同一個 token 在 44pt 與 227pt 上分別是 3.3pt 與 17pt，
   所以「它是一張卡片」不足以決定用 `card`，得先看它多大
+
+---
+
+## 暫時性提示：頂端 pill 與畫面內面板（#2047）
+
+所有暫時性提示（通知、已完成、輕度警告、輕度錯誤）統一用頂端滑出的小 pill；需要使用者決定或操作的狀態留在該畫面內的面板。實作：`UIComponents/AppToast.swift`（外觀）、`UIComponents/AppToastCoordinator.swift`（`AppToastQueue` 純狀態機＋計時），契約測試 `BooksAndVocabTests/ToastNotificationTests.swift`。
+
+### 選哪一種
+
+| 情境 | 用 | 例 |
+|------|----|----|
+| 一次性通知：已完成、背景結果、輕度警告／錯誤 | 頂端 pill：`toastCoordinator.success/info/warning/error` | 已複製、已刪除、同步完成、儲存失敗 |
+| 需要使用者決定或操作的**持續狀態**（重試、完成、關閉） | 畫面內面板：`AppStateMessageCard`（App Shell）／`VocabStateMessageCard`（Vocabulary 層）＋ `.appCompactAction` 具名按鈕 | 快取資料過期＋重試、刪除待同步＋重試、新增連結警告的重試／完成 |
+| 破壞性操作確認、需明確知悉的阻斷結果 | 系統 `.alert` / `.confirmationDialog` | 移除未同步單字、登入已過期、帳號刪除失敗 |
+| 持續性環境狀態（不是事件、也不需操作） | 既有專屬 strip：`AppOfflineBanner`、`DemoBanner` | 離線、Demo 模式 |
+
+1. **pill 只負責通知，不放按鈕**（沒有 undo／retry／action）。需要操作就用面板；兩者互斥，不擴充 pill 的 action API。
+2. 面板因**使用者操作的結果**而新出現時，另外彈一則 pill（面板可能不在視線內）。進畫面時自動載入失敗只顯示面板：面板就是進頁第一眼，pill 只會每次進頁重複出現（對齊 `ExplicitSync`「自動同步靜默、顯式同步回饋」）。
+3. `AppBanner`（內容流橫幅）不再新增呼叫點；暫時性用途改 pill，承載操作的改面板。剩餘呼叫點與保留理由列在 #2047 的遷移清單。
+
+### pill
+
+- **位置**：頂端 overlay；root 與每個 `toastSheet`／`toastFullScreenCover` 內容層都掛 `toastOverlay()`，所以 sheet 裡也看得到。Liquid Glass 小膠囊，`style` 決定語氣色與預設 icon；外緣留 `AppShellMetrics.pageHorizontalPadding`，長字截斷在膠囊內而不是貼齊螢幕邊。
+- **時長**：success／info 2.5 秒，warning／error 4 秒；可上滑提前關閉。VoiceOver 開啟時同時朗讀，計時照常。
+- **進出場**：`AppMotion.panelState` 驅動 `AnyTransition.bannerReveal`（自頂端滑入＋淡入）；Reduce Motion 改 `overlayFade`。同一事件就地取代只換字（`contentTransition(.opacity)`），不重播進出場。
+- **佇列**（`AppToastQueue`）：
+  - 事件身分＝`AppToastItem.key`，預設 `style|message`，重複的同一則自然合併；文案會變的同一事件（進度數字、同一來源的新結果）由呼叫端傳穩定的 `key:`。
+  - 同 key → 就地取代並重設計時（顯示中或等待中皆然）。
+  - 不同 key → 排隊；同時最多 `AppToastQueue.capacity` = 2 則（顯示中 1＋等待 1）。
+  - 滿了 → 等待中較不嚴重的那則讓位（error > warning > success／info，同級留最新）；新來的比等待中的都不重要就丟棄。顯示中那則不會被擠掉。
+  - 下一則在前一則退場後再等 `AppToastCoordinator.handoffDelay`（0.35 秒，對齊 `panelState` 退場）才進場：兩則 pill 不交疊、不原地換字。
+- **文案**：單行。`lineLimit(1)` → 先縮小到 0.8 → 尾端截斷，**不換行**。上限 `AppToastItem.copyBudgetColumns` = 40 欄（中日韓全形字 2 欄、其餘 1 欄 ⇒ 約 20 個全形字或 40 個英文字元；DEBUG 超限記 log）。失敗清單、原因、下一步這類較長說明放面板。文案一律走 `L10n.string`／`L10n.format` 並過 `ops/i18n_lint.sh`。
+- **事件 vs 狀態**：pill 是事件。狀態值不變但又發生一次（例如連續兩次下拉都「已是最新」）也要再通知，呼叫端以事件序號（例：`KGVocabCoordinator.noticeRevision`）觸發，不要拿狀態值的變化當觸發。
+- **選取器**：`app.toast`，label 為文案，`accessibilityValue` = `success`／`info`／`warning`／`error`。
+
+### 畫面內面板
+
+- `AppStateMessageCard`／`VocabStateMessageCard`：title 寫狀態，description 放補充說明（可多行），accessory 放具名 `.appCompactAction` 按鈕（主要動作 `.primary`，關閉 `.outline`），不用裸 glyph。
+- **位置**：該畫面內容流頂端（受影響內容上方），隨內容捲動；不是 overlay。
+- **進出場**：插入點掛 `.transition(.statusRowReveal)`，容器以 `.animation(AppMotion.phaseChange, value: <狀態>)` 驅動，不得跳變。
+- **生命週期**：狀態解除（重試成功、使用者關閉）才消失；不自動計時消失。
 
 ---
 
