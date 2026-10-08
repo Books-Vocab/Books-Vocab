@@ -124,16 +124,20 @@ final class ReadiumService: ReadiumServing {
     /// 從 Publication 的所有閱讀章節中提取出不重複的英文單字集合
     /// 此操作可能耗時，建議在背景 Task 中執行
     func extractUniqueWords(from publication: Publication) async -> Set<String> {
-        return await Task.detached(priority: .background) {
+        // detached task 不繼承呼叫端取消；以 handler 轉送，關閉閱讀器後不再整本掃描
+        // （取消時回傳空集合，呼叫端會丟棄結果）。
+        let scan = Task.detached(priority: .background) { () async -> Set<String> in
             let perfSpan = PerfLog.reader.interval("extractUniqueWords")
             var uniqueWords = Set<String>()
             let readingOrder = publication.readingOrder
 
             for link in readingOrder {
+                if Task.isCancelled { return [] }
                 // 嘗試讀取章節資源
                 guard let resource = publication.get(link) else { continue }
                 do {
                     let data = try await resource.read().get()
+                    if Task.isCancelled { return [] }
                     guard let htmlString = String(data: data, encoding: .utf8) else { continue }
                     
                     // 1. 簡易剝離 HTML 標籤
@@ -165,7 +169,12 @@ final class ReadiumService: ReadiumServing {
             AppLog.readium.info("extractUniqueWords 完成：共提取了 \(uniqueWords.count) 個不重複單字")
             perfSpan.end("\(uniqueWords.count) words")
             return uniqueWords
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await scan.value
+        } onCancel: {
+            scan.cancel()
+        }
     }
 }
 #endif
