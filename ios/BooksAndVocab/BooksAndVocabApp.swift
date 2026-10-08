@@ -83,14 +83,8 @@ struct BooksAndVocabApp: App {
         UITestFixtureSeed.injectIfNeeded(into: outcome.container, arguments: runtimeArguments)
         #endif
 
-        // Always recover orphan book files (idempotent — skips files with existing records)
-        // -ui-testing 下跳過：它對「真實 Books 目錄」reconcile（manifest 有
-        // 磁碟寫入），且跑在 fixture seed 之後——會把真機使用者的真書/髒模擬器
-        // 殘留收編進 ephemeral 容器，破壞 fixture 決定性與截圖隱私。
-        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments),
-           !AppRuntimeOptions.isUITesting(arguments: runtimeArguments) {
-            AppOrphanBookRecovery.run(container: outcome.container)
-        }
+        // Orphan book recovery 不在 init 跑（#2107）：reconciler 預設 root 會在 main thread
+        // 解析 iCloud 容器；改由 ContentView 的 .task 先背景暖快取再執行。
 
         #if os(iOS)
         // PodcastDownloadManager must hold a ModelContainer ref before any
@@ -229,6 +223,18 @@ struct BooksAndVocabApp: App {
                 .macSettingsCommandSheet()
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
+                }
+                .task {
+                    // Always recover orphan book files (idempotent — skips files with existing records)
+                    // -ui-testing 下跳過：它對「真實 Books 目錄」reconcile（manifest 有
+                    // 磁碟寫入），且跑在 fixture seed 之後——會把真機使用者的真書/髒模擬器
+                    // 殘留收編進 ephemeral 容器，破壞 fixture 決定性與截圖隱私。
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments),
+                          !AppRuntimeOptions.isUITesting(arguments: runtimeArguments) else { return }
+                    // 先在背景解析 iCloud 容器並暖 Book 快取，main actor 上的 reconciler
+                    // 才不會在 ubiquity lookup 上阻塞（#2107）。@Query 書架會在 save 後刷新。
+                    await Task.detached(priority: .utility) { _ = Book.iCloudBooksDirectory }.value
+                    AppOrphanBookRecovery.run(container: modelContainer)
                 }
                 .task {
                     guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
