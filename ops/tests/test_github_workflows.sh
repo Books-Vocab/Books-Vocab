@@ -221,11 +221,73 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   grep -q 'target_position' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bound group membership by queue position"
   grep -q 'MERGE_GROUP_PR_NUMBERS' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not consume explicit event membership"
-  grep -q 'merge_group.pull_requests' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not bind membership to merge-group event evidence"
+    || fail "merge-group independent review gate does not consume derived membership"
+  # The merge_group event payload carries no pull_requests list, so a join()
+  # over it is always empty and the gate failed on every run.
+  if grep -q 'merge_group.pull_requests' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate reads merge_group.pull_requests, which the event payload never provides"
+  fi
+  grep -Fq 'MERGE_GROUP_PR_NUMBERS: ${{ steps.membership.outputs.pr_numbers }}' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not take membership from the derive step output"
   grep -q 'membership evidence' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not fail closed without membership evidence"
+  membership_step="$(awk '
+    /^      - name: Derive merge-group membership$/ { in_step=1; next }
+    in_step && /^      - name:/ { exit }
+    in_step && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_step { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  [[ -n "$membership_step" ]] \
+    || fail "merge-group workflow has no 'Derive merge-group membership' step"
+  grep -q '^        id: membership$' <<<"$membership_step" \
+    || fail "merge-group membership step has no id: membership"
+  grep -Fq 'github.event.merge_group.head_ref' <<<"$membership_step" \
+    || fail "merge-group membership step does not derive PRs from merge_group.head_ref"
+  membership_script="$(awk '
+    /^        run: \|$/ { grab=1; next }
+    grab { sub(/^          /, ""); print }
+  ' <<<"$membership_step")"
+  if [[ -z "$membership_script" ]]; then
+    fail "merge-group membership step has no run script"
+  else
+    # Behavioural check: execute the step's own script against a fixture repo.
+    membership_tmp="$(mktemp -d)"
+    membership_repo="$membership_tmp/repo"
+    mfx() { git -C "$membership_repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+    run_membership() { # head_ref base_sha head_sha -> GITHUB_OUTPUT content; status = script status
+      : >"$membership_tmp/out"
+      (cd "$membership_repo" && GITHUB_OUTPUT="$membership_tmp/out" GITHUB_REF="" \
+        MERGE_GROUP_HEAD_REF="$1" MERGE_GROUP_BASE_SHA="$2" MERGE_GROUP_HEAD_SHA="$3" \
+        bash -c "$membership_script") >/dev/null 2>&1 || return 1
+      cat "$membership_tmp/out"
+    }
+    git init -q -b main "$membership_repo"
+    mfx commit -q --allow-empty -m base
+    m_base="$(mfx rev-parse HEAD)"
+    mfx checkout -q -b pr11
+    mfx commit -q --allow-empty -m "Merge pull request #99 from evil/forged-subject-on-plain-commit"
+    mfx checkout -q main
+    mfx merge -q --no-ff pr11 -m "Merge pull request #11 from Books-Vocab/lane-a"
+    m_solo="$(mfx rev-parse HEAD)"
+    mfx checkout -q -b pr12
+    mfx commit -q --allow-empty -m work
+    mfx checkout -q main
+    mfx merge -q --no-ff pr12 -m "Merge pull request #12 from Books-Vocab/lane-b"
+    m_group="$(mfx rev-parse HEAD)"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-11-$m_base" "$m_base" "$m_solo" || true)"
+    [[ "$out" == "pr_numbers=11" ]] \
+      || fail "membership step, solo group: expected pr_numbers=11, got '$out' (a plain commit with a forged subject must be ignored)"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_base" "$m_base" "$m_group" || true)"
+    [[ "$out" == "pr_numbers=11,12" ]] \
+      || fail "membership step, multi-PR group: expected pr_numbers=11,12, got '$out'"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-7-$m_base" "$m_base" "$m_base" || true)"
+    [[ "$out" == "pr_numbers=7" ]] \
+      || fail "membership step must still name the head_ref PR when history has no merge commits, got '$out'"
+    if run_membership "refs/heads/gh-readonly-queue/main/no-pr-here" "$m_base" "$m_solo" >/dev/null; then
+      fail "membership step accepts a head_ref that names no PR"
+    fi
+    rm -rf "$membership_tmp"
+  fi
   if grep -q 'maximumEntriesToMerge\|maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED"; then
     fail "merge-group independent review gate infers membership from a configured ceiling"
   fi

@@ -50,13 +50,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Checkout merge group
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The merge_group event payload has no pull_requests list.  Membership is
+      # derived from what the payload does carry: the head ref names the last
+      # PR (gh-readonly-queue/main/pr-<N>-<sha>) and the first-parent merge
+      # commits between base and head name every PR in a multi-PR group.  The
+      # live-queue cross-check below still fails closed on any disagreement.
+      - name: Derive merge-group membership
+        id: membership
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_ref="${MERGE_GROUP_HEAD_REF:-$GITHUB_REF}"
+          ref_pr="$(grep -oE 'pr-[0-9]+' <<<"$head_ref" | tail -n 1 | sed 's/^pr-//' || true)"
+          if [[ ! "$ref_pr" =~ ^[1-9][0-9]*$ ]]; then
+            echo "merge-group ref does not identify a target PR: $head_ref" >&2
+            exit 1
+          fi
+          history_prs="$(git log --first-parent --merges --format=%s "$MERGE_GROUP_BASE_SHA..$MERGE_GROUP_HEAD_SHA" \
+            | sed -nE 's/^Merge pull request #([1-9][0-9]*) from .*/\1/p')"
+          pr_numbers="$(printf '%s\n' "$ref_pr" $history_prs | sort -nu | paste -sd, -)"
+          echo "pr_numbers=$pr_numbers" >>"$GITHUB_OUTPUT"
+
       - name: Verify exact queued PR has independent review evidence
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
           MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-          MERGE_GROUP_PR_NUMBERS: ${{ join(github.event.merge_group.pull_requests.*.number, ',') }}
+          MERGE_GROUP_PR_NUMBERS: ${{ steps.membership.outputs.pr_numbers }}
         shell: bash
         run: |
           set -euo pipefail
