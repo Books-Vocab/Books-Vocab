@@ -190,7 +190,9 @@ enum StatsPresentation {
         // Forecast
         var forecastMap: [String: Int] = [:]
         let todayKey = inputs.clock.dayKey(inputs.clock.now)
-        for entry in synced {
+        // Only cards in the review queue (reviewed at least once, not excluded)
+        // are due; new cards' placeholder nextReviewAt must not count.
+        for entry in synced where entry.shouldAppearInReview && entry.reviewCount > 0 {
             let key = inputs.clock.dayKey(entry.nextReviewAt)
             if key <= todayKey {
                 forecastMap[todayKey, default: 0] += 1

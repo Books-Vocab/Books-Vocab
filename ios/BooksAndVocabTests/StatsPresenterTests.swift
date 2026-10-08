@@ -79,8 +79,25 @@ struct StatsPresenterTests {
             bookTitle: "B"
         )
         e.syncStatus = 1
+        e.reviewCount = 1
         e.nextReviewAt = day(dueOffset)
         return e
+    }
+
+    @Test func forecast_ignoresNewAndReviewExcludedCards() {
+        let due = syncedEntry(dueOffset: 0)
+        let fresh = syncedEntry(dueOffset: 0)
+        fresh.reviewCount = 0
+        let excluded = syncedEntry(dueOffset: 0)
+        excluded.isReviewExcluded = true
+
+        let s = StatsPresentation.buildSummary(
+            from: [due, fresh, excluded], reviewRecords: [], clock: Self.canonicalClock
+        )
+
+        #expect(s.totalCards == 3)
+        #expect(s.dueToday == 1)
+        #expect(s.forecast.map(\.count).reduce(0, +) == 1)
     }
 
     private func review(dayOffset: Int) -> ReviewRecord {
@@ -571,6 +588,7 @@ struct StatsPresenterTests {
                 bookTitle: "B"
             )
             entry.syncStatus = 1
+            entry.reviewCount = 1
             entry.nextReviewAt = anchor
             return entry
         }
@@ -611,7 +629,7 @@ struct StatsPresenterTests {
             let clock = UITestFixtureSeed.makeStatsProjectionClock(
                 for: fixtureID
             )
-            let visibleEntries = entries.filter(\.shouldAppearInKnowledgeList)
+            let visibleEntries = entries.filter { $0.shouldAppearInReview && $0.reviewCount > 0 }
             let todayKey = clock.dayKey(clock.now)
             let expectedDueToday = visibleEntries.filter {
                 clock.dayKey($0.nextReviewAt) <= todayKey
