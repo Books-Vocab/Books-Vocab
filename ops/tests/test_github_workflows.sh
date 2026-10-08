@@ -131,8 +131,10 @@ grep -Fq 'while IFS= read -r path; do' <<<"$repo_gate_block" \
   || fail "changed-Python format step is not Bash 3.2-compatible"
 grep -Fq '[[ -n "$path" ]] && changed_python+=("$path")' <<<"$repo_gate_block" \
   || fail "changed-Python format step does not collect non-empty paths safely"
-grep -Fq 'done < <(git diff --name-only --diff-filter=d "$BASE_SHA" "$HEAD_SHA" -- '\''*.py'\'')' <<<"$repo_gate_block" \
-  || fail "changed-Python format step is not bound to the exact base/head diff"
+grep -Fq 'done < <(git diff --name-only --diff-filter=d "$diff_base_sha" "$HEAD_SHA" -- '\''*.py'\'')' <<<"$repo_gate_block" \
+  || fail "changed-Python format step is not bound to the merge-base/head diff"
+grep -Fq 'git diff --check "$(git merge-base "$BASE_SHA" "$HEAD_SHA")" "$HEAD_SHA"' <<<"$repo_gate_block" \
+  || fail "repo-gate whitespace check is not bound to the merge-base/head diff"
 grep -Fq 'if ((${#changed_python[@]} == 0)); then' <<<"$repo_gate_block" \
   || fail "changed-Python format step has no empty-set pass path"
 grep -Fq 'uv run --no-project --python 3.13 --with '\''ruff==0.16.3'\'' ruff format --check "${changed_python[@]}"' <<<"$repo_gate_block" \
@@ -643,6 +645,139 @@ expected_cancel_report="$cancel_tmp/push-cancel.yml: push-triggered workflow can
 actual_cancel_report="$(push_cancel_violations "$cancel_tmp"/{push-cancel,push-conditional,pr-only}.yml 2>&1 || true)"
 [[ "$actual_cancel_report" == "$expected_cancel_report" ]] \
   || fail "push cancel checker positive control: expected [$expected_cancel_report], got [$actual_cancel_report]"
+
+# --- PR diffs start at the merge base, never at the base branch tip -----------
+# `pull_request.base.sha` is main's tip when the run starts, not the PR's fork
+# point. Once main has moved past the fork, `git diff BASE HEAD` also contains
+# the reverse of every newer main commit, so repo-gate reported whitespace
+# errors in files the PR never touched (PR #2291 failed on
+# ops/felix_compute_worker.py, which #2285 deleted on main after the fork).
+# Any diff that means "this PR's changes" must start from `git merge-base`.
+# merge_group workflows are exempt: a queue group's head contains its base, so
+# base..head already is the group's change set.
+two_point_diff_violations() {
+  local file
+  for file in "$@"; do
+    # Drop `$(git merge-base ...)` operands first: they legitimately mention
+    # both SHAs but are the fix, not the defect.
+    sed -E 's/\$\(git merge-base [^)]*\)/MERGE_BASE/g' "$file" \
+      | grep -nE 'git diff[^|;&]*(\$\{?BASE_SHA\}?"?[[:space:]]+"?\$\{?HEAD_SHA|\$\{?BASE_SHA\}?"?\.\.[^.])' \
+      | sed "s|^|${file}:|" || true
+  done
+}
+pr_diff_workflows=()
+for workflow_file in .github/workflows/*.yml; do
+  grep -Eq '^[[:space:]]*merge_group:' "$workflow_file" || pr_diff_workflows+=("$workflow_file")
+done
+live_two_point="$(two_point_diff_violations "${pr_diff_workflows[@]}")"
+[[ -z "$live_two_point" ]] \
+  || fail "PR workflow diffs BASE_SHA against HEAD_SHA directly instead of the merge base: [$live_two_point]"
+
+# Positive control: the checker names each two-point spelling and passes the
+# merge-base forms (inline `$(git merge-base ...)`, a variable, three-dot).
+tp_tmp="$wf_tmp/two-point"
+mkdir -p "$tp_tmp"
+cat >"$tp_tmp/bad.yml" <<'YAML'
+        run: |
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
+          git diff --name-only --diff-filter=d "$BASE_SHA" "$HEAD_SHA" -- '*.py'
+          git diff --stat ${BASE_SHA} ${HEAD_SHA}
+          git diff "$BASE_SHA".."$HEAD_SHA"
+YAML
+cat >"$tp_tmp/good.yml" <<'YAML'
+        run: |
+          git diff --check "$(git merge-base "$BASE_SHA" "$HEAD_SHA")" "$HEAD_SHA"
+          git diff --check "$merge_base" "$HEAD_SHA"
+          git diff "$BASE_SHA"..."$HEAD_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"
+YAML
+tp_bad_lines="$(two_point_diff_violations "$tp_tmp/bad.yml" | cut -d: -f2 | tr '\n' ' ')"
+[[ "$tp_bad_lines" == '2 3 4 5 ' ]] \
+  || fail "two-point diff checker positive control: expected lines [2 3 4 5 ], got [$tp_bad_lines]"
+tp_good_report="$(two_point_diff_violations "$tp_tmp/good.yml")"
+[[ -z "$tp_good_report" ]] \
+  || fail "two-point diff checker flags merge-base forms: [$tp_good_report]"
+
+# Behavior: run the real pr-gate steps against a repository whose base branch
+# moved past the PR's fork point (deleting a file whose blank line at EOF is a
+# `git diff --check` error, and adding a Python file the PR never touched).
+extract_named_step_run() {
+  ruby -e 'require "yaml"; y = YAML.load_file(ARGV[0])
+    step = y["jobs"][ARGV[1]]["steps"].find { |s| s["name"] == ARGV[2] }
+    abort "missing step #{ARGV[2]}" unless step
+    puts step["run"]' "$1" "$2" "$3"
+}
+mb_dir="$wf_tmp/merge-base"
+mb_repo="$mb_dir/repo"
+mkdir -p "$mb_repo" "$mb_dir/bin"
+extract_named_step_run "$PR_GATE" repo-gate "Check repository diff" > "$mb_dir/diff-check.sh"
+extract_named_step_run "$PR_GATE" repo-gate "Check changed Python formatting" > "$mb_dir/format.sh"
+# `uv` stub: record the arguments instead of downloading and running ruff.
+cat >"$mb_dir/bin/uv" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$UV_ARGS_OUT"
+SH
+chmod +x "$mb_dir/bin/uv"
+(
+  cd "$mb_repo"
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+  git init -q -b main
+  git config commit.gpgsign false
+  git config core.hooksPath /dev/null
+  printf 'clean\n' > clean.txt
+  printf 'quirk\n\n' > legacy.txt
+  printf 'x = 1\n' > old.py
+  git add -A
+  git commit -q -m fork-point
+  git checkout -q -b pr
+  printf 'feature\n' > feature.txt
+  printf 'y = 2\n' > pr.py
+  git add -A
+  git commit -q -m pr-change
+  git checkout -q -b pr-dirty main
+  printf 'trailing  \n' > dirty.txt
+  git add -A
+  git commit -q -m pr-whitespace-error
+  git checkout -q main
+  git rm -q legacy.txt old.py
+  printf 'z = 3\n' > main_only.py
+  git add -A
+  git commit -q -m main-moves-on
+  git checkout -q -b pr-rebased main
+  printf 'w = 4\n' > rebased.py
+  git add -A
+  git commit -q -m pr-on-top-of-main
+)
+mb_run() { # <script> <base ref> <head ref> -> step exit status; extra env passes through
+  local script="$1" base="$2" head="$3" rc=0
+  (
+    cd "$mb_repo"
+    git checkout -q --detach "$head"
+    BASE_SHA="$(git rev-parse "$base")" HEAD_SHA="$(git rev-parse "$head")" bash "$script" >/dev/null 2>&1
+  ) || rc=$?
+  echo "$rc"
+}
+mb_rc="$(mb_run "$mb_dir/diff-check.sh" main pr)"
+[[ "$mb_rc" == 0 ]] \
+  || fail "repo-gate diff check fails a PR that never touched a file main deleted after the fork (exit $mb_rc)"
+mb_rc="$(mb_run "$mb_dir/diff-check.sh" main pr-dirty)"
+[[ "$mb_rc" != 0 ]] \
+  || fail "repo-gate diff check passes a PR that introduces trailing whitespace (positive control)"
+mb_py() { # <base ref> <head ref> -> python paths handed to ruff
+  local out="$mb_dir/uv-args.$1.$2" rc
+  rc="$(UV_ARGS_OUT="$out" PATH="$mb_dir/bin:$PATH" mb_run "$mb_dir/format.sh" "$1" "$2")"
+  if [[ "$rc" == 0 && -f "$out" ]]; then
+    grep -E '\.py$' "$out" | tr '\n' ' '
+  else
+    printf 'exit-%s' "$rc"
+  fi
+}
+mb_py_got="$(mb_py main pr)"
+[[ "$mb_py_got" == 'pr.py ' ]] \
+  || fail "format step lists main's post-fork Python changes for a diverged PR: [$mb_py_got]"
+mb_py_got="$(mb_py main pr-rebased)"
+[[ "$mb_py_got" == 'rebased.py ' ]] \
+  || fail "format step mislists Python paths for a PR already on top of base: [$mb_py_got]"
 
 # Parse all workflow YAML with the runner's ubiquitous Ruby runtime. This
 # catches indentation/anchor errors before GitHub has to schedule a runner.

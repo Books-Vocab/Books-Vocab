@@ -136,9 +136,9 @@ rm -rf "$HOOK_TMP"
 section "One Swift file selects only the Swift-triggered fast mechanisms"
 SCOPE_JSON="$($GATE --files "$SAMPLE_FILE" --tier fast --dry-run --json 2>/dev/null)"
 if jq -e '[.results[] | select(.status != "skipped") | .id] | sort
-          == ["static.catalyst","static.i18n","static.injection","static.plain_deadzone","static.ui_token"]' \
+          == ["static.catalyst","static.i18n","static.injection","static.plain_deadzone","static.tap_a11y","static.ui_token"]' \
      <<<"$SCOPE_JSON" >/dev/null 2>&1; then
-  ok "--files <one Swift file> plans exactly the five Swift lints"
+  ok "--files <one Swift file> plans exactly the six Swift lints"
 else
   fail_t "unexpected fast-tier plan for one Swift file: $(jq -c '[.results[] | {id,status}]' <<<"$SCOPE_JSON" 2>/dev/null)"
 fi
