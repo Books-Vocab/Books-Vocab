@@ -345,6 +345,11 @@ extension KGService {
             }
         } while cursor != nil
         if !seenCursors.isEmpty {
+            // A card edited mid-drain can surface on two pages; keep the last
+            // (freshest) copy so counts and the cleanup ratio stay honest.
+            var lastIndex: [String: Int] = [:]
+            for (index, card) in pages.cards.enumerated() { lastIndex[card.id] = index }
+            pages.cards = pages.cards.enumerated().filter { lastIndex[$0.element.id] == $0.offset }.map(\.element)
             AppLog.kg.info("GET api/vocab drained \(seenCursors.count + 1) pages, \(pages.cards.count) cards")
         }
         return pages
