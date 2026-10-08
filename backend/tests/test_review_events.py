@@ -127,6 +127,11 @@ def test_full_pull_orders_legacy_offset_timestamps_by_utc_instant(tmp_path):
         )
         conn.commit()
 
+    # The one-time init migration canonicalizes legacy rows, so reopen to run it.
+    path = store.path
+    store.close()
+    store = ReviewEventStore(path)
+
     pulled, _cursor = pull_review_events(since=None, event_store=store)
 
     assert [event.event_id for event in pulled] == ["early", "late"]
@@ -146,6 +151,10 @@ def test_full_pull_cursor_normalizes_mixed_legacy_timestamp_forms(tmp_path):
             ],
         )
         conn.commit()
+
+    path = store.path
+    store.close()
+    store = ReviewEventStore(path)
 
     pulled, cursor = pull_review_events(since=None, event_store=store)
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlmodel import Field as SQLField
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, SQLModel, create_engine, func, select
 
 from .api_models import ReviewEventEntry
 from .exceptions import BadRequestError
@@ -20,6 +20,7 @@ from .sqlite_ledger import (
 )
 from .sqlite_ledger import (
     next_ingested_at,
+    normalize_last_ingested,
 )
 from .sqlite_ledger import (
     now_utc as _now,
@@ -59,8 +60,12 @@ class ReviewEvent(SQLModel, table=True):
     is_synthetic: bool = SQLField(default=False, index=True)
 
 
-def _ingestion_order_key(event: ReviewEvent) -> tuple[datetime, str]:
-    return _as_utc(event.ingested_at), event.event_id
+# Canonical stored form of ingested_at: naive UTC, fixed-width microseconds. Under it
+# SQLite's lexical comparison equals instant order, so the ingested_at index serves
+# both the cursor filter and ordering.
+_CANONICAL_INGESTED_GLOB = (
+    "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]"
+)
 
 
 # SRS 快照 + is_synthetic 加寬欄位。為既有 store ADD COLUMN(SQLite 不支援改既有欄約束,
@@ -90,6 +95,7 @@ class ReviewEventStore:
         _install_serializable_sqlite(self.engine)
         ReviewEvent.metadata.create_all(self.engine, tables=[ReviewEvent.__table__], checkfirst=True)
         self._migrate_ingested_at()
+        self._migrate_canonical_ingested_at()
         self._migrate_widen_schema()
 
     def _migrate_widen_schema(self) -> None:
@@ -110,6 +116,25 @@ class ReviewEventStore:
             ensure_columns(conn, table, {"ingested_at": "DATETIME"})
             conn.exec_driver_sql(f"UPDATE {table} SET ingested_at = reviewed_at WHERE ingested_at IS NULL")
             conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)")
+            conn.commit()
+
+    def _migrate_canonical_ingested_at(self) -> None:
+        """Rewrite legacy offset-bearing / T-form / short-fraction ingested_at text to
+        canonical naive UTC so SQL ordering and ``>`` match instant order. One-time
+        and idempotent; unparseable rows are left alone."""
+        table = ReviewEvent.__tablename__
+        with self.engine.connect() as conn:
+            rows = conn.exec_driver_sql(
+                f"SELECT event_id, ingested_at FROM {table} "
+                f"WHERE ingested_at IS NOT NULL AND ingested_at NOT GLOB '{_CANONICAL_INGESTED_GLOB}'"
+            ).fetchall()
+            for event_id, raw in rows:
+                try:
+                    parsed = datetime.fromisoformat(str(raw).strip().replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                canonical = _as_utc(parsed).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S.%f")
+                conn.exec_driver_sql(f"UPDATE {table} SET ingested_at = ? WHERE event_id = ?", (canonical, event_id))
             conn.commit()
 
     def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
@@ -137,13 +162,7 @@ class ReviewEventStore:
             # Continue the monotonic ingestion clock from the current max so each new
             # event gets a strictly increasing, unique ingested_at — even across a
             # backward wall-clock step (NTP) or multiple inserts within one microsecond.
-            # Do not use SQL MAX here: SQLite orders legacy offset-bearing datetime
-            # strings lexically, which is not the same as their UTC instant order.
-            ingested_values = session.exec(select(ReviewEvent.ingested_at)).all()
-            last_ingested = max(
-                (_as_utc(value) for value in ingested_values if value is not None),
-                default=None,
-            )
+            last_ingested = normalize_last_ingested(session.exec(select(func.max(ReviewEvent.ingested_at))).one())
             # Pre-fetched ids only cover what was already committed. The loop adds
             # each accepted id so a repeated event_id *inside* one payload is still
             # skipped — the per-entry `session.get` used to catch that via autoflush.
@@ -183,21 +202,23 @@ class ReviewEventStore:
 
     def all(self) -> list[ReviewEvent]:
         with Session(self.engine) as session:
-            events = list(session.exec(select(ReviewEvent)).all())
-        return sorted(events, key=_ingestion_order_key)
+            return list(session.exec(select(ReviewEvent).order_by(ReviewEvent.ingested_at, ReviewEvent.event_id)).all())
+
+    @staticmethod
+    def _since_statement(since: datetime) -> Any:
+        # ingested_at is stored as canonical naive UTC (see
+        # _migrate_canonical_ingested_at), so a naive-UTC bound compares correctly in
+        # SQL and uses ix_reviewevent_ingested_at; event_id makes ties deterministic.
+        since_naive = _as_utc(since).replace(tzinfo=None)
+        return (
+            select(ReviewEvent)
+            .where(ReviewEvent.ingested_at > since_naive)
+            .order_by(ReviewEvent.ingested_at, ReviewEvent.event_id)
+        )
 
     def get_since(self, since: datetime) -> list[ReviewEvent]:
-        # SQLite compares DATETIME values lexically, so rows written by older
-        # versions with different offsets can cross the cursor boundary even when
-        # their instants do not. Normalize both sides in Python before applying the
-        # strict ``>`` boundary; event_id makes legacy timestamp ties deterministic.
-        since = _as_utc(since)
         with Session(self.engine) as session:
-            events = list(session.exec(select(ReviewEvent)).all())
-        return sorted(
-            (event for event in events if _as_utc(event.ingested_at) > since),
-            key=_ingestion_order_key,
-        )
+            return list(session.exec(self._since_statement(since)).all())
 
     def close(self) -> None:
         if self.engine is not None:
