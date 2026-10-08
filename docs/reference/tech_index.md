@@ -22,7 +22,8 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 | iOS observability | `ios/BooksAndVocab/Services/AppCrashReporting.swift`、`docs/reference/ios_observability.md` | `./ops/ios_ops.sh sentry --json`、`./ops/sentry_tool.py ... --json` |
 | Backend | `backend/src/kg/` | `cd backend && uv run --locked python -m pytest` |
 | Podcast／LLM lab | `lab/podcast/`、`lab/llm_eval/` | 各自 README／`uv run` entrypoint |
-| GitHub-native delivery model | `docs/reference/delivery_model.md` | GitHub Issue／Project／PR／Actions／repository rules |
+| GitHub-native delivery model | `docs/reference/delivery_model.md` | GitHub Issue／PR／Actions／repository rules |
+| Issue management（label、狀態機、優先級、公開認領、Closes/Refs） | `docs/reference/issue_management.md` | `gh issue list`／Issue 留言中的 `kg.issue.claim.v1` 標記 |
 | Deterministic delivery control | `ops/delivery.py`、`ops/delivery_control/` | `./ops/delivery.py --help`、`./ops/test_ops.sh delivery-control` |
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_registry_core/`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |

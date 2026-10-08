@@ -1,6 +1,6 @@
 ---
 name: github-coordination
-description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project、PR 收斂與 merge 前條件，不接管實作 worktree。"
+description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue（label 與公開認領）、PR 收斂與 merge 前條件，不接管實作 worktree。"
 ---
 
 # GitHub coordination workflow
@@ -13,7 +13,7 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 ./ops/agent_onboard.py --identity '<CM|IM>' --intent '<delivery|release>' --entry '<coordination|merge|issue-planning|direct-assignment>' --evidence '<JSON object with the entry-specific external evidence>' --json
 ```
 
-依輸出讀 project overview、canonical identity boundary、GitHub Issue／Project／PR 與 required checks。不要因協調任務而建立本地 backlog、Issue mirror、merge queue 或替 Worker 修改 caller worktree。
+依輸出讀 project overview、canonical identity boundary、GitHub Issue／PR 與 required checks。不要因協調任務而建立本地 backlog、Issue mirror、merge queue 或替 Worker 修改 caller worktree。
 
 ## Boundary
 
@@ -21,6 +21,16 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 - CM 負責 live main、PR 優先順序、Ready admission、required checks、CR／DS 結果、merge queue／merge，以及 landing 後 local `main == origin/main`。CM 不修改 code、caller worktree、PR body 或 registry。
 - GitHub 外部狀態是唯一真相；本地 coordinator 只管理 worktree ownership／Scope，不保存 Issue／Project／PR lifecycle。
 - route 不是 merge 或 production 授權；缺少 PR、fresh checks、review 或批准時 fail closed。
+
+## Issue states, claims and PR links
+
+規則正本是 `docs/reference/issue_management.md`；此處只列協調時的動作。
+
+- 每個 open Issue 恰有一個狀態 label（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個 `P0`–`P3`。派工只取 `ready-for-solver`：先高優先級，同級依「解除阻擋者、範圍小、較舊」，跳過 Scope 與現有認領重疊者。
+- 認領只由 IM 寫，且必須公開：Issue 留言帶 `kg.issue.claim.v1` 標記（`claim`／`renew`／`release`，TTL 預設 6 小時）加 `in-progress`；不使用 assignee。過期只會被標 `claim-stale`，認領仍有效且排他（計入衝突與 `busy_scope`），直到 IM 明確 `release`（`reason=stale-cleared`）；lane 仍在做則 `renew`。CM 與一般寫作者只讀認領，不代發。
+- 公開看板是 label 為 `work-board` 的單一自我更新 Issue（機讀區塊 `kg.issue.board.v1`）；它是 Issue 事實的投影，兩者不一致以 Issue 與留言為準。
+- PR 內文 `## Issues` 區段逐一列 `Closes #N`（完全解決，合併自動關閉）與 `Refs #N`（部分，Issue 回 `ready-for-solver`）；由 `delivery.py publish --closes N`／`--refs M` 寫入（registry `external_ids` 指向 Issue 者預設為 `Closes`），republish／repair／hold／queue 皆沿用，不手改 body。手寫（非 `delivery.py` 發布）PR 才用模板的 `## Issues`。
+- `claim-issue`／`issue_sync` 尚未落地：認領依協議手動留言＋label；狀態 label 轉換由 IM 手動執行並讀回——PR 開啟 → `in-review`；關閉未合併 → 回 `in-progress`（lane 不再做則 `release` 回 `ready-for-solver`）；只 `Refs` 合併 → `release`（`pr-published`）並回 `ready-for-solver`，不留在 `in-review`。
 
 ## Delivery control commands
 

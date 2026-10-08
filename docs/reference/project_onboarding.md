@@ -30,7 +30,7 @@ KG 是 Knowledge Graph 英語學習產品：
 - `ops/`：測試入口、GitHub Actions 對應的 gate、worktree 協調、release/deploy safety wrapper。
 - `docs/`：產品技術細節、domain SOP、政策與文件路由；不是工作項目資料庫。
 
-GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktree 隔離實作，PR 承載變更、review 與驗證，Actions 執行 required checks，`main` 是合併後真相，release/deploy 依安全 SOP 執行。Worker／Issue Solver 只做 local code/test、commit、hand-back；IM 將 exact commit 發布成 PR；CM 控制 Ready admission、queue／merge 與 local `main == origin/main`。本地 coordinator 只處理多 worktree 的 ownership、Scope、本地驗證與交接，不複製 GitHub 的工作狀態。
+GitHub 是交付控制面：Issue（`P0`–`P3`／狀態 label 與 IM 的公開認領留言，見 `docs/reference/issue_management.md`）管規劃與排序，branch／worktree 隔離實作，PR 承載變更、review 與驗證，Actions 執行 required checks，`main` 是合併後真相，release/deploy 依安全 SOP 執行。Worker／Issue Solver 只做 local code/test、commit、hand-back；IM 將 exact commit 發布成 PR；CM 控制 Ready admission、queue／merge 與 local `main == origin/main`。本地 coordinator 只處理多 worktree 的 ownership、Scope、本地驗證與交接，不複製 GitHub 的工作狀態。
 
 ## Skill 與 docs 的分工
 
@@ -50,7 +50,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 | canonical identity | 主要責任 | 明確不負責 |
 |---|---|---|
 | CM | 交付協調、Ready admission、merge queue／merge、local main 同步、release/deploy 邊界 | 修改 code／worktree／PR body／registry；代替 IM 發 PR |
-| IM | GitHub Issue／Project、派工、worktree lifecycle、push exact commit、PR metadata／readiness、terminal cleanup | 修改 code、替 Worker commit／解 conflict、merge／enqueue |
+| IM | GitHub Issue（label 與公開認領，不用 Project）、派工、worktree lifecycle、push exact commit、PR metadata／readiness、terminal cleanup | 修改 code、替 Worker commit／解 conflict、merge／enqueue |
 | Worker | 接受 User／IM 直接指派，依 `dispatch_channel` 討論並完成 branch/worktree、程式碼、測試、local commit 與 hand-back；可唯讀 GitHub（`github:read`） | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
 | Issue Solver | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，完成 branch/worktree、程式碼、測試、local commit 與 hand-back；可唯讀 GitHub（`github:read`） | 接受未進 Issue 的直接指派；任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
 | CR | 審查 PR diff（`pr-review`）或 PR 發布前 lane 的 `base..HEAD` diff（`lane-review`）的正確性、測試、回歸、架構與安全 | 修改 caller worktree、merge、release |

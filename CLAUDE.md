@@ -13,20 +13,20 @@ GitHub 是交付控制面；本機工具只補足多 worktree 與本機驗證，
 | 心智模型 | GitHub / 本機對應 | 真正 owner |
 |---|---|---|
 | 想做什麼、為什麼做、完成判準 | GitHub Issue（需要規劃時） | GitHub Issues |
-| 優先序、視圖、里程碑 | GitHub Project | GitHub Projects |
+| 優先序、狀態、認領 | Issue 的 `P0`–`P3`／狀態 label 與 IM 的公開認領留言（無 Project、無 assignee；見 [`issue_management.md`](docs/reference/issue_management.md)） | GitHub Issues |
 | 一次實作的隔離環境 | branch + local worktree | Git / `ops/worktree_registry.py` |
 | 變更、討論、review、驗證結果 | Pull Request | GitHub PR + review |
 | 自動檢查與 required checks | GitHub Actions | `.github/workflows/` |
 | 合併後的產品主幹 | `main` | GitHub protected branch |
 | 發版、批准、rollback | release／部署 SOP | `ops/release.sh` + `ops/devops_kg_safe.sh` |
 
-有兩條入口：直接指派走 `User／IM → Worker → branch/worktree → local commit + hand-back → IM PR`；需要規劃、排序或追蹤的工作走 `IM → Issue／Project → Issue Solver → branch/worktree → local commit + hand-back → IM PR`。兩條路徑都在 `PR → Actions + CR + DS → CM merge → main` 收斂。Worker／Issue Solver 無 GitHub 寫入權（唯讀 gh 可）；IM 發布 PR；CM 控制 admission／queue／merge 與 local `main == origin/main`。Issue、Project、PR 的狀態不在 repo 內複製；本地 registry 不存工作項目生命週期，也不決定合併。
+有兩條入口：直接指派走 `User／IM → Worker → branch/worktree → local commit + hand-back → IM PR`；需要規劃、排序或追蹤的工作走 `IM → Issue → Issue Solver → branch/worktree → local commit + hand-back → IM PR`。兩條路徑都在 `PR → Actions + CR + DS → CM merge → main` 收斂。Worker／Issue Solver 無 GitHub 寫入權（唯讀 gh 可），認領由 IM 公開留言；IM 發布 PR；CM 控制 admission／queue／merge 與 local `main == origin/main`。Issue、PR 的狀態不在 repo 內複製；本地 registry 不存工作項目生命週期，也不決定合併。
 
 ## 本地 coordinator 的窄責任
 
 `ops/worktree_registry.py` 只記錄本機工作樹是否被誰使用、structured Scope、thread identity、branch/path、hand-back 與驗證摘要。IM 使用 `ops/worktree_orchestrate.py` 建立／接管 worktree、檢查 Scope overlap、執行本地 gate、保存 evidence、交回或安全移除工作樹；Worker／Issue Solver 不寫 GitHub（唯讀 gh 允許）。
 
-GitHub 外部 ID 只作 opaque reference；Issue、Project、PR 的生命週期與合併決定都在 GitHub 完成。
+GitHub 外部 ID 只作 opaque reference；Issue、PR 的生命週期與合併決定都在 GitHub 完成。
 
 ## 開發規則
 

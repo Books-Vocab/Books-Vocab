@@ -48,10 +48,10 @@ Grooming 本身不代表 Issue admission 或 implementation authorization；不�
 
 ### GitHub Issue → Issue Solver
 
-適用於需要排序、Project／milestone、討論、拆解或長期追蹤的工作。
+適用於需要排序、討論、拆解或長期追蹤的工作。
 
 1. User／Backlog Scout 把需要排序、追蹤或 fan-out 的發現寫成 GitHub Issue；IM 在 Issue 補齊背景、影響、acceptance、非目標與必要 domain context。
-2. IM／Scout 依 GitHub Project／triage 與 `delivery.py plan` 的 capacity 建議 fan-out；Issue Solver claim 後確認 branch、worktree 與 structured Scope。`plan` 不會自行 dispatch agent。
+2. IM／Scout 依 Issue 的 `P0`–`P3`／狀態 label 與 `delivery.py plan` 的 capacity 建議 fan-out；認領由 IM 公開發留言並設 `in-progress`（Solver 不寫 GitHub，規則見 `docs/reference/issue_management.md`），再確認 branch、worktree 與 structured Scope。`plan` 不會自行 dispatch agent。
 3. Issue Solver 依 Issue 實作與測試，commit 保持小而可 review，建立 typed hand-back 給派遣的 IM；PI 立即發布 exact PR 並關聯 Issue，再釋放 local assets。
 
 ## Common PR convergence

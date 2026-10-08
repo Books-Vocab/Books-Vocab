@@ -86,9 +86,9 @@
       "route_classes": {
         "delivery": {"issue-planning": "coordination", "direct-assignment": "coordination"}
       },
-      "owns": "GitHub Issue/Project 收件、排序、拆解、派工；本地 worktree lifecycle；exact Worker commit 的 push；PR 建立、metadata、readiness 與 terminal cleanup",
+      "owns": "GitHub Issue 收件、排序（P0–P3 label）、拆解、派工、公開認領；本地 worktree lifecycle；exact Worker commit 的 push；PR 建立、metadata、readiness 與 terminal cleanup",
       "not_owns": "修改產品 code、替 Worker commit/解 code conflict、CR/DS 結論、merge queue/merge、release/deploy",
-      "allowed_surfaces": ["github:issue-write", "github:project-write", "github:pr-write", "github:branch-push", "github:branch-delete-after-terminal", "local:worktree-lifecycle", "local:read-only-gate"],
+      "allowed_surfaces": ["github:issue-write", "github:pr-write", "github:branch-push", "github:branch-delete-after-terminal", "local:worktree-lifecycle", "local:read-only-gate"],
       "forbidden_surfaces": ["local:code-edit", "local:staging", "local:code-commit", "local:conflict-resolution", "github:merge", "github:review-decision"],
       "handoff_contract": {
         "input": ["GitHub Issue or direct assignment", "clean local Worker/Issue Solver hand-back"],
@@ -96,7 +96,7 @@
         "pr_invariant": "local hand-back is not complete until a real PR exists for CM"
       },
       "assignment_requirements": {
-        "issue-planning": ["GitHub Issue", "Project priority/triage"],
+        "issue-planning": ["GitHub Issue", "Issue priority/state labels"],
         "direct-assignment": ["具名 assignment", "acceptance", "Scope"]
       },
       "skill_routes": {
@@ -118,7 +118,7 @@
         "ios": {"direct-assignment": "implementation-ios"}
       },
       "owns": "直接指派工作的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence；GitHub read（gh issue view、gh pr view、gh api GET）只用於讀取 assignment 引用的 Issue/PR/review comments",
-      "not_owns": "GitHub Issue/PR/branch mutation、push、review、merge、enqueue、Issue lifecycle、Project priority、release/deploy",
+      "not_owns": "GitHub Issue/PR/branch mutation、push、review、merge、enqueue、Issue lifecycle、Issue priority／認領、release/deploy",
       "allowed_surfaces": ["github:read", "local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
       "forbidden_surfaces": ["github:any-mutation", "github:issue-write", "github:pr-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
       "handoff_contract": {
