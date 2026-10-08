@@ -22,8 +22,8 @@ extension SubscriptionManager {
         // 記住發起 refresh 時的 userId，用於 async 返回後的一致性檢查
         let requestUserId = authManager.userId
 
-        isLoading = true
-        defer { isLoading = false }
+        beginLoading()
+        defer { endLoading() }
 
         do {
             var remote = try await kgService.fetchEntitlements()
@@ -61,8 +61,8 @@ extension SubscriptionManager {
     /// 從 Apple 訂閱管理頁返回後執行完整重新同步
     func resyncAfterManagement(using kgService: any KGServing, authManager: any AuthManaging) async {
         guard authManager.isLoggedIn else { return }
-        isLoading = true
-        defer { isLoading = false }
+        beginLoading()
+        defer { endLoading() }
 
         await syncCurrentEntitlements(using: kgService)
         await refresh(using: kgService, authManager: authManager, force: true)
