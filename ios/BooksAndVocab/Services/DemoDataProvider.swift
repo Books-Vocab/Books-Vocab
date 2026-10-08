@@ -44,10 +44,15 @@ enum DemoDataProvider {
     static func removeDemoEntries(from container: ModelContainer) {
         let context = ModelContext(container)
         let predicate = #Predicate<VocabularyEntry> { $0.isDemoEntry == true }
-        if let entries = try? context.fetch(FetchDescriptor(predicate: predicate)) {
-            for entry in entries { context.delete(entry) }
-            context.safeSave()
+        let entries: [VocabularyEntry]
+        do {
+            entries = try context.fetch(FetchDescriptor(predicate: predicate))
+        } catch {
+            AppLog.data.error("DemoDataProvider: demo entry fetch failed: \(error.localizedDescription)")
+            return
         }
+        for entry in entries { context.delete(entry) }
+        context.safeSave()
     }
 
     /// Demo graph links for KnowledgeGraphCoordinator
