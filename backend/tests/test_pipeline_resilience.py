@@ -202,7 +202,9 @@ def test_enrich_step_retries_on_transient_failure():
     # After retry, enrich should have been called twice (1 fail + 1 success)
     assert len(enrich_calls) == 2
     # No error logged for enrich (retry succeeded)
-    assert not any("Step 1 (Enrich)" in m for m in logger.error_messages)
+    assert logger.error_messages == []
+    assert "[u1] Pipeline completed." in logger.info_messages
+    assert not any("Pipeline halted" in m or "cancelled" in m for m in logger.warning_messages)
 
 
 def test_embed_step_runs_in_executor_thread():
