@@ -605,11 +605,13 @@ final class TodayReviewState {
     /// funnel through here so the completion contract stays single-sourced.
     private func finishSessionIfComplete(completed: Bool? = nil) {
         guard completed ?? session.isComplete else { return }
+        // Always clear: going back and shuffling re-saves the order, so every
+        // transition into completion must drop it again.
+        ReviewSessionStore.clear(userID: currentUserID)
         // Re-completing after back + replace must not re-report the session
         // (the correction already travelled as `reviewAnswerCorrected`).
         guard !sessionEndReported else { return }
         sessionEndReported = true
-        ReviewSessionStore.clear(userID: currentUserID)
         // NOTE: the crash-recovery snapshot is deliberately NOT cleared here. With
         // persistence deferred to dismiss, the snapshot is the only record of the
         // session's answers until `flushPendingAnswers` confirms the store write —

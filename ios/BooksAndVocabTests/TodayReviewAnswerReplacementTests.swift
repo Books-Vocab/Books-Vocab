@@ -170,6 +170,45 @@ struct TodayReviewAnswerReplacementTests {
         #expect(state.currentEntry == nil)
     }
 
+    /// Re-completing after back + shuffle must still drop the saved order:
+    /// only the analytics event is once-per-session, the store clear is not.
+    @Test func recompletingAfterBackAndShuffleClearsTheSavedOrder() throws {
+        TodayReviewSessionSnapshotStore.clear(for: "replace-user")
+        ReviewSessionStore.clear(userID: "replace-user")
+        defer {
+            TodayReviewSessionSnapshotStore.clear(for: "replace-user")
+            ReviewSessionStore.clear(userID: "replace-user")
+        }
+        let entries = makeEntries(4)
+        let (container, _) = try makeContainer(entries)
+        let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: "replace-user")
+
+        for _ in 0..<4 {
+            state.submit(.remembered, container: container, reviewSettings: .default)
+        }
+        #expect(state.currentEntry == nil)
+        #expect(ReviewSessionStore.loadOrder(
+            availableEntries: entries, userID: "replace-user", allowPartialQueue: true
+        ) == nil)
+
+        state.goPrevious()
+        state.goPrevious()
+        state.shuffleQueue()
+        // Precondition: the shuffle really persisted an order (else the final
+        // assertion would pass vacuously).
+        #expect(ReviewSessionStore.loadOrder(
+            availableEntries: entries, userID: "replace-user", allowPartialQueue: true
+        ) != nil)
+
+        state.submit(.remembered, container: container, reviewSettings: .default)
+        state.submit(.remembered, container: container, reviewSettings: .default)
+        #expect(state.currentEntry == nil)
+
+        #expect(ReviewSessionStore.loadOrder(
+            availableEntries: entries, userID: "replace-user", allowPartialQueue: true
+        ) == nil)
+    }
+
     @Test func restoredSessionAllowsBackAndChangingTheAnswer() throws {
         TodayReviewSessionSnapshotStore.clear(for: "replace-user")
         defer { TodayReviewSessionSnapshotStore.clear(for: "replace-user") }
