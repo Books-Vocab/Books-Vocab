@@ -7,7 +7,10 @@ Aggregates metrics across all users by querying:
   - token_usage.db (token_tracker)   — daily token spend (7 days)
 
 All aggregations use a 24h window, except daily_token_spend which uses 7 days.
+``log_db_health`` additionally reads llm_errors.db and flags tables whose
+oldest row shows the daily log-retention prune is not running.
 """
+
 from __future__ import annotations
 
 import json
@@ -126,8 +129,7 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
     with pl._lock:
         conn = pl._get_conn()
         rows = conn.execute(
-            "SELECT steps FROM pipeline_runs WHERE "
-            f"{_utc_instant_predicate('started_at')}",
+            f"SELECT steps FROM pipeline_runs WHERE {_utc_instant_predicate('started_at')}",
             (candidate_bound, cutoff),
         ).fetchall()
 
@@ -156,14 +158,16 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
     steps_out = []
     for name, samples in by_step.items():
         p95 = _percentile(samples, 95.0)
-        steps_out.append({
-            "name": name,
-            "count": len(samples),
-            "p95_ms": round(p95, 1) if p95 is not None else None,
-            "max_ms": round(max(samples), 1),
-        })
+        steps_out.append(
+            {
+                "name": name,
+                "count": len(samples),
+                "p95_ms": round(p95, 1) if p95 is not None else None,
+                "max_ms": round(max(samples), 1),
+            }
+        )
     # sort descending by p95 so slowest steps surface first
-    steps_out.sort(key=lambda d: (d["p95_ms"] or 0), reverse=True)
+    steps_out.sort(key=lambda d: d["p95_ms"] or 0, reverse=True)
     return {"steps": steps_out, "window_hours": _WINDOW_24H}
 
 
@@ -223,13 +227,11 @@ def _translate_cache_hit_rate_24h() -> dict[str, Any]:
     with tl._lock:
         conn = tl._get_conn()
         misses_row = conn.execute(
-            "SELECT COUNT(*) FROM translate_log WHERE "
-            f"{_utc_instant_predicate('created_at')}",
+            f"SELECT COUNT(*) FROM translate_log WHERE {_utc_instant_predicate('created_at')}",
             (candidate_bound, cutoff),
         ).fetchone()
         hits_row = conn.execute(
-            "SELECT COUNT(*) FROM translate_cache_hits WHERE "
-            f"{_utc_instant_predicate('created_at')}",
+            f"SELECT COUNT(*) FROM translate_cache_hits WHERE {_utc_instant_predicate('created_at')}",
             (candidate_bound, cutoff),
         ).fetchone()
     misses = _cell(misses_row)
@@ -287,12 +289,14 @@ def _daily_token_spend_7d() -> dict[str, Any]:
         d = cutoff_date + timedelta(days=i)
         key = d.isoformat()
         entry = by_day.get(key, {"input": 0, "output": 0})
-        days_out.append({
-            "date": key,
-            "input": entry["input"],
-            "output": entry["output"],
-            "tokens": entry["input"] + entry["output"],
-        })
+        days_out.append(
+            {
+                "date": key,
+                "input": entry["input"],
+                "output": entry["output"],
+                "tokens": entry["input"] + entry["output"],
+            }
+        )
     total = sum(d["tokens"] for d in days_out)
     return {"days": days_out, "total": total}
 
@@ -306,7 +310,7 @@ def _table_health(conn, table: str, ts_col: str) -> dict[str, Any]:
     """Return ``{row_count, oldest_created_at}`` for one log table.
 
     ``COUNT(*)`` is acceptable here: every persistent log table is bounded by
-    log_retention pruning (``admin_log_retention_run``) and indexed on its
+    log_retention pruning (daily job, or ``admin_log_retention_run``) and indexed on its
     timestamp column, so even the busiest table stays small. ``oldest`` uses
     ``MIN(ts_col)`` so an operator can see how far back un-pruned rows reach.
     Table/column names are module-internal literals (never user input).
@@ -319,14 +323,49 @@ def _table_health(conn, table: str, ts_col: str) -> dict[str, Any]:
     return {"row_count": int(count or 0), "oldest_created_at": oldest}
 
 
-def _log_db_health() -> dict[str, Any]:
-    """Per-table row_count + oldest timestamp across all persistent log DBs.
+# log_db_health table → the log_retention kind whose window prunes it
+# (translate_cache_hits shares the translate window, as in ``run_all``).
+_RETENTION_KIND = {
+    "pipeline_runs": "pipeline",
+    "judge_log": "judge",
+    "translate_log": "translate",
+    "translate_cache_hits": "translate",
+    "token_usage": "token",
+    "llm_errors": "llm_error",
+}
 
-    Lets an admin judge at a glance whether ``admin_log_retention_run`` is due.
+# A daily prune keeps the oldest row within one window (+1 day). A row older
+# than this many windows means at least a whole window of runs was missed.
+_OVERDUE_WINDOWS = 2
+
+
+def _retention_status(oldest: str | None, kind: str) -> dict[str, Any]:
+    """Return ``{retention_days, overdue}`` for a table's oldest timestamp.
+
+    ``retention_days`` is the window the pruner applies (``*_RETENTION_DAYS``
+    env, else its default). The ISO-8601 text comparison is deliberately the
+    pruner's own ``WHERE col < cutoff``, so a table flagged overdue is always
+    one a retention run would clear.
+    """
+    from .log_retention import _effective_days
+
+    days = _effective_days(kind, None)
+    overdue = oldest is not None and oldest < _cutoff_iso(_OVERDUE_WINDOWS * days * 24)
+    return {"retention_days": days, "overdue": overdue}
+
+
+def _log_db_health() -> dict[str, Any]:
+    """Per-table row_count, oldest timestamp and retention status of every log DB.
+
+    Covers every table ``log_retention.run_all`` prunes (scheduled daily by
+    ops/launchd/com.kg.log-retention.plist). ``overdue`` means the oldest row
+    is older than ``_OVERDUE_WINDOWS`` × the table's retention window, i.e.
+    the scheduled prune is not running.
     Note: pipeline_runs keys its timestamp as ``started_at``; the others use
     ``created_at`` — both surface under ``oldest_created_at`` for a uniform shape.
     """
     from . import judge_log as jl
+    from . import llm_error_log as el
     from . import pipeline_log as pl
     from . import token_tracker as tt
     from . import translate_log as tl
@@ -342,6 +381,10 @@ def _log_db_health() -> dict[str, Any]:
         out["translate_cache_hits"] = _table_health(conn, "translate_cache_hits", "created_at")
     with tt._lock:
         out["token_usage"] = _table_health(tt._get_conn(), "token_usage", "created_at")
+    with el._lock:
+        out["llm_errors"] = _table_health(el._get_conn(), "llm_errors", "created_at")
+    for table, kind in _RETENTION_KIND.items():
+        out[table] |= _retention_status(out[table]["oldest_created_at"], kind)
     return out
 
 
@@ -355,14 +398,17 @@ def collect_observability() -> dict[str, Any]:
 
     All timestamps and date buckets are UTC; ``tz`` declares this so downstream
     consumers never reinterpret ``substr(created_at,1,10)`` date cuts as local.
+    ``log_retention_overdue`` lists the ``log_db_health`` tables flagged overdue.
     """
+    log_db_health = _log_db_health()
     return {
         "translate_cache_hit_rate_24h": _translate_cache_hit_rate_24h(),
         "pipeline_step_p95_24h": _pipeline_step_p95_24h(),
         "pipeline_failure_rate_24h": _pipeline_failure_rate_24h(),
         "judge_rejection_rate_24h": _judge_rejection_rate_24h(),
         "daily_token_spend_7d": _daily_token_spend_7d(),
-        "log_db_health": _log_db_health(),
+        "log_db_health": log_db_health,
+        "log_retention_overdue": [table for table, health in log_db_health.items() if health["overdue"]],
         "tz": "UTC",
         "generated_at": _utcnow().isoformat(),
     }

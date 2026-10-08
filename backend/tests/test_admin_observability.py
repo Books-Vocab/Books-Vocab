@@ -1,4 +1,5 @@
 """Tests for /api/admin/observability — site-wide aggregation panel."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 ADMIN_TOKEN = "test-admin-token-observability"
-EXPECTED_ADMIN_APP_CLIENTS = 18
+EXPECTED_ADMIN_APP_CLIENTS = 21
 admin_app_constructed = 0
 admin_app_explicit_close = 0
 
@@ -90,20 +91,33 @@ def test_observability_response_declares_utc_tz(admin_app):
 
 # ── log_db_health (row_count + oldest) ────────────────────────────────────
 
+# Every table log_retention.run_all() prunes → the default window that prunes
+# it (translate_cache_hits shares the translate window).
+_DEFAULT_WINDOW_DAYS = {
+    "pipeline_runs": 30,
+    "judge_log": 60,
+    "translate_log": 14,
+    "translate_cache_hits": 14,
+    "token_usage": 90,
+    "llm_errors": 30,
+}
+
+
+def test_log_db_health_checks_every_retention_kind():
+    # llm_errors was once pruned but never health-checked; a new log kind in
+    # log_retention must not repeat that.
+    import kg.admin_observability as ao
+    import kg.log_retention as lr
+
+    assert set(ao._RETENTION_KIND.values()) == set(lr._RETENTION)
+
 
 def test_observability_log_db_health_keys_present(admin_app):
     body = _get(admin_app.client).json()
     health = body["log_db_health"]
-    for table in (
-        "pipeline_runs",
-        "judge_log",
-        "translate_log",
-        "translate_cache_hits",
-        "token_usage",
-    ):
-        assert table in health, f"missing table: {table}"
-        assert "row_count" in health[table]
-        assert "oldest_created_at" in health[table]
+    assert sorted(health) == sorted(_DEFAULT_WINDOW_DAYS), "one entry per table log_retention prunes"
+    for table in _DEFAULT_WINDOW_DAYS:
+        assert sorted(health[table]) == ["oldest_created_at", "overdue", "retention_days", "row_count"], table
 
 
 def test_observability_log_db_health_empty(admin_app):
@@ -112,6 +126,117 @@ def test_observability_log_db_health_empty(admin_app):
     assert health["judge_log"]["row_count"] == 0
     assert health["judge_log"]["oldest_created_at"] is None
     assert health["token_usage"]["row_count"] == 0
+    # An empty table has nothing to prune, so it is never overdue.
+    assert {t: h.get("overdue") for t, h in health.items()} == dict.fromkeys(_DEFAULT_WINDOW_DAYS, False)
+    assert body.get("log_retention_overdue") == []
+
+
+# ── log retention overdue (oldest row older than 2× its window) ───────────
+
+
+def _seed_aged_rows(age_days: dict[str, float]) -> None:
+    """Write one row per named log table through its own API, then backdate it."""
+    import kg.judge_log as jl
+    import kg.llm_error_log as el
+    import kg.pipeline_log as pl
+    import kg.token_tracker as tt
+    import kg.translate_log as tl
+
+    writers = {
+        "pipeline_runs": (pl, "started_at", lambda: pl.start_run("aged", "u1", "nb1", "manual")),
+        "judge_log": (
+            jl,
+            "created_at",
+            lambda: jl.record(
+                user_id="u1",
+                notebook_id="nb1",
+                from_id="a",
+                to_id="b",
+                similarity=0.5,
+                verdict="merge",
+                confidence=0.9,
+                accepted=True,
+            ),
+        ),
+        "translate_log": (
+            tl,
+            "created_at",
+            lambda: tl.record(
+                user_id="u1",
+                operation="translate_quick",
+                word="apple",
+                context="I ate an apple.",
+                context_hash="hash",
+                source_lang="en",
+                target_lang="zh-Hant",
+                response_raw='{"t":"蘋果"}',
+                latency_ms=10,
+            ),
+        ),
+        "translate_cache_hits": (
+            tl,
+            "created_at",
+            lambda: tl.record_cache_hit(
+                user_id="u1",
+                operation="translate_quick",
+                word="apple",
+                context_hash="hash",
+                source_lang="en",
+                target_lang="zh-Hant",
+            ),
+        ),
+        "token_usage": (tt, "created_at", lambda: tt.record("u1", "translate_quick", 10, 20)),
+        "llm_errors": (
+            el,
+            "created_at",
+            lambda: el.record(
+                user_id="u1",
+                call_type="translate_quick",
+                error_class="RateLimitError",
+            ),
+        ),
+    }
+    now = datetime.now(UTC)
+    for table, days in age_days.items():
+        module, column, write = writers[table]
+        write()
+        conn = module._get_conn()
+        conn.execute(f"UPDATE {table} SET {column} = ?", ((now - timedelta(days=days)).isoformat(),))
+        conn.commit()
+
+
+def test_log_db_health_flags_tables_older_than_twice_their_window(admin_app):
+    _seed_aged_rows({t: 2 * days + 1 for t, days in _DEFAULT_WINDOW_DAYS.items()})
+
+    body = _get(admin_app.client).json()
+    health = body["log_db_health"]
+    assert {t: h.get("retention_days") for t, h in health.items()} == _DEFAULT_WINDOW_DAYS
+    assert {t: h.get("overdue") for t, h in health.items()} == dict.fromkeys(_DEFAULT_WINDOW_DAYS, True)
+    assert body.get("log_retention_overdue") == list(_DEFAULT_WINDOW_DAYS)
+
+
+def test_log_db_health_rows_within_twice_their_window_are_not_overdue(admin_app):
+    # Older than one window (pruning is due) but a daily job may simply not
+    # have reached them yet — only a full missed window counts as overdue.
+    _seed_aged_rows({t: 2 * days - 1 for t, days in _DEFAULT_WINDOW_DAYS.items()})
+
+    body = _get(admin_app.client).json()
+    health = body["log_db_health"]
+    assert all(h["row_count"] == 1 for h in health.values())
+    assert {t: h.get("overdue") for t, h in health.items()} == dict.fromkeys(_DEFAULT_WINDOW_DAYS, False)
+    assert body.get("log_retention_overdue") == []
+
+
+def test_log_db_health_overdue_honours_retention_env_override(admin_app, monkeypatch):
+    # The same *_RETENTION_DAYS env the pruner reads; 11 days is fresh under
+    # the 30-day default but overdue under a 5-day window.
+    monkeypatch.setenv("LLM_ERROR_LOG_RETENTION_DAYS", "5")
+    _seed_aged_rows({"llm_errors": 11})
+
+    body = _get(admin_app.client).json()
+    llm_errors = body["log_db_health"].get("llm_errors", {})
+    assert (llm_errors.get("retention_days"), llm_errors.get("overdue")) == (5, True)
+    assert body.get("log_retention_overdue") == ["llm_errors"]
 
 
 def test_observability_log_db_health_counts_rows(admin_app):
@@ -122,12 +247,24 @@ def test_observability_log_db_health_counts_rows(admin_app):
     pl.start_run("h1", "u1", "nb1", "manual")
     pl.end_run("h1", "ok")
     jl.record(
-        user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
-        similarity=0.5, verdict="merge", confidence=0.9, accepted=True,
+        user_id="u1",
+        notebook_id="nb1",
+        from_id="a",
+        to_id="b",
+        similarity=0.5,
+        verdict="merge",
+        confidence=0.9,
+        accepted=True,
     )
     jl.record(
-        user_id="u1", notebook_id="nb1", from_id="c", to_id="d",
-        similarity=0.5, verdict="merge", confidence=0.9, accepted=False,
+        user_id="u1",
+        notebook_id="nb1",
+        from_id="c",
+        to_id="d",
+        similarity=0.5,
+        verdict="merge",
+        confidence=0.9,
+        accepted=False,
     )
     tt.record("u1", "translate", 10, 20)
 
@@ -157,6 +294,7 @@ def test_observability_empty_data_returns_zero_or_null_metrics(admin_app):
 
 def test_pipeline_failure_rate_counts_failed_vs_total(admin_app):
     import kg.pipeline_log as pl
+
     pl.start_run("r1", "u1", "nb1", "manual")
     pl.end_run("r1", "ok")
     pl.start_run("r2", "u1", "nb1", "manual")
@@ -173,6 +311,7 @@ def test_pipeline_failure_rate_counts_failed_vs_total(admin_app):
 
 def test_pipeline_failure_rate_excludes_old_runs(admin_app):
     import kg.pipeline_log as pl
+
     pl.start_run("old", "u1", "nb1", "manual")
     pl.end_run("old", "failed")
     # Hand-edit started_at to 48h ago
@@ -194,6 +333,7 @@ def test_pipeline_failure_rate_excludes_old_runs(admin_app):
 
 def test_pipeline_step_p95_returns_per_step_durations(admin_app):
     import kg.pipeline_log as pl
+
     # Build 10 runs with explicit step durations for "judge" step
     durations_ms = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
     base = datetime.now(UTC)
@@ -231,10 +371,7 @@ def test_observability_filters_fixed_offset_rows_by_utc_instant(admin_app, monke
     cutoff = "2026-05-13T12:00:00+00:00"
     before_cutoff = "2026-05-13T12:30:00+01:00"
     assert before_cutoff >= cutoff  # the pre-fix SQLite text predicate includes it
-    assert (
-        datetime.fromisoformat(before_cutoff).astimezone(UTC)
-        < fixed_now - timedelta(hours=24)
-    )
+    assert datetime.fromisoformat(before_cutoff).astimezone(UTC) < fixed_now - timedelta(hours=24)
     monkeypatch.setattr(ao, "_utcnow", lambda: fixed_now)
 
     pl.start_run("before-cutoff", "u1", "nb1", "manual")
@@ -244,29 +381,44 @@ def test_observability_filters_fixed_offset_rows_by_utc_instant(admin_app, monke
         "UPDATE pipeline_runs SET started_at = ?, steps = ? WHERE run_id = ?",
         (
             before_cutoff,
-            json.dumps([{
-                "name": "judge",
-                "started_at": before_cutoff,
-                "ended_at": "2026-05-13T12:31:00+01:00",
-            }]),
+            json.dumps(
+                [
+                    {
+                        "name": "judge",
+                        "started_at": before_cutoff,
+                        "ended_at": "2026-05-13T12:31:00+01:00",
+                    }
+                ]
+            ),
             "before-cutoff",
         ),
     )
     pl_conn.commit()
 
     jl.record(
-        user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
-        similarity=0.4, verdict="reject", confidence=0.2,
-        accepted=False, reject_reason="low_confidence",
+        user_id="u1",
+        notebook_id="nb1",
+        from_id="a",
+        to_id="b",
+        similarity=0.4,
+        verdict="reject",
+        confidence=0.2,
+        accepted=False,
+        reject_reason="low_confidence",
     )
     jl_conn = jl._get_conn()
     jl_conn.execute("UPDATE judge_log SET created_at = ?", (before_cutoff,))
     jl_conn.commit()
 
     tl.record(
-        user_id="u1", operation="translate_quick", word="apple",
-        context="I ate an apple.", context_hash="hash",
-        source_lang="en", target_lang="zh-Hant", response_raw='{"t":"蘋果"}',
+        user_id="u1",
+        operation="translate_quick",
+        word="apple",
+        context="I ate an apple.",
+        context_hash="hash",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw='{"t":"蘋果"}',
         latency_ms=10,
     )
     tl_conn = tl._get_conn()
@@ -299,17 +451,28 @@ def test_observability_filters_fixed_offset_rows_by_utc_instant(admin_app, monke
 
 def test_judge_rejection_rate_24h(admin_app):
     import kg.judge_log as jl
+
     # 3 accepted, 1 rejected → rejection rate = 0.25
     for i in range(3):
         jl.record(
-            user_id="u1", notebook_id="nb1",
-            from_id=f"a{i}", to_id=f"b{i}",
-            similarity=0.8, verdict="accept", confidence=0.9, accepted=True,
+            user_id="u1",
+            notebook_id="nb1",
+            from_id=f"a{i}",
+            to_id=f"b{i}",
+            similarity=0.8,
+            verdict="accept",
+            confidence=0.9,
+            accepted=True,
         )
     jl.record(
-        user_id="u1", notebook_id="nb1",
-        from_id="x", to_id="y",
-        similarity=0.5, verdict="reject", confidence=0.9, accepted=False,
+        user_id="u1",
+        notebook_id="nb1",
+        from_id="x",
+        to_id="y",
+        similarity=0.5,
+        verdict="reject",
+        confidence=0.9,
+        accepted=False,
         reject_reason="below_threshold",
     )
 
@@ -334,26 +497,40 @@ def test_admin_observability_judge_rejection_rate_excludes_degree_cap(admin_app)
     # 2 model-accepted
     for i in range(2):
         jl.record(
-            user_id="u_obs", notebook_id="nb",
-            from_id="a", to_id=f"acc_{i}",
-            similarity=0.8, verdict="shares_usage", confidence=0.9,
+            user_id="u_obs",
+            notebook_id="nb",
+            from_id="a",
+            to_id=f"acc_{i}",
+            similarity=0.8,
+            verdict="shares_usage",
+            confidence=0.9,
             accepted=True,
         )
     # 5 model-rejected
     for i in range(5):
         jl.record(
-            user_id="u_obs", notebook_id="nb",
-            from_id="a", to_id=f"rej_{i}",
-            similarity=0.6, verdict="not_applicable", confidence=0.3,
-            accepted=False, reject_reason="low_confidence",
+            user_id="u_obs",
+            notebook_id="nb",
+            from_id="a",
+            to_id=f"rej_{i}",
+            similarity=0.6,
+            verdict="not_applicable",
+            confidence=0.3,
+            accepted=False,
+            reject_reason="low_confidence",
         )
     # 3 degree_cap rejects — must NOT affect rate
     for i in range(3):
         jl.record(
-            user_id="u_obs", notebook_id="nb",
-            from_id="a", to_id=f"cap_{i}",
-            similarity=0.85, verdict="shares_usage", confidence=0.9,
-            accepted=False, reject_reason="degree_cap",
+            user_id="u_obs",
+            notebook_id="nb",
+            from_id="a",
+            to_id=f"cap_{i}",
+            similarity=0.85,
+            verdict="shares_usage",
+            confidence=0.9,
+            accepted=False,
+            reject_reason="degree_cap",
         )
 
     body = _get(admin_app.client).json()
@@ -373,25 +550,36 @@ def test_translate_cache_hit_rate_uses_real_counter(admin_app):
 
     # 2 misses recorded (each = 1 LLM call)
     tl.record(
-        user_id="u1", operation="translate_quick",
-        word="apple", context="I ate an apple.",
+        user_id="u1",
+        operation="translate_quick",
+        word="apple",
+        context="I ate an apple.",
         context_hash="hash_apple",
-        source_lang="en", target_lang="zh-Hant",
-        response_raw='{"t":"蘋果"}', latency_ms=100,
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw='{"t":"蘋果"}',
+        latency_ms=100,
     )
     tl.record(
-        user_id="u2", operation="translate_quick",
-        word="banana", context="I ate a banana.",
+        user_id="u2",
+        operation="translate_quick",
+        word="banana",
+        context="I ate a banana.",
         context_hash="hash_banana",
-        source_lang="en", target_lang="zh-Hant",
-        response_raw='{"t":"香蕉"}', latency_ms=100,
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw='{"t":"香蕉"}',
+        latency_ms=100,
     )
     # 3 cache hits (short-circuited, never reach record())
     for _ in range(3):
         tl.record_cache_hit(
-            user_id="u1", operation="translate_quick",
-            word="apple", context_hash="hash_apple",
-            source_lang="en", target_lang="zh-Hant",
+            user_id="u1",
+            operation="translate_quick",
+            word="apple",
+            context_hash="hash_apple",
+            source_lang="en",
+            target_lang="zh-Hant",
         )
 
     body = _get(admin_app.client).json()
@@ -417,6 +605,7 @@ def test_translate_cache_hit_rate_empty_returns_none_rate(admin_app):
 
 def test_daily_token_spend_7d_returns_7_buckets(admin_app):
     import kg.token_tracker as tt
+
     tt.record("u1", "translate_quick", 100, 50)
     tt.record("u2", "translate_explain", 200, 80)
 
