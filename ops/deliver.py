@@ -16,11 +16,12 @@ failed or the review bot left inline comments on the head, unless
 --accept-review-findings gives a reason.  A mutation that meets a busy delivery lock retries (--lock-timeout).
 A failed stage reports the underlying error whole.
 
-Before the hand-back seals HEAD, the changed ``*.py`` files must pass the very
-``ruff format --check`` the pr-gate runs (version read from pr-gate.yml, never
-restated here).  A failure stops the run and names the files and the exact
-format command; deliver never rewrites the branch itself, because a silent
-rewrite after the author committed would hand back code nobody ran the checks on.
+Before the checks run, the changed ``*.py`` files are formatted with the very
+``ruff format`` the pr-gate pins (version read from pr-gate.yml, never restated
+here).  A rewrite is committed in the lane worktree as ``style: ruff format
+(pre-publish)`` so the checks and the hand-back see the formatted code; nothing
+runs when no Python file changed, and a worktree that is dirty beforehand is
+refused rather than folded into that commit.
 
 Outcomes written into the hand-back receipt come only from the ``--check``
 commands this run executed: status from the exit code, detail from the last
@@ -78,6 +79,9 @@ REVIEW_FAILED = frozenset(
     {"failure", "timed_out", "action_required", "startup_failure"}
 )
 SHA = re.compile(r"[0-9a-f]{40}")
+FORMAT_COMMIT_MESSAGE = (
+    "style: ruff format (pre-publish)\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+)
 # What delivery.py abandon-pr refuses on, read for the PR redeliver replaces.
 PR_GUARD_QUERY = (
     "query($owner: String!, $name: String!, $number: Int!) {"
@@ -583,8 +587,14 @@ class Delivery:
             )
         self.say(f"rebased onto {TRUNK} ({behind} commit(s))")
 
-    def check_format(self) -> None:
-        """Run the pr-gate's pinned `ruff format --check` on the changed Python files."""
+    def format_changed_python(self) -> None:
+        """Format the changed Python files with the pr-gate's pinned ruff; commit any rewrite.
+
+        The pr-gate fails a PR whose changed ``*.py`` files are not ruff-formatted,
+        so deliver applies the same pinned ``ruff format`` first.  Only a clean
+        worktree is touched, so the commit holds exactly the formatter's rewrite;
+        it lands before the checks run, so they test what gets handed back.
+        """
         names = self.git(
             "diff", "--name-only", "--diff-filter=d", f"{TRUNK}...HEAD", "--", "*.py"
         )
@@ -592,19 +602,28 @@ class Delivery:
         if not files:
             self.say("format: no changed Python files")
             return
+        if self.git("status", "--porcelain", stage="format"):
+            raise DeliverError(
+                "worktree has uncommitted changes; commit them before the "
+                "pre-publish format step"
+            )
         try:
             base = ruff_format_command(PR_GATE.read_text())
         except OSError as exc:
             raise DeliverError(f"cannot read {PR_GATE}: {exc}") from exc
-        done = self.runner([*base, "--check", *files], self.work)
-        if done.returncode == 0:
+        done = self.runner([*base, *files], self.work)
+        if done.returncode != 0:
+            raise DeliverError(
+                f"ruff format failed (rc={done.returncode}): "
+                f"{failure_detail(done) or 'no output'}"
+            )
+        if not self.git("status", "--porcelain", stage="format"):
             self.say(f"format ok: {len(files)} changed Python file(s)")
             return
-        listed = failure_detail(done)
-        fix = " ".join([*base, *files])
-        raise DeliverError(
-            "changed Python files are not formatted with the pr-gate's pinned ruff "
-            f"(rc={done.returncode}):\n{listed}\nrun, commit, then re-run deliver:\n  {fix}"
+        self.git("add", "--", *files, stage="format commit")
+        self.git("commit", "-m", FORMAT_COMMIT_MESSAGE, stage="format commit")
+        self.say(
+            f"format: committed ruff rewrite of {len(files)} changed Python file(s)"
         )
 
     def abandon(
@@ -732,7 +751,7 @@ class Delivery:
                 raise DeliverError(
                     "pass at least one --check: an outcome has to come from a command that ran"
                 )
-            self.check_format()
+            self.format_changed_python()
             outcomes = run_checks(
                 self.args.check,
                 self.work,
