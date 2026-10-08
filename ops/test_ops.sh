@@ -144,6 +144,7 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_env_drift.py \
         ops/tests/test_env_check.py \
+        ops/tests/test_env_check_backend_rules.py \
         ops/tests/test_cost_docs_commands.py &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
