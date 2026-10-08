@@ -89,6 +89,20 @@ def salvage_body_issues(body: str) -> IssueLinks:
         return IssueLinks()
 
 
+def without_issues_section(body: str) -> str:
+    """The body minus every `## Issues` block, for scans that must not see it."""
+    kept: list[str] = []
+    skipping = False
+    for line in body.split("\n"):
+        if line == _ISSUES_HEADING:
+            skipping = True
+        elif skipping and not line:
+            skipping = False
+        if not skipping:
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def _machine_block(body: str, *, begin: str, end: str, name: str) -> object | None:
     count = body.count(begin)
     if count == 0:
