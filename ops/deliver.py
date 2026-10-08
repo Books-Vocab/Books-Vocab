@@ -835,7 +835,23 @@ class Delivery:
             )
             title = self.args.title or self.git("log", "-1", "--format=%s")
             self.mutate(
-                [*delivery, "publish", "--lane", lane, "--title", title],
+                [
+                    *delivery,
+                    "publish",
+                    "--lane",
+                    lane,
+                    "--title",
+                    title,
+                    *[
+                        item
+                        for flag, numbers in (
+                            ("--closes", self.args.closes),
+                            ("--refs", self.args.refs),
+                        )
+                        for number in numbers
+                        for item in (flag, str(number))
+                    ],
+                ],
                 self.home,
                 "publish",
             )
@@ -1430,6 +1446,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     options.add_argument("--lane", help="external id; derived from the branch when new")
     options.add_argument("--title", help="PR title; default is the last commit subject")
+    for flag, meaning in (("--closes", "fully resolves"), ("--refs", "only advances")):
+        options.add_argument(
+            flag,
+            type=int,
+            action="append",
+            default=[],
+            metavar="N",
+            help=f"issue this PR {meaning} (repeatable); default: lane external ids",
+        )
     options.add_argument(
         "--intent", help="lane intent; default is the last commit subject"
     )

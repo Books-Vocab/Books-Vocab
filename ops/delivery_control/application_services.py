@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -75,7 +75,7 @@ from .services.issue_admission import (
     assert_issue_intake_available,
 )
 from .services.issue_triage import build_triage_plan
-from .services.pr_contract import parse_pull_request_body
+from .services.pr_contract import IssueLinks, parse_pull_request_body
 from .services.publish import PublishService, receipt_from_active_claim
 from .services.publish_preflight import PublishPreflightService
 
@@ -738,7 +738,14 @@ class DeliveryApplication:
         snapshot = self.git.inspect_worktree(record.path, record.base_sha)
         return receipt_from_active_claim(record, snapshot), record
 
-    def publish(self, *, lane_id: str, title: str) -> object:
+    def publish(
+        self,
+        *,
+        lane_id: str,
+        title: str,
+        closes: Sequence[int] | None = None,
+        refs: Sequence[int] | None = None,
+    ) -> object:
         receipt, record = self._receipt_and_record(lane_id)
         publication = PublishService(
             preflight=PublishPreflightService(
@@ -750,7 +757,14 @@ class DeliveryApplication:
             github_query=self.github,
             github_command=self.github,
             github_workflow=self.github,
-        ).publish(receipt=receipt, title=title)
+        ).publish(
+            receipt=receipt,
+            title=title,
+            issues=IssueLinks(tuple(closes or ()), tuple(refs or ()))
+            if closes or refs
+            else None,
+            default_issues=IssueLinks.from_external_ids(record.external_ids),
+        )
         published_base = self.record_published_base(publication.pull_request.number)
         warnings = self._operation_telemetry().after_publish(
             receipt=receipt,

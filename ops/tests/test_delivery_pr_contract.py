@@ -14,6 +14,8 @@ from delivery_control.domain.models import HandbackOutcome, HandbackReceipt, Sco
 from delivery_control.domain.observations import PullRequestSnapshot
 from delivery_control.domain.states import HoldKind
 from delivery_control.services.pr_contract import (
+    IssueLinks,
+    parse_body_issues,
     parse_pull_request_body,
     pull_request_holds,
     render_pull_request_body,
@@ -65,8 +67,7 @@ def test_body_canonically_round_trips_typed_handback_outcomes() -> None:
     body = render_pull_request_body(receipt)
 
     assert (
-        '- Handback outcome 1: `{"name":"tests","status":"success",'
-        '"summary":"green"}`'
+        '- Handback outcome 1: `{"name":"tests","status":"success","summary":"green"}`'
     ) in body
     assert parse_pull_request_body(body) == receipt
     with pytest.raises(PolicyViolation, match="receipt is invalid"):
@@ -162,3 +163,95 @@ def test_malformed_typed_hold_block_fails_closed() -> None:
 
     with pytest.raises(PolicyViolation, match="unsupported"):
         parse_pull_request_body(body)
+
+
+# 2309-scale integration PR: many issues closed, a few only referenced.
+_WIDE = IssueLinks(closes=tuple(range(2064, 2049, -1)), refs=(2026, 2045, 2047))
+
+
+def test_empty_issue_links_leave_the_body_byte_identical() -> None:
+    body = render_pull_request_body(_receipt())
+
+    assert render_pull_request_body(_receipt(), issues=IssueLinks()) == body
+    assert "## Issues" not in body
+    assert parse_body_issues(body) == IssueLinks()
+
+
+def test_issues_section_renders_one_keyword_per_line_in_canonical_order() -> None:
+    body = render_pull_request_body(
+        _receipt(), issues=IssueLinks(closes=(9, 3, 3), refs=(7,))
+    )
+
+    assert "\n## Issues\nCloses #3\nCloses #9\nRefs #7\n\n" in body
+    assert body.index("## Impact") < body.index("## Issues") < body.index("<!--")
+    assert parse_body_issues(body) == IssueLinks(closes=(3, 9), refs=(7,))
+    assert parse_pull_request_body(body) == _receipt()
+
+
+def test_wide_integration_body_passes_readiness_with_exactly_one_receipt() -> None:
+    receipt = _receipt()
+    body = render_pull_request_body(receipt, issues=_WIDE)
+
+    assert body.count("Closes #") == 15 and body.count("Refs #") == 3
+    assert body.count("kg.delivery.receipt.v1") == 1
+    assert (
+        validate_pull_request_body(body, expected_head_sha=receipt.head_sha) == receipt
+    )
+    assert parse_body_issues(body) == _WIDE
+    with pytest.raises(PolicyViolation, match="one typed"):
+        parse_pull_request_body(body + body)
+
+
+def test_readiness_accepts_bodies_with_and_without_the_section() -> None:
+    receipt = _receipt()
+    for issues in (IssueLinks(), IssueLinks(closes=(1,)), IssueLinks(refs=(2,))):
+        body = render_pull_request_body(receipt, issues=issues)
+        assert (
+            validate_pull_request_body(body, expected_head_sha=receipt.head_sha)
+            == receipt
+        )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda b: b.replace("Closes #3", "Closes #3, #4"),
+        lambda b: b.replace("Closes #3", "Fixes #3"),
+        lambda b: b.replace("Closes #3", "Closes #0"),
+        lambda b: b.replace("Closes #3", "Closes #3\nRefs #3"),
+        lambda b: b + "\n## Issues\nRefs #8\n",
+    ],
+)
+def test_malformed_issues_section_fails_closed(mutate) -> None:
+    receipt = _receipt()
+    body = mutate(render_pull_request_body(receipt, issues=IssueLinks(closes=(3,))))
+
+    with pytest.raises(PolicyViolation, match="Issues"):
+        validate_pull_request_body(body, expected_head_sha=receipt.head_sha)
+
+
+def test_issue_links_reject_overlap_and_non_positive_numbers() -> None:
+    with pytest.raises(PolicyViolation, match="Issues"):
+        IssueLinks(closes=(5,), refs=(5,))
+    with pytest.raises(PolicyViolation, match="Issues"):
+        IssueLinks(closes=(0,))
+
+
+def test_keywords_outside_the_issues_section_are_ignored() -> None:
+    body = render_pull_request_body(_receipt()) + "\nCloses #99\n"
+
+    assert parse_body_issues(body) == IssueLinks()
+
+
+def test_external_ids_yield_closing_issues_only_for_issue_references() -> None:
+    links = IssueLinks.from_external_ids(
+        (
+            "lane-issue-mgmt-w4",
+            "#2392",
+            "https://github.com/Books-Vocab/Books-Vocab/issues/2393",
+            "ISSUE-1",
+            "https://example.test/pull/5",
+        )
+    )
+
+    assert links == IssueLinks(closes=(2392, 2393))

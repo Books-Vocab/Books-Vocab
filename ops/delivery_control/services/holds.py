@@ -9,6 +9,7 @@ from ..domain.observations import PullRequestSnapshot
 from ..domain.states import HoldKind
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
 from .pr_contract import (
+    parse_body_issues,
     parse_pull_request_body,
     pull_request_holds,
     pull_request_label_holds,
@@ -53,7 +54,9 @@ class HoldService:
         requested = frozenset() if clear_all else holds
         if not label_holds.issubset(requested):
             raise PolicyViolation("requested body holds omit a durable delivery label")
-        body = render_pull_request_body(receipt, holds=requested)
+        body = render_pull_request_body(
+            receipt, holds=requested, issues=parse_body_issues(pull_request.body)
+        )
         self.command.update_pull_request(
             number=number,
             title=pull_request.title,

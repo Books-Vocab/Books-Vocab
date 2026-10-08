@@ -19,7 +19,9 @@ from delivery_control.domain.observations import (
 from delivery_control.domain.states import HoldKind
 from delivery_control.services.metadata import MetadataRepairService
 from delivery_control.services.pr_contract import (
+    IssueLinks,
     parse_body_holds,
+    parse_body_issues,
     render_pull_request_body,
 )
 
@@ -169,6 +171,22 @@ def test_metadata_repair_restores_body_and_preserves_durable_hold() -> None:
     assert github.updates == 1
     assert github.pull_request.body == canonical
     assert parse_body_holds(github.pull_request.body) == frozenset({HoldKind.SECURITY})
+
+
+def test_metadata_repair_preserves_the_issues_section() -> None:
+    receipt = _receipt()
+    issues = IssueLinks(closes=(2029,), refs=(2026,))
+    canonical = render_pull_request_body(receipt, issues=issues)
+    github = FakeGitHub(
+        _pull_request(receipt, body=canonical.replace("## Scope", "## Changed", 1))
+    )
+
+    MetadataRepairService(
+        registry=FakeRegistry(_record(receipt)), query=github, command=github
+    ).repair(1)
+
+    assert github.pull_request.body == canonical
+    assert parse_body_issues(github.pull_request.body) == issues
 
 
 def test_metadata_repair_marks_exact_draft_ready_without_rewriting_code() -> None:

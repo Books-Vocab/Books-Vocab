@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from ..domain.errors import InvalidReceipt, PolicyViolation
 from ..domain.models import HandbackOutcome, HandbackReceipt
@@ -13,11 +16,86 @@ _RECEIPT_BEGIN = "<!-- kg.delivery.receipt.v1\n"
 _RECEIPT_END = "\n-->"
 _HOLDS_BEGIN = "<!-- kg.delivery.holds.v1\n"
 _HOLDS_END = "\n-->"
+_ISSUES_HEADING = "## Issues"
+_ISSUE_LINE = re.compile(r"(?P<kind>Closes|Refs) #(?P<number>[1-9][0-9]*)")
+_ISSUE_ID = re.compile(r"#(?P<number>[1-9][0-9]*)")
+_ISSUE_URL_PATH = re.compile(r"/issues/(?P<number>[1-9][0-9]*)")
 _HOLD_LABELS = {
     "delivery-hold:p0": HoldKind.P0,
     "delivery-hold:p1": HoldKind.P1,
     "delivery-hold:security": HoldKind.SECURITY,
 }
+
+
+@dataclass(frozen=True)
+class IssueLinks:
+    """Issues a PR resolves (`Closes`) or only advances (`Refs`)."""
+
+    closes: tuple[int, ...] = ()
+    refs: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        closes = tuple(sorted(set(self.closes)))
+        refs = tuple(sorted(set(self.refs)))
+        if any(type(n) is not int or n < 1 for n in closes + refs) or set(closes) & set(
+            refs
+        ):
+            raise PolicyViolation(
+                "PR Issues must be distinct positive numbers across Closes and Refs"
+            )
+        object.__setattr__(self, "closes", closes)
+        object.__setattr__(self, "refs", refs)
+
+    @classmethod
+    def from_external_ids(cls, external_ids: tuple[str, ...]) -> IssueLinks:
+        """Registry external IDs naming an issue (`#N` or an issue URL) close it."""
+        numbers: list[int] = []
+        for value in external_ids:
+            text = value.strip()
+            match = _ISSUE_ID.fullmatch(text) or _ISSUE_URL_PATH.search(
+                urlsplit(text).path.rstrip("/")
+            )
+            if match is not None:
+                numbers.append(int(match["number"]))
+        return cls(closes=tuple(numbers))
+
+    def __bool__(self) -> bool:
+        return bool(self.closes or self.refs)
+
+    def render(self) -> str:
+        lines = [f"Closes #{n}" for n in self.closes]
+        lines += [f"Refs #{n}" for n in self.refs]
+        return f"{_ISSUES_HEADING}\n" + "\n".join(lines) + "\n\n" if lines else ""
+
+
+NO_ISSUES = IssueLinks()
+
+
+def parse_body_issues(body: str) -> IssueLinks:
+    """Read the `## Issues` section; keywords elsewhere in the body are prose."""
+    lines = body.split("\n")
+    starts = [i for i, line in enumerate(lines) if line == _ISSUES_HEADING]
+    if not starts:
+        return IssueLinks()
+    if len(starts) != 1:
+        raise PolicyViolation("PR body must contain at most one Issues section")
+    found: dict[str, list[int]] = {"Closes": [], "Refs": []}
+    for line in lines[starts[0] + 1 :]:
+        if not line:
+            break
+        match = _ISSUE_LINE.fullmatch(line)
+        if match is None:
+            raise PolicyViolation("PR body Issues section is malformed")
+        found[match["kind"]].append(int(match["number"]))
+    return IssueLinks(closes=tuple(found["Closes"]), refs=tuple(found["Refs"]))
+
+
+def salvage_body_issues(body: str) -> IssueLinks:
+    """Issues of a body being repaired or replaced; a malformed section drops."""
+    try:
+        return parse_body_issues(body)
+    except PolicyViolation:
+        return IssueLinks()
 
 
 def _machine_block(body: str, *, begin: str, end: str, name: str) -> object | None:
@@ -52,6 +130,7 @@ def parse_pull_request_body(body: str) -> HandbackReceipt:
     except InvalidReceipt as error:
         raise PolicyViolation("PR body typed delivery receipt is invalid") from error
     parse_body_holds(body)
+    parse_body_issues(body)
     return receipt
 
 
@@ -118,6 +197,7 @@ def render_pull_request_body(
     receipt: HandbackReceipt,
     *,
     holds: frozenset[HoldKind] = frozenset(),
+    issues: IssueLinks = NO_ISSUES,
 ) -> str:
     scope_lines = "\n".join(
         f"- `{item.operation.value}` `{item.path}`" for item in receipt.scope.files
@@ -181,6 +261,7 @@ def render_pull_request_body(
         f"- Explicit hard holds: {hold_summary}\n"
         f"- Documentation: {documentation_impact}.\n"
         "- Release/deploy: not declared by the local handback; release remains a separate SOP.\n\n"
+        f"{issues.render()}"
         f"{_RECEIPT_BEGIN}{machine_receipt}{_RECEIPT_END}\n"
         f"{_HOLDS_BEGIN}{machine_holds}{_HOLDS_END}\n"
     )

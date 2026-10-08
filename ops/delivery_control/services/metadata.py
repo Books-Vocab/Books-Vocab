@@ -14,6 +14,7 @@ from .pr_contract import (
     parse_pull_request_body,
     pull_request_holds,
     render_pull_request_body,
+    salvage_body_issues,
 )
 from .receipt_registry import exact_published_record
 
@@ -139,6 +140,7 @@ class MetadataRepairService:
         expected_body = render_pull_request_body(
             receipt,
             holds=pull_request_holds(before),
+            issues=salvage_body_issues(before.body),
         )
         changed = before.body != expected_body
         current = before
