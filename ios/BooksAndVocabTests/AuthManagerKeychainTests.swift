@@ -140,12 +140,10 @@ struct AuthManagerKeychainTests {
 
         racing.logout(reason: "token_expired")
 
-        // Pump the cooperative pool until the detached logout Task has fully completed: the
-        // hook (login) flips `didRun` inside the suspension, then a margin of yields lets the
-        // resumed continuation run the logout `defer`.
-        var spins = 0
-        while !raceCleaner.didRun && spins < 1000 { await Task.yield(); spins += 1 }
-        for _ in 0..<100 { await Task.yield() }
+        // Await the detached logout Task (incl. its post-cleanup stale-guard `defer`) to
+        // completion instead of guessing with a fixed yield margin.
+        await racing.waitForPendingLocalDataCleanup()
+        #expect(raceCleaner.didRun)
 
         // The fresh session survives: user stays logged in with the NEW credentials and the
         // keychain is not cleared out from under them.
