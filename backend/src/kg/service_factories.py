@@ -97,14 +97,18 @@ def _get_cached(key: str, factory):
 
 def evict_notebook_cache(user_dir: Path, notebook_id: str) -> None:
     """Remove cached graph and embedding stores for a deleted notebook."""
+    graph_key = f"graph:{user_dir}:{notebook_id}"
+    # Embedding keys carry `:<model>:<dim>`; the trailing `:` keeps `X` from matching `Xa`.
+    embedding_prefix = f"embedding:{user_dir}:{notebook_id}:"
+
+    def _matches(key: str) -> bool:
+        return key == graph_key or key.startswith(embedding_prefix)
+
     with _STORE_CACHE_LOCK:
-        for prefix in ("graph", "embedding"):
-            key = f"{prefix}:{user_dir}:{notebook_id}"
-            if key in _STORE_INIT_EVENTS:
-                _STORE_CACHE_INVALIDATED_KEYS.add(key)
-            store = _STORE_CACHE.pop(key, None)
-            if store is not None:
-                _close_store(store)
+        _STORE_CACHE_INVALIDATED_KEYS.update(key for key in _STORE_INIT_EVENTS if _matches(key))
+        evicted = [_STORE_CACHE.pop(key) for key in list(_STORE_CACHE) if _matches(key)]
+    for store in evicted:
+        _close_store(store)
 
 
 def _is_user_store_key(key: str, user_dir: str) -> bool:
