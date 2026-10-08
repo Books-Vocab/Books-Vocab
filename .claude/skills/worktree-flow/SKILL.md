@@ -18,7 +18,7 @@ description: "使用 GitHub Issue（需要規劃時）、branch、PR 與 Actions
 - Codex thread identity 與 GitHub external IDs
 - hand-back seal、驗證命令、log／artifact 路徑
 
-`ops/worktree_orchestrate.py` 只做本機可驗證動作：`preflight`、`open`、`adopt`、`gate`、`hand-back`、`reanchor`、`resume-published`、`resolve`、`freeze`。IM／PI 使用它控制 local worktree lifecycle；它不建立、更新、排序或關閉 GitHub Issue／Project／PR，也不執行 push 或 merge。`reanchor` 只重建同 owner 的 merge-front 並對齊 live main；`resume-published` 只從 exact remote PR HEAD 重建同 owner code-fix lane。兩者都不代替 owner 測試、hand-back、push 或 force-push。
+`ops/worktree_orchestrate.py` 只做本機可驗證動作：`preflight`、`open`、`adopt`、`gate`、`hand-back`、`reanchor`、`resume-published`、`resolve`、`freeze`。IM／PI 使用它控制 local worktree lifecycle；它不建立、更新、排序或關閉 GitHub Issue／PR，也不執行 push 或 merge。`reanchor` 只重建同 owner 的 merge-front 並對齊 live main；`resume-published` 只從 exact remote PR HEAD 重建同 owner code-fix lane。兩者都不代替 owner 測試、hand-back、push 或 force-push。
 
 ## External-agent liveness boundary
 

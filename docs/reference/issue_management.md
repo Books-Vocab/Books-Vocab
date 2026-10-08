@@ -104,10 +104,12 @@ GitHub Issue 的 label 分類、狀態機、優先級、公開認領協議、工
 
 - `schema` 固定 `kg.issue.claim.v1`；`action` 為 `claim`｜`renew`｜`release`。
 - `release` 必須帶 `reason`：`pr-published`｜`abandoned`｜`reassigned`｜`stale-cleared`。`claim`／`renew` 不帶 `reason`。
-- `lane_id` 是本機 registry 的 lane 識別；`owner_thread` 區分共用同一 GitHub 帳號的不同執行緒；`scope.files` 與 registry 的 structured Scope 相同；`generation` 隨每次 `renew` 遞增，`claim` 為 1。
+- `lane_id` 是本機 registry 的 lane 識別；`owner_thread` 區分共用同一 GitHub 帳號的不同執行緒；`scope.files` 與 registry 的 structured Scope 相同。
+- `generation` 只是同一認領期內的過期寫入防護：`claim` 為 1；`renew` 為被延長標記的 generation＋1；`release` 帶**被結束標記的 generation**（不遞增）。
 - 時間一律 UTC ISO-8601；`expires_at` 預設為 `claimed_at` + 6 小時（D5）。
-- **有效認領**（先按 `lane_id` 分組，再判斷）：同一 `lane_id` 內，只看授權作者發出的標記，取 `generation` 最高者（同 generation 取留言 id 最大者）為該 lane 的**當前標記**；`renew` 因 generation 較高而取代同 lane 較早的標記，不構成衝突。當前標記為 `release`，或其 `expires_at` 已過，則該 lane 無有效認領（過期者另見「到期」）。有效認領的 `expires_at` 以當前標記為準（renew 後即延長後的時間）。授權作者清單放 `ops/issue_claim_authors.json`（隨認領工具落地建立；落地前授權作者即 IM 使用的 GitHub 帳號。目前只有一個帳號，所以另以 `owner_thread` 區分 lane）。
-- **衝突**：僅發生在**不同 `lane_id`** 各有一則有效認領時：**當前標記留言 id 較小的 lane 有效**；另一 lane 的當前標記由自動化標 `claim-conflict`（Issue 加同名 label），其 lane 不得開工。同一 lane_id 的 `renew` 永遠不觸發衝突。
+- **認領期（episode）與當前標記**：同一 `lane_id` 的授權標記按留言 id 由小到大依序處理（只有授權作者寫入，留言 id 即時間序）。`claim` 僅在該 lane 沒有進行中的認領期時有效（即無標記，或前一個有效標記是 `release`），並開啟新認領期，`generation` 重設為 1；`renew` 僅在認領期進行中且 `generation` 等於前一有效標記＋1 時有效；`release` 僅在認領期進行中且 `generation` 等於前一有效標記時有效，並結束該認領期。不符者視為過期或重複寫入，忽略並由看板列出。因此同一 `lane_id` 在 `release` 後可再次 `claim`（adopt／resume 沿用 lane），無須新 lane_id，也不與舊認領期的 generation 比較。
+- **有效認領**：lane 的最後一個有效標記（即**當前標記**）不是 `release`，且其 `expires_at` 未過，則該 lane 有有效認領；`expires_at` 以當前標記為準（`renew` 後即延長後的時間）。`release` 或過期者無有效認領（過期者另見「到期」）。授權作者清單放 `ops/issue_claim_authors.json`（隨認領工具落地建立；落地前授權作者即 IM 使用的 GitHub 帳號。目前只有一個帳號，所以另以 `owner_thread` 區分 lane）。
+- **衝突**：僅發生在**不同 `lane_id`** 各有一則有效認領時。依**認領期起點**排名：各 lane 當前認領期的起始 `claim` 標記（generation 1）的留言 id，較小者先到先得而有效；另一 lane 由自動化標 `claim-conflict`，其 lane 不得開工。`renew` 不改變起點，因此續約不會讓出優先權；同一 lane 的 `renew` 永不觸發衝突。
 - **偽造防護**：標記只認授權作者；未授權帳號的標記一律忽略，並由看板列出。
 - **到期**：到期只加 `claim-stale`，認領仍保留可見；是否釋放由 IM 決定（D5）。IM 清除過期認領時發 `release`，`reason=stale-cleared`。
 - **讀取**（任何環境）：`issue_read get_comments` 取最新標記，或直接讀看板。
