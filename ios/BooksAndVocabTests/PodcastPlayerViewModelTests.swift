@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import BooksAndVocab
 
@@ -39,6 +40,232 @@ struct PodcastPlayerViewModelTests {
         audio.emitPlaybackFinished()
         #expect(viewModel.state == .ready)
         #expect(viewModel.episodeFinishedTick == 1)
+    }
+
+    // #2103: lock-screen / Control Center play must reach vm.state, otherwise
+    // the progress ticker (gated on `state == .playing`) never saves.
+    @Test
+    func remotePlayAfterInAppPauseMovesViewModelToPlaying() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+        viewModel.pause()
+
+        audio.emitRemotePlay()
+
+        #expect(viewModel.state == .playing)
+        #expect(audio.playCount == 2)
+        #expect(audio.isPlaying)
+        audio.emitTimeUpdate(30)
+        #expect(viewModel.currentTime == 30)
+        #expect(viewModel.playbackAnchor.rate == 1)
+    }
+
+    @Test
+    func remotePauseWhilePlayingMovesViewModelToPaused() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitRemotePause()
+
+        #expect(viewModel.state == .paused)
+        #expect(audio.pauseCount == 1)
+        #expect(!audio.isPlaying)
+    }
+
+    // #2103: `.shouldResume` only means "you may resume"; a user who paused
+    // before the interruption must stay paused.
+    @Test
+    func interruptionShouldResumeAfterUserPauseDoesNotPlay() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+        viewModel.pause()
+
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    @Test
+    func interruptionShouldResumeWhilePlayingResumesThroughTheEngine() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        #expect(viewModel.state == .paused)
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 2)
+        #expect(audio.isPlaying)
+        #expect(viewModel.state == .playing)
+    }
+
+    @Test
+    func userPauseDuringInterruptionCancelsTheResume() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        viewModel.pause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    @Test
+    func secondInterruptionBeganDoesNotClearTheResumeLatch() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 2)
+        #expect(viewModel.state == .playing)
+    }
+
+    // An interruption that ends WITHOUT `.shouldResume` must drop the latch,
+    // or a later interruption's `.shouldResume` restarts audio the user never resumed.
+    @Test
+    func interruptionEndedWithoutShouldResumeClearsTheLatch() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        audio.emitInterruptionEndedWithoutResume()
+        #expect(viewModel.state == .paused)
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    // Route loss (headphones unplugged) is not an interruption: a later
+    // interruption's `.shouldResume` must not restart audio on the speaker.
+    @Test
+    func routeLossDoesNotArmTheInterruptionResumeLatch() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitRouteLost()
+        #expect(viewModel.state == .paused)
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    @Test
+    func routeLossClearsALatchArmedByAnEarlierInterruption() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        audio.emitRouteLost()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
+    // Remote commands must not clobber the loading / error UI.
+    @Test
+    func remoteCommandsAreIgnoredWhileLoadingOrFailed() {
+        let audio = FakeAudioEngine()
+        let viewModel = PodcastPlayerViewModel(
+            hostNames: [], audioEngine: audio, subtitleEngine: FakeSubtitleEngine()
+        )
+        viewModel.loadEpisode(
+            audioURL: URL(string: "https://example.com/episode.mp3")!,
+            subtitleContent: nil
+        )
+        #expect(viewModel.state == .loading)
+
+        audio.emitRemotePlay()
+        #expect(viewModel.state == .loading)
+        audio.emitRemotePause()
+        #expect(viewModel.state == .loading)
+        #expect(audio.playCount == 0)
+        #expect(audio.pauseCount == 0)
+
+        audio.emitLoadFailure("boom")
+        audio.emitRemotePlay()
+        audio.emitRemotePause()
+        #expect(viewModel.state == .error("boom"))
+        #expect(audio.playCount == 0)
+        #expect(audio.pauseCount == 0)
+    }
+
+    @Test
+    func remotePauseWhenAlreadyPausedAndRemotePlayWhenPlayingAreNoOps() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitRemotePlay()
+        #expect(audio.playCount == 1)
+
+        viewModel.pause()
+        audio.emitRemotePause()
+        #expect(audio.pauseCount == 1)
+    }
+
+    // #2109: VoiceOver swipe up/down on the seek bar (adjustable trait) must
+    // seek ±15 s through viewModel.seek, clamped to the episode bounds.
+    @Test
+    func seekBarAccessibilityAdjustmentSeeksFifteenSecondSteps() {
+        let (audio, viewModel) = makeReadyViewModel()
+        audio.onDurationLoaded?(100)
+        audio.emitTimeUpdate(50)
+
+        PodcastSeekBarAccessibility.adjust(.increment, viewModel: viewModel)
+        #expect(viewModel.currentTime == 65)
+        #expect(audio.currentTime == 65)
+
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+        #expect(viewModel.currentTime == 35)
+        #expect(audio.currentTime == 35)
+    }
+
+    @Test
+    func seekBarAccessibilityAdjustmentClampsToEpisodeBounds() {
+        let (audio, viewModel) = makeReadyViewModel()
+        audio.onDurationLoaded?(100)
+        audio.emitTimeUpdate(95)
+
+        PodcastSeekBarAccessibility.adjust(.increment, viewModel: viewModel)
+        #expect(viewModel.currentTime == 100)
+
+        audio.emitTimeUpdate(5)
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+        #expect(viewModel.currentTime == 0)
+    }
+
+    // #2109: while the duration is unknown (0) adjust is a no-op, like the drag.
+    @Test
+    func seekBarAccessibilityAdjustmentIsNoOpWhileDurationUnknown() {
+        let (audio, viewModel) = makeReadyViewModel()
+        audio.emitTimeUpdate(20)
+        #expect(viewModel.duration == 0)
+        let currentBefore = audio.currentTime
+
+        PodcastSeekBarAccessibility.adjust(.increment, viewModel: viewModel)
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+
+        #expect(viewModel.currentTime == 20)
+        #expect(audio.currentTime == currentBefore)
+    }
+
+    @Test
+    func seekBarAccessibilityStepIsFifteenSeconds() {
+        #expect(PodcastSeekBarAccessibility.step == 15)
+        #expect(PodcastSeekBarAccessibility.skipDelta(for: .increment) == 15)
+        #expect(PodcastSeekBarAccessibility.skipDelta(for: .decrement) == -15)
     }
 
     @Test
@@ -108,6 +335,21 @@ struct PodcastPlayerViewModelTests {
         #expect(viewModel.visibleSentences == subtitles.sentences)
         #expect(viewModel.currentSentence?.id == 0)
     }
+
+    private func makeReadyViewModel() -> (FakeAudioEngine, PodcastPlayerViewModel) {
+        let audio = FakeAudioEngine()
+        let viewModel = PodcastPlayerViewModel(
+            hostNames: [],
+            audioEngine: audio,
+            subtitleEngine: FakeSubtitleEngine()
+        )
+        viewModel.loadEpisode(
+            audioURL: URL(string: "https://example.com/episode.mp3")!,
+            subtitleContent: nil
+        )
+        audio.emitReady()
+        return (audio, viewModel)
+    }
 }
 
 @MainActor
@@ -117,6 +359,8 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     var currentTime: TimeInterval = 0
     var isPlaying = false
     var loadCount = 0
+    private(set) var playCount = 0
+    private(set) var pauseCount = 0
 
     var onTimeUpdate: ((TimeInterval) -> Void)?
     var onPlaybackFinished: (() -> Void)?
@@ -125,7 +369,10 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     var onLoadFailed: ((String) -> Void)?
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
     var onSystemPause: (() -> Void)?
-    var onSystemResume: (() -> Void)?
+    var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)?
+    var onRouteLost: (() -> Void)?
+    var onRemotePlay: (() -> Void)?
+    var onRemotePause: (() -> Void)?
 
     func loadAudio(
         url: URL,
@@ -137,8 +384,14 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
 
     func configureNowPlaying(title: String, artist: String) {}
 
-    func play() { isPlaying = true }
-    func pause() { isPlaying = false }
+    func play() {
+        playCount += 1
+        isPlaying = true
+    }
+    func pause() {
+        pauseCount += 1
+        isPlaying = false
+    }
     func stop() { isPlaying = false }
     func shutdown() { isPlaying = false }
     func seek(to time: TimeInterval, autoResume: Bool) {
@@ -150,8 +403,24 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     func emitReady() { onReadyToPlay?() }
     func emitLoadFailure(_ message: String) { onLoadFailed?(message) }
     func emitPlaybackFinished() { onPlaybackFinished?() }
-    func emitSystemPause() { onSystemPause?() }
-    func emitSystemResume() { onSystemResume?() }
+    /// Real engine: interruption `.began` / route loss pauses the player, then
+    /// reports it. Mirror that so the fake's `isPlaying` matches reality.
+    func emitSystemPause() {
+        isPlaying = false
+        onSystemPause?()
+    }
+    func emitSystemResume() { onInterruptionEnded?(true) }
+    /// Interruption `.ended` without `.shouldResume` (e.g. the other app's audio kept focus).
+    func emitInterruptionEndedWithoutResume() { onInterruptionEnded?(false) }
+    /// Real engine: route loss pauses the player, then reports it (no resume follows).
+    func emitRouteLost() {
+        isPlaying = false
+        onRouteLost?()
+    }
+    /// Lock-screen / Control Center command routed to the owner (engine falls
+    /// back to its own play()/pause() only when no owner handler is set).
+    func emitRemotePlay() { if let onRemotePlay { onRemotePlay() } else { play() } }
+    func emitRemotePause() { if let onRemotePause { onRemotePause() } else { pause() } }
     func emitTimeUpdate(_ time: TimeInterval) {
         currentTime = time
         onTimeUpdate?(time)

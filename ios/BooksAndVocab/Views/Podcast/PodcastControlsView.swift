@@ -7,6 +7,29 @@
 
 import SwiftUI
 
+/// Accessibility increment/decrement for the seek bar. Same ±15 s step as the
+/// skip buttons; `viewModel.skip` clamps to `[0, duration]` and goes through
+/// `viewModel.seek`, so resume-while-playing semantics match a drag. No-op while
+/// `duration == 0` (same as the drag guard).
+@MainActor
+enum PodcastSeekBarAccessibility {
+    static let step: TimeInterval = 15
+
+    static func skipDelta(for direction: AccessibilityAdjustmentDirection) -> TimeInterval? {
+        switch direction {
+        case .increment: return step
+        case .decrement: return -step
+        @unknown default: return nil
+        }
+    }
+
+    static func adjust(_ direction: AccessibilityAdjustmentDirection, viewModel: PodcastPlayerViewModel) {
+        // Unknown duration: no valid seek range (matches the drag guard).
+        guard viewModel.duration > 0, let delta = skipDelta(for: direction) else { return }
+        viewModel.skip(seconds: delta)
+    }
+}
+
 struct PodcastControlsView: View {
     @ObserveInjection private var inject
     let viewModel: PodcastPlayerViewModel
@@ -141,6 +164,12 @@ struct PodcastControlsView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(L10n.string("podcast.controls.seek"))
             .accessibilityValue("\(formatTime(activeTime)) / \(formatTime(viewModel.duration))")
+            // Adjustable trait: VoiceOver swipe up/down, Switch Control and
+            // Full Keyboard Access step the playhead (the drag gesture alone
+            // is unreachable for them).
+            .accessibilityAdjustableAction { direction in
+                PodcastSeekBarAccessibility.adjust(direction, viewModel: viewModel)
+            }
             .accessibilityIdentifier("podcast.player.seekBar")
         }
         .frame(height: PodcastPlayerMetrics.seekBarHitArea)

@@ -50,10 +50,23 @@ final class PodcastAudioEngine: NSObject {
     /// Furthest absolute time (seconds) AVPlayer has buffered. Drives the
     /// YouTube-style "loaded" overlay on the seek bar.
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
-    /// System forced playback to pause (interruption began, headphones unplugged).
+    /// System forced playback to pause (interruption began). A matching
+    /// `onInterruptionEnded` follows.
     var onSystemPause: (() -> Void)?
-    /// System hinted we should resume after interruption ended.
-    var onSystemResume: (() -> Void)?
+    /// Output route lost (headphones unplugged): the engine paused and no
+    /// interruption end will follow, so the owner must not treat it as an interruption.
+    var onRouteLost: (() -> Void)?
+    /// Every interruption `.ended`, with whether the system set `.shouldResume`.
+    /// The engine does NOT restart audio itself: only the owner knows whether
+    /// the user was playing when the interruption began, so it decides and
+    /// calls `play()`. Reported even when `shouldResume == false` so the owner
+    /// can drop its resume latch instead of leaking it into a later interruption.
+    var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)?
+    /// Lock-screen / Control Center play / pause. When set, the owner routes
+    /// the command through its own state machine (which calls back into
+    /// `play()` / `pause()`); when nil the engine handles it directly.
+    var onRemotePlay: (() -> Void)?
+    var onRemotePause: (() -> Void)?
 
     static let rateSteps: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -391,6 +404,24 @@ final class PodcastAudioEngine: NSObject {
         #endif
     }
 
+    /// MPRemoteCommand handlers are not documented to run on main, while the
+    /// owner's callbacks assume main-actor isolation.
+    func dispatchRemotePlay() {
+        runOnMain { [self] in
+            if let onRemotePlay { onRemotePlay() } else { play() }
+        }
+    }
+
+    func dispatchRemotePause() {
+        runOnMain { [self] in
+            if let onRemotePause { onRemotePause() } else { pause() }
+        }
+    }
+
+    func runOnMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+
     #if os(iOS)
     private func registerAudioSessionObservers() {
         guard interruptionObserver == nil else { return }
@@ -400,48 +431,52 @@ final class PodcastAudioEngine: NSObject {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] note in
-            guard
-                let info = note.userInfo,
-                let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
-                let type = AVAudioSession.InterruptionType(rawValue: typeRaw)
-            else { return }
-            switch type {
-            case .began:
-                self?.player?.pause()
-                self?.stallWatchdog?.cancel()
-                self?.stallWatchdog = nil
-                self?.onSystemPause?()
-            case .ended:
-                try? AVAudioSession.sharedInstance().setActive(true)
-                let opts = (info[AVAudioSessionInterruptionOptionKey] as? UInt).map {
-                    AVAudioSession.InterruptionOptions(rawValue: $0)
-                } ?? []
-                if opts.contains(.shouldResume) {
-                    self?.player?.play()
-                    self?.player?.rate = self?.playbackRate ?? 1.0
-                    self?.onSystemResume?()
-                }
-            @unknown default:
-                break
-            }
+            self?.handleInterruptionNotification(note)
         }
         routeChangeObserver = nc.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] note in
-            guard
-                let info = note.userInfo,
-                let reasonRaw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
-                let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw)
-            else { return }
-            // Headphones unplugged / previous device unavailable → pause per HIG.
-            if reason == .oldDeviceUnavailable {
-                self?.player?.pause()
-                self?.stallWatchdog?.cancel()
-                self?.stallWatchdog = nil
-                self?.onSystemPause?()
-            }
+            self?.handleRouteChangeNotification(note)
+        }
+    }
+
+    func handleInterruptionNotification(_ note: Notification) {
+        guard
+            let info = note.userInfo,
+            let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeRaw)
+        else { return }
+        switch type {
+        case .began:
+            player?.pause()
+            stallWatchdog?.cancel()
+            stallWatchdog = nil
+            onSystemPause?()
+        case .ended:
+            try? AVAudioSession.sharedInstance().setActive(true)
+            let opts = (info[AVAudioSessionInterruptionOptionKey] as? UInt).map {
+                AVAudioSession.InterruptionOptions(rawValue: $0)
+            } ?? []
+            onInterruptionEnded?(opts.contains(.shouldResume))
+        @unknown default:
+            break
+        }
+    }
+
+    func handleRouteChangeNotification(_ note: Notification) {
+        guard
+            let info = note.userInfo,
+            let reasonRaw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw)
+        else { return }
+        // Headphones unplugged / previous device unavailable → pause per HIG.
+        if reason == .oldDeviceUnavailable {
+            player?.pause()
+            stallWatchdog?.cancel()
+            stallWatchdog = nil
+            onRouteLost?()
         }
     }
     #endif
@@ -519,11 +554,15 @@ final class PodcastAudioEngine: NSObject {
         // explicitly so the lock-screen scrubber is draggable.
         center.changePlaybackPositionCommand.isEnabled = true
         let play = center.playCommand.addTarget { [weak self] _ in
-            self?.play(); return .success
+            guard let self else { return .commandFailed }
+            self.dispatchRemotePlay()
+            return .success
         }
         remoteCommandTargets.append((center.playCommand, play))
         let pause = center.pauseCommand.addTarget { [weak self] _ in
-            self?.pause(); return .success
+            guard let self else { return .commandFailed }
+            self.dispatchRemotePause()
+            return .success
         }
         remoteCommandTargets.append((center.pauseCommand, pause))
         center.skipForwardCommand.preferredIntervals = [15]
