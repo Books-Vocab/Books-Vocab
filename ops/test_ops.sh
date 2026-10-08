@@ -143,6 +143,7 @@ run_one() {
       # 與 devops command contract 同屬「文件宣稱的命令 vs 實作」守衛。
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_env_drift.py \
+        ops/tests/test_env_check.py \
         ops/tests/test_cost_docs_commands.py &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
