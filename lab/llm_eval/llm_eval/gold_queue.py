@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 from collections.abc import Iterable
 from pathlib import Path
@@ -19,13 +20,20 @@ def build_gold_review_queue(
     prompt_name: str,
     limit: int = 50,
     seed: int | None = None,
+    overwrite: bool = False,
 ) -> list[dict[str, Any]]:
     """Sample private candidates into a pending human review JSONL template."""
     if prompt_name not in SUPPORTED_PROMPTS:
         supported = ", ".join(sorted(SUPPORTED_PROMPTS))
-        raise ValueError(f"unsupported prompt_name={prompt_name!r}; expected one of: {supported}")
+        raise ValueError(
+            f"unsupported prompt_name={prompt_name!r}; expected one of: {supported}"
+        )
     if limit < 1:
         raise ValueError("limit must be >= 1")
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"{output_path} already exists (may hold human review edits); pass overwrite=True / --force to replace it"
+        )
 
     candidates = [
         row
@@ -41,7 +49,9 @@ def build_gold_review_queue(
     return rows
 
 
-def _sample(rows: list[dict[str, Any]], *, limit: int, seed: int | None) -> list[dict[str, Any]]:
+def _sample(
+    rows: list[dict[str, Any]], *, limit: int, seed: int | None
+) -> list[dict[str, Any]]:
     if len(rows) <= limit:
         return rows
     rng = random.Random(seed)
@@ -86,7 +96,9 @@ def _to_review_row(candidate: dict[str, Any], *, prompt_name: str) -> dict[str, 
 
 
 def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_no, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         if not line.strip():
             continue
         data = json.loads(line)
@@ -96,7 +108,9 @@ def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.write_text(
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
     )
+    os.replace(tmp, path)

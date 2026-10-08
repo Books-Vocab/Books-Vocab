@@ -268,6 +268,42 @@ def test_sample_gold_queue_script_wrapper_can_show_help():
     assert "Sample private candidates" in result.stdout
 
 
+def test_gold_queue_does_not_clobber_edited_output_without_force(tmp_path, capsys):
+    candidates = tmp_path / "c.jsonl"
+    _write_jsonl(
+        candidates,
+        [
+            {
+                "id": "candidate_0001",
+                "word": "resplendent",
+                "context": "The robe was resplendent.",
+                "gold_status": "unverified",
+                "pii_risk": "low",
+                "gold_queue_eligible": True,
+            }
+        ],
+    )
+    output = tmp_path / "review.jsonl"
+    args = [
+        "--prompt",
+        "translate_quick",
+        "--candidates",
+        str(candidates),
+        "--output",
+        str(output),
+    ]
+    assert main(args) == 0
+    capsys.readouterr()
+    output.write_text("HUMAN EDITS\n", encoding="utf-8")
+
+    assert main(args) == 2
+    assert output.read_text(encoding="utf-8") == "HUMAN EDITS\n"
+
+    assert main([*args, "--force"]) == 0
+    assert "HUMAN EDITS" not in output.read_text(encoding="utf-8")
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 def _write_jsonl(path, rows):
     path.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
