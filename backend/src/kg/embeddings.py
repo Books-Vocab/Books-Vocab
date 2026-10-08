@@ -18,6 +18,7 @@ import numpy as np
 from openai import OpenAIError
 
 from ._fsutil import fsync_dir as _fsync_dir
+from .retry import llm_retryable_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
 _EMBED_MAX_RETRIES = 3
 _EMBED_BACKOFF_BASE = 2
+# Max texts per embedding request: the provider's batch-embedding limit is 100
+# inputs per request, and a larger request is rejected (400) on every attempt,
+# so add_batch sends backlogs in chunks of this size (#2264). add_batch reads
+# it at call time.
+_EMBED_BATCH_LIMIT = 100
 _COSINE_EPS = 1e-9
 
 
@@ -89,6 +95,8 @@ class EmbeddingStore:
     stay aligned in memory and on disk. The embedding API call itself runs
     *outside* the lock (a slow provider must not stall other writers or
     readers); ``add_batch`` / ``update`` re-check membership after it.
+    ``add_batch`` embeds and saves in chunks of at most ``_EMBED_BATCH_LIMIT``
+    texts, so a large backfill makes progress even if a later chunk fails.
     ``has`` / ``count`` are single GIL-atomic reads and stay lock-free.
     """
 
@@ -432,8 +440,12 @@ class EmbeddingStore:
     def _embed(self, texts: list[str], *, llm=None) -> np.ndarray:
         """Get embeddings for one or more texts via a single API call.
 
+        Callers keep ``texts`` within ``_EMBED_BATCH_LIMIT`` (``add_batch``
+        chunks). Only transient transport errors
+        (:func:`kg.retry.llm_retryable_exceptions`) are retried; a request the
+        provider rejected (e.g. a 400) fails on the first attempt.
         ``llm`` overrides the construction-time binding (see :meth:`bind`).
-        Returns an (N, self.dim) float32 array.
+        Returns an (N, self.dim) float32 array, row i for ``texts[i]``.
         """
         client = self.llm if llm is None else llm
         if client is None:
@@ -464,6 +476,13 @@ class EmbeddingStore:
                         f"(model={self.model!r}). The upstream returned no usable "
                         f"vectors for {len(texts)} input text(s)."
                     )
+                # A short/truncated response would shift every later vector
+                # onto the wrong card id; reject it before any row is stored.
+                if vecs.shape[0] != len(texts):
+                    raise ValueError(
+                        f"Embedding count mismatch: got {vecs.shape[0]} vectors for "
+                        f"{len(texts)} input text(s) (model={self.model!r})."
+                    )
                 if vecs.shape[1] != self.dim:
                     raise ValueError(
                         f"Embedding dim mismatch: got {vecs.shape[1]}, expected {self.dim} "
@@ -471,11 +490,11 @@ class EmbeddingStore:
                     )
                 return vecs
             except OpenAIError as e:
-                if attempt < _EMBED_MAX_RETRIES - 1:
+                if isinstance(e, llm_retryable_exceptions()) and attempt < _EMBED_MAX_RETRIES - 1:
                     time.sleep(_EMBED_BACKOFF_BASE**attempt)
                     continue
                 logger.error("Embedding API error: %s", e, exc_info=True)
-                raise e
+                raise
         raise RuntimeError("unreachable: _embed exhausted retries")
 
     def add(self, card_id: str, text: str, *, llm=None) -> None:
@@ -483,10 +502,14 @@ class EmbeddingStore:
         self.add_batch([(card_id, text)], llm=llm)
 
     def add_batch(self, items: list[tuple[str, str]], *, llm=None) -> None:
-        """Add embeddings for multiple cards in a single API call.
+        """Add embeddings for multiple cards, chunked to the provider's limit.
 
-        Items already present are silently skipped. Performs one API call,
-        one np.vstack, and one disk save for the entire batch.
+        Items already present (or repeated within ``items``) are silently
+        skipped. New items are embedded in chunks of at most
+        ``_EMBED_BATCH_LIMIT`` texts, with one API call, one np.vstack, and one
+        disk save per chunk. A failing chunk raises at once: earlier chunks
+        stay persisted, later chunks are never sent, and the next call embeds
+        only the ids that are still missing.
         """
         # Filter out already-embedded cards and duplicate IDs in this batch.
         with self._lock:
@@ -497,34 +520,41 @@ class EmbeddingStore:
                 continue
             seen_ids.add(cid)
             new_items.append((cid, text))
-        if not new_items:
+
+        batch_size = _EMBED_BATCH_LIMIT
+        for start in range(0, len(new_items), batch_size):
+            # Skip ids a concurrent add landed while earlier chunks were embedding.
+            chunk = [item for item in new_items[start : start + batch_size] if item[0] not in self._id_set]
+            if not chunk:
+                continue
+            # API call outside the lock: a slow provider must not block other
+            # writers or similarity reads on this notebook.
+            vecs = self._embed([text for _, text in chunk], llm=llm)
+            self._append_rows(chunk, vecs)
+
+    @_synchronized
+    def _append_rows(self, items: list[tuple[str, str]], vecs: np.ndarray) -> None:
+        """Append ``vecs`` (row i embeds ``items[i]``) and persist them."""
+        # A concurrent add may have landed some of these ids while we were
+        # embedding; appending them again would duplicate rows.
+        keep = [i for i, (cid, _) in enumerate(items) if cid not in self._id_set]
+        if not keep:
             return
+        if len(keep) != len(items):
+            vecs = vecs[keep]
+        new_ids = [items[i][0] for i in keep]
 
-        # Single API call, outside the lock: a slow provider must not block
-        # other writers or similarity reads on this notebook.
-        vecs = self._embed([text for _, text in new_items], llm=llm)
+        if self._embeddings is None:
+            self._embeddings = vecs
+        else:
+            self._embeddings = np.vstack([self._embeddings, vecs])
 
-        with self._lock:
-            # A concurrent add may have landed some of these ids while we were
-            # embedding; appending them again would duplicate rows.
-            keep = [i for i, (cid, _) in enumerate(new_items) if cid not in self._id_set]
-            if not keep:
-                return
-            if len(keep) != len(new_items):
-                vecs = vecs[keep]
-            new_ids = [new_items[i][0] for i in keep]
-
-            if self._embeddings is None:
-                self._embeddings = vecs
-            else:
-                self._embeddings = np.vstack([self._embeddings, vecs])
-
-            base = len(self._ids)
-            self._ids.extend(new_ids)
-            self._id_set.update(new_ids)
-            self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
-            self._invalidate_norms()
-            self._save()
+        base = len(self._ids)
+        self._ids.extend(new_ids)
+        self._id_set.update(new_ids)
+        self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
+        self._invalidate_norms()
+        self._save()
 
     def remove(self, card_id: str) -> bool:
         """Evict a single card's vector (delegates to remove_batch).

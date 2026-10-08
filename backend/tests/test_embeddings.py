@@ -7,8 +7,10 @@ test_embedding_store_cache.py (factory caching). Focuses on:
   * _load: sidecar mismatch -> quarantines stale files, starts empty.
   * _load: matching sidecar -> loads as-is.
   * _embed: sorts response.data by .index (including index=None coercion).
-  * _embed: dim mismatch raises ValueError.
-  * _embed: retries OpenAIError twice then raises on third attempt.
+  * _embed: dim mismatch and response count mismatch raise ValueError.
+  * _embed: retries transient errors (kg.retry.llm_retryable_exceptions) with
+    1s/2s backoff and raises on the third attempt; a non-retryable error
+    (400, bare OpenAIError) fails on the first attempt with no sleep.
   * update: on existing id mutates in place + sets dirty; flush persists.
   * update: on unknown id delegates to add().
   * flush: no-op when not dirty.
@@ -23,7 +25,9 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import httpx
 import numpy as np
+import openai
 import pytest
 from openai import OpenAIError
 
@@ -68,6 +72,34 @@ def _make_store(
     llm = TrackedLLM(client, "test_user")
     store = EmbeddingStore(emb_path, ids_path, llm, model=model, dim=dim)
     return store, client, meta_path
+
+
+_PROVIDER_REQUEST = httpx.Request("POST", "https://provider.test/embeddings")
+
+
+def _status_error(error_type, status_code: int):
+    response = httpx.Response(status_code, request=_PROVIDER_REQUEST)
+    return error_type("provider error", response=response, body={})
+
+
+def _transient_errors() -> list[OpenAIError]:
+    """One instance of each type in kg.retry.llm_retryable_exceptions()."""
+    return [
+        openai.APIConnectionError(request=_PROVIDER_REQUEST),
+        openai.APITimeoutError(request=_PROVIDER_REQUEST),
+        _status_error(openai.RateLimitError, 429),
+        _status_error(openai.InternalServerError, 500),
+    ]
+
+
+@pytest.fixture
+def sleeps(monkeypatch) -> list[float]:
+    """Record (and skip) the retry backoff sleeps inside kg.embeddings."""
+    import kg.embeddings as emb_mod
+
+    recorded: list[float] = []
+    monkeypatch.setattr(emb_mod.time, "sleep", recorded.append)
+    return recorded
 
 
 # --------------------------------------------------------------------- #
@@ -115,9 +147,7 @@ class TestLoad:
         assert payload["model"] == EMBEDDING_MODEL
         assert payload["dim"] == EMBEDDING_DIM
 
-    def test_unreadable_sidecar_recovers_as_legacy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_unreadable_sidecar_recovers_as_legacy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         store, _, meta = _make_store(tmp_path, preload_ids=["a", "b"])
         original_read_text = Path.read_text
 
@@ -177,32 +207,44 @@ class TestEmbed:
         vecs = store._embed(["a", "b"])
         assert vecs.shape == (2, EMBEDDING_DIM)
 
-    def test_retries_openai_error_then_succeeds(self, tmp_path: Path, monkeypatch):
+    def test_response_count_mismatch_raises(self, tmp_path: Path):
+        """A short response would shift every later vector onto the wrong id."""
         store, client, _ = _make_store(tmp_path)
-        ok = _resp(1)
-        # First attempt fails, second succeeds.
-        client.embeddings.create.side_effect = [OpenAIError("boom"), ok]
-        # Avoid real sleeps.
-        import kg.embeddings as emb_mod
-        monkeypatch.setattr(emb_mod.time if hasattr(emb_mod, "time") else __import__("time"),
-                            "sleep", lambda *_a, **_k: None)
-        # Patch module-level `time.sleep` actually used inside _embed.
-        import time as _t
-        monkeypatch.setattr(_t, "sleep", lambda *_a, **_k: None)
+        client.embeddings.create.return_value = _resp(1)
+        with pytest.raises(ValueError, match="count mismatch"):
+            store._embed(["a", "b"])
+
+    def test_retries_transient_error_then_succeeds(self, tmp_path: Path, sleeps: list[float]):
+        store, client, _ = _make_store(tmp_path)
+        # First attempt hits a transient transport error, second succeeds.
+        client.embeddings.create.side_effect = [_transient_errors()[0], _resp(1)]
         vecs = store._embed(["a"])
         assert vecs.shape == (1, EMBEDDING_DIM)
         assert client.embeddings.create.call_count == 2
+        assert sleeps == [1]
 
-    def test_third_attempt_failure_raises(self, tmp_path: Path, monkeypatch):
+    @pytest.mark.parametrize("error", _transient_errors(), ids=lambda e: type(e).__name__)
+    def test_third_attempt_failure_raises(self, tmp_path: Path, sleeps: list[float], error: OpenAIError):
         store, client, _ = _make_store(tmp_path)
-        client.embeddings.create.side_effect = [
-            OpenAIError("a"), OpenAIError("b"), OpenAIError("c")
-        ]
-        import time as _t
-        monkeypatch.setattr(_t, "sleep", lambda *_a, **_k: None)
-        with pytest.raises(OpenAIError):
+        client.embeddings.create.side_effect = [error, error, error]
+        with pytest.raises(type(error)):
             store._embed(["a"])
         assert client.embeddings.create.call_count == 3
+        assert sleeps == [1, 2]
+
+    @pytest.mark.parametrize(
+        "error",
+        [_status_error(openai.BadRequestError, 400), OpenAIError("not transient")],
+        ids=["BadRequestError", "OpenAIError"],
+    )
+    def test_non_retryable_error_fails_on_first_attempt(self, tmp_path: Path, sleeps: list[float], error: OpenAIError):
+        """A request the provider rejected cannot succeed on retry (#2264)."""
+        store, client, _ = _make_store(tmp_path)
+        client.embeddings.create.side_effect = error
+        with pytest.raises(type(error)):
+            store._embed(["a"])
+        assert client.embeddings.create.call_count == 1
+        assert sleeps == []
 
 
 # --------------------------------------------------------------------- #
@@ -406,9 +448,7 @@ class TestLoadConsistency:
         meta_path = tmp_path / "embeddings_meta_default.json"
         np.save(emb_path, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
         ids_path.write_text(json.dumps(["a", "b"]))  # one id short
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         # Must not raise.
@@ -443,9 +483,7 @@ class TestLoadConsistency:
         # Sidecar claims active config, but the matrix has the wrong dim.
         np.save(emb_path, np.random.rand(2, EMBEDDING_DIM - 1).astype(np.float32))
         ids_path.write_text(json.dumps(["a", "b"]))
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
@@ -466,9 +504,7 @@ class TestLoadConsistency:
         meta_path = tmp_path / "embeddings_meta_default.json"
         np.save(emb_path, np.zeros((0, EMBEDDING_DIM), dtype=np.float32))
         ids_path.write_text(json.dumps([]))
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
@@ -525,9 +561,7 @@ class TestLoadTruncatedFile:
         meta_path = tmp_path / "embeddings_meta_default.json"
         emb_path.write_bytes(self._truncated_npy_bytes(0.5))
         ids_path.write_text(json.dumps(["a", "b", "c"]))
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         # Must not raise.
@@ -548,9 +582,7 @@ class TestLoadTruncatedFile:
         meta_path = tmp_path / "embeddings_meta_default.json"
         emb_path.write_bytes(b"")
         ids_path.write_text(json.dumps(["a"]))
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
@@ -565,9 +597,7 @@ class TestLoadTruncatedFile:
         meta_path = tmp_path / "embeddings_meta_default.json"
         emb_path.write_bytes(b"\x00\x01garbage not a npy file at all")
         ids_path.write_text(json.dumps(["a"]))
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
@@ -582,9 +612,7 @@ class TestLoadTruncatedFile:
         meta_path = tmp_path / "embeddings_meta_default.json"
         np.save(emb_path, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
         ids_path.write_text('["a","b","c')  # truncated mid-array
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
@@ -602,9 +630,7 @@ class TestLoadTruncatedFile:
         meta_path = tmp_path / "embeddings_meta_default.json"
         np.save(emb_path, np.random.rand(2, EMBEDDING_DIM).astype(np.float32))
         ids_path.write_bytes(b"\xff\xfe\x00\x01\x02garbage")
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
@@ -639,9 +665,7 @@ class TestLoadTruncatedFile:
         meta_path = tmp_path / "embeddings_meta_default.json"
         np.save(emb_path, np.zeros((0, EMBEDDING_DIM), dtype=np.float32))
         ids_path.write_text(json.dumps([]))
-        meta_path.write_text(json.dumps(
-            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
-        ))
+        meta_path.write_text(json.dumps({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)

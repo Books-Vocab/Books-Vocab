@@ -7,11 +7,17 @@ results identical to per-id find_similar.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import httpx
 import numpy as np
+import openai
+import pytest
 
+import kg.embeddings as embeddings_mod
 from kg.embeddings import EMBEDDING_DIM, EMBEDDING_MODEL, EmbeddingStore
 from kg.tracked_llm import TrackedLLM
 
@@ -278,3 +284,311 @@ class TestFindSimilarBatch:
     def test_find_similar_batch_empty_store(self, tmp_path: Path):
         store, _ = _make_store(tmp_path)
         assert store.find_similar_batch(["x", "y"], k=3) == {"x": [], "y": []}
+
+
+# --------------------------------------------------------------------- #
+# Provider request cap: add_batch chunks (#2264)
+# --------------------------------------------------------------------- #
+_CHUNK_DIM = 8
+_PROVIDER_CAP = 100
+
+
+def _chunk_items(n: int) -> list[tuple[str, str]]:
+    return [(f"c{k:03d}", f"text:{k}") for k in range(n)]
+
+
+def _chunk_ids(items: list[tuple[str, str]]) -> list[str]:
+    return [cid for cid, _ in items]
+
+
+def _chunk_vec(text: str) -> list[float]:
+    """Deterministic per text, so a reload can prove rows still match ids."""
+    return [float(text.split(":", 1)[1])] + [1.0] * (_CHUNK_DIM - 1)
+
+
+def _chunk_bad_request() -> openai.BadRequestError:
+    request = httpx.Request("POST", "https://provider.test/embeddings")
+    return openai.BadRequestError(
+        "too many inputs in one request", response=httpx.Response(400, request=request), body={}
+    )
+
+
+class _CappedEmbedClient:
+    """Embedding client double that enforces the provider's input cap.
+
+    Matches the ``client.embed("embed", input=..., model=...)`` surface that
+    ``EmbeddingStore._embed`` calls. Records the size of every request,
+    including rejected ones. ``fail_on_call`` / ``short_on_call`` (1-based)
+    make that request fail with a non-retryable 400 or return one vector too
+    few; ``on_call`` runs before the request is answered.
+    """
+
+    def __init__(self, *, fail_on_call=None, short_on_call=None, on_call=None) -> None:
+        self.calls: list[int] = []
+        self.fail_on_call = fail_on_call
+        self.short_on_call = short_on_call
+        self.on_call = on_call
+
+    def embed(self, call_type, *, input, model):
+        self.calls.append(len(input))
+        call_no = len(self.calls)
+        if self.on_call is not None:
+            self.on_call(call_no)
+        if len(input) > _PROVIDER_CAP or call_no == self.fail_on_call:
+            raise _chunk_bad_request()
+        texts = input[:-1] if call_no == self.short_on_call else input
+        return SimpleNamespace(data=[SimpleNamespace(index=i, embedding=_chunk_vec(t)) for i, t in enumerate(texts)])
+
+
+def _chunk_store(tmp_path: Path, client=None) -> EmbeddingStore:
+    return EmbeddingStore(
+        tmp_path / "embeddings_default.npy",
+        tmp_path / "card_ids_default.json",
+        client,
+        dim=_CHUNK_DIM,
+    )
+
+
+def _chunk_assert_rows_match_ids(store: EmbeddingStore) -> None:
+    assert store._embeddings is not None
+    assert store._embeddings.shape == (len(store._ids), _CHUNK_DIM)
+    for row, cid in zip(store._embeddings, store._ids, strict=True):
+        assert row[0] == float(int(cid[1:])), f"row for {cid} holds another card's vector"
+
+
+def _chunk_assert_persisted(tmp_path: Path, expected_ids: list[str]) -> None:
+    """A fresh instance on the same files sees exactly ``expected_ids``."""
+    reloaded = _chunk_store(tmp_path)
+    assert reloaded._ids == expected_ids
+    _chunk_assert_rows_match_ids(reloaded)
+
+
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch) -> list[float]:
+    """Record (and skip) retry backoff sleeps inside kg.embeddings."""
+    recorded: list[float] = []
+    monkeypatch.setattr(embeddings_mod.time, "sleep", recorded.append)
+    return recorded
+
+
+def test_add_batch_splits_backlog_into_provider_sized_chunks(tmp_path: Path, sleeps: list[float]):
+    client = _CappedEmbedClient()
+    store = _chunk_store(tmp_path, client)
+    items = _chunk_items(250)
+
+    store.add_batch(items)
+
+    assert client.calls == [100, 100, 50]
+    assert store.count() == 250
+    assert store._ids == _chunk_ids(items)
+    _chunk_assert_rows_match_ids(store)
+    _chunk_assert_persisted(tmp_path, _chunk_ids(items))
+    assert sleeps == []
+
+
+def test_chunk_size_constant_is_read_when_add_batch_runs(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(embeddings_mod, "_EMBED_BATCH_LIMIT", 2)
+    client = _CappedEmbedClient()
+    store = _chunk_store(tmp_path, client)
+
+    store.add_batch(_chunk_items(5))
+
+    assert client.calls == [2, 2, 1]
+    assert store.count() == 5
+
+
+def test_later_chunk_failure_keeps_earlier_chunks_and_next_call_resumes(tmp_path: Path, sleeps: list[float]):
+    items = _chunk_items(250)
+    failing = _CappedEmbedClient(fail_on_call=2)
+    store = _chunk_store(tmp_path, failing)
+
+    with pytest.raises(openai.BadRequestError):
+        store.add_batch(items)
+
+    # The 400 is not retried and chunk 3 is never sent.
+    assert failing.calls == [100, 100]
+    assert sleeps == []
+    first_chunk = _chunk_ids(items[:100])
+    assert store._ids == first_chunk
+    _chunk_assert_persisted(tmp_path, first_chunk)
+
+    healthy = _CappedEmbedClient()
+    store.add_batch(items, llm=healthy)
+
+    assert healthy.calls == [100, 50]
+    assert store.count() == 250
+    _chunk_assert_persisted(tmp_path, _chunk_ids(items))
+
+
+def test_short_response_raises_and_appends_nothing_for_that_chunk(tmp_path: Path):
+    items = _chunk_items(250)
+    client = _CappedEmbedClient(short_on_call=2)
+    store = _chunk_store(tmp_path, client)
+
+    with pytest.raises(ValueError, match="count mismatch"):
+        store.add_batch(items)
+
+    assert client.calls == [100, 100]
+    first_chunk = _chunk_ids(items[:100])
+    assert store.count() == 100
+    assert store._ids == first_chunk
+    assert not any(store.has(cid) for cid in _chunk_ids(items[100:]))
+    _chunk_assert_rows_match_ids(store)
+    _chunk_assert_persisted(tmp_path, first_chunk)
+
+
+def test_ids_landed_concurrently_between_chunks_are_not_re_embedded(tmp_path: Path):
+    """Chunking widens the window between the up-front dedup and the last
+    request, so each chunk re-checks membership before it is sent."""
+    items = _chunk_items(250)
+    other = _CappedEmbedClient()
+
+    def land_c150_during_first_request(call_no: int) -> None:
+        if call_no == 1:
+            store.add_batch([("c150", "text:150")], llm=other)
+
+    client = _CappedEmbedClient(on_call=land_c150_during_first_request)
+    store = _chunk_store(tmp_path, client)
+
+    store.add_batch(items)
+
+    assert other.calls == [1]
+    assert client.calls == [100, 99, 50]
+    assert store.count() == 250
+    assert sorted(store._ids) == _chunk_ids(items)
+    _chunk_assert_rows_match_ids(store)
+
+
+class _PipelineCards:
+    def __init__(self, ids: list[str]) -> None:
+        self._cards = [
+            SimpleNamespace(id=cid, is_archived=False, embed_text=lambda k=int(cid[1:]): f"text:{k}") for cid in ids
+        ]
+
+    def all(self, include_deleted=False, notebook_id=None):
+        return list(self._cards)
+
+
+class _RecordingGraph:
+    def __init__(self) -> None:
+        self.pending: list[str] = []
+
+    def add_pending_judge(self, card_ids) -> None:
+        self.pending.extend(card_ids)
+
+
+def test_pipeline_phase1_backfill_of_250_cards_chunks_and_queues_all(tmp_path: Path):
+    import asyncio
+
+    from kg.pipeline_service import _step_embed_and_judge
+
+    all_ids = _chunk_ids(_chunk_items(250))
+    client = _CappedEmbedClient()
+    store = _chunk_store(tmp_path)
+    cards = _PipelineCards(all_ids)
+    graph = _RecordingGraph()
+    user = {"id": "u_2264", "dir": tmp_path, "config": {"auto_link": {"enabled": False}}}
+
+    created = asyncio.run(
+        _step_embed_and_judge(
+            "u_2264",
+            user,
+            card_store_factory=lambda d: cards,
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": store.bind(client),
+            client_factory=lambda provider: None,
+            logger=logging.getLogger("test.2264"),
+            link_kind_enum=lambda v: v,
+        )
+    )
+
+    assert created == 0  # auto_link disabled: the step returns after Phase 1
+    assert client.calls == [100, 100, 50]
+    assert store.count() == 250
+    assert graph.pending == all_ids
+
+
+def test_pipeline_phase1_partial_failure_reports_persisted_chunks(tmp_path: Path):
+    import asyncio
+
+    from kg.pipeline_service import _step_embed_and_judge
+
+    all_ids = _chunk_ids(_chunk_items(250))
+    client = _CappedEmbedClient(fail_on_call=2)
+    store = _chunk_store(tmp_path)
+    graph = _RecordingGraph()
+    user = {"id": "u_2264", "dir": tmp_path, "config": {"auto_link": {"enabled": False}}}
+    logger = MagicMock()
+
+    asyncio.run(
+        _step_embed_and_judge(
+            "u_2264",
+            user,
+            card_store_factory=lambda d: _PipelineCards(all_ids),
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": store.bind(client),
+            client_factory=lambda provider: None,
+            logger=logger,
+            link_kind_enum=lambda v: v,
+        )
+    )
+
+    assert store.count() == 100
+    # The 100 cards from the persisted chunk are reported, not dropped.
+    assert any(
+        c.args[0].endswith("Embedded %d cards, queued for judge") and c.args[2] == 100
+        for c in logger.info.call_args_list
+    )
+
+
+def test_vocab_embed_and_link_150_cards_makes_two_calls(tmp_path: Path):
+    from kg.vocab_graph import embed_and_link_new_cards
+
+    ids = _chunk_ids(_chunk_items(150))
+    cards_by_id = {cid: SimpleNamespace(id=cid, embed_text=lambda k=int(cid[1:]): f"text:{k}") for cid in ids}
+    cards = SimpleNamespace(get=cards_by_id.get)
+    client = _CappedEmbedClient()
+    store = _chunk_store(tmp_path).bind(client)
+    graph = _RecordingGraph()
+    entries = [SimpleNamespace(word=f"w{i}") for i in range(150)]
+    card_ids = {f"w{i}": ids[i] for i in range(150)}
+
+    embed_and_link_new_cards(
+        cards=cards,
+        embeddings=store,
+        graph=graph,
+        card_ids=card_ids,
+        entries=entries,
+        logger=logging.getLogger("test.2264"),
+    )
+
+    assert client.calls == [100, 50]
+    assert store.count() == 150
+    assert graph.pending == ids
+
+
+def test_vocab_embed_and_link_partial_failure_queues_persisted_chunk(tmp_path: Path):
+    from kg.vocab_graph import embed_and_link_new_cards
+
+    ids = _chunk_ids(_chunk_items(150))
+    cards_by_id = {cid: SimpleNamespace(id=cid, embed_text=lambda k=int(cid[1:]): f"text:{k}") for cid in ids}
+    cards = SimpleNamespace(get=cards_by_id.get)
+    client = _CappedEmbedClient(fail_on_call=2)
+    store = _chunk_store(tmp_path).bind(client)
+    graph = _RecordingGraph()
+    entries = [SimpleNamespace(word=f"w{i}") for i in range(150)]
+    card_ids = {f"w{i}": ids[i] for i in range(150)}
+
+    embed_and_link_new_cards(
+        cards=cards,
+        embeddings=store,
+        graph=graph,
+        card_ids=card_ids,
+        entries=entries,
+        logger=logging.getLogger("test.2264"),
+    )
+
+    assert client.calls == [100, 50]
+    assert store.count() == 100
+    # The persisted first chunk is queued for judge; the failed chunk is not.
+    assert graph.pending == ids[:100]
