@@ -67,6 +67,119 @@ struct AddLinkCoordinatorTests {
         #expect(result.map(\.word) == ["lucid"])
     }
 
+    @Test("local candidates keep exact-first then store order on a mixed CJK/Latin fixture, cold or warm")
+    func localCandidatesOrderingIsPinned() {
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        var all: [VocabularyEntry] = [source]
+        // 30 partial matches of "run" in store order: CJK word + English translation,
+        // accented Latin word, plain Latin word.
+        var partialWords: [String] = []
+        for i in 0..<30 {
+            let word: String
+            let translation: String
+            switch i % 3 {
+            case 0: (word, translation) = ("跑\(i)", "to RUN \(i)")
+            case 1: (word, translation) = ("Rùn\(i)", "x")
+            default: (word, translation) = ("running\(i)", "y")
+            }
+            partialWords.append(word)
+            all.append(Self.entry(word, translation: translation, cardID: "p\(i)", notebook: "nb"))
+        }
+        all.append(Self.entry("walk", cardID: "walk", notebook: "nb"))
+        all.append(Self.entry("run", cardID: "exact1", notebook: "nb"))
+        all.append(Self.entry("RUN.", cardID: "exact2", notebook: "nb"))
+
+        let expected = ["run", "RUN."] + Array(partialWords.prefix(AddLinkCoordinator.candidateLimit - 2))
+
+        let cold = AddLinkCoordinator.localCandidates(query: "run", sourceEntry: source, allEntries: all)
+        #expect(cold.map(\.word) == expected)
+
+        let index = AddLinkSearchIndex()
+        for _ in 0..<2 {
+            let warm = AddLinkCoordinator.localCandidates(
+                query: "run", sourceEntry: source, allEntries: all, index: index
+            )
+            #expect(warm.map(\.word) == expected)
+        }
+        #expect(
+            Self.referenceCandidates(query: "run", sourceEntry: source, allEntries: all).map(\.word) == expected,
+            "the pinned order must equal the pre-#2406 implementation"
+        )
+
+        let cjk = AddLinkCoordinator.localCandidates(
+            query: "跑", sourceEntry: source, allEntries: all, index: index
+        )
+        #expect(cjk.map(\.word) == partialWords.enumerated().filter { $0.offset % 3 == 0 }.map(\.element))
+    }
+
+    @Test("a shared search index never serves a stale key after word or translation edits")
+    func searchIndexInvalidatesOnEdit() {
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let target = Self.entry("alpha", translation: "first", cardID: "t", notebook: "nb")
+        let index = AddLinkSearchIndex()
+        func words(_ query: String) -> [String] {
+            AddLinkCoordinator.localCandidates(
+                query: query, sourceEntry: source, allEntries: [source, target], index: index
+            ).map(\.word)
+        }
+
+        #expect(words("alpha") == ["alpha"])
+        target.word = "beta"
+        #expect(words("alpha").isEmpty)
+        #expect(words("beta") == ["beta"])
+        target.translation = "Café"
+        #expect(words("cafe") == ["beta"])
+        target.translation = "other"
+        #expect(words("cafe").isEmpty)
+    }
+
+    @Test("local candidates baseline: worst-case search p95 per store size", arguments: [500, 2000, 5000])
+    func localCandidatesPerformanceBaseline(count: Int) {
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        var all: [VocabularyEntry] = [source]
+        for i in 0..<count {
+            all.append(Self.entry(
+                i % 7 == 0 ? "Café\(i)" : "word\(i)",
+                translation: i % 3 == 0 ? "翻譯項目\(i)" : "tr\(i) Ünï",
+                cardID: "c\(i)",
+                notebook: "nb"
+            ))
+        }
+        // Worst case: nothing matches, so every entry has to be examined.
+        let query = "zzq"
+        let runs = 50
+        func p95Milliseconds(_ body: () -> Int) -> Double {
+            var samples: [Double] = []
+            var sink = 0
+            let clock = ContinuousClock()
+            for _ in 0..<runs {
+                let elapsed = clock.measure { sink &+= body() }
+                samples.append(Double(elapsed.components.seconds) * 1000
+                    + Double(elapsed.components.attoseconds) / 1e15)
+            }
+            #expect(sink == 0, "the worst-case query must match nothing")
+            return samples.sorted()[Int((Double(runs) * 0.95).rounded(.up)) - 1]
+        }
+
+        let legacy = p95Milliseconds {
+            Self.referenceCandidates(query: query, sourceEntry: source, allEntries: all).count
+        }
+        let index = AddLinkSearchIndex()
+        let cold = AddLinkCoordinator.localCandidates(query: query, sourceEntry: source, allEntries: all, index: index)
+        #expect(cold.isEmpty)
+        let warm = p95Milliseconds {
+            AddLinkCoordinator.localCandidates(
+                query: query, sourceEntry: source, allEntries: all, index: index
+            ).count
+        }
+        print("PERF addLink.localCandidates N=\(count) p95 legacy=\(String(format: "%.2f", legacy))ms warm=\(String(format: "%.2f", warm))ms")
+
+        // Budgets are generous (CI simulators are slow and noisy); they only catch a regression
+        // back to per-keystroke folding of the whole store, which measured ~70 ms at N=5000.
+        #expect(warm < 100, "warm p95 \(warm)ms at N=\(count)")
+        #expect(warm < legacy, "the cached search must beat the uncached scan (warm \(warm)ms, legacy \(legacy)ms)")
+    }
+
     @Test("AddLink lookup exposes deterministic idle, result, empty, loading, error, and retry states")
     func lookupStateMatrix() {
         #expect(
@@ -374,10 +487,49 @@ struct AddLinkCoordinatorTests {
         #expect(source.graphLinksByKind.isEmpty)
     }
 
-    private static func entry(_ word: String, cardID: String, notebook: String) -> VocabularyEntry {
+    /// The pre-#2406 implementation, kept verbatim as the ordering/semantics oracle.
+    private static func referenceCandidates(
+        query: String,
+        sourceEntry: VocabularyEntry,
+        allEntries: [VocabularyEntry]
+    ) -> [VocabularyEntry] {
+        let trimmed = AddLinkCreationCoordinator.cleanedQuery(query)
+        guard !trimmed.isEmpty else { return [] }
+        let linkedIDs = Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let folded = trimmed.folding(options: options, locale: .current)
+        let typed = AddLinkCreationCoordinator.normalizeWord(trimmed)
+        var exact: [VocabularyEntry] = []
+        var partial: [VocabularyEntry] = []
+        for entry in allEntries {
+            guard entry.id != sourceEntry.id,
+                  entry.notebookId == sourceEntry.notebookId,
+                  entry.kgCardId != sourceEntry.kgCardId,
+                  !entry.isArchived,
+                  entry.syncAction != .delete,
+                  !(entry.kgCardId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true),
+                  !(entry.kgCardId.map(linkedIDs.contains) ?? false),
+                  entry.word.folding(options: options, locale: .current).contains(folded)
+                      || entry.translation.folding(options: options, locale: .current).contains(folded)
+            else { continue }
+            if AddLinkCreationCoordinator.normalizeWord(entry.word) == typed {
+                exact.append(entry)
+            } else if partial.count < AddLinkCoordinator.candidateLimit {
+                partial.append(entry)
+            }
+        }
+        return Array((exact + partial).prefix(AddLinkCoordinator.candidateLimit))
+    }
+
+    private static func entry(
+        _ word: String,
+        translation: String? = nil,
+        cardID: String,
+        notebook: String
+    ) -> VocabularyEntry {
         let value = VocabularyEntry(
             word: word,
-            translation: word,
+            translation: translation ?? word,
             context: "",
             bookTitle: "Book"
         )

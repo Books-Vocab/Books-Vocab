@@ -181,17 +181,16 @@ final class AddLinkCoordinator {
     nonisolated static func localCandidates(
         query: String,
         sourceEntry: VocabularyEntry,
-        allEntries: [VocabularyEntry]
+        allEntries: [VocabularyEntry],
+        index: AddLinkSearchIndex = AddLinkSearchIndex()
     ) -> [VocabularyEntry] {
         // Same cleaning as the backend's `_clean_content` (trailing `.,;:!?`), so a
         // typed `run.` lists what `run` lists and the exact word is never hidden.
         let trimmed = AddLinkCreationCoordinator.cleanedQuery(query)
         guard !trimmed.isEmpty else { return [] }
         let linkedIDs = Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
-        let folded = trimmed.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: .current
-        )
+        index.syncLocale()
+        let folded = AddLinkSearchIndex.fold(trimmed)
         // The exact word is listed first and kept even when 20+ partial matches
         // precede it in store order: Return links only an exact match (#2038), so
         // an exact word that fell outside the cap would be neither visible nor
@@ -200,22 +199,19 @@ final class AddLinkCoordinator {
         var exact: [VocabularyEntry] = []
         var partial: [VocabularyEntry] = []
         for entry in allEntries {
+            // Once the partial list is full only an exact word can still change the
+            // result (it is kept beyond the cap), so every other entry is skipped
+            // before any eligibility check or folding. The scan itself cannot stop:
+            // an exact word may sit anywhere in store order, even twice.
+            let partialFull = partial.count >= candidateLimit
+            if partialFull, !index.isExactWord(entry, normalizedQuery: typed) { continue }
             guard Self.isEligibleTarget(entry, for: sourceEntry),
                   !(entry.kgCardId.map(linkedIDs.contains) ?? false),
-                  (
-                      entry.word.folding(
-                          options: [.caseInsensitive, .diacriticInsensitive],
-                          locale: .current
-                      ).contains(folded)
-                          || entry.translation.folding(
-                              options: [.caseInsensitive, .diacriticInsensitive],
-                              locale: .current
-                          ).contains(folded)
-                  )
+                  index.matches(entry, foldedQuery: folded)
             else { continue }
-            if AddLinkCreationCoordinator.normalizeWord(entry.word) == typed {
+            if partialFull || index.isExactWord(entry, normalizedQuery: typed) {
                 exact.append(entry)
-            } else if partial.count < candidateLimit {
+            } else {
                 partial.append(entry)
             }
         }
