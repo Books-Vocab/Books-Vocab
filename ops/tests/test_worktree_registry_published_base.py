@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
@@ -12,6 +14,32 @@ from worktree_reanchor_core import registry_ops
 BASE = "a" * 40
 HEAD = "b" * 40
 PUBLISHED_BASE = "c" * 40
+
+
+@pytest.fixture(autouse=True)
+def lease_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replace the delivery operation lease with a recorder.
+
+    These cases pin CAS/idempotence, not cross-process mutual exclusion (owned
+    by test_worktree_registry_operation_lock.py).  The real lease lives under
+    the repository's shared .cache, so taking it here made the result depend on
+    whether a live delivery mutation happened to hold it.
+    """
+
+    calls: list[str] = []
+
+    class _RecordingLock:
+        def __init__(self, _anchor: Path, *, command: str) -> None:
+            calls.append(command)
+
+        def __enter__(self) -> "_RecordingLock":
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    monkeypatch.setattr(registry, "OperationLock", _RecordingLock)
+    return calls
 
 
 def _record(tmp_path: Path) -> dict[str, object]:
@@ -72,12 +100,15 @@ def _argv(
     ]
 
 
-def test_record_published_base_is_cas_guarded_and_idempotent(tmp_path: Path) -> None:
+def test_record_published_base_is_cas_guarded_and_idempotent(
+    tmp_path: Path, lease_calls: list[str]
+) -> None:
     state = tmp_path / "registry.json"
     record = _record(tmp_path)
     registry.save_state(state, {"schema": registry.SCHEMA, "records": [record]})
 
     assert registry.main(_argv(state, record)) == registry.EXIT_OK
+    assert lease_calls == ["registry:record-published-base"]
     first = registry.load_state(state)["records"][0]
     assert first["base_sha"] == BASE
     assert first["published_base_sha"] == PUBLISHED_BASE
@@ -112,7 +143,9 @@ def test_reanchor_uses_exact_base_sha_when_legacy_base_is_a_ref(tmp_path: Path) 
         owner_thread_id="owner-thread",
         claim_generation=2,
         expected_remote_head=HEAD,
-        target=tmp_path / "reanchored",
+        # Resume re-anchors in place: the path-drift guard (50223f3d3) refuses
+        # any target other than the exact recorded claim path.
+        target=Path(str(record["path"])),
         replacement_base="e" * 40,
         replacement_base_sha="e" * 40,
     )

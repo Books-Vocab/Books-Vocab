@@ -101,6 +101,23 @@ fi
 [[ -n "$(rsync_flags '')" ]] \
   && ok "KG backup rsync flavor probe yields flags on this host" \
   || fail_t "KG backup rsync flavor probe yields flags on this host"
+# 無參數 probe 曾是 `rsync --version | head -1`：devops.sh 是 pipefail，head 讀完首行就
+# 關管，rsync 若還在寫就吃 SIGPIPE（141）→ 整支 source 被 set -e 殺掉，flags 變空。
+# 真 rsync 的 --version 只有幾百位元組，所以只偶發；這裡用超過 pipe buffer 的 stub
+# 輸出把那個時序釘成必然，證明 probe 不再經過會斷的管線。
+_probe_bin=$(mktemp -d)
+cat > "$_probe_bin/rsync" <<'STUB'
+#!/bin/bash
+echo "rsync  version 3.3.0  protocol version 31"
+for _ in $(seq 1 20000); do echo "padding line that outgrows the pipe buffer"; done
+STUB
+chmod +x "$_probe_bin/rsync"
+_probe_rc=0
+_probe_out=$(PATH="$_probe_bin:$PATH" rsync_flags '' 2>&1) || _probe_rc=$?
+[[ "$_probe_rc" -eq 0 && "$(printf '%s' "$_probe_out" | tr '\n' '|')" == '--info=progress2|--human-readable' ]] \
+  && ok "KG backup rsync probe survives a --version longer than the pipe buffer" \
+  || fail_t "KG backup rsync probe survives a --version longer than the pipe buffer (rc=$_probe_rc out=$_probe_out)"
+rm -rf "$_probe_bin"
 # 以上全是 grep-on-source，擋不住「訊息一字不動、只把結尾的 err 換成 echo」——那之後
 # cmd_backup 會對空目錄繼續跑 integrity check + tar 然後 exit 0，正是 IMP-20260806-
 # 02bf8d 的病本身（拿印訊息當失敗訊號）換皮。這條用 stub rsync 實跑一次失敗路徑，

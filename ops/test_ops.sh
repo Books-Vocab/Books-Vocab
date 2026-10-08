@@ -253,7 +253,6 @@ run_one() {
       ./ops/tests/test_ops_suite_bootstrap.sh &&
       ./ops/tests/test_ci_scope_router.sh &&
       ./ops/tests/test_ci_confidence_verdict.sh &&
-      ./ops/tests/test_ops_suite_bootstrap.sh &&
       ./ops/tests/test_ci_apt_install.sh
       ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
@@ -270,7 +269,7 @@ run_one() {
         ops/tests/test_context_route.py
       ;;
     gen-ios-baseline)
-      ./ops/tests/test_gen_ios_baseline.sh
+      ./ops/tests/test_gen_ios_baseline.sh &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_swift_decl_count.py
       ;;
@@ -391,6 +390,7 @@ run_one() {
         ops/tests/test_worktree_published_remote_recovery.py \
         ops/tests/test_worktree_reanchor_same_path.py \
         ops/tests/test_worktree_registry_operation_lock.py \
+        ops/tests/test_worktree_registry_published_base.py \
         ops/tests/test_worktree_resume_cleanup_pending.py \
         ops/tests/test_worktree_resume_maintenance.py \
         ops/tests/test_task_registry_process_identity.py
@@ -423,14 +423,14 @@ run_one() {
         pytest -q -p no:cacheprovider lab/podcast/monitor/test_*.py
       ;;
     asc)
-      ./ops/test_asc.sh
+      ./ops/test_asc.sh &&
       "$UV_BIN" run --python 3.13 --with pytest --with pyjwt --with cryptography pytest -q \
         ops/tests/test_asc_text_bundle.py \
         ops/tests/test_asc_build.py
       ;;
     release-surfaces)
-      run_one release
-      run_one ios-release
+      run_one release &&
+      run_one ios-release &&
       run_one asc
       ;;
     *) return 64 ;;

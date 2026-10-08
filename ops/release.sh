@@ -1226,8 +1226,9 @@ cmd_resubmit() {
 
 # 這次 range 會不會真的觸發 rollout。**刻意委派 kg_reconcile.sh 的 paths_need_deploy**
 # 而不是在這裡再寫一份正則：兩份判定必然漂移，而漂移的後果是這個閘等一場永遠不會發生
-# 的 rollout（例如 range 內只有 backend/uv.lock —— orchestrate 的 `backend/` 前綴會
-# 報「有 backend 變更」，但 reconciler 的正則不收 uv.lock，只 ff-only 不重建）。
+# 的 rollout（例如 range 內只有 docs／ios，reconciler 只 ff-only 不重建）。
+# backend/uv.lock 自 #2088 起在 reconciler 的正則內（Dockerfile 依它安裝），
+# lock-only range 也會 rebuild，所以必須等。
 # 用 subshell source 取純函式，隔離它的全域（它會設 CURL_BIN / KG_PUBLIC_URL 等同名變數）。
 paths_trigger_rollout() {
   # 找不到 reconciler 就 err，不靜默當成「不用等」：那會讓這個閘在最需要它的時候
