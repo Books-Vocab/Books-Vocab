@@ -658,6 +658,12 @@ struct AddLinkCreationHubTests {
 
         startAndAbandon(rig)
         #expect(await CreationFixtures.eventually { rig.hub.jobs.count == 1 })
+        // The hub registers the job synchronously, but the POST only goes out when the
+        // coordinator's task gets its first main-actor turn. Without waiting for it,
+        // `startKeys.count == 1` below cannot tell "second start blocked" from "first POST
+        // not sent yet" (it read 0), and a wrongly launched second POST would not have
+        // reached the service yet either.
+        #expect(await CreationFixtures.eventually { service.startKeys.count == 1 })
 
         let second = rig.hub.makeCoordinator()
         second.start(
@@ -669,6 +675,8 @@ struct AddLinkCreationHubTests {
             container: rig.container
         )
         #expect(second.phase == .blocked)
+        // Same grace the dismissal test above uses: let a leaked second launch run before asserting.
+        try await Task.sleep(for: .milliseconds(50))
         #expect(service.startKeys.count == 1)
         await gate.release()
         #expect(await CreationFixtures.eventually { rig.hub.jobs.isEmpty })

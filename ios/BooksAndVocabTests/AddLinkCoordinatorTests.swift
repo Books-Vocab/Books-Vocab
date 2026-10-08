@@ -148,36 +148,68 @@ struct AddLinkCoordinatorTests {
         // Worst case: nothing matches, so every entry has to be examined.
         let query = "zzq"
         let runs = 50
-        func p95Milliseconds(_ body: () -> Int) -> Double {
-            var samples: [Double] = []
-            var sink = 0
-            let clock = ContinuousClock()
-            for _ in 0..<runs {
-                let elapsed = clock.measure { sink &+= body() }
-                samples.append(Double(elapsed.components.seconds) * 1000
-                    + Double(elapsed.components.attoseconds) / 1e15)
-            }
-            #expect(sink == 0, "the worst-case query must match nothing")
-            return samples.sorted()[Int((Double(runs) * 0.95).rounded(.up)) - 1]
-        }
-
-        let legacy = p95Milliseconds {
-            Self.referenceCandidates(query: query, sourceEntry: source, allEntries: all).count
-        }
         let index = AddLinkSearchIndex()
         let cold = AddLinkCoordinator.localCandidates(query: query, sourceEntry: source, allEntries: all, index: index)
         #expect(cold.isEmpty)
-        let warm = p95Milliseconds {
+
+        func legacyCount() -> Int {
+            Self.referenceCandidates(query: query, sourceEntry: source, allEntries: all).count
+        }
+        func warmCount() -> Int {
             AddLinkCoordinator.localCandidates(
                 query: query, sourceEntry: source, allEntries: all, index: index
             ).count
         }
-        print("PERF addLink.localCandidates N=\(count) p95 legacy=\(String(format: "%.2f", legacy))ms warm=\(String(format: "%.2f", warm))ms")
+        func milliseconds(_ elapsed: Duration) -> Double {
+            Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
+        }
+        func percentile(_ samples: [Double], _ fraction: Double) -> Double {
+            samples.sorted()[Int((Double(samples.count) * fraction).rounded(.up)) - 1]
+        }
 
-        // Budgets are generous (CI simulators are slow and noisy); they only catch a regression
-        // back to per-keystroke folding of the whole store, which measured ~70 ms at N=5000.
-        #expect(warm < 100, "warm p95 \(warm)ms at N=\(count)")
-        #expect(warm < legacy, "the cached search must beat the uncached scan (warm \(warm)ms, legacy \(legacy)ms)")
+        // Legacy and warm are timed back to back inside every iteration (alternating which goes
+        // first), so a load spike from the suites running in parallel on a shared runner lands on
+        // both sides of the same pair. Comparing two independently measured p95 tails flipped on
+        // CI (warm 54 ms vs legacy 47 ms at N=2000) although the cache is faster in the typical
+        // case: the per-entry SwiftData property reads that the cache cannot remove dominate a
+        // Debug build, so the real advantage is only ~20-35% (macOS Debug micro-benchmark with a
+        // model stand-in, idle and CPU-contended), well inside tail noise.
+        let clock = ContinuousClock()
+        var legacySamples: [Double] = []
+        var warmSamples: [Double] = []
+        var ratios: [Double] = []
+        var sink = 0
+        for run in 0..<runs {
+            let legacyElapsed: Duration
+            let warmElapsed: Duration
+            if run.isMultiple(of: 2) {
+                legacyElapsed = clock.measure { sink &+= legacyCount() }
+                warmElapsed = clock.measure { sink &+= warmCount() }
+            } else {
+                warmElapsed = clock.measure { sink &+= warmCount() }
+                legacyElapsed = clock.measure { sink &+= legacyCount() }
+            }
+            legacySamples.append(milliseconds(legacyElapsed))
+            warmSamples.append(milliseconds(warmElapsed))
+            ratios.append(milliseconds(warmElapsed) / milliseconds(legacyElapsed))
+        }
+        #expect(sink == 0, "the worst-case query must match nothing")
+
+        let legacy = percentile(legacySamples, 0.95)
+        let warm = percentile(warmSamples, 0.95)
+        let warmMedian = percentile(warmSamples, 0.5)
+        let medianRatio = percentile(ratios, 0.5)
+        print("PERF addLink.localCandidates N=\(count) p95 legacy=\(String(format: "%.2f", legacy))ms warm=\(String(format: "%.2f", warm))ms warm/legacy median=\(String(format: "%.2f", medianRatio))")
+
+        // The absolute budget is generous (CI simulators are slow and noisy); it only catches a regression
+        // back to per-keystroke folding of the whole store, which measured ~70 ms at N=5000. It applies to
+        // the median: a 50-run p95 is the third-worst sample, so a few preempted runs fail it by themselves.
+        #expect(warmMedian < 100, "warm median \(warmMedian)ms (p95 \(warm)ms) at N=\(count)")
+        // The relative claim is about the typical query, so it uses the median of the paired ratios.
+        #expect(
+            medianRatio < 1,
+            "the cached search must beat the uncached scan (median warm/legacy \(medianRatio); p95 warm \(warm)ms, legacy \(legacy)ms)"
+        )
     }
 
     @Test("AddLink lookup exposes deterministic idle, result, empty, loading, error, and retry states")
