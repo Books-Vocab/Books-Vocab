@@ -1,10 +1,7 @@
 # ruff: noqa: F401, F403, F405, I001
 """test ops cli analytics.py test ownership shard."""
 
-
-
 from _ops_cli_support import *  # noqa: F403
-
 
 
 class TestCostOverview:
@@ -20,10 +17,13 @@ class TestCostOverview:
 
     def test_cost_overview_json_with_data(self, tmp_path):
         now = _now_iso()
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1000, 500, now),
-            ("u2", "judge", 200, 100, now),
-        ])
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1000, 500, now),
+                ("u2", "judge", 200, 100, now),
+            ],
+        )
         r = _run_cli(str(tmp_path), "cost-overview", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -32,6 +32,7 @@ class TestCostOverview:
         # Descending by cost
         costs = [u["total_cost_usd"] for u in d["users"]]
         assert costs == sorted(costs, reverse=True)
+
 
 class TestAnalyzeSmoke:
     """analyze — thin wrapper around ops_analyze.py subprocess."""
@@ -42,23 +43,26 @@ class TestAnalyzeSmoke:
         # ops_analyze.py may 1 on empty data, but must not traceback
         assert "Traceback" not in r.stderr
 
+
 class TestFleetOverview:
     """fleet-overview — 跨用戶 cards/links/月 cost 聚合 + FLEET TOTAL。"""
 
     def _seed_fleet(self, tmp_path):
         import json
+
         now = _now_iso()
         # user A: 2 active + 1 deleted, 1 link
         ua = tmp_path / "users" / "uA"
         ua.mkdir(parents=True)
-        _create_cards_db(ua / "cards.db", [
-            ("a1", "x", "X", 0, now, now),
-            ("a2", "y", "Y", 0, now, now),
-            ("a3", "z", "Z", 1, now, now),
-        ])
-        (ua / "graph_default.json").write_text(
-            json.dumps([{"from_id": "a1", "to_id": "a2"}])
+        _create_cards_db(
+            ua / "cards.db",
+            [
+                ("a1", "x", "X", 0, now, now),
+                ("a2", "y", "Y", 0, now, now),
+                ("a3", "z", "Z", 1, now, now),
+            ],
         )
+        (ua / "graph_default.json").write_text(json.dumps([{"from_id": "a1", "to_id": "a2"}]))
         # user B: 1 active, no graph
         ub = tmp_path / "users" / "uB"
         ub.mkdir(parents=True)
@@ -68,6 +72,7 @@ class TestFleetOverview:
 
     def test_fleet_json(self, tmp_path):
         import json
+
         self._seed_fleet(tmp_path)
         r = _run_cli(str(tmp_path), "fleet-overview", "--json")
         assert r.returncode == 0, r.stderr
@@ -90,6 +95,7 @@ class TestFleetOverview:
 
     def test_fleet_empty(self, tmp_path):
         import json
+
         r = _run_cli(str(tmp_path), "fleet-overview", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -98,6 +104,7 @@ class TestFleetOverview:
     def test_corrupt_graph_logged_not_silent(self, tmp_path):
         """工程審計:損壞 graph json 此前被靜默吞掉 → 應計數並 stderr 提示(stdout 仍乾淨)。"""
         import json
+
         now = _now_iso()
         ua = tmp_path / "users" / "uA"
         ua.mkdir(parents=True)
@@ -114,6 +121,7 @@ class TestFleetOverview:
         """工程審計 HIGH:graph json 為合法 JSON scalar(非 list/dict)→ len() 此前拋
         TypeError 崩潰整個 fleet-overview。修復後視為壞形狀,不計、不爆。"""
         import json
+
         now = _now_iso()
         ua = tmp_path / "users" / "uA"
         ua.mkdir(parents=True)
@@ -128,33 +136,44 @@ class TestFleetOverview:
     def test_dict_shaped_graph_counted(self, tmp_path):
         """dict-of-links(以 id 為鍵)形狀應正確計數,語意對齊 canonical reader。"""
         import json
+
         now = _now_iso()
         ua = tmp_path / "users" / "uA"
         ua.mkdir(parents=True)
         _create_cards_db(ua / "cards.db", [("a1", "x", "X", 0, now, now)])
-        (ua / "graph_default.json").write_text(json.dumps({
-            "l1": {"from_id": "a", "to_id": "b"},
-            "l2": {"from_id": "b", "to_id": "c"},
-        }))
+        (ua / "graph_default.json").write_text(
+            json.dumps(
+                {
+                    "l1": {"from_id": "a", "to_id": "b"},
+                    "l2": {"from_id": "b", "to_id": "c"},
+                }
+            )
+        )
         r = _run_cli(str(tmp_path), "fleet-overview", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         ua_row = next(u for u in d["users"] if u["user_id"] == "uA")
         assert ua_row["links"] == 2
 
+
 class TestTimeseries:
     """timeseries — cost/calls/active_users 按 day/week/month 分桶趨勢。"""
 
     def _seed(self, tmp_path):
         # 跨兩日:06-01 有 u1+u2 各一筆,06-02 只有 u1。deepseek 計價可驗 provider-aware。
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1_000_000, 1_000_000, "2026-06-01T10:00:00+00:00", "deepseek"),
-            ("u2", "translate", 1_000_000, 1_000_000, "2026-06-01T11:00:00+00:00", "deepseek"),
-            ("u1", "translate", 1_000_000, 1_000_000, "2026-06-02T10:00:00+00:00", "deepseek"),
-        ], with_provider=True)
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1_000_000, 1_000_000, "2026-06-01T10:00:00+00:00", "deepseek"),
+                ("u2", "translate", 1_000_000, 1_000_000, "2026-06-01T11:00:00+00:00", "deepseek"),
+                ("u1", "translate", 1_000_000, 1_000_000, "2026-06-02T10:00:00+00:00", "deepseek"),
+            ],
+            with_provider=True,
+        )
 
     def test_calls_by_day_json(self, tmp_path):
         import json
+
         self._seed(tmp_path)
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day", "--range", "all", "--json")
         assert r.returncode == 0, r.stderr
@@ -166,6 +185,7 @@ class TestTimeseries:
 
     def test_active_users_distinct(self, tmp_path):
         import json
+
         self._seed(tmp_path)
         r = _run_cli(str(tmp_path), "timeseries", "active_users", "--range", "all", "--json")
         assert r.returncode == 0, r.stderr
@@ -176,6 +196,7 @@ class TestTimeseries:
 
     def test_cost_provider_aware(self, tmp_path):
         import json
+
         self._seed(tmp_path)
         r = _run_cli(str(tmp_path), "timeseries", "cost", "--range", "all", "--json")
         assert r.returncode == 0, r.stderr
@@ -187,6 +208,7 @@ class TestTimeseries:
 
     def test_bucket_month(self, tmp_path):
         import json
+
         self._seed(tmp_path)
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month", "--range", "all", "--json")
         assert r.returncode == 0, r.stderr
@@ -196,10 +218,14 @@ class TestTimeseries:
 
     def test_bucket_week(self, tmp_path):
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
-            ("u1", "translate", 1, 1, "2026-06-10T10:00:00+00:00"),  # 隔週
-        ])
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+                ("u1", "translate", 1, 1, "2026-06-10T10:00:00+00:00"),  # 隔週
+            ],
+        )
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "week", "--range", "all", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -208,6 +234,7 @@ class TestTimeseries:
 
     def test_uid_filter(self, tmp_path):
         import json
+
         self._seed(tmp_path)
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--uid", "u1", "--range", "all", "--json")
         assert r.returncode == 0, r.stderr
@@ -218,6 +245,7 @@ class TestTimeseries:
 
     def test_sorted_ascending(self, tmp_path):
         import json
+
         self._seed(tmp_path)
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all", "--json")
         d = json.loads(r.stdout)
@@ -247,10 +275,12 @@ class TestTimeseries:
 
     def test_empty(self, tmp_path):
         import json
+
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         assert d["count"] == 0 and d["series"] == []
+
 
 class TestBucketKey:
     """_bucket_key 純函數單元測試 — 畸形時間戳 + 跨年 ISO 週(工程審計缺口)。"""
@@ -279,20 +309,23 @@ class TestBucketKey:
         assert _bucket_key("2021-01-01T00:00:00", "week") == "2020-W53"
 
     def test_week_string_sort_is_chronological(self):
-        assert sorted(["2026-W01", "2020-W53", "2025-W52"]) == \
-            ["2020-W53", "2025-W52", "2026-W01"]
+        assert sorted(["2026-W01", "2020-W53", "2025-W52"]) == ["2020-W53", "2025-W52", "2026-W01"]
+
 
 class TestTimeseriesFillZero:
     """--fill-zero 補齊零值桶 → 顯式化斷層(dogfood + 產品審計頭號缺口)。"""
 
     def test_fill_gap_day(self, tmp_path):
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
-            ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),  # 跳過 06-02/03
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day",
-                     "--range", "all", "--fill-zero", "--json")
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+                ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),  # 跳過 06-02/03
+            ],
+        )
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day", "--range", "all", "--fill-zero", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         series = {s["bucket"]: s["value"] for s in d["series"]}
@@ -305,33 +338,43 @@ class TestTimeseriesFillZero:
 
     def test_default_no_fill_is_compact(self, tmp_path):
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
-            ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day",
-                     "--range", "all", "--json")  # 無 --fill-zero
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+                ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),
+            ],
+        )
+        r = _run_cli(
+            str(tmp_path), "timeseries", "calls", "--bucket", "day", "--range", "all", "--json"
+        )  # 無 --fill-zero
         d = json.loads(r.stdout)
         assert d["count"] == 2  # 只有有資料的桶
         assert "2026-06-02" not in [s["bucket"] for s in d["series"]]
 
     def test_fill_all_range_no_data_empty(self, tmp_path):
         import json
+
         # range=all 且完全無資料 → 無起點可補 → 空 series 不報錯
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all",
-                     "--fill-zero", "--json")
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all", "--fill-zero", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         assert d["count"] == 0 and d["series"] == []
 
     def test_fill_week_bucket(self, tmp_path):
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),  # ISO W23
-            ("u1", "translate", 1, 1, "2026-06-22T10:00:00+00:00"),  # ISO W26
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "week",
-                     "--range", "all", "--fill-zero", "--json")
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),  # ISO W23
+                ("u1", "translate", 1, 1, "2026-06-22T10:00:00+00:00"),  # ISO W26
+            ],
+        )
+        r = _run_cli(
+            str(tmp_path), "timeseries", "calls", "--bucket", "week", "--range", "all", "--fill-zero", "--json"
+        )
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         series = {s["bucket"]: s["value"] for s in d["series"]}
@@ -340,12 +383,17 @@ class TestTimeseriesFillZero:
 
     def test_fill_month_bucket(self, tmp_path):
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2026-01-15T10:00:00+00:00"),
-            ("u1", "translate", 1, 1, "2026-04-15T10:00:00+00:00"),
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month",
-                     "--range", "all", "--fill-zero", "--json")
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2026-01-15T10:00:00+00:00"),
+                ("u1", "translate", 1, 1, "2026-04-15T10:00:00+00:00"),
+            ],
+        )
+        r = _run_cli(
+            str(tmp_path), "timeseries", "calls", "--bucket", "month", "--range", "all", "--fill-zero", "--json"
+        )
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         series = {s["bucket"]: s["value"] for s in d["series"]}
@@ -355,11 +403,14 @@ class TestTimeseriesFillZero:
     def test_fill_bounded_all_filtered_zero(self, tmp_path):
         """bounded range + 資料全被 since 過濾掉 → 補出全零軸(since 起點分支,非 min_dt)。"""
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2020-01-01T00:00:00+00:00"),  # 遠在 30d 外
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day",
-                     "--range", "30d", "--fill-zero", "--json")
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2020-01-01T00:00:00+00:00"),  # 遠在 30d 外
+            ],
+        )
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day", "--range", "30d", "--fill-zero", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         assert d["count"] >= 28  # ~31 個零桶
@@ -368,48 +419,62 @@ class TestTimeseriesFillZero:
     def test_fill_zero_active_users_int_type(self, tmp_path):
         """工程審計:active_users 零桶須為 int 0(與非零桶型別一致),非 float。"""
         import json
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
-            ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "active_users", "--bucket", "day",
-                     "--range", "all", "--fill-zero", "--json")
+
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+                ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),
+            ],
+        )
+        r = _run_cli(
+            str(tmp_path), "timeseries", "active_users", "--bucket", "day", "--range", "all", "--fill-zero", "--json"
+        )
         d = json.loads(r.stdout)
         series = {s["bucket"]: s["value"] for s in d["series"]}
         assert series["2026-06-02"] == 0 and isinstance(series["2026-06-02"], int)
+
 
 class TestTimeseriesSinceFilter:
     """--range since 過濾 — 工程審計指出此前零測試覆蓋。"""
 
     def test_30d_excludes_old(self, tmp_path):
         import json
+
         now = _now_iso()
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, now),
-            ("u1", "translate", 1, 1, "2020-01-01T00:00:00+00:00"),  # 遠在 30d 外
-        ])
-        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month",
-                     "--range", "30d", "--json")
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, now),
+                ("u1", "translate", 1, 1, "2020-01-01T00:00:00+00:00"),  # 遠在 30d 外
+            ],
+        )
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month", "--range", "30d", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         buckets = [s["bucket"] for s in d["series"]]
         assert "2020-01" not in buckets  # 被 since cutoff 過濾
         assert d["count"] == 1
 
+
 class TestTrends:
     """trends — 全域監控趨勢(errors/active/tokens 逐日,唯讀重實作對齊 admin_trends)。"""
 
     def test_errors_from_judge_rejects(self, tmp_path):
         import json
+
         now = _now_iso()
         # 2 auto-reject(accepted=0, reject_reason=None)=error;1 accept 不算;
         # 1 degree_cap reject 須排除(對齊 admin_trends DEGREE_CAP 排除)。
-        _create_judge_log_db(tmp_path, [
-            ("u1", "default", "a", "b", "unrelated", 0.1, 0, now, None),
-            ("u1", "default", "a", "c", "unrelated", 0.1, 0, now, None),
-            ("u1", "default", "a", "d", "related", 0.9, 1, now, None),
-            ("u1", "default", "a", "e", "capped", 0.1, 0, now, "degree_cap"),
-        ])
+        _create_judge_log_db(
+            tmp_path,
+            [
+                ("u1", "default", "a", "b", "unrelated", 0.1, 0, now, None),
+                ("u1", "default", "a", "c", "unrelated", 0.1, 0, now, None),
+                ("u1", "default", "a", "d", "related", 0.9, 1, now, None),
+                ("u1", "default", "a", "e", "capped", 0.1, 0, now, "degree_cap"),
+            ],
+        )
         r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -418,11 +483,15 @@ class TestTrends:
 
     def test_errors_from_pipeline_failures(self, tmp_path):
         import json
+
         now = _now_iso()
-        _create_pipeline_runs_db(tmp_path, [
-            ("r1", "u1", "default", "manual", now, now, "failed", "[]"),
-            ("r2", "u1", "default", "manual", now, now, "ok", "[]"),  # 不算
-        ])
+        _create_pipeline_runs_db(
+            tmp_path,
+            [
+                ("r1", "u1", "default", "manual", now, now, "failed", "[]"),
+                ("r2", "u1", "default", "manual", now, now, "ok", "[]"),  # 不算
+            ],
+        )
         r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -430,12 +499,16 @@ class TestTrends:
 
     def test_active_users_distinct(self, tmp_path):
         import json
+
         now = _now_iso()
-        _create_token_usage_db(tmp_path, [
-            ("u1", "translate", 1, 1, now),
-            ("u2", "translate", 1, 1, now),
-            ("u1", "judge", 1, 1, now),  # 同 u1 不重複計
-        ])
+        _create_token_usage_db(
+            tmp_path,
+            [
+                ("u1", "translate", 1, 1, now),
+                ("u2", "translate", 1, 1, now),
+                ("u1", "judge", 1, 1, now),  # 同 u1 不重複計
+            ],
+        )
         r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -443,24 +516,34 @@ class TestTrends:
 
     def test_window_and_alignment(self, tmp_path):
         import json
+
         r = _run_cli(str(tmp_path), "trends", "--window", "10", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         assert d["window_days"] == 10
-        assert len(d["days"]) == len(d["errors_per_day"]) == \
-            len(d["active_users_per_day"]) == len(d["tokens_per_day"]) == 10
+        assert (
+            len(d["days"])
+            == len(d["errors_per_day"])
+            == len(d["active_users_per_day"])
+            == len(d["tokens_per_day"])
+            == 10
+        )
 
     def test_text_render(self, tmp_path):
         now = _now_iso()
-        _create_pipeline_runs_db(tmp_path, [
-            ("r1", "u1", "default", "manual", now, now, "failed", "[]"),
-        ])
+        _create_pipeline_runs_db(
+            tmp_path,
+            [
+                ("r1", "u1", "default", "manual", now, now, "failed", "[]"),
+            ],
+        )
         r = _run_cli(str(tmp_path), "trends", "--window", "7")
         assert r.returncode == 0, r.stderr
         assert "Errors" in r.stdout and "Total errors" in r.stdout
 
     def test_empty_no_crash(self, tmp_path):
         import json
+
         r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -471,28 +554,33 @@ class TestTrends:
         """關鍵:ops-cli trends 必須唯讀。此前若 import collect_trends,其 _get_conn 會把
         status='running' 的 row UPDATE 成 'interrupted'(破壞進行中 pipeline)。驗證不被竄改。"""
         import sqlite3 as _sq
+
         now = _now_iso()
-        _create_pipeline_runs_db(tmp_path, [
-            ("r_running", "u1", "default", "manual", now, None, "running", "[]"),
-        ])
+        _create_pipeline_runs_db(
+            tmp_path,
+            [
+                ("r_running", "u1", "default", "manual", now, None, "running", "[]"),
+            ],
+        )
         r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         conn = _sq.connect(str(tmp_path / "pipeline_runs.db"))
-        status = conn.execute(
-            "SELECT status FROM pipeline_runs WHERE run_id = 'r_running'"
-        ).fetchone()[0]
+        status = conn.execute("SELECT status FROM pipeline_runs WHERE run_id = 'r_running'").fetchone()[0]
         conn.close()
         assert status == "running"  # 未被竄改 → 唯讀保證成立
-
 
     def test_llm_errors_in_trends(self, tmp_path):
         """trends 應獨立回報 llm_errors_per_day(真火),不與業務 errors 混。"""
         import json
+
         now = _now_iso()
-        _create_llm_errors_db(tmp_path, [
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
-            ("u1", "translate", "deepseek", "m", "InternalServerError", 500, "boom", now),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
+                ("u1", "translate", "deepseek", "m", "InternalServerError", 500, "boom", now),
+            ],
+        )
         r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -502,11 +590,13 @@ class TestTrends:
         assert d["errors_per_day"][-1] == 0
         assert d["total_errors"] == 0
 
+
 class TestLlmErrors:
     """llm-errors — 真火監控(真實 LLM 失敗 429/5xx/timeout)。"""
 
     def test_empty_no_crash(self, tmp_path):
         import json
+
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -516,14 +606,18 @@ class TestLlmErrors:
 
     def test_window_filtering(self, tmp_path):
         import json
+
         now = _now_iso()
         yesterday = (datetime.now(UTC) - __import__("datetime").timedelta(days=1)).isoformat()
         old = "2020-01-01T00:00:00+00:00"
-        _create_llm_errors_db(tmp_path, [
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", yesterday),
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", old),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", yesterday),
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", old),
+            ],
+        )
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -531,13 +625,17 @@ class TestLlmErrors:
 
     def test_by_class_provider_status(self, tmp_path):
         import json
+
         now = _now_iso()
-        _create_llm_errors_db(tmp_path, [
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl2", now),
-            ("u1", "translate", "deepseek", "m", "InternalServerError", 500, "boom", now),
-            ("u1", "embed", "gemini", "m", "APITimeoutError", None, "timeout", now),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl2", now),
+                ("u1", "translate", "deepseek", "m", "InternalServerError", 500, "boom", now),
+                ("u1", "embed", "gemini", "m", "APITimeoutError", None, "timeout", now),
+            ],
+        )
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -552,11 +650,15 @@ class TestLlmErrors:
 
     def test_uid_filter(self, tmp_path):
         import json
+
         now = _now_iso()
-        _create_llm_errors_db(tmp_path, [
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
-            ("u2", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+                ("u2", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+            ],
+        )
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "u1", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
@@ -564,17 +666,21 @@ class TestLlmErrors:
 
     def _seed_two_users(self, tmp_path):
         now = _now_iso()
-        _create_llm_errors_db(tmp_path, [
-            ("abc123full", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
-            ("abc123full", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
-            ("abc123full", "embed", "gemini", "m", "APITimeoutError", None, "to", now),
-            ("zzz999full", "judge", "gemini", "m", "InternalServerError", 500, "boom", now),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("abc123full", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+                ("abc123full", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+                ("abc123full", "embed", "gemini", "m", "APITimeoutError", None, "to", now),
+                ("zzz999full", "judge", "gemini", "m", "InternalServerError", 500, "boom", now),
+            ],
+        )
         (tmp_path / "users" / "abc123full").mkdir(parents=True)
         (tmp_path / "users" / "zzz999full").mkdir(parents=True)
 
     def test_partial_uid_resolved(self, tmp_path):
         import json
+
         self._seed_two_users(tmp_path)
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "abc", "--json")
         assert r.returncode == 0, r.stderr
@@ -599,6 +705,7 @@ class TestLlmErrors:
 
     def test_uid_all_has_no_uid_key(self, tmp_path):
         import json
+
         self._seed_two_users(tmp_path)
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "all", "--json")
         assert r.returncode == 0, r.stderr
@@ -608,9 +715,12 @@ class TestLlmErrors:
 
     def test_text_render(self, tmp_path):
         now = _now_iso()
-        _create_llm_errors_db(tmp_path, [
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
+            ],
+        )
         r = _run_cli(str(tmp_path), "llm-errors", "--window", "7")
         assert r.returncode == 0, r.stderr
         assert "LLM Errors" in r.stdout
@@ -619,10 +729,14 @@ class TestLlmErrors:
     def test_readonly_does_not_write(self, tmp_path):
         """ops-cli llm-errors 必須唯讀 — 跑完後 DB 內容與 mtime 不變。"""
         import os
+
         now = _now_iso()
-        _create_llm_errors_db(tmp_path, [
-            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
-        ])
+        _create_llm_errors_db(
+            tmp_path,
+            [
+                ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+            ],
+        )
         db_path = tmp_path / "llm_errors.db"
         mtime_before = os.stat(db_path).st_mtime
         size_before = os.stat(db_path).st_size
@@ -632,6 +746,7 @@ class TestLlmErrors:
         size_after = os.stat(db_path).st_size
         assert mtime_before == mtime_after
         assert size_before == size_after
+
 
 class TestWorldStateError:
     """world-state 錯誤路徑。"""
@@ -647,6 +762,7 @@ class TestWorldStateError:
         assert "userA" in result.stderr
         assert "userB" in result.stderr
 
+
 class TestWorldDiffError:
     """world-diff 錯誤路徑。"""
 
@@ -656,9 +772,7 @@ class TestWorldDiffError:
         user_dir = tmp_path / "users" / uid
         user_dir.mkdir(parents=True)
         now = _now_iso()
-        (tmp_path / "users.json").write_text(
-            json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False)
-        )
+        (tmp_path / "users.json").write_text(json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False))
         conn = sqlite3.connect(str(user_dir / "notebooks.db"))
         conn.execute(
             "CREATE TABLE notebook (id TEXT PRIMARY KEY, name TEXT, color TEXT, sort_order INTEGER, "
@@ -675,6 +789,7 @@ class TestWorldDiffError:
         result = _run_cli(str(tmp_path), "world-diff", uid, "/nonexistent/spec.json")
         assert result.returncode != 0
 
+
 class TestAnalyze:
     """analyze 子指令 — ops_cli 透過 subprocess 呼叫 ops_analyze.py。"""
 
@@ -682,9 +797,7 @@ class TestAnalyze:
         user_dir = tmp_path / "users" / uid
         user_dir.mkdir(parents=True)
         now = _now_iso()
-        (tmp_path / "users.json").write_text(
-            json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False)
-        )
+        (tmp_path / "users.json").write_text(json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False))
         conn = sqlite3.connect(str(user_dir / "cards.db"))
         conn.execute(
             "CREATE TABLE card (id TEXT PRIMARY KEY, content TEXT, meaning TEXT, is_deleted INTEGER DEFAULT 0)"
@@ -726,6 +839,7 @@ class TestAnalyze:
         result = _run_cli(str(tmp_path), "analyze", "ghost", "1")
         assert result.returncode != 0
 
+
 class TestSyncTraceError:
     """sync-trace 錯誤路徑。"""
 
@@ -739,6 +853,7 @@ class TestSyncTraceError:
         result = _run_cli(str(tmp_path), "sync-trace", "uA", "--date", today)
         assert result.returncode != 0
         assert "uAlice" in result.stderr or "uAlan" in result.stderr
+
 
 class TestHelp:
     """--help 應正常輸出。"""
