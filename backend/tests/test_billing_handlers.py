@@ -18,9 +18,7 @@ from kg.billing_handlers import (
 
 
 def _active_entitlements():
-    return EntitlementsResponse(
-        pro=SubscriptionStatusResponse(is_active=True, status="active")
-    )
+    return EntitlementsResponse(pro=SubscriptionStatusResponse(is_active=True, status="active"))
 
 
 def _make_snapshot(transaction_id="txn-1", original_transaction_id="orig-1"):
@@ -38,6 +36,7 @@ def _make_snapshot(transaction_id="txn-1", original_transaction_id="orig-1"):
 
 
 # ── notification handler ───────────────────────────────────────────────────────
+
 
 def test_notification_normal_flow_updated(tmp_path):
     snapshot = _make_snapshot()
@@ -102,6 +101,7 @@ def test_notification_unmapped_transaction_accepted(tmp_path):
 
 # ── reconcile handler ──────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_reconcile_apple_api_failure_raises_502(tmp_path):
     import httpx
@@ -113,7 +113,8 @@ async def test_reconcile_apple_api_failure_raises_502(tmp_path):
 
     with pytest.raises(HTTPException) as exc_info:
         await reconcile_app_store_subscription_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             apple_bundle_id="com.example.app",
             users_lock_file=tmp_path / "lock",
             load_users=lambda: {},
@@ -143,7 +144,8 @@ async def test_reconcile_normal_flow_returns_entitlements(tmp_path):
     req = AppStoreReconcileRequest(transaction_id="txn-1", environment="production")
 
     result = await reconcile_app_store_subscription_response(
-        req, {"id": "u1"},
+        req,
+        {"id": "u1"},
         apple_bundle_id="com.example.app",
         users_lock_file=tmp_path / "lock",
         load_users=lambda: {},

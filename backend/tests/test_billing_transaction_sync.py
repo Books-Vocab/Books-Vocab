@@ -15,16 +15,13 @@ from kg.billing_handlers import sync_app_store_subscription_response
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 def _free_entitlements():
-    return EntitlementsResponse(
-        pro=SubscriptionStatusResponse(is_active=False, status="inactive")
-    )
+    return EntitlementsResponse(pro=SubscriptionStatusResponse(is_active=False, status="inactive"))
 
 
 def _active_entitlements():
-    return EntitlementsResponse(
-        pro=SubscriptionStatusResponse(is_active=True, status="active")
-    )
+    return EntitlementsResponse(pro=SubscriptionStatusResponse(is_active=True, status="active"))
 
 
 def _make_snapshot(transaction_id="txn-1", original_transaction_id="orig-1"):
@@ -67,6 +64,7 @@ def _common_deps(tmp_path: Path, entitlements=None):
 
 # ── sync handler ───────────────────────────────────────────────────────────────
 
+
 def test_sync_signed_transaction_verifies_and_writes(tmp_path):
     snapshot = _make_snapshot()
     decode_fn = MagicMock(return_value=snapshot)
@@ -82,7 +80,8 @@ def test_sync_signed_transaction_verifies_and_writes(tmp_path):
     user = {"id": "u1"}
 
     result = sync_app_store_subscription_response(
-        req, user,
+        req,
+        user,
         allow_unsigned_sync=False,
         **deps,
     )
@@ -123,7 +122,8 @@ def test_sync_xcode_env_rejects_unsigned_when_not_debug(tmp_path):
 
     with pytest.raises(HTTPException) as exc_info:
         sync_app_store_subscription_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             allow_unsigned_sync=False,
             **deps,
         )
@@ -145,7 +145,8 @@ def test_sync_xcode_env_allows_unsigned_when_enabled(tmp_path):
     )
 
     result = sync_app_store_subscription_response(
-        req, {"id": "u1"},
+        req,
+        {"id": "u1"},
         allow_unsigned_sync=True,
         **deps,
     )
@@ -197,9 +198,7 @@ def test_sync_forged_cert_chain_maps_to_400_not_500(tmp_path, monkeypatch):
     root_cert = _cert("Test Apple Root", root_key.public_key(), root_name, root_key, ca=True)
 
     inter_key = ec.generate_private_key(ec.SECP256R1())
-    inter_cert = _cert(
-        "Test Apple Intermediate", inter_key.public_key(), root_cert.subject, root_key, ca=True
-    )
+    inter_cert = _cert("Test Apple Intermediate", inter_key.public_key(), root_cert.subject, root_key, ca=True)
 
     # Forge the leaf: signed by an attacker key, not the genuine intermediate.
     attacker_key = ec.generate_private_key(ec.SECP256R1())
@@ -243,9 +242,7 @@ def test_sync_forged_cert_chain_maps_to_400_not_500(tmp_path, monkeypatch):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        sync_app_store_subscription_response(
-            req, {"id": "u1"}, allow_unsigned_sync=False, **deps
-        )
+        sync_app_store_subscription_response(req, {"id": "u1"}, allow_unsigned_sync=False, **deps)
     assert exc_info.value.status_code == 400
 
 
