@@ -65,10 +65,13 @@ GitHub Issue 的 label 分類、狀態機、優先級、公開認領協議、工
 | `ready-for-solver` → `blocked` | 依賴未完成的 Issue（內文寫 `Blocked by: #N`） | 任何寫作者 |
 | `blocked` → `ready-for-solver` | 前置 Issue 關閉 | 任何寫作者／自動化 |
 | `ready-for-solver` → `in-progress` | **IM 認領**（見「認領協議」） | **僅 IM** |
-| `in-progress` → `ready-for-solver` | IM 釋放（`release`）或 PR 只 `Refs` 合併 | 僅 IM／自動化 |
+| `in-progress` → `ready-for-solver` | IM 釋放（`release`） | 僅 IM |
+| `in-progress` → `blocked`／`needs-info` | 已認領的 lane 發現未完成的依賴或只有 owner 能決定的問題；必須同時發 `release` 留言說明 | 僅 IM |
 | `in-progress` → `in-review` | PR 開啟並關聯該 Issue | 自動化 |
 | `in-review` → 關閉 | PR 合併且 `Closes #N` | GitHub 原生 |
 | `in-review` → `in-progress` | PR 關閉未合併，lane 仍在 | 自動化 |
+| `in-review` → `ready-for-solver` | PR 合併但只 `Refs` 該 Issue（部分解決）；認領隨之結束，IM 視情況另行釋放留言 | 自動化 |
+| `needs-info` → `needs-triage`／`ready-for-solver` | owner 已回答；內容足以派工則 `ready-for-solver`，否則 `needs-triage` | 任何寫作者 |
 
 「任何寫作者」只能做**非權威**轉換（補資訊、標阻擋、轉 ready）。**認領、釋放、准入 `delivery:candidate`、合併、上線**維持 IM／CM。狀態轉換是單向有限集合；任一寫入者在改 label 前先讀取、寫後讀回。表外的轉換（例如 `in-review` 直接回 `needs-triage`）不是合法自動轉換，只能由 IM 手動處理並在 Issue 留言說明。
 
@@ -103,8 +106,8 @@ GitHub Issue 的 label 分類、狀態機、優先級、公開認領協議、工
 - `release` 必須帶 `reason`：`pr-published`｜`abandoned`｜`reassigned`｜`stale-cleared`。`claim`／`renew` 不帶 `reason`。
 - `lane_id` 是本機 registry 的 lane 識別；`owner_thread` 區分共用同一 GitHub 帳號的不同執行緒；`scope.files` 與 registry 的 structured Scope 相同；`generation` 隨每次 `renew` 遞增，`claim` 為 1。
 - 時間一律 UTC ISO-8601；`expires_at` 預設為 `claimed_at` + 6 小時（D5）。
-- **有效認領** = 該 Issue 上最新一則由授權作者發出、`action != release` 且未過期的標記。授權作者清單放 `ops/issue_claim_authors.json`（目前只有一個帳號，所以另以 `owner_thread` 區分 lane）。
-- **衝突**：兩則認領並存時，**留言 id 較小者有效**；後者由自動化標 `claim-conflict`。
+- **有效認領**（先按 `lane_id` 分組，再判斷）：同一 `lane_id` 內，只看授權作者發出的標記，取 `generation` 最高者（同 generation 取留言 id 最大者）為該 lane 的**當前標記**；`renew` 因 generation 較高而取代同 lane 較早的標記，不構成衝突。當前標記為 `release`，或其 `expires_at` 已過，則該 lane 無有效認領（過期者另見「到期」）。有效認領的 `expires_at` 以當前標記為準（renew 後即延長後的時間）。授權作者清單放 `ops/issue_claim_authors.json`（隨認領工具落地建立；落地前授權作者即 IM 使用的 GitHub 帳號。目前只有一個帳號，所以另以 `owner_thread` 區分 lane）。
+- **衝突**：僅發生在**不同 `lane_id`** 各有一則有效認領時：**當前標記留言 id 較小的 lane 有效**；另一 lane 的當前標記由自動化標 `claim-conflict`（Issue 加同名 label），其 lane 不得開工。同一 lane_id 的 `renew` 永遠不觸發衝突。
 - **偽造防護**：標記只認授權作者；未授權帳號的標記一律忽略，並由看板列出。
 - **到期**：到期只加 `claim-stale`，認領仍保留可見；是否釋放由 IM 決定（D5）。IM 清除過期認領時發 `release`，`reason=stale-cleared`。
 - **讀取**（任何環境）：`issue_read get_comments` 取最新標記，或直接讀看板。
@@ -112,7 +115,7 @@ GitHub Issue 的 label 分類、狀態機、優先級、公開認領協議、工
 
 ### 實作入口
 
-協議本身與工具無關：任何時刻 IM 都可以用符合上述格式的手動留言＋label 完成認領。指令表面分批落地：`ops/delivery.py claim-issue`／`renew-claim`／`release-issue`／`claims`（唯讀）負責留言協議，`ops/issue_sync.py` 與 `issue-sync` workflow 負責狀態同步與看板，`worktree_orchestrate.py open`／`resolve` 在帶 `--external-id '#N'` 時串接。工具未落地前的行為以本節協議為準，落地後工具以本節為契約，行為與本文衝突時修工具。
+協議本身與工具無關：任何時刻 IM 都可以用符合上述格式的手動留言＋label 完成認領。指令表面分批落地：`ops/delivery.py claim-issue`／`renew-claim`／`release-issue`／`claims`（唯讀）負責留言協議，`ops/issue_sync.py` 與 `issue-sync` workflow 負責狀態同步與看板，`worktree_orchestrate.py open`／`resolve` 在帶 `--external-id '#N'` 時串接，`delivery.py publish --closes`／`--refs` 與 `pr_contract` 的 `## Issues` 渲染（W4）。以上**尚未落地**的表面包含 `claim-issue`／`renew-claim`／`release-issue`／`claims`、`issue_sync`／看板 workflow 與 W4。工具未落地前的行為以本節協議為準，落地後工具以本節為契約，行為與本文衝突時修工具。
 
 ## 公開看板
 
@@ -139,7 +142,9 @@ PR 內文有 `## Issues` 區段，列出：
 - `Closes #N`：此 PR 完全解決 N；合併即由 GitHub 自動關閉（D6）。
 - `Refs #N`：此 PR 只解決一部分；合併後 Issue 回到 `ready-for-solver`，由 IM 視情況釋放認領。
 
-整合 PR 一次吃多個 Issue 時逐一明確列出，不使用範圍簡寫。Issue 清單來源是 lane 的 registry `external_ids`，或 `delivery.py publish` 的明確 `--closes N`／`--refs M`。`validate-pr-body` 與 `pr-readiness` 必須接受這個區段，且不得破壞「PR body 恰好一份 hand-back receipt」的既有驗證。直接指派（沒有 Issue）的 PR 可留空此區段。
+整合 PR 一次吃多個 Issue 時逐一明確列出，不使用範圍簡寫。目標設計：Issue 清單來源是 lane 的 registry `external_ids`，或 `delivery.py publish` 的明確 `--closes N`／`--refs M`，由 `pr_contract` 的 `render_pull_request_body` 把 `## Issues` 渲染進 canonical body；`validate-pr-body` 與 `pr-readiness` 必須接受這個區段，且不得破壞「PR body 恰好一份 hand-back receipt」的既有驗證。直接指派（沒有 Issue）的 PR 可留空此區段。
+
+**落地狀態（W4 未落地）**：PR body 目前是 receipt 的純函數（`render_pull_request_body` 只輸出 Scope／Handback／Validation／Impact 與兩個機讀區塊），`publish`、`repair-pr-metadata`、`trigger-required`／required-repair 與 hold 變更都會重算並覆寫或拒絕與 canonical body 不同的內文。因此在 W4（`publish --closes`／`--refs` 與 `pr_contract` 渲染）落地前，**`delivery.py` 發布的 PR 的 `## Issues` 區段不具持久性**：手動加入的 `Closes #N` 會在下次 publish／repair 被刪除，甚至使 required-repair 以 `PolicyViolation` 擋下。暫行規則：不手改 canonical body；關閉 Issue 用 `Resolved by <PR/commit>` 留言（既有允許的手動關閉路徑，見下）；PR 模板的 `## Issues` 只適用於手寫（非 `delivery.py` 發布）的 PR。
 
 `close-terminal-issues` 是安全網（D7）：只關閉有完成級證據（merged PR、merged lane）的「做完仍開著」Issue，且先 dry-run 報告；主要關閉手段是 `Closes #N`。手動關閉任何 Issue 都要留言 `Resolved by <PR/commit>`，沒有 commit 證據不關。
 

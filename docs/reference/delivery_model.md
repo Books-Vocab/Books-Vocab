@@ -81,7 +81,7 @@ Onboarding 的成功只代表上下文 contract 完整，不代表 GitHub、merg
 | 角色 | 責任 | 不負責 |
 |---|---|---|
 | **CM — Codebase Manager** | 協調整體交付；驗證 exact Ready tuple；控制 merge queue／merge；每次 landing 後讓本地 `main` 與 `origin/main` 精確同步 | 修改產品 code、修改 Worker／Issue Solver worktree、修 PR body／registry、代替 IM 發 PR |
-| **IM — Issues Manager** | 管理 GitHub Issue／Project；排序與派工；控制本地 worktree lifecycle；接收 Worker／Issue Solver 的 local hand-back；push 已提交的 exact branch、建立／更新 PR、維護 PR metadata／readiness；收到 CM terminal receipt 後清理三項 Git 資產 | 修改產品 code、替 Worker commit／解 code conflict、merge／enqueue、代替 CM 決定 merge |
+| **IM — Issues Manager** | 管理 GitHub Issue（label 與公開認領，不用 Project）；排序與派工；控制本地 worktree lifecycle；接收 Worker／Issue Solver 的 local hand-back；push 已提交的 exact branch、建立／更新 PR、維護 PR metadata／readiness；收到 CM terminal receipt 後清理三項 Git 資產 | 修改產品 code、替 Worker commit／解 code conflict、merge／enqueue、代替 CM 決定 merge |
 | **Worker** | 接受 User／IM 的直接指派；依 `dispatch_channel` 與派遣者討論，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不寫 GitHub（`gh` 只限唯讀，見嚴格責任邊界）；不建立或修改 Issue／PR、不 push、不 review、不 merge／enqueue、不碰其他 worktree |
 | **Issue Solver** | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不寫 GitHub（`gh` 只限唯讀）；不接手未進 Issue 的直接指派，不 claim／修改 Issue、不建立或修改 PR、不 push、不 review、不 merge／enqueue |
 | **CR — Code Reviewer** | 對所有 PR 做獨立的正確性、測試、回歸、架構與安全審查；把結論留在 PR | 管理 Issue；擁有 merge 權限；建立本地 review cycle |
@@ -105,7 +105,7 @@ Backlog Scout 與 PI 是交付控制迴圈中的職能，不是新的 canonical 
 - Worker／Issue Solver 的輸入是 assignment packet，不是 GitHub session。IM 將 Issue URL／acceptance／structured Scope／base SHA 傳入；實作者可唯讀 GitHub（`gh issue view`、`gh pr view`、`gh api` GET 讀 review comments，surface `github:read`）以讀全 assignment 引用的 Issue／PR，讓每條 lane 從同一份輸入起跑；任何 GitHub 寫入（含 comment、label、review、push）仍只屬 IM。
 - Worker／Issue Solver 可以在本地建立 commit；這是 code hand-back 的一部分，不是 GitHub 交付。hand-back 必須是乾淨 worktree、local branch、exact HEAD、Scope 與驗證證據。
 - Worker direct assignment 必須明確記錄 `dispatch_channel=im|user`：IM 派遣時 Worker 和同一個 IM 討論並 hand-back 給同一個 IM；User 派遣時 Worker 和 User 討論，hand-back 給 User 指定的 IM，未指定時由 Worker 在 hand-back 前選定一個 IM。
-- IM 只處理 Issue、Project、worktree ledger 與 Git transport／PR metadata。它可以 push Worker 已存在的 commit、開／更新 PR、觸發 checks，但不能改檔案、staging、commit 內容或解 code conflict。
+- IM 只處理 Issue、worktree ledger 與 Git transport／PR metadata。它可以 push Worker 已存在的 commit、開／更新 PR、觸發 checks，但不能改檔案、staging、commit 內容或解 code conflict。
 - CM 只處理交付協調、Ready admission、merge queue／merge 與 main synchronization。任何 code 或 PR metadata 修正都退回 IM／原 Worker，不由 CM 代修。
 - CR／DS 各自把 review／docs impact 結論留在 PR；兩者都不修改 caller worktree。
 
@@ -162,7 +162,7 @@ Issue 層的規則正本是 [`issue_management.md`](issue_management.md)；本�
 
 - **認領必須公開，且只有 IM 寫**：認領是 Issue 上帶 `kg.issue.claim.v1` 機讀標記的留言加 `in-progress` 狀態 label；不使用 assignee。本機 registry 仍是執行層真相（worktree 所有權、Scope overlap、hand-back），但只存在 registry 的認領不算已認領。Worker／Issue Solver 沒有 GitHub 寫入權，不發認領、不改 label。
 - **狀態 label**：open Issue 恰有一個狀態（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個優先級（`P0`–`P3`）。認領、釋放、`delivery:candidate` 准入仍只屬 IM／CM。
-- **PR 連結**：PR 內文用 `Closes #N` 表示完全解決（合併即自動關閉）、`Refs #N` 表示只解決一部分（Issue 回到 `ready-for-solver`）；整合 PR 逐一列出每個 Issue。手動補關 Issue 必須留言附 commit 證據，`close-terminal-issues` 只作安全網。
+- **PR 連結**：PR 內文用 `Closes #N` 表示完全解決（合併即自動關閉）、`Refs #N` 表示只解決一部分（Issue 回到 `ready-for-solver`）；整合 PR 逐一列出每個 Issue。手動補關 Issue 必須留言附 commit 證據，`close-terminal-issues` 只作安全網。**落地狀態**：`delivery.py` 發布的 PR 內文是 receipt 的純函數，`## Issues` 要等 W4（`publish --closes`／`--refs` 與 `pr_contract` 渲染）落地才具持久性；此前手加的 `Closes #N` 會被 publish／repair 覆寫，改以 `Resolved by <PR/commit>` 留言關閉，且不手改 canonical body（細節見 `issue_management.md`「PR 與 Issue 連結」）。認領指令（`claim-issue` 等）與 `issue_sync` 同樣尚未落地，此前以手動留言＋label 依協議執行。
 
 只整理既有 Issue、尚未要求 admission 或實作時，依 [`docs/runbook/system.md` 的 Backlog grooming](../runbook/system.md#backlog-grooming) 限定範圍。
 

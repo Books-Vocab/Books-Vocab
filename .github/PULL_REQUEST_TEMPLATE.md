@@ -5,7 +5,7 @@
 
 ## Issues
 
-<!-- One line per Issue, spelled out (no ranges). `Closes #N` = this PR fully resolves N; merge auto-closes it. `Refs #N` = partial; N returns to `ready-for-solver`. Direct assignment may leave this section blank. See docs/reference/issue_management.md. -->
+<!-- One line per Issue, spelled out (no ranges). `Closes #N` = this PR fully resolves N; merge auto-closes it. `Refs #N` = partial; N returns to `ready-for-solver`. Direct assignment may leave this section blank. See docs/reference/issue_management.md. Applies to manually authored PRs; `delivery.py`-published PRs get a canonical body and this section is not durable until W4 lands. -->
 Closes #
 Refs #
 
