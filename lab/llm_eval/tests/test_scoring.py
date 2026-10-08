@@ -103,6 +103,12 @@ class TestJudgeBatchScorer:
         result = scorer.score(parsed, {})
         assert result["link_valid"] == 0.0
 
+    def test_unhashable_link_scores_zero(self):
+        scorer = JudgeBatchScorer()
+        for bad in (["shares_usage"], {"k": 1}):
+            parsed = [{"word": "x", "link": bad, "confidence": 0.5, "reason": "test"}]
+            assert scorer.score(parsed, {})["link_valid"] == 0.0
+
     def test_confidence_out_of_range(self):
         scorer = JudgeBatchScorer()
         parsed = [{"word": "x", "link": "contrasts_with", "confidence": 1.5, "reason": "test"}]
@@ -144,6 +150,12 @@ class TestEnrichScorer:
         parsed = [{"word": "x", "pos": "adjective", "note": "test", "collocations": [], "meaning_fix": None}]
         result = scorer.score(parsed, {})
         assert result["pos_valid"] == 0.0
+
+    def test_unhashable_pos_scores_zero(self):
+        scorer = EnrichScorer()
+        for bad in (["n."], {"k": 1}):
+            parsed = [{"word": "x", "pos": bad, "note": "test", "collocations": [], "meaning_fix": None}]
+            assert scorer.score(parsed, {})["pos_valid"] == 0.0
 
     def test_note_simplified(self):
         scorer = EnrichScorer()

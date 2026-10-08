@@ -136,7 +136,7 @@ class JudgeBatchScorer:
             if not isinstance(item, dict):
                 continue
             link = item.get("link", "")
-            if link not in _VALID_LINK_KINDS:
+            if not isinstance(link, str) or link not in _VALID_LINK_KINDS:
                 link_valid = 0.0
             conf = item.get("confidence", 0.0)
             try:
@@ -174,7 +174,7 @@ class EnrichScorer:
             if not isinstance(item, dict):
                 continue
             pos = item.get("pos", "")
-            if pos and pos not in _VALID_POS:
+            if pos and (not isinstance(pos, str) or pos not in _VALID_POS):
                 pos_valid = 0.0
             note = str(item.get("note", ""))
             if note and _contains_simplified(note):
