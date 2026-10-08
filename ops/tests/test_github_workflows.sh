@@ -3,7 +3,7 @@
 #
 # The component workflows are reusable building blocks. pr-gate owns the
 # pull_request entrypoint and merge-group-required owns the merge queue
-# entrypoint; both expose the same short `required` contract without importing
+# entrypoint; both expose the same `required` context without importing
 # the slow confidence fan-out into the merge queue.
 
 set -euo pipefail
@@ -184,17 +184,278 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     in_required && /^  [A-Za-z0-9_-]+:/ { exit }
     in_required { print }
   ' "$MERGE_GROUP_REQUIRED")"
-  grep -q 'timeout-minutes: 3' <<<"$merge_group_required_block" \
-    || fail "merge-group required gate is not hard-bounded to three minutes"
-  grep -q 'github.event.merge_group.base_sha' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group required gate does not use the merge-group base SHA"
+  # Job-level bound only (4-space indent): short gate plus the backend pytest
+  # suite must fit; 15 minutes was too tight for both.
+  grep -Eq '^    timeout-minutes: 25$' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not hard-bounded to twenty-five minutes"
+  # ubuntu-latest is a moving label; the apt ffmpeg series follows the image and
+  # the podcast preview skip allowlist turns a changed series into a red queue.
+  grep -Eq '^    runs-on: ubuntu-24\.04$' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not pinned to ubuntu-24.04"
+  grep -Fq "version: '0.8.23'" <<<"$merge_group_required_block" \
+    || fail "merge-group required gate does not pin uv to the backend-quality version"
+  # merge_group.base_sha is the PRECEDING PR's synthetic merge for a cumulative
+  # group, so the required job may not diff or classify from it (review P2): a
+  # docs-only #8 behind a backend #7 would skip pytest and merge #7 unverified.
+  if grep -q 'github.event.merge_group.base_sha' <<<"$merge_group_required_block"; then
+    fail "merge-group required job uses merge_group.base_sha, which hides a preceding queued PR from the diff check and scope router"
+  fi
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required gate does not use the merge-group head SHA"
   grep -Fq './ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control' <<<"$merge_group_required_block" \
     || fail "merge-group required gate does not execute the delivery-control regression group"
-  if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
+  if grep -Eq 'ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
     fail "merge-group required gate imports slow confidence jobs"
   fi
+  if grep -Eq 'uses:[[:space:]]*\./\.github/workflows/backend-quality\.yml' <<<"$merge_group_required_block"; then
+    fail "merge-group required gate must run the backend suite inline, not import backend-quality"
+  fi
+  # Backend suite runs inline, but only behind the fail-closed scope router.
+  # The required check must not be able to pass vacuously: the router step and
+  # the pytest step may not be skipped, softened or masked, so assert on the
+  # step blocks themselves rather than on the pytest `if:` alone.
+  merge_group_step_containing() {
+    awk -v needle="$1" '
+      /^      - / { if (in_step && hit) { printf "%s", buf; done=1; exit } in_step=1; hit=0; buf="" }
+      in_step { buf = buf $0 "\n" }
+      index($0, needle) { hit=1 }
+      END { if (!done && in_step && hit) printf "%s", buf }
+    ' <<<"$merge_group_required_block"
+  }
+  # A step must run unconditionally and fail closed: no step-level if/continue-on-error,
+  # no `||` fallback masking a non-zero exit, and errexit enabled in its script.
+  merge_group_assert_unmasked_step() {
+    local label="$1" block="$2" allow_if="$3"
+    if [[ "$allow_if" != "yes" ]] && grep -Eq '^        if:' <<<"$block"; then
+      fail "merge-group ${label} step is conditional (if:) and can be skipped"
+    fi
+    if grep -Eq '^[[:space:]]*continue-on-error:' <<<"$block"; then
+      fail "merge-group ${label} step sets continue-on-error"
+    fi
+    if grep -Fq '||' <<<"$block"; then
+      fail "merge-group ${label} step masks failures with a || fallback"
+    fi
+    grep -Fq 'set -euo pipefail' <<<"$block" \
+      || fail "merge-group ${label} step does not run with set -euo pipefail"
+  }
+  scope_step_id="$(awk '
+    /^      - name:/ { id="" }
+    /^        id:/ { id=$2 }
+    /ci_scope_router\.sh --base "\$BASE_SHA" --head "\$HEAD_SHA" --format github-output/ { print id; exit }
+  ' <<<"$merge_group_required_block")"
+  [[ -n "$scope_step_id" ]] \
+    || fail "merge-group required gate has no id'd step running ci_scope_router.sh --format github-output"
+  scope_router_step="$(merge_group_step_containing 'ci_scope_router.sh --base')"
+  [[ -n "$scope_router_step" ]] \
+    || fail "merge-group required gate has no scope router step block"
+  merge_group_assert_unmasked_step "scope router" "$scope_router_step" no
+  if grep -Eq '^    continue-on-error:' <<<"$merge_group_required_block"; then
+    fail "merge-group required job sets job-level continue-on-error"
+  fi
+  # A job-level `if:` that evaluates false skips the whole job, and a skipped
+  # required check is reported as passing to the merge queue. Only the two
+  # backend steps may be conditional, never the gate itself.
+  if grep -Eq "^    [\"']?if[\"']?[[:space:]]*:" <<<"$merge_group_required_block"; then
+    fail "merge-group required job sets a job-level if: and can be skipped (a skipped required check counts as passing)"
+  fi
+  # The router is only a gate if its verdict reaches the backend steps: the
+  # output must be appended to $GITHUB_OUTPUT on the router command line itself,
+  # and the BASE/HEAD env must carry the merge-group SHAs it classifies.
+  scope_router_lines="$(grep -Fc 'ci_scope_router.sh --base' <<<"$scope_router_step" || true)"
+  [[ "$scope_router_lines" == 1 ]] \
+    || fail "merge-group scope router step must invoke ci_scope_router.sh on exactly one line, found ${scope_router_lines}"
+  grep -Eq 'ci_scope_router\.sh --base .*--format github-output[[:space:]]*>>[[:space:]]*"\$GITHUB_OUTPUT"[[:space:]]*$' <<<"$scope_router_step" \
+    || fail "merge-group scope router output is not appended to \"\$GITHUB_OUTPUT\" on the ci_scope_router.sh line, so backend steps never see it"
+  # The diff base is resolved once from origin/main's fork point and fed to both
+  # consumers; merge_group.base_sha (the preceding PR's merge) is never used.
+  base_step_id="$(awk '
+    /^      - name:/ { id="" }
+    /^        id:/ { id=$2 }
+    /git merge-base refs\/remotes\/origin\/main "\$HEAD_SHA"/ { print id; exit }
+  ' <<<"$merge_group_required_block")"
+  base_step="$(merge_group_step_containing 'git merge-base')"
+  diff_check_step="$(merge_group_step_containing 'git diff --check')"
+  if [[ -z "$base_step_id" || -z "$base_step" || -z "$diff_check_step" ]]; then
+    fail "merge-group required gate has no id'd 'git merge-base refs/remotes/origin/main \"\$HEAD_SHA\"' step feeding the diff check"
+  else
+    merge_group_assert_unmasked_step "diff base" "$base_step" no
+    for base_consumer in "diff check:$diff_check_step" "scope router:$scope_router_step"; do
+      grep -Fqx "          BASE_SHA: \${{ steps.${base_step_id}.outputs.sha }}" <<<"${base_consumer#*:}" \
+        || fail "merge-group ${base_consumer%%:*} BASE_SHA is not the resolved origin/main merge base (steps.${base_step_id}.outputs.sha)"
+    done
+  fi
+  grep -Fqx '          HEAD_SHA: ${{ github.event.merge_group.head_sha }}' <<<"$scope_router_step" \
+    || fail "merge-group scope router HEAD_SHA is not the merge-group head SHA"
+  # Positive control + mutation check: replay the base/diff/router steps of the
+  # workflow file itself (env expressions included, so a revert of BASE_SHA to
+  # merge_group.base_sha changes the result) against fixture repos, and require
+  # the verdict to reach $GITHUB_OUTPUT.  A cumulative group (#8 behind #7)
+  # carries #7's change at its head while merge_group.base_sha is #7's merge.
+  read -r -d '' group_sim_rb <<'RUBY' || true
+require "yaml"
+require "tmpdir"
+require "open3"
+workflow, repo, group_base, group_head = ARGV
+steps = YAML.load_file(workflow)["jobs"]["required"]["steps"]
+event = { "github.event.merge_group.base_sha" => group_base, "github.event.merge_group.head_sha" => group_head }
+outputs = {}
+Dir.mktmpdir do |tmp|
+  steps.each_with_index do |step, index|
+    next unless ["git merge-base", "git diff --check", "ci_scope_router.sh"].any? { |needle| step["run"].to_s.include?(needle) }
+    out_file = File.join(tmp, "output-#{index}")
+    File.write(out_file, "")
+    env = { "GITHUB_OUTPUT" => out_file }
+    (step["env"] || {}).each do |key, value|
+      env[key] = value.to_s.gsub(/\$\{\{\s*(.+?)\s*\}\}/) do
+        expr = Regexp.last_match(1)
+        ref = expr.match(/\Asteps\.([\w-]+)\.outputs\.([\w-]+)\z/)
+        if event.key?(expr) then event[expr]
+        elsif ref then (outputs[ref[1]] || {}).fetch(ref[2], "")
+        else abort("unsupported expression: #{expr}")
+        end
+      end
+    end
+    stdout, stderr, status = Open3.capture3(env, "bash", "-e", "-c", step["run"], chdir: repo)
+    unless status.success?
+      warn "step '#{step["name"]}' failed with #{status.exitstatus}: #{stdout}#{stderr}"
+      exit 1
+    end
+    pairs = File.readlines(out_file, chomp: true).map { |line| line.split("=", 2) }.select { |pair| pair.size == 2 }.to_h
+    outputs[step["id"]] = pairs if step["id"]
+    pairs.each { |key, value| puts "#{step["id"]}.#{key}=#{value}" }
+  end
+end
+RUBY
+  scope_tmp="$(mktemp -d)"
+  scope_repo="$scope_tmp/repo"
+  sfx() { git -C "$scope_repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+  sim_group() { # workflow group_base group_head -> "step-id.key=value" lines; status 1 = a step failed (reason in $scope_tmp/err)
+    ruby -e "$group_sim_rb" "$1" "$scope_repo" "$2" "$3" 2>"$scope_tmp/err"
+  }
+  revert_base() { # src dst run-needle: point that step's BASE_SHA back at merge_group.base_sha
+    ruby -e 'require "yaml"
+      wf = YAML.load_file(ARGV[0])
+      step = wf["jobs"]["required"]["steps"].find { |s| s["run"].to_s.include?(ARGV[2]) } or abort("no step runs #{ARGV[2]}")
+      step["env"]["BASE_SHA"] = "${{ github.event.merge_group.base_sha }}"
+      File.write(ARGV[1], YAML.dump(wf))' "$1" "$2" "$3"
+  }
+  mk_group() { # name path7 content7 -> "<#7 merge> <#8 merge>": #7 writes path7 and #8 a docs file, both on s_base
+    local name="$1" path7="$2" content7="$3" q7
+    sfx checkout -q -b "$name-pr7" "$s_base"
+    mkdir -p "$scope_repo/$(dirname "$path7")"
+    printf '%s\n' "$content7" >"$scope_repo/$path7"
+    sfx add "$path7"
+    sfx commit -q -m "$name pr7"
+    sfx checkout -q -b "$name-q7" "$s_base"
+    sfx merge -q --no-ff "$name-pr7" -m "Merge pull request #7 from Books-Vocab/$name"
+    q7="$(sfx rev-parse HEAD)"
+    sfx checkout -q -b "$name-pr8" "$s_base"
+    mkdir -p "$scope_repo/docs"
+    printf '%s\n' "$name" >"$scope_repo/docs/$name-8.md"
+    sfx add "docs/$name-8.md"
+    sfx commit -q -m "$name pr8"
+    sfx checkout -q -b "$name-q8" "$q7"
+    sfx merge -q --no-ff "$name-pr8" -m "Merge pull request #8 from Books-Vocab/$name"
+    printf '%s %s\n' "$q7" "$(sfx rev-parse HEAD)"
+  }
+  git init -q -b main "$scope_repo"
+  mkdir -p "$scope_repo/ops"
+  cp ops/ci_scope_router.sh "$scope_repo/ops/ci_scope_router.sh"
+  sfx add ops/ci_scope_router.sh
+  sfx commit -q -m base
+  s_base="$(sfx rev-parse HEAD)"
+  # actions/checkout (fetch-depth: 0) materialises refs/remotes/origin/main.
+  sfx update-ref refs/remotes/origin/main "$s_base"
+  mkdir -p "$scope_repo/backend/app"
+  : >"$scope_repo/backend/app/changed.py"
+  sfx add backend
+  sfx commit -q -m backend-change
+  s_backend="$(sfx rev-parse HEAD)"
+  sfx checkout -q -b docs-only "$s_base"
+  mkdir -p "$scope_repo/docs"
+  : >"$scope_repo/docs/only.md"
+  sfx add docs
+  sfx commit -q -m docs-only
+  s_docs_only="$(sfx rev-parse HEAD)"
+  out="$(sim_group "$MERGE_GROUP_REQUIRED" "$s_base" "$s_backend" || true)"
+  grep -Fxq "${scope_step_id}.backend=true" <<<"$out" \
+    || fail "scope router step, backend change: backend=true did not reach \$GITHUB_OUTPUT, got '$out': $(cat "$scope_tmp/err")"
+  out="$(sim_group "$MERGE_GROUP_REQUIRED" "$s_base" "$s_docs_only" || true)"
+  grep -Fxq "${scope_step_id}.backend=false" <<<"$out" \
+    || fail "scope router step, docs-only change: backend=false did not reach \$GITHUB_OUTPUT, got '$out': $(cat "$scope_tmp/err")"
+  # Review P2: #7 changes backend/, #8 (docs only) is queued behind it, and the
+  # group head contains both while merge_group.base_sha is #7's merge.
+  read -r g_base g_head < <(mk_group backend-7 backend/app/pr7.py 'x = 1')
+  out="$(sim_group "$MERGE_GROUP_REQUIRED" "$g_base" "$g_head" || true)"
+  grep -Fxq "${base_step_id}.sha=$s_base" <<<"$out" \
+    || fail "cumulative group: the diff base is not origin/main's fork point $s_base, got '$out': $(cat "$scope_tmp/err")"
+  grep -Fxq "${scope_step_id}.backend=true" <<<"$out" \
+    || fail "cumulative group (#7 backend, #8 docs): backend=true was not reported at the group head, so #7's backend change would merge without pytest, got '$out'"
+  revert_base "$MERGE_GROUP_REQUIRED" "$scope_tmp/mutant-router.yml" 'ci_scope_router.sh'
+  out="$(sim_group "$scope_tmp/mutant-router.yml" "$g_base" "$g_head" || true)"
+  grep -Fxq "${scope_step_id}.backend=false" <<<"$out" \
+    || fail "mutation check: reverting the scope router BASE_SHA to merge_group.base_sha must report backend=false for the cumulative group (the P2 hole), got '$out'; the fixture no longer detects the revert"
+  # The whitespace check covers the same cumulative range.
+  read -r w_base w_head < <(mk_group ws-7 docs/ws7.md 'trailing space ')
+  if sim_group "$MERGE_GROUP_REQUIRED" "$w_base" "$w_head" >/dev/null; then
+    fail "diff check accepts a preceding PR's whitespace error at the cumulative group head"
+  elif ! grep -Fq 'trailing whitespace' "$scope_tmp/err"; then
+    fail "diff check rejected the cumulative group for the wrong reason: $(cat "$scope_tmp/err")"
+  fi
+  revert_base "$MERGE_GROUP_REQUIRED" "$scope_tmp/mutant-diff.yml" 'git diff --check'
+  sim_group "$scope_tmp/mutant-diff.yml" "$w_base" "$w_head" >/dev/null \
+    || fail "mutation check: reverting the diff check BASE_SHA to merge_group.base_sha must let #7's whitespace error through (the P2 hole), but it still failed: $(cat "$scope_tmp/err")"
+  # Once #7 has landed on origin/main, #8 is the whole pending delta again.
+  sfx update-ref refs/remotes/origin/main "$g_base"
+  out="$(sim_group "$MERGE_GROUP_REQUIRED" "$g_base" "$g_head" || true)"
+  { grep -Fxq "${base_step_id}.sha=$g_base" <<<"$out" && grep -Fxq "${scope_step_id}.backend=false" <<<"$out"; } \
+    || fail "after #7 landed on origin/main only #8's docs delta may be classified, got '$out': $(cat "$scope_tmp/err")"
+  sfx update-ref refs/remotes/origin/main "$s_base"
+  # Fail closed: no origin/main, no merge base, or no head cannot be bounded.
+  sfx update-ref -d refs/remotes/origin/main
+  if sim_group "$MERGE_GROUP_REQUIRED" "$g_base" "$g_head" >/dev/null; then
+    fail "diff base step resolves a base without origin/main"
+  elif ! grep -Fq 'origin/main is unavailable' "$scope_tmp/err"; then
+    fail "diff base step without origin/main failed for the wrong reason: $(cat "$scope_tmp/err")"
+  fi
+  sfx update-ref refs/remotes/origin/main "$s_base"
+  s_orphan="$(sfx commit-tree "$(sfx mktree </dev/null)" -m unrelated)"
+  for unbounded_head in "$s_orphan" ""; do
+    if sim_group "$MERGE_GROUP_REQUIRED" "$g_base" "$unbounded_head" >/dev/null; then
+      fail "diff base step resolves a base for head '$unbounded_head' that shares no history with origin/main"
+    elif ! grep -Fq 'no merge base between origin/main' "$scope_tmp/err"; then
+      fail "diff base step failed for the wrong reason on head '$unbounded_head': $(cat "$scope_tmp/err")"
+    fi
+  done
+  rm -rf "$scope_tmp"
+  backend_pytest_step="$(merge_group_step_containing 'uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json')"
+  [[ -n "$backend_pytest_step" ]] \
+    || fail "merge-group required gate does not run the backend pytest suite"
+  # Anchored to a live step-level key: a commented-out `# if: ...` must not pass.
+  grep -Eq "^        if: steps\.${scope_step_id}\.outputs\.backend == 'true'\$" <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest step is not guarded by the router backend output"
+  merge_group_assert_unmasked_step "backend pytest" "$backend_pytest_step" yes
+  # Exact command line: appended or injected selection flags (-k, --deselect,
+  # --ignore, -m, --co, ...) or PYTEST_ADDOPTS can run zero tests and still pass.
+  grep -Fqx '          uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json' <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest command line is not exactly 'uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json'; extra flags can silently narrow the suite"
+  if grep -Fq 'PYTEST_ADDOPTS' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group required workflow sets PYTEST_ADDOPTS, which can silently narrow the backend suite"
+  fi
+  ffmpeg_step="$(merge_group_step_containing 'install -y --no-install-recommends ffmpeg')"
+  [[ -n "$ffmpeg_step" ]] \
+    || fail "merge-group required gate has no ffmpeg install step"
+  grep -Eq "^        if: steps\.${scope_step_id}\.outputs\.backend == 'true'\$" <<<"$ffmpeg_step" \
+    || fail "merge-group ffmpeg step is not guarded by the router backend output"
+  merge_group_assert_unmasked_step "ffmpeg" "$ffmpeg_step" yes
+  ffmpeg_line="$(grep -n 'install -y --no-install-recommends ffmpeg' <<<"$merge_group_required_block" | head -n 1 | cut -d: -f1)"
+  pytest_line="$(grep -n 'uv run python -m pytest' <<<"$merge_group_required_block" | head -n 1 | cut -d: -f1)"
+  { [[ -n "$ffmpeg_line" && -n "$pytest_line" ]] && (( ffmpeg_line < pytest_line )); } \
+    || fail "merge-group ffmpeg step is not ordered before the backend pytest step"
+  grep -Fq 'working-directory: backend' <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest step does not run in backend/"
+  grep -Fq 'uv sync --locked' <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest step does not sync the locked environment"
   grep -q '^  agent-review:' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required workflow has no independent review gate"
   agent_review_block="$(awk '
@@ -204,6 +465,45 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   ' "$MERGE_GROUP_REQUIRED")"
   grep -q '^    name: agent-review$' <<<"$agent_review_block" \
     || fail "merge-group independent review gate does not emit the required context"
+  # Vacuous-pass contract, parsed structurally (not by regex) so quoted keys and
+  # flow-style YAML cannot slip past it. Branch protection and the merge queue
+  # match the job's `name:`, not its YAML key, so a renamed `required` job leaves
+  # the context never reported; a skipped or soft-failed job counts as passing.
+  #
+  # ACCEPTED residuals: this static test cannot see inside a run script, so it
+  # does NOT catch a deliberate `exit 0` / `if false` wrapping in a script, a
+  # later `backend=false` write to $GITHUB_OUTPUT, or shell function shadowing
+  # (e.g. redefining `git` or `uv`). Those are out of scope for a static
+  # contract test; reviewing the workflow diff owns them.
+  while IFS= read -r contract_failure; do
+    [[ -n "$contract_failure" ]] && fail "$contract_failure"
+  done < <(ruby -e 'require "yaml"
+    jobs = (YAML.load_file(ARGV[0]) || {})["jobs"] || {}
+    required = jobs["required"].is_a?(Hash) ? jobs["required"] : {}
+    review = jobs["agent-review"].is_a?(Hash) ? jobs["agent-review"] : {}
+    out = []
+    unless required["name"] == "required"
+      out << "merge-group required job name is #{required["name"].inspect}, not exactly required; branch protection and the merge queue read the job name, not the YAML key"
+    end
+    if review.key?("if")
+      out << "merge-group agent-review job sets a job-level if: and can be skipped (a skipped required check counts as passing)"
+    end
+    if review.key?("continue-on-error")
+      out << "merge-group agent-review job sets job-level continue-on-error"
+    end
+    steps = required["steps"].is_a?(Array) ? required["steps"] : []
+    { "short repository gate" => "./ops/test_ops.sh", "diff check" => "git diff --check" }.each do |label, needle|
+      hits = steps.select { |s| s.is_a?(Hash) && s["run"].to_s.include?(needle) }
+      if hits.size != 1
+        out << "merge-group required job must have exactly one #{label} step running #{needle}, found #{hits.size}"
+        next
+      end
+      step = hits.first
+      out << "merge-group #{label} step is conditional (if:) and can be skipped" if step.key?("if")
+      out << "merge-group #{label} step sets continue-on-error" if step.key?("continue-on-error")
+      out << "merge-group #{label} step masks failures with a || fallback" if step["run"].to_s.include?("||")
+    end
+    puts out' "$MERGE_GROUP_REQUIRED" 2>&1 || echo "merge-group contract check could not parse $MERGE_GROUP_REQUIRED")
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate is not bound to the merge-group HEAD"
   grep -q 'mergeQueue' "$MERGE_GROUP_REQUIRED" \
@@ -221,11 +521,200 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   grep -q 'target_position' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bound group membership by queue position"
   grep -q 'MERGE_GROUP_PR_NUMBERS' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not consume explicit event membership"
-  grep -q 'merge_group.pull_requests' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not bind membership to merge-group event evidence"
+    || fail "merge-group independent review gate does not consume derived membership"
+  # The merge_group event payload carries no pull_requests list, so a join()
+  # over it is always empty and the gate failed on every run.
+  if grep -q 'merge_group.pull_requests' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate reads merge_group.pull_requests, which the event payload never provides"
+  fi
+  grep -Fq 'MERGE_GROUP_PR_NUMBERS: ${{ steps.membership.outputs.pr_numbers }}' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not take membership from the derive step output"
   grep -q 'membership evidence' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not fail closed without membership evidence"
+  membership_step="$(awk '
+    /^      - name: Derive merge-group membership$/ { in_step=1; next }
+    in_step && /^      - name:/ { exit }
+    in_step && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_step { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  [[ -n "$membership_step" ]] \
+    || fail "merge-group workflow has no 'Derive merge-group membership' step"
+  grep -q '^        id: membership$' <<<"$membership_step" \
+    || fail "merge-group membership step has no id: membership"
+  grep -Fq 'github.event.merge_group.head_ref' <<<"$membership_step" \
+    || fail "merge-group membership step does not derive PRs from merge_group.head_ref"
+  membership_script="$(awk '
+    /^        run: \|$/ { grab=1; next }
+    grab { sub(/^          /, ""); print }
+  ' <<<"$membership_step")"
+  if [[ -z "$membership_script" ]]; then
+    fail "merge-group membership step has no run script"
+  else
+    # Behavioural check: execute the step's own script against a fixture repo.
+    membership_tmp="$(mktemp -d)"
+    membership_repo="$membership_tmp/repo"
+    mfx() { git -C "$membership_repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+    run_membership() { # head_ref base_sha head_sha -> GITHUB_OUTPUT content; status = script status
+      : >"$membership_tmp/out"
+      (cd "$membership_repo" && GITHUB_OUTPUT="$membership_tmp/out" GITHUB_REF="" \
+        MERGE_GROUP_HEAD_REF="$1" MERGE_GROUP_BASE_SHA="$2" MERGE_GROUP_HEAD_SHA="$3" \
+        bash -c "$membership_script") >/dev/null 2>&1 || return 1
+      cat "$membership_tmp/out"
+    }
+    git init -q -b main "$membership_repo"
+    mfx commit -q --allow-empty -m base
+    m_base="$(mfx rev-parse HEAD)"
+    # actions/checkout (fetch-depth: 0) materialises refs/remotes/origin/main.
+    mfx update-ref refs/remotes/origin/main "$m_base"
+    mfx checkout -q -b pr11
+    mfx commit -q --allow-empty -m "Merge pull request #99 from evil/forged-subject-on-plain-commit"
+    mfx checkout -q main
+    mfx merge -q --no-ff pr11 -m "Merge pull request #11 from Books-Vocab/lane-a"
+    m_solo="$(mfx rev-parse HEAD)"
+    mfx checkout -q -b pr12
+    mfx commit -q --allow-empty -m work
+    mfx checkout -q main
+    mfx merge -q --no-ff pr12 -m "Merge pull request #12 from Books-Vocab/lane-b"
+    m_group="$(mfx rev-parse HEAD)"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-11-$m_base" "$m_base" "$m_solo" || true)"
+    [[ "$out" == "pr_numbers=11" ]] \
+      || fail "membership step, solo group: expected pr_numbers=11, got '$out' (a plain commit with a forged subject must be ignored)"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_base" "$m_base" "$m_group" || true)"
+    [[ "$out" == "pr_numbers=11,12" ]] \
+      || fail "membership step, multi-PR group: expected pr_numbers=11,12, got '$out'"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-7-$m_base" "$m_base" "$m_base" || true)"
+    [[ "$out" == "pr_numbers=7" ]] \
+      || fail "membership step must still name the head_ref PR when history has no merge commits, got '$out'"
+    if run_membership "refs/heads/gh-readonly-queue/main/no-pr-here" "$m_base" "$m_solo" >/dev/null; then
+      fail "membership step accepts a head_ref that names no PR"
+    fi
+    # Cumulative group (review P1 on #2621): PR #12 is queued behind #11 and
+    # GitHub sets base_sha to #11's synthetic merge, so base_sha..head_sha holds
+    # only #12.  Membership must still name #11, whose changes are in the ref.
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_solo" "$m_solo" "$m_group" || true)"
+    [[ "$out" == "pr_numbers=11,12" ]] \
+      || fail "membership step, cumulative group (base_sha = preceding PR's merge): expected pr_numbers=11,12, got '$out'"
+    # Once #11 is on origin/main it is no longer part of the pending group.
+    mfx update-ref refs/remotes/origin/main "$m_solo"
+    out="$(run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_solo" "$m_solo" "$m_group" || true)"
+    [[ "$out" == "pr_numbers=12" ]] \
+      || fail "membership step must drop a PR already merged into origin/main, got '$out'"
+    # A base that is not an ancestor of the head cannot bound the group.
+    if run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_solo" "$m_group" "$m_solo" >/dev/null; then
+      fail "membership step accepts a base_sha that is not an ancestor of head_sha"
+    fi
+    # Without origin/main the group cannot be bounded: fail closed.
+    mfx update-ref -d refs/remotes/origin/main
+    if run_membership "refs/heads/gh-readonly-queue/main/pr-12-$m_base" "$m_base" "$m_group" >/dev/null; then
+      fail "membership step derives a group without origin/main to bound it"
+    fi
+    rm -rf "$membership_tmp"
+  fi
+
+  # Behavioural check of the live-queue cross-check: run the verify step's own
+  # script against a fake gh so completeness is proven, not just grepped.
+  verify_step="$(awk '
+    /^      - name: Verify exact queued PR has independent review evidence$/ { in_step=1; next }
+    in_step && /^      - name:/ { exit }
+    in_step && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_step { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  verify_script="$(awk '
+    /^        run: \|$/ { grab=1; next }
+    grab { sub(/^          /, ""); print }
+  ' <<<"$verify_step")"
+  if [[ -z "$verify_script" ]]; then
+    fail "merge-group verify step has no run script"
+  else
+    verify_tmp="$(mktemp -d)"
+    mkdir -p "$verify_tmp/bin"
+    cat >"$verify_tmp/bin/gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+# Fake gh: PR N has head sha %040x(N) and a passing trusted agent-review run 9000+N.
+# Per-PR faults: FAKE_NO_REVIEW_FOR=N (no review check-run), FAKE_FAIL_REVIEW_FOR=N
+# (review concluded failure), FAKE_DRIFT_FOR=N (pulls API head differs from the queue).
+set -euo pipefail
+[[ "${1:-}" == "api" ]] || exit 2
+endpoint="${2:-}"
+case "$endpoint" in
+  graphql)
+    [[ -s "$FAKE_QUEUE_FILE" ]] || { echo "fake gh: merge queue unreadable" >&2; exit 1; }
+    cat "$FAKE_QUEUE_FILE" ;;
+  repos/*/actions/workflows/agent-review.yml) echo 4242 ;;
+  repos/*/commits/*/check-runs*)
+    sha="${endpoint#*/commits/}"; sha="${sha%%/*}"
+    n=$((16#${sha: -8}))
+    [[ "${FAKE_NO_REVIEW_FOR:-}" != "$n" ]] || { echo '{"check_runs": []}'; exit 0; }
+    conclusion=success; [[ "${FAKE_FAIL_REVIEW_FOR:-}" != "$n" ]] || conclusion=failure
+    jq -n --arg sha "$sha" --arg conclusion "$conclusion" --argjson run "$((9000 + n))" '{check_runs: [{
+      id: $run, name: "agent-review", head_sha: $sha, status: "completed", conclusion: $conclusion,
+      external_id: "kg.agent-review.v1:\($run):\($sha)",
+      details_url: "https://github.com/Books-Vocab/Books-Vocab/actions/runs/\($run)",
+      output: {title: "Independent agent review passed", summary: "Exact head \($sha) reviewed"}}]}' ;;
+  repos/*/actions/runs/*)
+    jq -n '{path: ".github/workflows/agent-review.yml", event: "issue_comment", head_branch: "main", workflow_id: 4242, pull_requests: []}' ;;
+  repos/*/pulls/*)
+    n="${endpoint##*/}"; shown="$n"; [[ "${FAKE_DRIFT_FOR:-}" != "$n" ]] || shown=$((n + 1000))
+    jq -n --arg sha "$(printf '%040x' "$shown")" '{state: "open", base: {ref: "main"}, head: {sha: $sha}}' ;;
+  *) echo "fake gh: unexpected endpoint $endpoint" >&2; exit 2 ;;
+esac
+FAKE_GH
+    chmod +x "$verify_tmp/bin/gh"
+    mk_queue() { # solo pos:pr ... -> graphql payload for the fake gh
+      local solo="$1" pair nodes="[]"
+      shift
+      for pair in "$@"; do
+        nodes="$(jq -c --argjson pos "${pair%%:*}" --argjson pr "${pair##*:}" --argjson solo "$solo" \
+          --arg sha "$(printf '%040x' "${pair##*:}")" \
+          '. + [{position: $pos, solo: $solo, state: "QUEUED", headCommit: {oid: $sha},
+                 pullRequest: {number: $pr, headRefOid: $sha, baseRefName: "main", state: "OPEN"}}]' <<<"$nodes")"
+      done
+      jq -n --argjson nodes "$nodes" \
+        '{data: {repository: {mergeQueue: {entries: {pageInfo: {hasNextPage: false}, nodes: $nodes}}}}}' \
+        >"$verify_tmp/queue.json"
+    }
+    run_verify() { # target_pr group_numbers -> status of the verify step script
+      (cd "$verify_tmp" && PATH="$verify_tmp/bin:$PATH" FAKE_QUEUE_FILE="$verify_tmp/queue.json" \
+        GH_TOKEN=fake GITHUB_REF="" REPOSITORY="Books-Vocab/Books-Vocab" \
+        MERGE_GROUP_HEAD_SHA="$(printf '%040x' 99)" \
+        MERGE_GROUP_HEAD_REF="refs/heads/gh-readonly-queue/main/pr-$1-$(printf '%040x' 98)" \
+        MERGE_GROUP_PR_NUMBERS="$2" bash -c "$verify_script") >"$verify_tmp/log" 2>&1
+    }
+    verify_expect_pass() { # label target group
+      run_verify "$2" "$3" || fail "verify step, $1: expected pass, got failure: $(tail -n 3 "$verify_tmp/log")"
+    }
+    verify_expect_reject() { # label target group message-fragment
+      if run_verify "$2" "$3"; then
+        fail "verify step, $1: accepted a membership that must be rejected"
+      elif ! grep -Fq -- "$4" "$verify_tmp/log"; then
+        fail "verify step, $1: rejected for the wrong reason (wanted '$4'): $(tail -n 3 "$verify_tmp/log")"
+      fi
+    }
+    mk_queue false 1:7 2:8
+    verify_expect_pass "cumulative group #7,#8 (positive control)" 8 "7,8"
+    # Per-PR loop: the target (#8) is clean, so a rejection can only come from #7.
+    FAKE_NO_REVIEW_FOR=7 verify_expect_reject "earlier PR #7 without exact-head review" 8 "7,8" \
+      "group PR #7 has no trusted exact-head review provenance"
+    FAKE_FAIL_REVIEW_FOR=7 verify_expect_reject "earlier PR #7 with a failing exact-head review" 8 "7,8" \
+      "latest trusted exact-head agent-review observation is not completed successfully"
+    FAKE_DRIFT_FOR=7 verify_expect_reject "earlier PR #7 whose head drifted from its queue entry" 8 "7,8" \
+      "group PR #7 HEAD/base/state drifted"
+    FAKE_NO_REVIEW_FOR=8 verify_expect_reject "target PR #8 without exact-head review" 8 "7,8" \
+      "group PR #8 has no trusted exact-head review provenance"
+    verify_expect_reject "singleton subset of a cumulative group (review P1)" 8 "8" "at or ahead of the target"
+    mk_queue false 1:6 2:7 3:8
+    verify_expect_reject "group omitting an earlier queued PR" 8 "7,8" "at or ahead of the target"
+    mk_queue false 1:7 2:8 3:9
+    verify_expect_pass "entries queued behind the target are not members" 8 "7,8"
+    mk_queue false 1:8
+    verify_expect_pass "single-entry queue" 8 "8"
+    mk_queue true 1:7 2:8
+    verify_expect_reject "solo target hiding a preceding PR" 8 "8" "at or ahead of the target"
+    verify_expect_pass "solo target whose ref carries the preceding PR" 8 "7,8"
+    rm -f "$verify_tmp/queue.json"
+    verify_expect_reject "unreadable merge queue" 8 "7,8" "merge queue unreadable"
+    rm -rf "$verify_tmp"
+  fi
   if grep -q 'maximumEntriesToMerge\|maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED"; then
     fail "merge-group independent review gate infers membership from a configured ceiling"
   fi
@@ -272,11 +761,11 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   grep -q '== "success"' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not require successful exact-head evidence"
   queue_membership_fixture='[{"position":2},{"position":3},{"position":4},{"position":5}]'
-  jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+  jq -e 'map(.position) as $positions | ($positions | length) > 0 and (($positions | max) as $target_position | ($positions | sort) == [range(($positions | min); ($target_position + 1))])' \
     <<<"$queue_membership_fixture" >/dev/null \
     || fail "merge-group fixture rejects a valid group larger than three entries"
   noncontiguous_fixture='[{"position":2},{"position":4}]'
-  if jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+  if jq -e 'map(.position) as $positions | ($positions | length) > 0 and (($positions | max) as $target_position | ($positions | sort) == [range(($positions | min); ($target_position + 1))])' \
     <<<"$noncontiguous_fixture" >/dev/null; then
     fail "merge-group fixture accepts non-contiguous membership"
   fi

@@ -2,7 +2,9 @@ name: merge-group-required
 
 # Merge queue's blocking contract is deliberately independent from the PR
 # confidence fan-out.  A merge group must receive the same short repository
-# gate, but it must not schedule backend, LLM, UI, iOS, or confidence jobs.
+# gate, but it must not schedule LLM, UI, iOS, or confidence jobs.  The backend
+# pytest suite runs inline, only when the fail-closed scope router reports
+# backend=true (docs/ops-only groups stay on the short gate).
 on:
   merge_group:
     types: [checks_requested]
@@ -20,8 +22,8 @@ concurrency:
 jobs:
   required:
     name: required
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - name: Checkout merge group
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,14 +32,49 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.8.23'
+
+      # HEADGREEN gates the group on its head's `required` only, and for a
+      # cumulative group (#8 behind #7) merge_group.base_sha is #7's merge, which
+      # hides #7 from the diff check and scope router.  Use origin/main's fork
+      # point (the ref agent-review bounds membership with); fail closed.
+      - name: Resolve merge-group diff base
+        id: base
+        env:
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet 'refs/remotes/origin/main^{commit}' >/dev/null; then
+            echo "origin/main is unavailable; cannot bound the cumulative merge group" >&2
+            exit 1
+          fi
+          if ! base_sha="$(git merge-base refs/remotes/origin/main "$HEAD_SHA")"; then
+            echo "no merge base between origin/main and merge-group head $HEAD_SHA" >&2
+            exit 1
+          fi
+          if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "merge base is not an exact commit SHA: $base_sha" >&2
+            exit 1
+          fi
+          echo "sha=$base_sha" >>"$GITHUB_OUTPUT"
 
       - name: Check merge-group diff
         env:
-          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
           git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Classify merge-group scope
+        id: scope
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          ./ops/ci_scope_router.sh --base "$BASE_SHA" --head "$HEAD_SHA" --format github-output >> "$GITHUB_OUTPUT"
 
       - name: Check ops test coverage classification
         run: ./ops/tests/test_ops_ci_coverage.sh
@@ -45,18 +82,79 @@ jobs:
       - name: Run short repository gate
         run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control
 
+      - name: Install ffmpeg and ffprobe
+        if: steps.scope.outputs.backend == 'true'
+        timeout-minutes: 5
+        # Podcast preview tests skip without both binaries and the skip
+        # allowlist turns a skip into a red run (#2115).
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg
+
+      - name: Run backend suite
+        if: steps.scope.outputs.backend == 'true'
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          uv sync --locked
+          uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json
+
   agent-review:
     name: agent-review
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Checkout merge group
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The merge_group event payload has no pull_requests list.  Membership is
+      # derived from what the payload does carry: the head ref names the last
+      # PR (gh-readonly-queue/main/pr-<N>-<sha>) and the first-parent merge
+      # commits between main's tip and head name every PR in the group.  The
+      # range deliberately starts at origin/main, not at merge_group.base_sha:
+      # for a cumulative group (PR #8 queued behind PR #7) GitHub sets base_sha
+      # to the preceding PR's synthetic merge, so base_sha..head_sha would
+      # contain only #8 and silently skip #7's exact-head review.  The
+      # live-queue cross-check below requires this set to equal every queue
+      # entry at or ahead of the target and fails closed on any disagreement.
+      - name: Derive merge-group membership
+        id: membership
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_ref="${MERGE_GROUP_HEAD_REF:-$GITHUB_REF}"
+          ref_pr="$(grep -oE 'pr-[0-9]+' <<<"$head_ref" | tail -n 1 | sed 's/^pr-//' || true)"
+          if [[ ! "$ref_pr" =~ ^[1-9][0-9]*$ ]]; then
+            echo "merge-group ref does not identify a target PR: $head_ref" >&2
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet 'refs/remotes/origin/main^{commit}' >/dev/null; then
+            echo "origin/main is unavailable; cannot bound the cumulative merge group" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$MERGE_GROUP_BASE_SHA" "$MERGE_GROUP_HEAD_SHA"; then
+            echo "merge-group base is not an ancestor of its head" >&2
+            exit 1
+          fi
+          history_prs="$(git log --first-parent --merges --format=%s "refs/remotes/origin/main..$MERGE_GROUP_HEAD_SHA" \
+            | sed -nE 's/^Merge pull request #([1-9][0-9]*) from .*/\1/p')"
+          pr_numbers="$(printf '%s\n' "$ref_pr" $history_prs | sort -nu | paste -sd, -)"
+          echo "pr_numbers=$pr_numbers" >>"$GITHUB_OUTPUT"
+
       - name: Verify exact queued PR has independent review evidence
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
           MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-          MERGE_GROUP_PR_NUMBERS: ${{ join(github.event.merge_group.pull_requests.*.number, ',') }}
+          MERGE_GROUP_PR_NUMBERS: ${{ steps.membership.outputs.pr_numbers }}
         shell: bash
         run: |
           set -euo pipefail
@@ -148,20 +246,35 @@ jobs:
             echo "target queue entry solo flag is malformed" >&2
             exit 1
           fi
+          if ! jq -e 'all(.[]; (.position | type) == "number")' <<<"$queue_nodes" >/dev/null; then
+            echo "merge-group queue entries have a malformed position" >&2
+            exit 1
+          fi
+          # Completeness proof.  A cumulative queue ref for the target contains
+          # every entry queued ahead of it (merge_group.base_sha may already be
+          # the preceding PR's synthetic merge), so the derived membership must
+          # EQUAL the live entries at or ahead of the target position.  A strict
+          # subset would let the job pass without an exact-head review for an
+          # earlier PR whose changes are in the tested ref.  This holds for
+          # solo targets too: the derived set is what the tested ref contains.
+          ahead_numbers="$(jq -c --argjson target "$target_position" \
+            '[.[] | select(.position <= $target) | .pullRequest.number] | sort' \
+            <<<"$queue_nodes")"
+          group_numbers="$(printf '%s\n' "${group_pr_numbers[@]}" | jq -Rsc 'split("\n")[:-1] | map(tonumber) | sort')"
+          if [[ "$ahead_numbers" != "$group_numbers" ]]; then
+            echo "merge-group event membership $group_numbers does not equal live queue entries at or ahead of the target $ahead_numbers" >&2
+            exit 1
+          fi
           group_entries="$(jq -c \
-            --argjson numbers "$(printf '%s\n' "${group_pr_numbers[@]}" | jq -Rsc 'split("\n")[:-1] | map(tonumber)')" \
+            --argjson numbers "$group_numbers" \
             'map(select(.pullRequest.number as $number | ($numbers | index($number)))) | sort_by(.position)' \
             <<<"$queue_nodes")"
           if [[ "$(jq 'length' <<<"$group_entries")" -ne "${#group_pr_numbers[@]}" ]]; then
             echo "merge-group event membership does not match live queue entries" >&2
             exit 1
           fi
-          if [[ "$target_solo" == "true" && "$(jq 'length' <<<"$group_entries")" != "1" ]]; then
-            echo "solo target has more than one merge-group member" >&2
-            exit 1
-          fi
           if ! jq -e \
-            'map(.position) as $positions | ($positions | length) > 0 and ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+            'map(.position) as $positions | ($positions | length) > 0 and (($positions | max) as $target_position | ($positions | sort) == [range(($positions | min); ($target_position + 1))])' \
             <<<"$group_entries" >/dev/null; then
             echo "merge-group queue membership positions are non-contiguous or duplicated" >&2
             exit 1
@@ -208,19 +321,19 @@ jobs:
               -H 'Accept: application/vnd.github+json')"
             review_candidates="$(jq -c \
               --arg head_sha "$pr_head_sha" \
-              '[.check_runs[]? | select(\
-                  .name == "agent-review"\
-                  and .head_sha == $head_sha\
-                  and ((.external_id // "") | startswith("kg.agent-review.v1:"))\
-                  and ((.details_url // "") | startswith("https://github.com/"))\
-                  and (((.output.title // "") | startswith("Independent agent review ")) or (.output.title // "") == "Waiting for independent agent review")\
-                  and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
-                )\
-               | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
-                  started_at: (.started_at // ""), completed_at: (.completed_at // ""),\
-                  created_at: (.created_at // ""), updated_at: (.updated_at // ""),\
-                  details_url: (.details_url // ""), external_id: (.external_id // ""),\
-                  output_title: (.output.title // ""), output_summary: (.output.summary // "")}\
+              '[.check_runs[]? | select(
+                  .name == "agent-review"
+                  and .head_sha == $head_sha
+                  and ((.external_id // "") | startswith("kg.agent-review.v1:"))
+                  and ((.details_url // "") | startswith("https://github.com/"))
+                  and (((.output.title // "") | startswith("Independent agent review ")) or (.output.title // "") == "Waiting for independent agent review")
+                  and ((.output.summary // "") | startswith("Exact head \($head_sha) "))
+                )
+               | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),
+                  started_at: (.started_at // ""), completed_at: (.completed_at // ""),
+                  created_at: (.created_at // ""), updated_at: (.updated_at // ""),
+                  details_url: (.details_url // ""), external_id: (.external_id // ""),
+                  output_title: (.output.title // ""), output_summary: (.output.summary // "")}
               ]' \
               <<<"$checks_json")"
             review_provenance="[]"
