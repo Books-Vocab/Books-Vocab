@@ -602,6 +602,21 @@ class Delivery:
             before_retry,
         )
 
+    def claim_base(self) -> str:
+        """The exact commit a claim declares as its base: HEAD's fork from trunk.
+
+        Never the symbolic ``origin/main``: adopt resolves that only when it
+        finally runs, after any lock wait, and another delivery's fetch may
+        have moved it to a commit HEAD does not contain, which hand-back then
+        refuses as a declared base that is not an ancestor of HEAD.
+        """
+        base = self.git("merge-base", "HEAD", TRUNK, stage="claim base")
+        if not SHA.fullmatch(base):
+            raise DeliverError(
+                f"cannot pin the claim base: merge-base HEAD {TRUNK} gave {base!r}"
+            )
+        return base
+
     def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
         """Abandon an active claim whose base is not the branch's fork point.
 
@@ -609,9 +624,9 @@ class Delivery:
         once the branch sits on a newer ``origin/main`` the three-dot diff then
         includes merged main commits and the receipt refuses.  The registry's
         own ``resolve --status abandoned`` retires the claim; the caller then
-        re-adopts against ``origin/main``.
+        re-adopts against that fork point.
         """
-        fork = self.git("merge-base", "HEAD", TRUNK, stage="preflight")
+        fork = self.claim_base()
         if record.get("base_sha") == fork:
             return False
         head = self.git("rev-parse", "HEAD", stage="preflight")
@@ -752,7 +767,7 @@ class Delivery:
                             "--worktree",
                             str(self.work),
                             "--base",
-                            TRUNK,
+                            self.claim_base(),
                             "--intent",
                             intent,
                             "--external-id",

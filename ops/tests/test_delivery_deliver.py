@@ -62,6 +62,10 @@ class FakeWorld:
         self.merged_prs = state.get("merged_prs", {})
         self.diff = state.get("diff", "M\tops/a.py\nA\tops/b.py\n")
         self.fork = state.get("fork", "f" * 40)
+        # origin/main; another delivery's fetch may move it during a lock wait
+        # while HEAD (and so the merge-base) stays on the old main.
+        self.trunk = self.fork
+        self.trunk_moves_to: str | None = state.get("trunk_moves_to")
         self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
         self.format_rc = state.get("format_rc", 0)
         self.unformatted = state.get("unformatted", ["ops/a.py"])
@@ -171,6 +175,8 @@ class FakeWorld:
                 return ok(self.cherry)
             if sub[:2] == ["rev-parse", "--verify"]:
                 return ok(NEW_TIP)
+            if sub == ["rev-parse", deliver.TRUNK]:
+                return ok(self.trunk)
             if sub[0] == "log":
                 return ok("feat: the thing")
             if sub[0] == "rev-parse":
@@ -276,6 +282,8 @@ class FakeWorld:
             verb = cmd[1] if head.endswith("worktree_orchestrate.py") else cmd[3]
             if self.lock_busy.get(verb, 0) > 0:  # the lock is taken before any change
                 self.lock_busy[verb] -= 1
+                if self.trunk_moves_to:  # the holder's sync-main fetched a new main
+                    self.trunk = self.trunk_moves_to
                 if head.endswith("delivery.py"):  # its CLI reports one JSON error
                     doc = {"command": verb, "error": _LOCKED, "ok": False}
                     return deliver.Proc(1, "", json.dumps(doc))
@@ -1034,7 +1042,54 @@ def test_an_agent_claim_with_a_stale_base_is_retired_and_readopted_on_trunk() ->
     assert resolve[resolve.index("--status") + 1] == "abandoned"
     assert resolve[resolve.index("--expected-head-sha") + 1] == "e" * 40
     adopt = next(c for c in world.calls if c[1:2] == ["adopt"])
-    assert adopt[adopt.index("--base") + 1] == deliver.TRUNK
+    assert adopt[adopt.index("--base") + 1] == "f" * 40  # world.fork
+
+
+def _adopt_bases(world: FakeWorld) -> list[str]:
+    return [
+        _value(c, "--base")
+        for c in world.calls
+        if c[0].endswith("worktree_orchestrate.py") and c[1] == "adopt"
+    ]
+
+
+def test_a_readopt_after_a_lock_wait_declares_the_fork_not_a_moved_trunk() -> None:
+    """adopt resolves a symbolic --base only when it finally runs; origin/main
+    moved meanwhile is not in HEAD, and hand-back refuses that declared base."""
+    moved = "9" * 40
+    world = FakeWorld(
+        branch="worktree-agent-abc123",
+        record=_agent_record(),
+        lock_busy={"resolve": 1, "adopt": 1},
+        trunk_moves_to=moved,
+    )
+    code, result = ship(world, "--check", "docs=good")
+    assert code == 0, result
+    assert world.trunk == moved  # main really moved during the wait
+    assert world.names() == [
+        "resolve",
+        "resolve",
+        "adopt",
+        "adopt",
+        "hand-back",
+        "receipt",
+        "publish",
+    ]
+    bases = _adopt_bases(world)
+    assert bases == [world.fork, world.fork]
+    assert all(deliver.SHA.fullmatch(b) for b in bases)
+    assert deliver.TRUNK not in bases and moved not in bases
+
+
+@pytest.mark.parametrize("record", [None, _agent_record()], ids=["fresh", "stale"])
+def test_an_unpinnable_claim_base_fails_closed_before_any_claim(
+    record: dict[str, Any] | None,
+) -> None:
+    world = FakeWorld(branch="worktree-agent-abc123", record=record, fork="f" * 7)
+    code, result = ship(world, "--check", "docs=good")
+    assert code == 1
+    assert "cannot pin the claim base" in result["error"]
+    assert world.names() == []
 
 
 def test_a_claim_whose_base_is_the_fork_point_is_kept() -> None:
@@ -1145,6 +1200,47 @@ def test_stale_local_main_base_is_detected_in_a_real_agent_style_checkout(
     assert not delivery.reclaim_if_base_stale(
         {"base_sha": fork, "handed_back_sha": "e" * 40}, "worktree-agent-x"
     )
+
+
+def test_the_claim_base_stays_on_the_fork_when_origin_main_moves_on_real_git(
+    tmp_path: Path,
+) -> None:
+    """origin/main fetched past the branch's fork point (M1 -> M2) is not in
+    HEAD; the declared claim base must stay M1 so hand-back's ancestry holds."""
+    import subprocess
+
+    def sh(*argv: str) -> str:
+        done = subprocess.run(
+            list(argv), cwd=tmp_path, capture_output=True, text=True, check=True
+        )
+        return done.stdout.strip()
+
+    sh("git", "init", "-q", "-b", "main")
+    sh("git", "config", "user.email", "t@example.com")
+    sh("git", "config", "user.name", "T")
+    (tmp_path / "a.txt").write_text("1")
+    sh("git", "add", ".")
+    sh("git", "commit", "-qm", "M1")
+    m1 = sh("git", "rev-parse", "HEAD")
+    sh("git", "update-ref", "refs/remotes/origin/main", m1)
+    sh("git", "checkout", "-q", "-b", "worktree-agent-x")
+    (tmp_path / "mine.txt").write_text("2")
+    sh("git", "add", ".")
+    sh("git", "commit", "-qm", "mine")
+    m2 = sh("git", "commit-tree", f"{m1}^{{tree}}", "-p", m1, "-m", "M2")
+    sh("git", "update-ref", "refs/remotes/origin/main", m2)  # another lane's fetch
+
+    args = deliver.build_parser().parse_args(["--worktree", str(tmp_path)])
+    base = deliver.Delivery(args, deliver.run, lambda _s: None).claim_base()
+    assert base == m1 and base != m2
+    assert sh("git", "rev-parse", deliver.TRUNK) == m2  # what a symbolic base names
+
+    def contains(sha: str) -> int:
+        is_ancestor = ["git", "merge-base", "--is-ancestor", sha, "HEAD"]
+        return deliver.run(is_ancestor, tmp_path).returncode
+
+    assert contains(base) == 0  # hand-back's declared_base_sha check
+    assert contains(m2) == 1
 
 
 def _format_calls(world: FakeWorld) -> list[list[str]]:
@@ -1630,9 +1726,10 @@ def test_redeliver_rechecks_for_a_hold_added_during_the_lock_wait() -> None:
 
 
 def test_redeliver_still_abandons_when_the_pr_stays_clean_across_the_wait() -> None:
-    world = _replacement_world(lock_busy={"resolve": 1})
+    world = _replacement_world(lock_busy={"resolve": 1}, trunk_moves_to="9" * 40)
     code, result = redeliver(world, "--check", "u=good")
     assert code == 0, result
     assert world.names()[:2] == ["resolve", "resolve"]
+    assert _adopt_bases(world) == [world.fork]  # not the main fetched meanwhile
     graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
     assert len(graphql) >= 3  # run, retire, and once more before the retry
