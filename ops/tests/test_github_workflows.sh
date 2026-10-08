@@ -596,6 +596,54 @@ while IFS=$'\t' read -r index workflow where scope; do
     || fail "dropping allowlist entry $index ($workflow $where $scope) left the live check green: [$dropped_report]"
 done < <(jq -r '.entries | to_entries[] | [.key, .value.workflow, (if .value.job then "job \(.value.job)" else "top-level" end), .value.scope] | @tsv' "$WRITE_ALLOWLIST")
 
+# --- Push-to-main runs must never be cancelled by a newer push ----------------
+# Merges land every few minutes. A workflow that has a `push` trigger and an
+# unconditional `cancel-in-progress: true` cancels every previous main run when
+# the next merge lands, so no post-merge run ever completes (ios-quality lost
+# its only post-merge iOS health signal this way). Only pull_request runs may
+# cancel in progress; push/dispatch runs queue (one running + one pending, a
+# newer pending replaces an older pending), so the latest main commit is always
+# validated to completion. Workflows without a `push` trigger are out of scope.
+push_cancel_violations() {
+  ruby -e 'require "yaml"
+    ARGV.each do |path|
+      y = YAML.load_file(path)
+      on = y[true] || y["on"]
+      next unless on.is_a?(Hash) && on.key?("push")
+      next unless y["concurrency"].is_a?(Hash)
+      cancel = y["concurrency"]["cancel-in-progress"]
+      puts "#{path}: push-triggered workflow cancels in-progress runs unconditionally" if cancel == true
+    end' "$@"
+}
+live_push_cancel="$(push_cancel_violations .github/workflows/*.yml 2>&1 || true)"
+[[ -z "$live_push_cancel" ]] \
+  || fail "push-triggered workflow cancels main runs: [$live_push_cancel]"
+grep -Fxq "  cancel-in-progress: \${{ github.event_name == 'pull_request' }}" "$IOS" \
+  || fail "ios-quality does not restrict cancel-in-progress to pull_request runs"
+# Positive control: the checker flags an unconditional cancel next to a push
+# trigger and passes the conditional form and a pull_request-only workflow.
+cancel_tmp="$wf_tmp/cancel"
+mkdir -p "$cancel_tmp"
+cat >"$cancel_tmp/push-cancel.yml" <<'YAML'
+on: {push: {branches: [main]}}
+concurrency: {group: g, cancel-in-progress: true}
+jobs: {}
+YAML
+cat >"$cancel_tmp/push-conditional.yml" <<'YAML'
+on: {push: {branches: [main]}}
+concurrency: {group: g, cancel-in-progress: "${{ github.event_name == 'pull_request' }}"}
+jobs: {}
+YAML
+cat >"$cancel_tmp/pr-only.yml" <<'YAML'
+on: {pull_request: {}}
+concurrency: {group: g, cancel-in-progress: true}
+jobs: {}
+YAML
+expected_cancel_report="$cancel_tmp/push-cancel.yml: push-triggered workflow cancels in-progress runs unconditionally"
+actual_cancel_report="$(push_cancel_violations "$cancel_tmp"/{push-cancel,push-conditional,pr-only}.yml 2>&1 || true)"
+[[ "$actual_cancel_report" == "$expected_cancel_report" ]] \
+  || fail "push cancel checker positive control: expected [$expected_cancel_report], got [$actual_cancel_report]"
+
 # Parse all workflow YAML with the runner's ubiquitous Ruby runtime. This
 # catches indentation/anchor errors before GitHub has to schedule a runner.
 # macOS ships Ruby 2.6, whose Psych does not accept the newer `aliases:`
