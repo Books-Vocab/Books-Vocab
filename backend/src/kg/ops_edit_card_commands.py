@@ -324,6 +324,7 @@ def cmd_card_move(args: argparse.Namespace) -> int:
             moved_id = card.id
             # 搬本前先硬刪所有 notebook graph 中涉及此卡的 link(搬後必跨本)。掃全部本
             # (default + 所有既存)的 graph,找 from/to == moved_id 的 link 刪除。
+            ctx.mark_destructive()
             with closing(_notebook_store(ctx.user_dir)) as nb_store:
                 all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
                 purged_links: list[str] = []

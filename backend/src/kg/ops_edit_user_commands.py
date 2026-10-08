@@ -172,6 +172,7 @@ def cmd_user_delete(args: argparse.Namespace) -> int:
                 "dropped_index_keys": dropped,
             }
 
+        ctx.mark_destructive()
         result = _mutate_users(dd, mutate)
         target = user_dir_for(dd, uid)
         if target.exists():
@@ -482,6 +483,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
     def apply_fn() -> dict[str, Any]:
         # EditContext 已在此之前備份了當前 user_dir(若存在),所以即使還原錯版本
         # 也能再 restore 回來。先清掉現狀再解壓,避免新舊檔殘留混雜。
+        ctx.mark_destructive()
         if ctx.user_dir.exists():
             shutil.rmtree(ctx.user_dir)
         with tarfile.open(backup_path) as tar:

@@ -285,8 +285,13 @@ def _run_clone_in_process(data_dir: Path, monkeypatch, capsys, *, fail: bool) ->
 
     monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
     if fail:
-        def boom(self, *_a, **_k):
-            raise OSError("replace failed")
+        real_replace = Path.replace
+
+        def boom(self, *a, **k):
+            # 只讓 clone 的 .clone-tmp 換入失敗;EditContext 備份自己的 replace 要放行。
+            if self.name.endswith(seed_cmd._CLONE_TMP_SUFFIX):
+                raise OSError("replace failed")
+            return real_replace(self, *a, **k)
 
         monkeypatch.setattr(Path, "replace", boom)
     args = argparse.Namespace(

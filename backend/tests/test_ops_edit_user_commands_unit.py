@@ -358,8 +358,13 @@ class TestDestructiveFailureReporting:
         self._create(tmp_path, monkeypatch)
         capsys.readouterr()
 
-        def boom(*_a, **_k):
-            raise PermissionError("rmtree denied")
+        real_rmtree = user_cmd.shutil.rmtree
+
+        def boom(path, *a, **k):
+            # shutil 是全域模組:只讓 user_dir 的 rmtree 失敗,備份暫存目錄的清理要放行。
+            if Path(path).name == "doomed":
+                raise PermissionError("rmtree denied")
+            return real_rmtree(path, *a, **k)
 
         monkeypatch.setattr(user_cmd.shutil, "rmtree", boom)
         rc = user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
@@ -392,8 +397,13 @@ class TestDestructiveFailureReporting:
         user_cmd.cmd_restore(_make_args(uid="u1", commit=True))
         capsys.readouterr()
 
-        def boom(*_a, **_k):
-            raise PermissionError("rmtree denied")
+        real_rmtree = user_cmd.shutil.rmtree
+
+        def boom(path, *a, **k):
+            # shutil 是全域模組:只讓 user_dir 的 rmtree 失敗,備份暫存目錄的清理要放行。
+            if Path(path).name == "u1":
+                raise PermissionError("rmtree denied")
+            return real_rmtree(path, *a, **k)
 
         monkeypatch.setattr(user_cmd.shutil, "rmtree", boom)
         rc = user_cmd.cmd_restore(_make_args(uid="u1", commit=True))

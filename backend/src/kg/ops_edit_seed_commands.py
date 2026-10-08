@@ -734,6 +734,7 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
             shutil.copy2(sp, tp)
             staged.append((tgt / sp.name, tp))
         # 2. 清掉目標端舊 vocab 層(孤兒 graph/embeddings、-wal/-shm、舊 review_events)。
+        ctx.mark_destructive()
         removed = sorted(
             p.name for p in tgt.iterdir() if p.is_file() and _is_vocab_file(p.name)
         )
