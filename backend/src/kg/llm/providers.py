@@ -17,6 +17,7 @@ config reload:
 
 Precedence for a chat call_type: exact > group > DEFAULT > gemini.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -115,8 +116,7 @@ def provider_for(call_type: str) -> LLMProvider:
     base = REGISTRY.get(name)
     if base is None:
         raise ValueError(
-            f"Unknown LLM provider {name!r} routed for call_type "
-            f"{call_type!r}. Valid providers: {sorted(REGISTRY)}"
+            f"Unknown LLM provider {name!r} routed for call_type {call_type!r}. Valid providers: {sorted(REGISTRY)}"
         )
     if call_type.strip().lower() == "embed" and not base.supports_embeddings:
         capable = sorted(p for p, v in REGISTRY.items() if v.supports_embeddings)
@@ -128,3 +128,27 @@ def provider_for(call_type: str) -> LLMProvider:
     if model_override:
         return dataclasses.replace(base, chat_model=model_override)
     return base
+
+
+_ROUTING_ENV_PREFIX = "LLM_PROVIDER_"
+
+
+def validate_provider_routing() -> None:
+    """Fail fast on a misconfigured LLM routing env (called at app startup).
+
+    Resolves every set `LLM_PROVIDER_*` key plus the implicit embed and chat
+    defaults through `provider_for` (unknown names / non-embedding embed raise
+    ValueError), then requires each resolved provider's `api_key_env` to be
+    non-blank. First failure wins.
+    """
+    sources = {"embed": "LLM_PROVIDER_EMBED", "": "LLM_PROVIDER_DEFAULT"}
+    for env_key, value in os.environ.items():
+        if env_key.startswith(_ROUTING_ENV_PREFIX) and value.strip():
+            sources.setdefault(env_key[len(_ROUTING_ENV_PREFIX) :].lower(), env_key)
+    for call_type, env_key in sources.items():
+        provider = provider_for(call_type)
+        if not _env(provider.api_key_env):
+            raise RuntimeError(
+                f"{provider.api_key_env} not configured "
+                f"(required by LLM provider {provider.name!r} routed via {env_key})"
+            )

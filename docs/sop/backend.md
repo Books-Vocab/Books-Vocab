@@ -116,7 +116,7 @@ cd backend && uv run python -m pytest -q
 
 ### 查 LLM provider / 換模型 / A/B
 
-- Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。
+- Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。啟動時由 `validate_provider_routing()` 驗證路由與 API key（失敗不取 worker 鎖）。
 - 路由 `provider_for(call_type)` 依 env 解析（清單見 `docs/sop/deploy.md` 的「LLM Provider env vars」）。預設全 `gemini`，`embed` 永遠獨立留 Gemini。
 - A/B / prompt / provider 品質比較：使用 `lab/llm_eval/` workbench；`kg.llm.ab` 僅保留 deprecated shim。
 

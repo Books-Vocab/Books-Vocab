@@ -218,3 +218,74 @@ def test_app_lifespan_dependencies_are_replaceable_named_contract(tmp_path):
 
     assert replaced.logger is replacement_logger
     assert replaced.settings == deps.settings
+
+
+def _run_lifespan(tmp_path) -> list[object]:
+    events: list[object] = []
+    deps = _dependencies(tmp_path, events)
+    app = FastAPI(lifespan=build_app_lifespan_from_dependencies(dependencies=deps))
+    with TestClient(app):
+        pass
+    return events
+
+
+def _clear_llm_env(monkeypatch) -> None:
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("LLM_PROVIDER_"):
+            monkeypatch.delenv(key)
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+
+
+def _assert_fails_before_worker_lock(tmp_path, exc: type[Exception], match: str) -> None:
+    events: list[object] = []
+    deps = _dependencies(tmp_path, events)
+    app = FastAPI(lifespan=build_app_lifespan_from_dependencies(dependencies=deps))
+    with pytest.raises(exc, match=match):
+        with TestClient(app):
+            pass
+    assert not any(isinstance(e, tuple) and e[0] == "assert_single_worker" for e in events)
+
+
+def test_lifespan_starts_with_default_gemini_routing(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    events = _run_lifespan(tmp_path)
+    assert ("assert_single_worker", tmp_path / ".worker.lock") in events
+
+
+def test_lifespan_rejects_unknown_provider_before_worker_lock(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER_TRANSLATE", "deepseak")
+    _assert_fails_before_worker_lock(tmp_path, ValueError, "deepseak")
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_lifespan_rejects_missing_provider_api_key(tmp_path, monkeypatch, value):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER_DEFAULT", "deepseek")
+    if value is None:
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("DEEPSEEK_API_KEY", value)
+    _assert_fails_before_worker_lock(tmp_path, RuntimeError, "DEEPSEEK_API_KEY")
+
+
+def test_lifespan_accepts_deepseek_default_with_key(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER_DEFAULT", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    _run_lifespan(tmp_path)
+
+
+def test_lifespan_rejects_embed_routed_to_non_embedding_provider(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.setenv("LLM_PROVIDER_EMBED", "deepseek")
+    _assert_fails_before_worker_lock(tmp_path, ValueError, "embeddings")
+
+
+def test_lifespan_rejects_missing_gemini_key_for_default_routing(tmp_path, monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.delenv("GEMINI_API_KEY")
+    _assert_fails_before_worker_lock(tmp_path, RuntimeError, "GEMINI_API_KEY")

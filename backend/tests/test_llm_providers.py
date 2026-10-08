@@ -1,4 +1,5 @@
 """Tests for the pluggable LLM provider registry + per-call-type routing."""
+
 from __future__ import annotations
 
 import pytest
@@ -22,8 +23,7 @@ def test_registry_has_gemini_and_deepseek():
 
 
 def test_default_routing_is_gemini():
-    for ct in ("translate_quick", "translate_phrase", "translate_explain",
-               "judge", "enrich", "judge_manual"):
+    for ct in ("translate_quick", "translate_phrase", "translate_explain", "judge", "enrich", "judge_manual"):
         assert provider_for(ct).name == "gemini"
 
 
@@ -137,3 +137,22 @@ def test_call_type_is_case_insensitive(monkeypatch):
 
 def test_empty_call_type_resolves_to_default():
     assert provider_for("").name == "gemini"
+
+
+def test_validate_provider_routing_default_ok(monkeypatch):
+    from kg.llm.providers import validate_provider_routing
+
+    for k in list(__import__("os").environ):
+        if k.startswith("LLM_PROVIDER_"):
+            monkeypatch.delenv(k)
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    validate_provider_routing()
+
+
+def test_validate_provider_routing_blank_key_names_env_and_provider(monkeypatch):
+    from kg.llm.providers import validate_provider_routing
+
+    monkeypatch.setenv("LLM_PROVIDER_TRANSLATE_QUICK", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "  ")
+    with pytest.raises(RuntimeError, match=r"DEEPSEEK_API_KEY.*deepseek.*LLM_PROVIDER_TRANSLATE_QUICK"):
+        validate_provider_routing()
