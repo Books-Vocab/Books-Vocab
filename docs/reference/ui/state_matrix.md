@@ -153,8 +153,34 @@ Scope: `ios/BooksAndVocab`
 | 卡片版面：minimal 仍溢出 | `requiresScrollFallback`（多見於 Accessibility Dynamic Type） | 該面改垂直捲動；**不隱藏使用者勾選的欄位** | 已覆蓋 |
 | 卡片版面：欄位資料缺席 | `ReviewCardContentAvailability` 該欄為 false | 本次不畫，**profile 不變**（下張卡有資料就回來）；`graphLinks` 恆可用——無連結時畫加連結入口 | 已覆蓋 |
 | 卡片版面：正面／反面預算 | 正面階段常駐 reveal zone | 正面預算＝contentHeight − revealZoneReserve 且不隨 reveal 階段變動；反面拿正面實佔後的餘額 | 已覆蓋 |
+| 精簡卡暫時看詳細（#2041） | 該卡方向 preset 為 `.compact`，tap chrome `todayReview.card.temporaryDetail`（value=`showDetail`／`restoreCompact`） | 只有這張卡改以 `.standard` 版面畫（例句／詳解／搭配詞，production 正面例句一併還原），以 `reviewRevealSpring` 過渡；同一顆按鈕恢復精簡。顯示詳細時**暫停 autoplay**（同 layout editor，不自動恢復；否則下一次推進就把詳細忘掉）。狀態只在 `TodayReviewState` 記憶體，任何換卡（next / previous / shuffle / submit / autoplay）即清，回到該卡仍為精簡；不寫 `ReviewCardLayoutStore`／`NotebookSettings`／iCloud。evidence value 的 `preset` 仍是設定值，另帶 `temporaryDetail=0/1`；已是正常版面的卡不顯示按鈕 | 已覆蓋（`ReviewCardTemporaryDetailTests`、`ReviewCardLayoutEditorUITests`） |
 | 版面編輯器入口不可用 | `!isCardInteractive`（fling / 推進中） | toolbar 鈕點擊 no-op（與 shuffle / prev / next 同一把鎖） | 已覆蓋 |
 | 開編輯器時 autoplay 正在播 | tap 入口 | `pauseForInterruption()` 暫停；**關閉後不自動恢復**（`todayReview.autoplay.paused` identifier 可判讀） | 已覆蓋 |
+| 開新增連結時 autoplay 正在播 | tap `todayReview.card.addLink` | 先 `pauseAutoPlayForModalInterruption()`；`AddLinkSheetRequest` 於點擊當下凍結來源卡與候選池，sheet 全程綁定該卡（`addLink.sourceWord` 顯示來源字）；關閉後維持暫停 | 已覆蓋 |
+| 多單字本入口 | session `queue` 涵蓋 ≥2 個 `notebookId`（`ReviewCardNotebookBadgeResolver`；於 session 開始時一次查 `Notebook` 進 `@State`，複習頁不掛 `@Query`，Notebook 寫入不觸發 body 重算） | 每張卡正面頂部留白以 overlay 畫 `todayReview.card.notebook`（色點＋名稱，value=notebookId）；不進 layout，卡高與 solver 預算不變；背面展開時仍可見。名稱查不到→「未命名單字本」，`default` sentinel 無 row→「預設單字本」，永不顯示 id；AddLink sheet 加 `addLink.notebookScope`（「只會搜尋「X」內的單字」） | 已覆蓋 |
+| 單一單字本入口 | `queue` 只含一個 `notebookId` | 不畫標示；AddLink sheet 不顯示範圍提示 | 已覆蓋 |
+| 連結目標在 session 開始後才建立 | 點連結 →「查看詳情」，`linkedEntryLookup` 查無 | 改查 live store；仍查無才 `toast.error`（`找不到符合的單字`），不再靜默無反應 | 已覆蓋 |
+| 連結建立中（關閉 sheet 後） | `AddLinkCreationHub` 有該 source 卡的 running job | 來源卡連結區立即出現 `todayReview.card.link.pending.<word>`（單字 + 迷你進度 +「正在建立…」，accessibilityValue=`creating`）；**不論 presentation（含 `.summary`）或有幾個建立中項目，建立中項目都留在組名旁，只有一般連結落入「+N」**；狀態更新（creating→failed／warning、移除）走 `TodayReviewCardCache.refreshLinks`，沿用該卡 `measurementCache`，翻開中的卡不重解版面、不跳高；點入開 `todayReview.card.link.pending.detail`（單字、狀態文字、逐步進度；`...pending.status` value=`creating`）；完成後 pending 項消失、sheet 自動關閉、該處出現一般連結 | 已覆蓋（UITest 僅覆蓋失敗路徑；creating→完成見 `AddLinkCreationHubTests`） |
+| 連結建立失敗（關閉 sheet 後） | job `failed`（terminal 失敗或輪詢斷線） | 項目改顯示警示圖示（value=`failed`），**不會自行消失**；詳情顯示失敗文案＋`...pending.retry`（terminal 失敗換新 idempotency key；輪詢斷線續輪詢同一 operation；POST 未回應沿用同 key）＋`...pending.dismiss`（唯一移除途徑） | 已覆蓋 |
+| 新增連結：完全成功 | operation `succeeded` 且本地 pull 成功 | sheet 自動關閉（`onLinked`）；來源卡出現一般連結 | 已覆蓋（單元 `AddLinkCreationFailureTests`） |
+| 新增連結：部分完成（sheet 開著） | `succeeded_with_warnings`（`enrichment_failed`／`link_projection_pending`）或本地 pull 失敗 | **不自動關閉**：`addLink.creation.warning` 顯示「已建立，但有一部分沒完成」，逐項 `addLink.creation.warning.item.<code>`；`addLink.creation.retry` 只重跑未完成部分（缺解釋→重排 pipeline，再 pull，不再 POST）；`addLink.creation.warning.done` 才關閉 | 已覆蓋（單元；UITest 為原始碼契約，live warning 情境未覆蓋） |
+| 新增連結：部分完成（sheet 已關） | 同上，但 sheet 先被關閉 | 來源卡項目顯示警示（value=`warning`），不會自行消失；詳情列出未完成部分＋`...pending.retry`＋`...pending.dismiss`（完成）；重試進行中按完成＝取消該重試並移除項目（`AddLinkCreationHub.dismiss` 先 `cancel()`，重試結束不會把項目帶回來） | 已覆蓋（單元） |
+| 新增連結：失敗分類 | operation `failed`／`interrupted`、client 逾時、輪詢 404、斷線 | `addLink.error.reason` value＝原因碼；文案依 `AddLinkCreationFailure`（額度、來源不可用、目標已封存、不能連到自己、服務不可用、伺服器中斷、逾時、請求已不存在、網路、登入）；不可重試者（封存／自己／來源不可用／額度／登入）不顯示重試；`addLink.creation.backToSearch` 回搜尋並移除該失敗 job | 已覆蓋（單元＋UITest 斷線路徑） |
+| 新增連結：輪詢逾時 | 一次嘗試（含 POST）超過 90 秒仍非終態 | 停止輪詢，失敗 `timed_out`（可重試，重試換新 key） | 已覆蓋（單元，fake clock） |
+| 新增連結：既有字連結中 | 點候選列 | 該列 `addLink.row.linking.<cardId>` 進度、所有列與建立鈕鎖定；再次點擊不重送 | 已覆蓋（單元） |
+| 新增連結：既有字連結失敗 | `AddLinkActionError` | banner `addLink.error.reason`（value＝原因碼）依錯誤顯示不同文案；可重試者 banner 帶重試 | 已覆蓋（單元） |
+| 新增連結：建立入口 | 有輸入且本地無此字（含 `apple.` 等尾端標點正規化） | 部分符合候選之下仍有 `addLink.create`；精確符合已連結顯示「已連結」 | 已覆蓋（單元） |
+| 新增連結：建立入口文案（#2037） | 建立入口出現 | 主行為完整動作句「建立「新字」並連結到「來源字」」（`addLink.create.title`，超過 20 字元以「…」截斷、動詞與來源字完整，字內引號改為 `'`，最多兩行）；副行「加入：單字本名稱」（`addLink.create.notebook`，名稱取來源卡所在單字本，查不到→備援字串、永不顯示 id；單一單字本入口也顯示）；兩行各以隱藏元素鏡射 id（value＝文字），`addLink.create` 的 label 含新字與來源字；文字隨輸入淡入淡出、不跳變。舊 key `建立` 不改義（仍是 create_card 步驟標籤） | 已覆蓋（單元＋UITest） |
+| 新增連結：離線（#2039） | `NetworkMonitor.isConnected == false`（裝置網路，非 server health） | 開 sheet 時頂端 toast 提示「目前離線，無法建立新單字或連結」；`addLink.create` 仍列出但停用，副行改為原因（`addLink.create.disabledReason`）；點既有候選、重試建立都在**樂觀寫入之前**被擋下並再提示；斷線／恢復連線各彈一次 toast（恢復時入口自動可用） | 已覆蓋（單元；UITest 無法在不改 app 啟動旗標下模擬離線，未覆蓋） |
+| 新增連結：搜尋框 Return（#2038） | 搜尋框按 Return | 純函數 `AddLinkReturnBehavior.resolve`：輸入與某個可連結既有單字**完全相同**（正規化同後端）→ 直接連結該字，該列右緣 `addLink.row.returnHint`（↵）、鍵盤鍵 `.join`；完全相同且已連結 → 不動作，toast「已連結過「X」」；只有部分符合（含只剩一個）→ 只收鍵盤；本地完全沒有 → 只收鍵盤並讓 `addLink.create` 短暫高亮（`addLink.create.highlight` value＝`on`／`off`），**絕不建立**；封存／未同步／來源自己亦只收鍵盤。其餘狀態鍵 `.done`；隱藏元素 `addLink.return.action` 的 value＝決策名（`linkExact`／`alreadyLinked`／`dismissKeyboard`／`revealCreate`） | 已覆蓋（單元＋UITest） |
+| 連結區「+N」展開（#2043） | 某組連結多於 solver 的 presentation 能顯示（2／1／0 個） | 「+N」是按鈕（`todayReview.card.link.overflow.<groupId>`，value=`collapsed`／`expanded`）；點開就地在組名下方折行列出其餘連結（至多 20 個，其餘仍計入「+K」；`AppMotion.reviewRevealSpring`），再點收合（文案「收合」）。展開狀態只存記憶體、綁單張卡（換卡即還原）；展開高度寫在獨立的量測 key，不污染收合時 natural／intermediate／compact 的量測。裝置上沒有的連結只計數、不可展開 | 已覆蓋（單元＋UITest） |
+| 「＋」新增連結點擊範圍（#2044） | 連結列尾的「＋」或空狀態「新增連結」 | 圖示放大一級；可點範圍與 accessibility frame ≥ 44×44，版面佔位仍等於 label（連結區高度、solver 預算不變）；`todayReview.card.addLink` id 不變 | 已覆蓋（單元＋UITest） |
+| 建立中／失敗／警告連結出現在詳情頁（Word Detail） | 同一張卡的 `WordDetailSheet`（開著或之後打開） | creating＝單字＋shimmer；failed／warning＝單字＋狀態文案＋圖示（`wordDetail.link.pending.<state>`，**不是無限 shimmer**），點入開 `PendingLinkDetailSheet`（重試／移除）；sheet 觀察 `AddLinkCreationHub.revision` 即時重建，完成後該列轉為一般連結；詳情頁的 AddLink 也傳 `onLinked` | 已覆蓋（原始碼契約；無 UITest） |
+| 登出／切換帳號 | `LocalDataCleanerService.clearLocalData` | `AddLinkCreationHub.clearAll()`：取消 live coordinator，清 jobs、UserDefaults record、`PendingLinkProjection`，不留上個帳號輸入的單字；record 帶 `userId`，`resume` 丟棄非目前帳號的 job | 已覆蓋（單元） |
+| 候選超過 20 個時的精確符合 | 輸入字與某既有字完全相同（正規化同後端），但該字在 store 順序中落在前 20 個部分符合之後 | `localCandidates` 精確符合排第一再取前 20，Return 仍可連結並顯示 `addLink.row.returnHint` | 已覆蓋（單元） |
+| 建立中 app 被殺 | 下次進入複習，`resume` 發現 durable record | hub init 即還原 pending 項（projection 載入）；`resume` 依 operationId 續輪詢並完成本地 pull，或以同 key 重送未回應的 POST；source 卡已不存在則丟棄 | 已覆蓋（單元） |
+| 開啟新增連結 sheet | sheet 出現 | `addLink.searchField` 立即取得鍵盤 focus，可直接打字 | 已覆蓋（`AddLinkSheetUXUITests`） |
+| 建立進度步驟標籤 | `AddLinkCreationCoordinator` running | 六步依序為 `addLink.step.resolveTarget／translate／createCard／enrich／createLink／localProjection`，描述該步實際動作 | 已覆蓋（`AddLinkStepCopyTests`） |
 
 ### Review Card Layout Editor State（`ReviewCardLayoutEditor`）
 

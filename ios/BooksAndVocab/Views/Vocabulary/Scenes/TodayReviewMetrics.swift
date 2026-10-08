@@ -91,6 +91,12 @@ enum TodayReviewMetrics {
     /// 卡片正反面畫，共用同一顆 token）。
     static let foldSectionSpacingCompact: CGFloat = AppSpacing.s2
     static let foldHintBottomInset: CGFloat = 22
+    /// 單字本標示（#2040）畫在正面 `foldPadding + foldHintBottomInset` 這條既有頂部
+    /// 留白裡、以 overlay 疊上，不參與版面——出現與否都不改卡片高度。
+    static let notebookBadgeTopInset: CGFloat = AppSpacing.s4
+    static let notebookBadgeDotSize: CGFloat = 6
+    /// 卡內「＋」新增連結的可點範圍下限（HIG 44pt，#2044）。只擴可點範圍，不擴版面。
+    static let addLinkHitTarget: CGFloat = AppFloatingChromeMetrics.hitTarget
     /// 複習卡解釋段落的行距。等同 `CardDocumentMeaningBlock(compact: true)` 一直
     /// 在畫的值 —— 預設佈局要重現目前畫面，這顆就必須是同一個數字。
     static let foldMeaningLineSpacing: CGFloat = 5

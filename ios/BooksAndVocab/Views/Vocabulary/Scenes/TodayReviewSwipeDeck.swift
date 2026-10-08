@@ -78,10 +78,14 @@ extension TodayReviewPresenter {
                 ).cardLayout,
                 viewport: viewport,
                 showsAnswer: slotShowsAnswer,
+                // #2041：只有互動中的那張能處於暫時詳細；背後預覽恆依設定。
+                temporarilyDetailed: isActive
+                    && state.temporaryDetailCardKey == content.card.reviewCardKey,
                 mountsBack: isActive && backContentMounted,
                 interactive: isActive && isCardInteractive,
                 borderOpacity: borderOpacity,
                 collocationExplanations: collocationExplanations,
+                notebookBadge: notebookBadges[content.card.notebookId],
                 actions: ReviewCardActions(
                     advanceReveal: onAdvanceReveal,
                     collapseReveal: onCollapseReveal,
@@ -90,7 +94,8 @@ extension TodayReviewPresenter {
                     addLink: onAddLink,
                     explainCollocation: onExplainCollocation,
                     viewCollocationExplanation: onViewCollocationExplanation,
-                    deleteCollocationExplanation: onDeleteCollocationExplanation
+                    deleteCollocationExplanation: onDeleteCollocationExplanation,
+                    toggleTemporaryDetail: onToggleTemporaryDetail
                 ),
                 // FIX(review-flip-gap)：逐 slot 記實測 front 高度（active slot
                 // 恆 uncap → 量到自然高度）。`activeCardHeight` 讀 active slot 的值，

@@ -973,6 +973,9 @@
 "a11y.toggle.on" = "On";
 "a11y.toggle.off" = "Off";
 "todayReview.fold.collapse" = "Collapse";
+"todayReview.card.notebook.a11y" = "Notebook: %@";
+"todayReview.card.notebook.default" = "Default notebook";
+"todayReview.card.notebook.unnamed" = "Untitled notebook";
 "todayReview.saveFailure" = "Review result wasn't saved. Please try again later.";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
@@ -1314,3 +1317,55 @@
 "notebookSettings.serverUnsupported" = "Server does not support notebook settings yet";
 "notebookSettings.retry" = "Retry";
 "kgVocab.row.selectMultipleAction" = "Select multiple";
+
+"addLink.creation.alreadyRunning" = "This word is already being created.";
+"addLink.sourceWord" = "Link from %@";
+"addLink.notebookScope" = "Searches only words in “%@”";
+"todayReview.link.pending.creating" = "Creating…";
+"todayReview.link.pending.hint" = "This word card is being created in the background. It becomes a normal link here when it is ready, so you can close this and keep reviewing.";
+"todayReview.link.pending.failed" = "Couldn't create this link. You can retry or remove it.";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "Look for an existing word";
+"addLink.step.translate" = "Translate";
+"addLink.step.createCard" = "Create the word card";
+"addLink.step.enrich" = "Add definitions and examples";
+"addLink.step.createLink" = "Link the two cards";
+"addLink.step.localProjection" = "Download to this device";
+
+"todayReview.card.temporaryDetail.show" = "Show details for this card";
+"todayReview.card.temporaryDetail.restore" = "Back to compact";
+
+"addLink.error.quotaExhausted" = "Today's AI quota is used up. Try again tomorrow.";
+"addLink.error.sourceUnavailable" = "The source card is no longer available (deleted, archived, or moved).";
+"addLink.error.targetArchived" = "This word is archived. Unarchive it first, then link it.";
+"addLink.error.targetIsSource" = "A card can't be linked to itself.";
+"addLink.error.serviceUnavailable" = "A service needed for this step is unavailable. Please retry.";
+"addLink.error.interrupted" = "The server restarted before this finished. Please retry.";
+"addLink.error.timedOut" = "This is taking too long. Please retry.";
+"addLink.error.operationNotFound" = "The server no longer has this request. Please retry.";
+"addLink.error.sourceNotSynced" = "The source card hasn't synced yet, so it can't be linked.";
+"addLink.error.invalidResponse" = "The server returned an unexpected response. Please retry.";
+"addLink.error.refreshFailed" = "The link may already exist, but refreshing failed. Please retry.";
+"addLink.creation.warning.summary" = "Created, but part of it didn't finish.";
+"addLink.creation.warning.enrichment" = "The explanation hasn't been generated yet.";
+"addLink.creation.warning.linkProjection" = "The link will appear after the next sync.";
+"addLink.creation.warning.localSync" = "This device hasn't finished syncing the new card.";
+"addLink.creation.backToSearch" = "Back to search";
+"addLink.target.linkable" = "Already in this notebook. Pick it from the list to link it.";
+"addLink.target.alreadyLinked" = "Already linked.";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "Create “%@” and link it to “%@”";
+"addLink.create.notebook" = "Adds to: %@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "Show fewer";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "Already linked to “%@”";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "You are offline. Linking or creating words needs a connection.";
+"addLink.offline.restored" = "Back online.";
+"addLink.offline.createReason" = "Offline: reconnect to create a new word.";

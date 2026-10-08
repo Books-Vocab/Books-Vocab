@@ -15,6 +15,8 @@ extension UITestFixtureSeed {
             seedNotebookReviewDeck(into: container)
         case "reviewDeckVaried":
             seedNotebookReviewDeckVaried(into: container)
+        case "reviewDeckMultiNotebook":
+            seedNotebookReviewDeckMultiNotebook(into: container)
         case UIWorldReviewDeckFixtureID.reviewCardFullInfo.rawValue:
             seedNotebookReviewCardEvidence(for: .reviewCardFullInfo, into: container)
         case UIWorldReviewDeckFixtureID.reviewCardCompactCounterexample.rawValue:
@@ -98,6 +100,88 @@ extension UITestFixtureSeed {
             AppLog.app.info("UI-test fixture seeded: notebook.reviewDeckVaried (\(specs.count) cards)")
         } catch {
             failFixtureSeed("Failed to seed notebook.reviewDeckVaried fixture: \(error)")
+        }
+    }
+
+    /// Multi-notebook review entry (`-seedFixture:notebook:reviewDeckMultiNotebook`,
+    /// #2040). Two notebooks with due cards, so the notebook-list review CTA starts
+    /// a session whose queue spans ≥2 notebookIds and every card shows which
+    /// notebook it belongs to. The first notebook reuses the reviewDeck id so the
+    /// notebook page object resolves the same card.
+    private static let multiNotebookReviewNotebooks: [(id: String, name: String, color: String?)] = [
+        ("ui-review-notebook", "Review Alpha", "#B1C5AE"), // token-allow: fixture notebook data color
+        ("ui-review-notebook-beta", "Review Beta", nil)
+    ]
+
+    @MainActor
+    private static func seedNotebookReviewDeckMultiNotebook(into container: ModelContainer) {
+        let context = container.mainContext
+        let notebookIDs = multiNotebookReviewNotebooks.map(\.id)
+        do {
+            for notebook in try context.fetch(FetchDescriptor<Notebook>())
+            where notebookIDs.contains(notebook.remoteId) {
+                context.delete(notebook)
+            }
+            try clearVocabularyEntries(from: context)
+
+            for (index, spec) in multiNotebookReviewNotebooks.enumerated() {
+                let notebook = Notebook(remoteId: spec.id, name: spec.name, color: spec.color)
+                notebook.syncStatus = 1
+                notebook.sortOrder = index
+                context.insert(notebook)
+            }
+
+            let base = Date(timeIntervalSince1970: 1_700_200_000)
+            for index in 0..<6 {
+                let notebookId = notebookIDs[index % notebookIDs.count]
+                let word = "multinb\(index)"
+                let example = "A short \(word) example sentence."
+                let entry = VocabularyEntry(
+                    word: word,
+                    translation: "多單字本卡 \(index)",
+                    context: example,
+                    explanation: nil,
+                    partOfSpeech: "n.",
+                    bookTitle: "Multi Notebook Fixture",
+                    chapterTitle: nil
+                )
+                entry.notebookId = notebookId
+                entry.kgCardId = "multinb-\(String(format: "%03d", index))"
+                entry.reviewMode = .recognition
+                entry.reviewExamples = [example]
+                entry.syncStatus = 1
+                entry.actionType = "add"
+                entry.reviewCount = 0
+                entry.reviewStreak = 0
+                entry.dateAdded = base.addingTimeInterval(Double(index))
+                entry.nextReviewAt = base
+                entry.lastReviewedAt = nil
+                if index == 5 {
+                    // The queue opens on the newest card; giving it links puts the
+                    // link strip (and its "+" add-link button) on screen at once.
+                    // Four links in one group: two show beside the label and the
+                    // other two sit behind the expandable "+2" (#2043).
+                    entry.graphLinksByKind = [
+                        "shares_usage": (0..<4).map { target in
+                            KGCardLinkSummary(
+                                id: "multinb-link-5-\(target)",
+                                cardId: "multinb-\(String(format: "%03d", target))",
+                                word: "multinb\(target)",
+                                kind: "shares_usage",
+                                label: "shares_usage",
+                                confidence: 0.9,
+                                reason: "fixture evidence",
+                                hidden: false
+                            )
+                        }
+                    ]
+                }
+                context.insert(entry)
+            }
+            try context.save()
+            AppLog.app.info("UI-test fixture seeded: notebook.reviewDeckMultiNotebook")
+        } catch {
+            failFixtureSeed("Failed to seed notebook.reviewDeckMultiNotebook fixture: \(error)")
         }
     }
 

@@ -342,13 +342,14 @@ private enum TodayReviewFixtureAdapter {
         }
 
         let card = entry.cardPresentation
+        // Like the real card cache: the prepared group holds every link; how many
+        // show beside the label (and the expandable "+N") is decided at render time.
         let linkGroups = card.linkGroups.map { fullGroup in
-            let limitedItems = fullGroup.id == "shares_usage" ? Array(fullGroup.items.prefix(2)) : fullGroup.items
-            return TodayReviewPresenterState.LinkGroup(
+            TodayReviewPresenterState.LinkGroup(
                 id: fullGroup.id,
                 label: fullGroup.label,
-                items: limitedItems,
-                overflowCount: max(0, fullGroup.items.count - limitedItems.count)
+                items: fullGroup.items,
+                overflowCount: 0
             )
         }
         let backDoc = card.document.reviewBackSubset()

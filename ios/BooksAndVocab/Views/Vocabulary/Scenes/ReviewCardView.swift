@@ -45,6 +45,8 @@ struct ReviewCardActions {
     var explainCollocation: ((String) -> Void)? = nil
     var viewCollocationExplanation: ((String) -> Void)? = nil
     var deleteCollocationExplanation: ((String) -> Void)? = nil
+    /// #2041：精簡卡的「暫時看詳細／恢復精簡」。nil（設定頁預覽 / catalog）＝不畫按鈕。
+    var toggleTemporaryDetail: (() -> Void)? = nil
 
     static let none = ReviewCardActions()
 }
@@ -117,6 +119,15 @@ final class ReviewCardMeasurementCache {
         return true
     }
 
+    /// Drops the graph-links section's measured heights (every variant, including
+    /// the expanded ones) after the card's link items changed; every other section
+    /// and the front height stay, so only the strip re-measures.
+    func invalidateGraphLinksMeasurements() {
+        naturalSectionHeights = naturalSectionHeights.filter { $0.key.section != .graphLinks }
+        intermediateSectionHeights = intermediateSectionHeights.filter { $0.key.section != .graphLinks }
+        compactSectionHeights = compactSectionHeights.filter { $0.key.section != .graphLinks }
+    }
+
     @discardableResult
     func recordFront(_ measurement: ReviewCardFrontMeasurement) -> Bool {
         guard measurement.height > 0 else { return false }
@@ -147,11 +158,16 @@ struct ReviewCardView: View {
     let profile: ReviewCardLayoutProfile
     let viewport: ReviewCardViewport
     let showsAnswer: Bool
+    /// #2041：這張精簡卡此刻暫時以詳細版面呈現。`profile` 仍是設定值（evidence 與
+    /// 按鈕判斷讀它）；畫面讀 `renderProfile`。
+    var temporarilyDetailed: Bool = false
     var mountsBack: Bool = true
     var interactive: Bool = true
     var borderOpacity: Double = TodayReviewMetrics.cardBorderActiveOpacity
     var measuresSections: Bool = true
     var collocationExplanations: [String: String] = [:]
+    /// 多單字本入口才有值（`ReviewCardNotebookBadgeResolver`）；nil ＝ 不畫標示。
+    var notebookBadge: ReviewCardNotebookBadge? = nil
     var actions: ReviewCardActions = .none
     var onFrontHeightChange: ((CGFloat) -> Void)? = nil
 
@@ -160,6 +176,9 @@ struct ReviewCardView: View {
     /// This is only a transient mount gate. The actual measurements live in
     /// `content.measurementCache`, which survives resident-slot recycling.
     @State private var measurementProbeReadyToken: String?
+    /// 哪幾組知識連結被「+N」展開（#2043）。只活在記憶體、綁一張卡：常駐 slot 換卡後
+    /// 舊卡的展開狀態讀不到，也不寫入任何 store。
+    @State private var linkExpansion = ReviewCardLinkExpansion()
 
     private var reviewMeasurementCache: ReviewCardMeasurementCache { content.measurementCache }
 
@@ -184,6 +203,14 @@ struct ReviewCardView: View {
                 borderOpacity: borderOpacity,
                 viewport: viewport
             )
+            .overlay(alignment: .topLeading) {
+                // 單字本標示是 overlay，坐在正面既有的頂部留白裡：不進 layout，
+                // 正面／背面高度與 solver 預算都不因它出現而變（#2040）。背面展開時
+                // 正面仍在上方，所以兩面都看得到。
+                if let notebookBadge {
+                    notebookBadgeView(notebookBadge)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 // chrome 常駐於每張卡（裝飾），只有互動中的那張可點 —— promote 時
                 // chrome 不換樹、無「裸卡 pop」。
@@ -233,9 +260,66 @@ struct ReviewCardView: View {
     var reviewCardPadding: CGFloat { TodayReviewMetrics.foldPadding }
     var answerCardHeight: CGFloat { TodayReviewMetrics.answerMinHeight }
 
-    /// 右上角 chrome（喇叭 + 詳情）兩顆 44pt HIG 觸控框 + 中間 inlineGap 的總寬，
-    /// 供單字列保留 trailing 空間，避免長詞被圖示擋住。與 frontCardChrome 佈局同源。
-    var frontChromeReserveWidth: CGFloat { 44 * 2 + appSkin.spacing.inlineGap }
+    /// 右上角 chrome（[暫時詳細] + 喇叭 + 詳情）每顆 44pt HIG 觸控框 + 間距 inlineGap
+    /// 的總寬，供單字列保留 trailing 空間，避免長詞被圖示擋住。與 frontCardChrome
+    /// 佈局同源：按鈕數由同一個 `temporaryDetailToggle` 決定。
+    var frontChromeReserveWidth: CGFloat {
+        let buttons: CGFloat = temporaryDetailToggle == .unavailable ? 2 : 3
+        return 44 * buttons + appSkin.spacing.inlineGap * (buttons - 1)
+    }
+
+    // MARK: Temporary Detail (#2041)
+
+    /// The profile this card renders with: the persisted `profile`, with this
+    /// card's direction lifted to `.standard` while temporarily detailed.
+    private var renderProfile: ReviewCardLayoutProfile {
+        ReviewCardTemporaryDetail.renderProfile(
+            profile,
+            mode: content.card.reviewMode,
+            isDetailed: temporarilyDetailed
+        )
+    }
+
+    /// Button state, read from the persisted profile. Hidden where no one can act
+    /// on it (settings preview / catalog pass no callback).
+    private var temporaryDetailToggle: ReviewCardTemporaryDetail.ToggleState {
+        guard actions.toggleTemporaryDetail != nil else { return .unavailable }
+        return ReviewCardTemporaryDetail.toggleState(
+            profile: profile,
+            mode: content.card.reviewMode,
+            isDetailed: temporarilyDetailed
+        )
+    }
+
+    /// Fields the detailed face would add, pre-measured by hidden probes while the
+    /// card is still compact so the expansion animates to real heights.
+    private func prospectiveDetailFields(face: ReviewCardFace) -> [ReviewCardField] {
+        guard temporaryDetailToggle == .showDetail else { return [] }
+        return ReviewCardTemporaryDetail.prospectiveBlockFields(
+            profile: profile,
+            mode: content.card.reviewMode,
+            face: face,
+            availability: reviewCardAvailability(for: content)
+        )
+    }
+
+    @ViewBuilder
+    private func prospectiveDetailProbes(
+        _ currentCard: ReviewCardContent,
+        face: ReviewCardFace
+    ) -> some View {
+        let fields = prospectiveDetailFields(face: face)
+        if !fields.isEmpty {
+            ZStack(alignment: .topLeading) {
+                ForEach(fields, id: \.self) { field in
+                    reviewMeasurementProbes(field, currentCard: currentCard, face: face)
+                }
+            }
+            .hidden()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
 
     // MARK: Front Surface
 
@@ -351,6 +435,23 @@ struct ReviewCardView: View {
     @ViewBuilder
     func frontCardChrome(_ card: CardPresentation, interactive: Bool) -> some View {
         HStack(spacing: appSkin.spacing.inlineGap) {
+            // #2041：只在精簡卡上出現，同一顆按鈕來回切換。放最左，喇叭 / 詳情的
+            // 位置不因它出現與否而移動。
+            switch temporaryDetailToggle {
+            case .unavailable:
+                EmptyView()
+            case .showDetail, .restoreCompact:
+                let showing = temporaryDetailToggle == .showDetail
+                VocabChromeIconButton(
+                    systemImage: showing ? "rectangle.expand.vertical" : "rectangle.compress.vertical",
+                    label: showing
+                        ? L10n.string("todayReview.card.temporaryDetail.show")
+                        : L10n.string("todayReview.card.temporaryDetail.restore"),
+                    identifier: interactive ? "todayReview.card.temporaryDetail" : nil,
+                    action: { if interactive { actions.toggleTemporaryDetail?() } }
+                )
+                .accessibilityValue(temporaryDetailToggle.rawValue)
+            }
             VocabChromeIconButton(
                 systemImage: "speaker.wave.2.fill",
                 label: "播放發音".localized,
@@ -364,6 +465,36 @@ struct ReviewCardView: View {
         }
         .padding(reviewCardPadding)
         .allowsHitTesting(interactive)
+    }
+
+    /// 卡片所屬單字本（色點 ＋ 名稱）。純標示、不可點：點擊照常落到正面的翻卡手勢。
+    /// 寬度讓出右上角 chrome；字級上限鎖住，確保在 Accessibility Dynamic Type 下仍
+    /// 收在單字列上方的留白內、不壓到單字。
+    func notebookBadgeView(_ badge: ReviewCardNotebookBadge) -> some View {
+        HStack(spacing: AppSpacing.s1) {
+            if badge.colorHex != nil {
+                AppRoundedRect(roundness: AppRoundness.pill)
+                    .fill(NotebookPalette.color(for: badge.colorHex))
+                    .frame(
+                        width: TodayReviewMetrics.notebookBadgeDotSize,
+                        height: TodayReviewMetrics.notebookBadgeDotSize
+                    )
+            }
+            Text(badge.name)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+        .padding(.top, TodayReviewMetrics.notebookBadgeTopInset)
+        .padding(.leading, reviewCardPadding)
+        .padding(.trailing, reviewCardPadding + frontChromeReserveWidth)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.format("todayReview.card.notebook.a11y", badge.name))
+        .accessibilityIdentifier("todayReview.card.notebook")
+        .accessibilityValue(badge.notebookId)
     }
 
     func reviewCardFront(
@@ -452,6 +583,11 @@ struct ReviewCardView: View {
                     }
             }
         }
+        .background(alignment: .topLeading) {
+            if measuresSections {
+                prospectiveDetailProbes(currentCard, face: .front)
+            }
+        }
         .reviewCardFaceChrome(.front)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: layout.cardHeight, alignment: .topLeading)
@@ -513,7 +649,10 @@ struct ReviewCardView: View {
     private func evidenceIdentityValue(for card: CardPresentation) -> String {
         let preset = profile.preset(for: card.reviewMode)
         let layoutProfile = "recognition:\(profile.recognition.rawValue),production:\(profile.production.rawValue)"
-        return "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);preset=\(preset.rawValue);layoutProfile=\(layoutProfile);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
+        // `preset` / `layoutProfile` stay the PERSISTED values; the transient
+        // override is its own key (#2041) so evidence never mistakes it for a setting.
+        // translationPrefix stays last: it is free text and may contain ';'.
+        return "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);preset=\(preset.rawValue);layoutProfile=\(layoutProfile);temporaryDetail=\(temporarilyDetailed ? 1 : 0);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
     }
 
     /// Stable machine-readable marker for the selected natural/scroll branch.
@@ -648,6 +787,9 @@ struct ReviewCardView: View {
                 layout: layout
             )
         }
+        .background(alignment: .topLeading) {
+            prospectiveDetailProbes(currentCard, face: .back)
+        }
         .reviewCardFaceChrome(.back)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: layout.cardHeight, alignment: .topLeading)
@@ -721,56 +863,153 @@ struct ReviewCardView: View {
 
             VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
                 ForEach(groups) { group in
-                    HStack(spacing: AppSpacing.s1) {
-                        Text(group.label.localized + "：")
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.tertiaryText)
-
-                        let shownItems: [KGCardLinkSummary] = {
-                            switch presentation {
-                            case .twoPerGroup: Array(group.items.prefix(2))
-                            case .onePerGroup: Array(group.items.prefix(1))
-                            case .summary: []
-                            }
-                        }()
-                        ForEach(Array(shownItems.enumerated()), id: \.element.id) { index, item in
-                            Button { actions.linkTap?(item) } label: {
-                                Text(item.word)
-                                    .font(appSkin.typography.monoEmphasis)
-                                    .foregroundStyle(appSkin.palette.primaryText)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
-
-                            if index < shownItems.count - 1 {
-                                Text("|")
-                                    .font(appSkin.typography.caption)
-                                    .foregroundStyle(appSkin.palette.quaternaryText)
-                            }
-                        }
-
-                        let overflow = group.overflowCount + max(group.items.count - shownItems.count, 0)
-                        if overflow > 0 {
-                            Text("+\(overflow)")
-                                .font(appSkin.typography.caption)
-                                .foregroundStyle(appSkin.palette.quaternaryText)
-                        }
-                    }
+                    linkGroupRow(group, presentation: presentation)
                 }
             }
 
             Spacer()
 
-            Button(action: { actions.addLink?() }) {
+            // 圖示放大一級；可點範圍 ≥44pt 但不佔版面，連結區高度不變（#2044）。
+            ReviewCardHitTargetButton(
+                action: { actions.addLink?() },
+                accessibilityIdentifier: "todayReview.card.addLink",
+                accessibilityLabel: L10n.string("vocab.card.addLink")
+            ) {
                 Image(systemName: "plus")
-                    .font(appSkin.typography.iconSmall)
+                    .font(appSkin.typography.iconMedium)
                     .foregroundStyle(appSkin.palette.secondaryText)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.string("vocab.card.addLink"))
-            .accessibilityIdentifier("todayReview.card.addLink")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One group of the strip: label, the links that fit beside it, and a "+N"
+    /// that is a real control — it expands the group in place (every link, wrapped
+    /// below the label) and collapses it again (#2043).
+    @ViewBuilder
+    private func linkGroupRow(
+        _ group: ReviewCardLinkGroup,
+        presentation: ReviewCardLayoutSolver.GraphLinkPresentation
+    ) -> some View {
+        let isExpanded = linkExpansion.isExpanded(group.id, cardKey: currentCardKey)
+        let row = ReviewCardLinkStripLayout.row(for: group, presentation: presentation, isExpanded: isExpanded)
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
+            HStack(spacing: AppSpacing.s1) {
+                Text(group.label.localized + "：")
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+
+                ForEach(Array(row.leading.enumerated()), id: \.element.id) { index, item in
+                    linkItemButton(item)
+
+                    if index < row.leading.count - 1 {
+                        Text("|")
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.quaternaryText)
+                    }
+                }
+
+                if row.isExpandable {
+                    linkOverflowToggle(group, row: row, isExpanded: isExpanded)
+                } else if row.overflowCount > 0 {
+                    // Links the device does not hold: counted, but nothing to expand.
+                    Text("+\(row.overflowCount)")
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
+                }
+            }
+
+            if !row.expanded.isEmpty {
+                CollocationFlowLayout(spacing: appSkin.spacing.inlineGap) {
+                    ForEach(row.expanded) { item in
+                        linkItemButton(item)
+                    }
+                }
+                .transition(.opacity)
+
+                if row.overflowCount > 0 {
+                    Text("+\(row.overflowCount)")
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
+                }
+            }
+        }
+    }
+
+    /// One tappable link (a pending placeholder explains what is happening instead).
+    @ViewBuilder
+    private func linkItemButton(_ item: KGCardLinkSummary) -> some View {
+        if let creationState = item.pendingCreationState {
+            pendingCreationLinkButton(item, state: creationState)
+        } else {
+            Button { actions.linkTap?(item) } label: {
+                Text(item.word)
+                    .font(appSkin.typography.monoEmphasis)
+                    .foregroundStyle(appSkin.palette.primaryText)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
+        }
+    }
+
+    /// "+N" (collapsed) / "收合" (expanded). The tap area reaches past the glyphs
+    /// without growing the row, so the strip's height budget is untouched.
+    private func linkOverflowToggle(
+        _ group: ReviewCardLinkGroup,
+        row: ReviewCardLinkStripLayout.Row,
+        isExpanded: Bool
+    ) -> some View {
+        let cardKey = currentCardKey
+        return Button {
+            withAnimation(AppMotion.reviewRevealSpring) {
+                linkExpansion.toggle(group.id, cardKey: cardKey)
+            }
+        } label: {
+            Text(isExpanded ? L10n.string("todayReview.card.link.collapse") : "+\(row.overflowCount)")
+                .font(appSkin.typography.caption)
+                .foregroundStyle(isExpanded ? appSkin.palette.tertiaryText : appSkin.palette.quaternaryText)
+                .contentShape(Rectangle().inset(by: -8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("todayReview.card.link.overflow.\(group.id)")
+        .accessibilityValue(isExpanded ? "expanded" : "collapsed")
+    }
+
+    /// A link whose target card is still being created. It is a real, tappable
+    /// strip item (the tap explains what is happening) rather than a spinner
+    /// overlay, so it keeps the strip's single-line height.
+    private func pendingCreationLinkButton(
+        _ item: KGCardLinkSummary,
+        state: KGCardLinkSummary.CreationState
+    ) -> some View {
+        Button { actions.linkTap?(item) } label: {
+            HStack(spacing: AppSpacing.s1) {
+                Text(item.word)
+                    .font(appSkin.typography.monoEmphasis)
+                    .foregroundStyle(appSkin.palette.primaryText)
+                    .lineLimit(1)
+                switch state {
+                case .creating:
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(L10n.string("todayReview.link.pending.creating"))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                        .lineLimit(1)
+                case .failed:
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(appSkin.typography.iconTiny)
+                        .foregroundStyle(appSkin.palette.destructive)
+                case .warning:
+                    Image(systemName: "exclamationmark.circle")
+                        .font(appSkin.typography.iconTiny)
+                        .foregroundStyle(appSkin.palette.warning)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("todayReview.card.link.pending.\(item.word)")
+        .accessibilityValue(state.rawValue)
     }
 
     /// Shown by the graph-links section when the card has no links yet. It is the
@@ -778,17 +1017,19 @@ struct ReviewCardView: View {
     /// section is always *available* even though its content is empty.
     private var addLinkPrompt: some View {
         HStack(spacing: 0) {
-            Button(action: { actions.addLink?() }) {
+            // 可點範圍 ≥44pt 高，版面仍只佔一行 caption（#2044）。
+            ReviewCardHitTargetButton(
+                action: { actions.addLink?() },
+                accessibilityIdentifier: "todayReview.card.addLink"
+            ) {
                 HStack(spacing: appSkin.spacing.inlineGap) {
                     Image(systemName: "plus")
-                        .font(appSkin.typography.iconTiny)
+                        .font(appSkin.typography.iconSmall)
                     Text("新增連結".localized)
                         .font(appSkin.typography.caption)
                 }
                 .foregroundStyle(appSkin.palette.tertiaryText)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("todayReview.card.addLink")
         }
         // The field wrapper receives `todayReview.card.back.field.graphLinks`
         // from the caller. Keep it as a real AX container so the child action
@@ -799,17 +1040,21 @@ struct ReviewCardView: View {
     // MARK: - Render Plan / Adaptive Layout
 
     private func reviewCardRenderPlan(for currentCard: ReviewCardContent) -> ReviewCardRenderPlan {
+        .make(
+            profile: renderProfile,
+            mode: currentCard.card.reviewMode,
+            availability: reviewCardAvailability(for: currentCard)
+        )
+    }
+
+    private func reviewCardAvailability(for currentCard: ReviewCardContent) -> ReviewCardContentAvailability {
         let card = currentCard.card
-        return .make(
-            profile: profile,
-            mode: card.reviewMode,
-            availability: .forReviewCard(
-                partOfSpeech: card.partOfSpeech,
-                difficultyTier: card.difficultyTier,
-                exampleCount: card.examples.count,
-                explanationParagraphCount: currentCard.backDocument.meaningParagraphs().count,
-                collocationCount: card.collocations.count
-            )
+        return .forReviewCard(
+            partOfSpeech: card.partOfSpeech,
+            difficultyTier: card.difficultyTier,
+            exampleCount: card.examples.count,
+            explanationParagraphCount: currentCard.backDocument.meaningParagraphs().count,
+            collocationCount: card.collocations.count
         )
     }
 
@@ -852,7 +1097,7 @@ struct ReviewCardView: View {
             measurements: measurements,
             viewportHeight: availableHeight,
             minimumHeight: face == .front ? 0 : answerCardHeight,
-            preset: profile.preset(for: currentCard.card.reviewMode),
+            preset: renderProfile.preset(for: currentCard.card.reviewMode),
             columns: columns
         ))
     }
@@ -862,8 +1107,16 @@ struct ReviewCardView: View {
         face: ReviewCardFace,
         section: ReviewCardLayoutSolver.Section
     ) -> ReviewCardMeasurementKey {
-        ReviewCardMeasurementKey(
-            cardKey: currentCardKey,
+        // While a link group is expanded the graph-links section is taller than its
+        // compaction levels describe. Its heights go under their own key so they
+        // never overwrite the collapsed natural/intermediate/compact measurements
+        // (which collapsing returns to untouched) and never feed the solver a
+        // height the collapsed card would not draw (#2043).
+        let expandedVariant = section == .field(.graphLinks)
+            ? linkExpansion.measurementVariant(cardKey: currentCardKey)
+            : nil
+        return ReviewCardMeasurementKey(
+            cardKey: expandedVariant.map { currentCardKey + "|" + $0 } ?? currentCardKey,
             face: face,
             section: section,
             widthBucket: Int(containerWidth.rounded()),
@@ -872,7 +1125,7 @@ struct ReviewCardView: View {
     }
 
     private var currentCardKey: String {
-        "\(content.card.dateAdded.timeIntervalSinceReferenceDate)-\(content.card.word)"
+        content.card.reviewCardKey
     }
 
     private func recordReviewSectionHeight(

@@ -954,6 +954,9 @@
 "a11y.toggle.on" = "开";
 "a11y.toggle.off" = "关";
 "todayReview.fold.collapse" = "收起";
+"todayReview.card.notebook.a11y" = "单字本：%@";
+"todayReview.card.notebook.default" = "默认单字本";
+"todayReview.card.notebook.unnamed" = "未命名单字本";
 "todayReview.saveFailure" = "复习结果未存档，请稍后再试";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
@@ -1295,3 +1298,55 @@
 "notebookSettings.serverUnsupported" = "服务器尚未支持单字本设置";
 "notebookSettings.retry" = "重试";
 "kgVocab.row.selectMultipleAction" = "多选";
+
+"addLink.creation.alreadyRunning" = "这个单词已在创建中。";
+"addLink.sourceWord" = "来源：%@";
+"addLink.notebookScope" = "只会搜索「%@」内的单词";
+"todayReview.link.pending.creating" = "正在创建…";
+"todayReview.link.pending.hint" = "正在后台创建这张单词卡。完成后会自动变成普通链接，你可以先关闭并继续复习。";
+"todayReview.link.pending.failed" = "无法创建这个链接，可重试或移除。";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "查找已有单词";
+"addLink.step.translate" = "翻译";
+"addLink.step.createCard" = "创建单词卡";
+"addLink.step.enrich" = "补充释义与例句";
+"addLink.step.createLink" = "链接两张单词卡";
+"addLink.step.localProjection" = "下载到这台设备";
+
+"todayReview.card.temporaryDetail.show" = "暂时显示详细内容";
+"todayReview.card.temporaryDetail.restore" = "恢复精简";
+
+"addLink.error.quotaExhausted" = "今天的 AI 额度已用完，请明天再试。";
+"addLink.error.sourceUnavailable" = "来源卡片已不可用（已删除、封存或移动）。";
+"addLink.error.targetArchived" = "这个单词已封存，请先取消封存再链接。";
+"addLink.error.targetIsSource" = "卡片不能链接到自己。";
+"addLink.error.serviceUnavailable" = "这一步需要的服务暂时不可用，请重试。";
+"addLink.error.interrupted" = "服务器在完成前重新启动了，请重试。";
+"addLink.error.timedOut" = "处理时间过长，请重试。";
+"addLink.error.operationNotFound" = "服务器已找不到这个请求，请重试。";
+"addLink.error.sourceNotSynced" = "来源卡片尚未同步，无法建立链接。";
+"addLink.error.invalidResponse" = "服务器回应异常，请重试。";
+"addLink.error.refreshFailed" = "链接可能已建立，但刷新失败，请重试。";
+"addLink.creation.warning.summary" = "已建立，但有一部分没完成。";
+"addLink.creation.warning.enrichment" = "补充解释尚未生成。";
+"addLink.creation.warning.linkProjection" = "链接会在下次同步后出现。";
+"addLink.creation.warning.localSync" = "这台设备尚未完成新卡片的同步。";
+"addLink.creation.backToSearch" = "返回搜索";
+"addLink.target.linkable" = "这本单字本已有此单词，从上方列表选取即可链接。";
+"addLink.target.alreadyLinked" = "已链接。";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "创建“%@”并链接到“%@”";
+"addLink.create.notebook" = "加入：%@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "收起";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "已链接过“%@”";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "当前离线，无法创建新单词或链接。";
+"addLink.offline.restored" = "已恢复连接。";
+"addLink.offline.createReason" = "离线中，联网后才能创建新单词。";

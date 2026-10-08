@@ -20,6 +20,9 @@ final class TodayReviewState {
     private var cardCache = TodayReviewCardCache()
     private let autoplay = TodayReviewAutoplayController()
     private var collocationState = TodayReviewCollocationState()
+    /// #2041: session-memory only. Cleared on every card change by
+    /// `syncCurrentEntryDerivedState`; never written to a persisted store.
+    private var temporaryDetail = ReviewCardTemporaryDetail()
     var linkedCardStack: [VocabularyEntry] = []
     var tappedLink: KGCardLinkSummary?
     static let cacheLookaheadLimit = 3
@@ -160,7 +163,8 @@ final class TodayReviewState {
             isAutoPlayPaused: isAutoPlayPaused,
             autoplayProgress: queue.isEmpty ? 0 : Double(currentIndex) / Double(queue.count),
             autoplaySpeed: autoplaySpeed,
-            autoplaySoundEnabled: autoplaySoundEnabled
+            autoplaySoundEnabled: autoplaySoundEnabled,
+            temporaryDetailCardKey: temporaryDetail.detailedCardKey
         )
     }
 
@@ -214,14 +218,18 @@ final class TodayReviewState {
         linkedCardStack.append(target)
     }
 
-    func hideLink(_ link: KGCardLinkSummary) {
+    /// `peer` is the link's other end resolved live by the caller (it also
+    /// finds cards created after the start-of-session snapshot, e.g. via Add
+    /// Link); the snapshot is only the fallback. Hide and restore must act on the
+    /// same peer or the reciprocal link stays visible on it.
+    func hideLink(_ link: KGCardLinkSummary, peer: VocabularyEntry? = nil) {
         tappedLink = nil
         guard let entry = currentEntry else { return }
         setLinkHidden(
             true,
             for: link,
             sourceEntry: entry,
-            targetEntry: linkedEntryLookup[link.cardId]
+            targetEntry: peer ?? linkedEntryLookup[link.cardId]
         )
     }
 
@@ -260,9 +268,31 @@ final class TodayReviewState {
         cardCache.rebuild(for: entry)
     }
 
+    /// Pending link creation changed this card's strip: update its links in place
+    /// and keep its measurements (see `TodayReviewCardCache.refreshLinks`).
+    func refreshPendingLinksForEntry(_ entry: VocabularyEntry) {
+        cardCache.refreshLinks(for: entry)
+    }
+
     func handleDetailTap() {
         guard let current = currentEntry else { return }
         linkedCardStack.append(current)
+    }
+
+    /// #2041: the compact card's "show detailed for now" button (same button
+    /// restores compact). Action path only — never called from a body.
+    /// Animated with the reveal spring so the card's height change is continuous.
+    /// Showing the detail pauses autoplay (no auto-resume, like the layout editor):
+    /// the next autoplay advance would otherwise forget the override within one
+    /// interval, defeating "let me read this card in full".
+    func toggleTemporaryDetail() {
+        guard let key = currentCardState?.card.reviewCardKey else { return }
+        withAnimation(AppMotion.reviewRevealSpring) {
+            temporaryDetail.toggle(cardKey: key)
+        }
+        if temporaryDetail.isDetailed(cardKey: key) {
+            pauseAutoPlayForModalInterruption()
+        }
     }
 
     func advanceReveal() {
@@ -648,5 +678,10 @@ final class TodayReviewState {
 
     private func syncCurrentEntryDerivedState() {
         collocationState.sync(from: currentEntry)
+        // Every card change (next / previous / shuffle / submit / autoplay) funnels
+        // here: leaving the card forgets its temporary detail, and coming back to
+        // it later starts compact again. Idle resets write nothing.
+        var detail = temporaryDetail
+        if detail.reset() { temporaryDetail = detail }
     }
 }

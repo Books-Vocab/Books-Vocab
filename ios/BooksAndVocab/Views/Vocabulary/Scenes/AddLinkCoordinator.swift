@@ -10,6 +10,38 @@ enum AddLinkActionError: Equatable {
     case invalidLink
     case existingLinkRefreshFailed
     case existingLinkFailed
+
+    /// Stable code exposed on `addLink.error.reason`.
+    var reason: String {
+        switch self {
+        case .missingSourceCard: return "missing_source_card"
+        case .missingTargetCard: return "missing_target_card"
+        case .duplicateLink: return "duplicate_link"
+        case .missingLink: return "missing_link"
+        case .invalidLink: return "invalid_link"
+        case .existingLinkRefreshFailed: return "link_refresh_failed"
+        case .existingLinkFailed: return "link_failed"
+        }
+    }
+
+    /// Unsynced cards cannot be linked by retrying; everything else is transient.
+    var isRetryable: Bool {
+        switch self {
+        case .missingSourceCard, .missingTargetCard, .duplicateLink: return false
+        case .missingLink, .invalidLink, .existingLinkRefreshFailed, .existingLinkFailed: return true
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .missingSourceCard: return L10n.string("addLink.error.sourceNotSynced")
+        case .missingTargetCard: return L10n.string("此單字尚未同步，無法建立連結")
+        case .duplicateLink: return L10n.string("addLink.target.alreadyLinked")
+        case .missingLink, .invalidLink: return L10n.string("addLink.error.invalidResponse")
+        case .existingLinkRefreshFailed: return L10n.string("addLink.error.refreshFailed")
+        case .existingLinkFailed: return L10n.string("addLink.error.linkFailed")
+        }
+    }
 }
 
 enum AddLinkActionPhase: Equatable {
@@ -118,6 +150,7 @@ private enum AddLinkDetailPayloadDecode {
 final class AddLinkCoordinator {
     private(set) var actionPhase: AddLinkActionPhase = .idle
     private(set) var actionError: AddLinkActionError?
+    private var actionTargetCardID: String?
 
     /// The optimistic placeholder of the link currently being created. `cancelAction()` rolls it
     /// back synchronously so the projection never outlives the `.cancelled` phase (#2196); the
@@ -132,33 +165,61 @@ final class AddLinkCoordinator {
     private var actionTask: Task<Void, Never>?
     private var actionTaskToken = 0
     @ObservationIgnored private var inFlightLink: InFlightLink?
+    @ObservationIgnored private var lastRequest: (target: VocabularyEntry, source: VocabularyEntry, service: any GraphServing)?
+
+    /// Card id of the row being linked right now (spinner on it, every row locked).
+    var linkingTargetCardID: String? {
+        actionPhase == .linking ? actionTargetCardID : nil
+    }
+
+    var canRetryLastAction: Bool {
+        actionPhase == .failed && actionError?.isRetryable == true && lastRequest != nil
+    }
+
+    nonisolated static let candidateLimit = 20
 
     nonisolated static func localCandidates(
         query: String,
         sourceEntry: VocabularyEntry,
         allEntries: [VocabularyEntry]
     ) -> [VocabularyEntry] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Same cleaning as the backend's `_clean_content` (trailing `.,;:!?`), so a
+        // typed `run.` lists what `run` lists and the exact word is never hidden.
+        let trimmed = AddLinkCreationCoordinator.cleanedQuery(query)
         guard !trimmed.isEmpty else { return [] }
         let linkedIDs = Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
         let folded = trimmed.folding(
             options: [.caseInsensitive, .diacriticInsensitive],
             locale: .current
         )
-        return Array(allEntries.lazy.filter { entry in
-            Self.isEligibleTarget(entry, for: sourceEntry)
-                && !(entry.kgCardId.map(linkedIDs.contains) ?? false)
-                && (
-                    entry.word.folding(
-                        options: [.caseInsensitive, .diacriticInsensitive],
-                        locale: .current
-                    ).contains(folded)
-                    || entry.translation.folding(
-                        options: [.caseInsensitive, .diacriticInsensitive],
-                        locale: .current
-                    ).contains(folded)
-                )
-        }.prefix(20))
+        // The exact word is listed first and kept even when 20+ partial matches
+        // precede it in store order: Return links only an exact match (#2038), so
+        // an exact word that fell outside the cap would be neither visible nor
+        // linkable. Partial matches keep store order and fill the rest of the cap.
+        let typed = AddLinkCreationCoordinator.normalizeWord(trimmed)
+        var exact: [VocabularyEntry] = []
+        var partial: [VocabularyEntry] = []
+        for entry in allEntries {
+            guard Self.isEligibleTarget(entry, for: sourceEntry),
+                  !(entry.kgCardId.map(linkedIDs.contains) ?? false),
+                  (
+                      entry.word.folding(
+                          options: [.caseInsensitive, .diacriticInsensitive],
+                          locale: .current
+                      ).contains(folded)
+                          || entry.translation.folding(
+                              options: [.caseInsensitive, .diacriticInsensitive],
+                              locale: .current
+                          ).contains(folded)
+                  )
+            else { continue }
+            if AddLinkCreationCoordinator.normalizeWord(entry.word) == typed {
+                exact.append(entry)
+            } else if partial.count < candidateLimit {
+                partial.append(entry)
+            }
+        }
+        return Array((exact + partial).prefix(candidateLimit))
     }
 
     nonisolated static func lookupState(
@@ -422,6 +483,7 @@ final class AddLinkCoordinator {
     ) async {
         guard !Task.isCancelled else { return }
         let generation = beginAction()
+        actionTargetCardID = target.kgCardId
         guard sourceEntry.modelContext != nil,
               let sourceCardID = sourceEntry.kgCardId,
               Self.hasUsableCardID(sourceCardID) else {
@@ -528,7 +590,13 @@ final class AddLinkCoordinator {
         sourceEntry: VocabularyEntry,
         using service: any GraphServing
     ) -> Task<Void, Never> {
+        // A second tap (same or another row) while a link is in flight must not
+        // cancel and resend it; the rows are locked until it settles. The
+        // in-flight task is returned so callers still await the real work.
+        if actionPhase == .linking, let actionTask { return actionTask }
         cancelAction()
+        lastRequest = (target, sourceEntry, service)
+        actionTargetCardID = target.kgCardId
         actionPhase = .linking
         actionError = nil
         actionTaskToken += 1
@@ -544,6 +612,12 @@ final class AddLinkCoordinator {
         }
         actionTask = task
         return task
+    }
+
+    /// Re-sends the last failed link when its error is transient.
+    func retryLastAction() {
+        guard canRetryLastAction, let lastRequest else { return }
+        startLinkExisting(target: lastRequest.target, sourceEntry: lastRequest.source, using: lastRequest.service)
     }
 
     func cancelAction() {

@@ -56,6 +56,8 @@ struct WordDetailPresenter: View {
     let onDeleteLink: ((KGCardLinkSummary) -> Void)?
     let onHideLink: ((KGCardLinkSummary) -> Void)?
     let onUnhideLink: ((KGCardLinkSummary) -> Void)?
+    /// A link still being created / failed / partial: opens its creation detail.
+    var onPendingLinkTapped: ((KGCardLinkSummary) -> Void)? = nil
 
     var body: some View {
         Group {
@@ -182,7 +184,8 @@ struct WordDetailPresenter: View {
                             } : nil,
                             onDelete: onDeleteLink != nil ? { onDeleteLink?(link) } : nil,
                             onHide: onHideLink != nil ? { onHideLink?(link) } : nil,
-                            onUnhide: onUnhideLink != nil ? { onUnhideLink?(link) } : nil
+                            onUnhide: onUnhideLink != nil ? { onUnhideLink?(link) } : nil,
+                            onPendingTap: onPendingLinkTapped != nil ? { onPendingLinkTapped?(link) } : nil
                         )
                     }
                 }

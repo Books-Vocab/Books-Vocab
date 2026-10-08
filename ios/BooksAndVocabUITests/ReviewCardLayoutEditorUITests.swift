@@ -292,6 +292,71 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         XCTAssertNotEqual(natural, scroll, "compact 背面必須只發布一種 presentation")
     }
 
+    /// #2041: a compact card offers a chrome button that shows THIS card detailed
+    /// for a moment. Leaving the card forgets it; coming back is compact again.
+    @MainActor
+    func testCompactCardTemporaryDetailIsPerCardAndForgottenOnLeave() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.notebookReviewDeck],
+            extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
+            perfLog: "review"
+        )
+        captureStep("launch", app: app)
+
+        let review = try startReview(app: app)
+        let editor = ReviewCardLayoutEditorPage(app: app)
+        review.layoutEditorButton.tapWhenReady()
+        XCTAssertTrue(editor.waitUntilVisible())
+        editor.selectPreset("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
+        editor.selectPreset("production", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
+        editor.done()
+
+        let detailFields = ["example", "explanation", "collocations"]
+        func anyDetailFieldMounted(timeout: TimeInterval) -> Bool {
+            detailFields.contains { review.backField($0).waitUntilExists(timeout: timeout) }
+        }
+
+        // ── 1. Compact card shows the button, back has no detail fields ────────
+        guard review.waitForTemporaryDetail("showDetail", timeout: 10) else {
+            captureStep("temporary-detail.no-button", app: app)
+            XCTFail("精簡卡 chrome 必須出現『暫時顯示詳細』按鈕")
+            return
+        }
+        review.flipCard()
+        XCTAssertTrue(review.waitForUnique("todayReview.card.back", timeout: 8))
+        XCTAssertFalse(anyDetailFieldMounted(timeout: 1), "精簡背面不得有例句／詳解／搭配詞")
+        captureStep("temporary-detail.compact", app: app)
+
+        // ── 2. Tap → this card shows its detailed content ─────────────────────
+        review.temporaryDetailButton.tapWhenReady()
+        XCTAssertTrue(review.waitForTemporaryDetail("restoreCompact"), "同一顆按鈕必須翻成『恢復精簡』")
+        XCTAssertTrue(anyDetailFieldMounted(timeout: 3), "暫時詳細後背面必須出現例句等詳細內容")
+        XCTAssertTrue(review.waitForProgress("1 / "), "切換版面不得推進佇列")
+        captureStep("temporary-detail.detailed", app: app)
+
+        // ── 3. Leave the card, come back: compact again ───────────────────────
+        review.nextButton.tapWhenReady()
+        XCTAssertTrue(review.waitForProgress("2 / "))
+        XCTAssertTrue(review.waitForTemporaryDetail("showDetail"), "下一張卡不得繼承暫時詳細")
+        review.previousButton.tapWhenReady()
+        XCTAssertTrue(review.waitForProgress("1 / "))
+        XCTAssertTrue(review.waitForTemporaryDetail("showDetail"), "回到原卡必須仍為精簡")
+        review.flipCard()
+        XCTAssertTrue(review.waitForUnique("todayReview.card.back", timeout: 8))
+        XCTAssertFalse(anyDetailFieldMounted(timeout: 1), "回到原卡的背面必須仍為精簡")
+        captureStep("temporary-detail.restored", app: app)
+
+        // The persisted profile is untouched by the toggle: still compact.
+        review.layoutEditorButton.tapWhenReady()
+        XCTAssertTrue(editor.waitUntilVisible())
+        XCTAssertTrue(
+            editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact),
+            "暫時詳細不得改寫設定"
+        )
+        editor.resetAll()
+        editor.done()
+    }
+
     /// Autoplay must not keep flipping cards under the editor sheet, and the pause
     /// it takes must survive the sheet closing.
     @MainActor

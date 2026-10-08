@@ -116,6 +116,7 @@ enum UITestFixture: Equatable {
     case readerRuntime(UITestReaderRuntimeScenario)
     case notebookReviewDeck
     case notebookReviewDeckVaried
+    case notebookReviewDeckMultiNotebook
     case explore(String)
     case vocabulary(String)
     case notebookReviewCardFullContent
@@ -164,6 +165,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:notebook:reviewDeck"
         case .notebookReviewDeckVaried:
             return "-seedFixture:notebook:reviewDeckVaried"
+        case .notebookReviewDeckMultiNotebook:
+            return "-seedFixture:notebook:reviewDeckMultiNotebook"
         case .explore(let id):
             return "-seedFixture:explore:\(id)"
         case .vocabulary(let id):

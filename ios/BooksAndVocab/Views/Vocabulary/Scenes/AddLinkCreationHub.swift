@@ -1,0 +1,288 @@
+import Foundation
+import Observation
+import SwiftData
+
+/// Long-lived owner of missing-target Add Link jobs.
+///
+/// The sheet only *starts* a creation; the hub keeps the coordinator alive after
+/// the sheet closes, mirrors every job into a durable record (so an app kill
+/// can be resumed) and into `PendingLinkProjection` (so the source card shows a
+/// "creating" link immediately). A job leaves the hub only when it fully
+/// succeeds, the user dismisses a failure or a partial (warning) result, or its
+/// source card no longer exists.
+@Observable @MainActor
+final class AddLinkCreationHub: AddLinkCreationObserving {
+    static let shared = AddLinkCreationHub()
+
+    struct Job {
+        var record: PendingLinkCreationRecord
+        /// Nil for jobs restored from disk that have not been relaunched yet.
+        var coordinator: AddLinkCreationCoordinator?
+        var context: AddLinkCreationContext?
+    }
+
+    private(set) var jobs: [String: Job] = [:]
+    /// Bumps whenever a job appears, changes visible state, or disappears.
+    private(set) var revision = 0
+
+    @ObservationIgnored private var dirtySourceCardIDs: Set<String> = []
+    @ObservationIgnored private let store: any PendingLinkCreationStoring
+    @ObservationIgnored private let projection: PendingLinkProjection
+    @ObservationIgnored private let environment: AddLinkCreationEnvironment
+    /// The signed-in account, read when a job is stamped and when stored jobs are
+    /// resumed (never cached: an account switch changes it under a long-lived hub).
+    @ObservationIgnored private let userIDProvider: @MainActor () -> String?
+
+    init(
+        store: any PendingLinkCreationStoring = PendingLinkCreationStores.makeDefault(),
+        projection: PendingLinkProjection = .shared,
+        environment: AddLinkCreationEnvironment = .live,
+        userIDProvider: @escaping @MainActor () -> String? = { AuthManager.shared.userId }
+    ) {
+        self.store = store
+        self.projection = projection
+        self.environment = environment
+        self.userIDProvider = userIDProvider
+        for record in store.load() {
+            jobs[record.jobKey] = Job(record: record, coordinator: nil, context: nil)
+        }
+        publishProjection()
+    }
+
+    func makeCoordinator() -> AddLinkCreationCoordinator {
+        AddLinkCreationCoordinator(environment: environment, observer: self)
+    }
+
+    func job(forJobKey jobKey: String) -> Job? { jobs[jobKey] }
+
+    /// Source card ids whose cached card must be rebuilt because their pending
+    /// links changed. Consumed by the review screen that owns the card cache.
+    func takeDirtySourceCardIDs() -> Set<String> {
+        defer { dirtySourceCardIDs.removeAll() }
+        return dirtySourceCardIDs
+    }
+
+    // MARK: - AddLinkCreationObserving
+
+    func creationDidChange(_ coordinator: AddLinkCreationCoordinator) {
+        guard let state = coordinator.jobState else { return }
+        switch state.phase {
+        case .running:
+            upsert(from: state, coordinator: coordinator, recordState: .creating)
+        case .failed:
+            upsert(from: state, coordinator: coordinator, recordState: .failed)
+        case .succeededWithWarnings:
+            // The link exists, but part of it did not complete: keep it on the
+            // source card (with retry) until the user retries or dismisses it.
+            upsert(from: state, coordinator: coordinator, recordState: .warning)
+        case .succeeded:
+            guard owns(coordinator, jobKey: state.jobKey) else { return }
+            remove(jobKey: state.jobKey)
+        case .cancelled, .idle:
+            // A restart cancels first; only the coordinator that owns the job may
+            // retire it, otherwise a stale sheet could erase a live retry.
+            // `.idle` is the user acknowledging a warning or a failure.
+            guard owns(coordinator, jobKey: state.jobKey) else { return }
+            remove(jobKey: state.jobKey)
+        case .blocked:
+            break
+        }
+    }
+
+    func creationIsActive(jobKey: String, excluding coordinator: AddLinkCreationCoordinator) -> Bool {
+        guard let live = jobs[jobKey]?.coordinator else { return false }
+        return live !== coordinator && live.phase == .running
+    }
+
+    // MARK: - User actions on a pending item
+
+    /// Retries a failed job with the key policy of `AddLinkCreationRetryPlan`,
+    /// or re-runs the unfinished parts of a warning job (no new POST).
+    @discardableResult
+    func retry(jobKey: String) -> Bool {
+        guard let job = jobs[jobKey] else { return false }
+        switch job.record.state {
+        case .creating:
+            return false
+        case .failed:
+            guard job.record.failure?.isRetryable != false, let context = job.context else { return false }
+            let coordinator = makeCoordinator()
+            coordinator.relaunch(
+                word: job.record.word,
+                sourceEntry: context.sourceEntry,
+                services: context.services,
+                plan: job.record.retryPlan,
+                idempotencyKey: job.record.idempotencyKey
+            )
+            return true
+        case .warning:
+            if let live = job.coordinator, live.phase == .succeededWithWarnings {
+                live.retryWarnings()
+                return true
+            }
+            guard let context = job.context else { return false }
+            makeCoordinator().relaunchWarningRetry(record: job.record, context: context)
+            return true
+        }
+    }
+
+    /// The user gives up on a failed job or accepts a partial one; neither may
+    /// disappear on its own. A warning retry may still be in flight: it is
+    /// cancelled first (its generation bump silences every later callback), or
+    /// its eventual `.succeededWithWarnings` / `.failed` publish would upsert the
+    /// dismissed job straight back onto the source card.
+    func dismiss(jobKey: String) {
+        guard let job = jobs[jobKey], job.record.state != .creating else { return }
+        job.coordinator?.cancel()
+        remove(jobKey: jobKey)
+    }
+
+    // MARK: - Account boundary
+
+    /// Logout / account switch: forget every job, in memory and on disk. Live
+    /// coordinators are cancelled (the hub no longer owns them, so their
+    /// `.cancelled` callback is ignored) and the pending placeholders leave the
+    /// projection, so nothing the previous account typed survives the boundary.
+    func clearAll() {
+        let coordinators = jobs.values.compactMap(\.coordinator)
+        let sourceCardIDs = jobs.values.map(\.record.sourceCardID)
+        jobs.removeAll()
+        for coordinator in coordinators { coordinator.cancel() }
+        store.save([])
+        publishProjection()
+        dirtySourceCardIDs.formUnion(sourceCardIDs)
+        revision += 1
+    }
+
+    // MARK: - Resume after relaunch
+
+    /// Re-attaches every durable job that has no live coordinator. A job that
+    /// was still creating is relaunched (resume polling by operation id, or
+    /// resend with the same key when the POST never answered); a failed or
+    /// warning one only regains the context its retry button needs. Jobs whose source card is
+    /// gone (account switch, deletion) are dropped.
+    func resume(services: AddLinkCreationServices) {
+        dropJobsOfOtherAccounts()
+        let context = services.container.mainContext
+        for (jobKey, job) in jobs where job.coordinator == nil {
+            guard let source = Self.sourceEntry(cardID: job.record.sourceCardID, in: context) else {
+                remove(jobKey: jobKey)
+                continue
+            }
+            let restored = AddLinkCreationContext(services: services, sourceEntry: source)
+            jobs[jobKey]?.context = restored
+            guard job.record.state == .creating else { continue }
+            let coordinator = makeCoordinator()
+            coordinator.relaunch(
+                word: job.record.word,
+                sourceEntry: source,
+                services: services,
+                plan: job.record.retryPlan,
+                idempotencyKey: job.record.idempotencyKey
+            )
+        }
+    }
+
+    /// Convenience for screens that only hold the app's service: resumes with the
+    /// operation API when the service offers it (previews / fakes do not).
+    func resume(kgService: any KGServing, container: ModelContainer) {
+        guard let operationService = kgService as? any AddLinkOperationServing else { return }
+        resume(services: AddLinkCreationServices(
+            operationService: operationService,
+            syncService: kgService,
+            container: container
+        ))
+    }
+
+    // MARK: - Internals
+
+    /// A stored job belongs to the account that started it; whatever another
+    /// account (or an older, unstamped record) left behind is discarded, never resumed.
+    private func dropJobsOfOtherAccounts() {
+        let owner = userIDProvider()
+        let foreign = jobs.filter { $0.value.record.userId != owner }.map(\.key)
+        for jobKey in foreign {
+            jobs[jobKey]?.coordinator?.cancel()
+            remove(jobKey: jobKey)
+        }
+    }
+
+    private func owns(_ coordinator: AddLinkCreationCoordinator, jobKey: String) -> Bool {
+        guard let live = jobs[jobKey]?.coordinator else { return false }
+        return live === coordinator
+    }
+
+    private func upsert(
+        from state: AddLinkCreationJobState,
+        coordinator: AddLinkCreationCoordinator,
+        recordState: PendingLinkCreationRecord.State
+    ) {
+        let existing = jobs[state.jobKey]
+        let record = PendingLinkCreationRecord(
+            jobKey: state.jobKey,
+            word: state.word,
+            sourceCardID: state.sourceCardID,
+            notebookId: state.notebookId,
+            idempotencyKey: state.idempotencyKey,
+            operationId: state.operationId,
+            operationTerminal: state.operationTerminal,
+            state: recordState,
+            message: recordState == .creating ? nil : state.message,
+            createdAt: existing?.record.createdAt ?? Date(),
+            failureReason: recordState == .failed ? state.failureReason : nil,
+            warnings: recordState == .warning ? state.warnings.map(\.rawValue) : nil,
+            userId: existing?.record.userId ?? userIDProvider()
+        )
+        let visibleChange = existing?.record.state != recordState
+            || existing?.record.word != record.word
+        let recordChanged = existing?.record != record
+
+        jobs[state.jobKey] = Job(record: record, coordinator: coordinator, context: coordinator.context)
+        if recordChanged { persist() }
+        if visibleChange {
+            publishProjection()
+            markChanged(sourceCardID: state.sourceCardID)
+        }
+    }
+
+    private func remove(jobKey: String) {
+        guard let job = jobs.removeValue(forKey: jobKey) else { return }
+        persist()
+        publishProjection()
+        markChanged(sourceCardID: job.record.sourceCardID)
+    }
+
+    private func markChanged(sourceCardID: String) {
+        dirtySourceCardIDs.insert(sourceCardID)
+        revision += 1
+    }
+
+    private func persist() {
+        store.save(jobs.values.map(\.record).sorted { $0.createdAt < $1.createdAt })
+    }
+
+    private func publishProjection() {
+        var links: [String: [KGCardLinkSummary]] = [:]
+        for job in jobs.values.sorted(by: { $0.record.createdAt < $1.record.createdAt }) {
+            let state: KGCardLinkSummary.CreationState
+            switch job.record.state {
+            case .creating: state = .creating
+            case .failed: state = .failed
+            case .warning: state = .warning
+            }
+            links[job.record.sourceCardID, default: []].append(
+                .pendingCreation(jobKey: job.record.jobKey, word: job.record.word, state: state)
+            )
+        }
+        projection.replaceAll(with: links)
+    }
+
+    private static func sourceEntry(cardID: String, in context: ModelContext) -> VocabularyEntry? {
+        let target: String? = cardID
+        var descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate { $0.kgCardId == target }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+}

@@ -162,7 +162,7 @@ private struct AddLinkSheetScene: View {
                 allEntries: candidates + [source]
             )
             .modelContainer(
-                for: [VocabularyEntry.self, ReviewRecord.self],
+                for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self],
                 inMemory: true
             )
         }

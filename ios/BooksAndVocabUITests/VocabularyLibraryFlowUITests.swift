@@ -182,8 +182,12 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             app.buttons.matching(NSPredicate(format: "label == %@", "新增知識連結"))
         }
 
+        // Candidate rows only: the create entry (`addLink.create`) stays listed next
+        // to partial matches and its sentence repeats the typed word (#2030/#2037).
         func candidateQuery(for word: String) -> XCUIElementQuery {
-            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", word))
+            app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] %@ AND identifier != %@", word, "addLink.create")
+            )
         }
 
         func waitUntilEmpty(_ query: XCUIElementQuery, timeout: TimeInterval = 5) -> Bool {
@@ -443,6 +447,18 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             createAffordance.label.contains("zzqxv"),
             "AddLink create affordance must preserve the missing target query"
         )
+        // #2037: the entry says the whole action (new word + source word) and the
+        // notebook the new card lands in; each line is readable on its own id.
+        let createTitle = app.descendants(matching: .any)
+            .matching(identifier: "addLink.create.title").firstMatch
+        let createNotebook = app.descendants(matching: .any)
+            .matching(identifier: "addLink.create.notebook").firstMatch
+        XCTAssertTrue(createTitle.waitUntilExists(timeout: 5), "create entry must expose addLink.create.title")
+        XCTAssertTrue(createNotebook.waitUntilExists(timeout: 5), "create entry must expose addLink.create.notebook")
+        let titleText = createTitle.value as? String ?? ""
+        XCTAssertTrue(titleText.contains("zzqxv"), "create title must name the new word, got: \(titleText)")
+        XCTAssertTrue(titleText.contains("serendipity"), "create title must name the source word, got: \(titleText)")
+        XCTAssertFalse((createNotebook.value as? String ?? "").isEmpty, "create entry must name the target notebook")
         XCTAssertEqual(
             app.staticTexts.matching(NSPredicate(format: "label == %@", "沒有結果")).count,
             0,
@@ -676,6 +692,14 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         XCTAssertEqual(retryQuery.count, 1, "creation retry identifier must be unique")
         XCTAssertEqual(app.buttons.matching(identifier: "addLink.cancel").count, 1, "sheet must remain open")
         XCTAssertEqual(app.buttons.matching(identifier: "addLink.create").count, 0, "failed surface must replace create affordance")
+        // #2030: the failure names a classified reason and offers a way back to search.
+        let reason = app.descendants(matching: .any).matching(identifier: "addLink.error.reason").firstMatch
+        XCTAssertTrue(reason.waitUntilExists(timeout: 5), "failure must expose addLink.error.reason")
+        XCTAssertFalse((reason.value as? String ?? "").isEmpty, "failure reason must carry a code")
+        XCTAssertTrue(
+            app.buttons["addLink.creation.backToSearch"].waitUntilExists(timeout: 5),
+            "failed surface must offer back-to-search"
+        )
         captureStep("add-link-retry-first-failure", app: app)
 
         firstRetry.tapWhenReady()
@@ -707,7 +731,9 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     }
 
     @MainActor
-    func testAddLinkCreationWarningCompletesOnceAndDismisses() throws {
+    func testAddLinkCreationWarningKeepsSheetUntilDone() throws {
+        // #2030 C11: only a full success closes on its own; a warning keeps the
+        // sheet open with retry + done, and only "done" closes it.
         let sheetSource = try AddLinkWarningSourceContract.source(
             relativePath: "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
         )
@@ -716,20 +742,24 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         )
 
         let visibilityStart = try XCTUnwrap(
-            sheetSource.range(of: "if creationCoordinator.phase == .running")
+            sheetSource.range(of: "private var showsCreationProgress: Bool {")
         )
         let visibilityEnd = try XCTUnwrap(
             sheetSource.range(
-                of: "AddLinkCreationProgressView(",
+                of: "var body: some View",
                 range: visibilityStart.upperBound..<sheetSource.endIndex
             )
         )
         let visibilitySource = String(
-            sheetSource[visibilityStart.lowerBound..<visibilityEnd.upperBound]
+            sheetSource[visibilityStart.lowerBound..<visibilityEnd.lowerBound]
         )
         XCTAssertTrue(
             visibilitySource.contains("creationCoordinator.phase == .succeededWithWarnings"),
             "warning terminal state must keep the creation progress surface mounted"
+        )
+        XCTAssertTrue(
+            sheetSource.contains("if showsCreationProgress {\n                    AddLinkCreationProgressView("),
+            "the progress surface must be gated by showsCreationProgress"
         )
 
         let handlerStart = try XCTUnwrap(
@@ -743,27 +773,48 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         )
         let handlerSource = String(sheetSource[handlerStart.lowerBound..<handlerEnd.lowerBound])
         XCTAssertTrue(
-            handlerSource.contains("phase == .succeeded || phase == .succeededWithWarnings"),
-            "both success terminal outcomes must complete the Add Link sheet"
+            handlerSource.contains("guard phase == .succeeded, !didCompleteCreation"),
+            "only a full success may close the Add Link sheet on its own"
         )
         XCTAssertFalse(
-            handlerSource.contains("guard phase == .succeeded else { return }"),
-            "warning completion must not be excluded from the terminal path"
-        )
-        XCTAssertTrue(
-            handlerSource.contains("!didCompleteCreation"),
-            "terminal completion must be guarded against duplicate callbacks"
+            handlerSource.contains(".succeededWithWarnings"),
+            "a warning must not auto-dismiss the sheet"
         )
         XCTAssertTrue(
             handlerSource.contains("didCompleteCreation = true"),
             "terminal completion must latch before invoking the callback"
         )
         XCTAssertTrue(handlerSource.contains("onLinked()"), "terminal completion must notify the owner")
-        XCTAssertTrue(handlerSource.contains("dismiss()"), "terminal completion must dismiss the sheet")
+        XCTAssertTrue(handlerSource.contains("dismiss()"), "full success must dismiss the sheet")
         XCTAssertTrue(
             sheetSource.contains("@State private var didCompleteCreation = false"),
             "completion latch must survive SwiftUI rerenders within the sheet"
         )
+
+        let doneStart = try XCTUnwrap(sheetSource.range(of: "private func finishWithWarnings()"))
+        let doneEnd = try XCTUnwrap(
+            sheetSource.range(of: "private func startCreation()", range: doneStart.upperBound..<sheetSource.endIndex)
+        )
+        let doneSource = String(sheetSource[doneStart.lowerBound..<doneEnd.lowerBound])
+        XCTAssertTrue(doneSource.contains("creationCoordinator.acknowledge()"), "done must retire the warning job")
+        XCTAssertTrue(doneSource.contains("onLinked()"), "done must notify the owner")
+        XCTAssertTrue(doneSource.contains("dismiss()"), "done is the only way a warning closes the sheet")
+        XCTAssertTrue(
+            sheetSource.contains("onDone: finishWithWarnings"),
+            "the warning surface must be wired to the done action"
+        )
+        XCTAssertTrue(
+            sheetSource.contains("creationCoordinator.retryWarnings()"),
+            "retry on a warning must re-run the unfinished parts, not create again"
+        )
+        for identifier in [
+            "addLink.creation.retry",
+            "addLink.creation.warning.done",
+            "addLink.creation.backToSearch",
+            "addLink.error.reason",
+        ] {
+            XCTAssertTrue(progressSource.contains(identifier), "progress surface must expose \(identifier)")
+        }
 
         let messageStart = try XCTUnwrap(
             progressSource.range(of: "if let message = coordinator.message")

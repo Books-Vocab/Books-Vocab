@@ -1,0 +1,191 @@
+import XCTest
+
+/// Add Link sheet UX contracts (#2031, #2037, #2038, #2039) on the
+/// `vocabLinkedCards` UI World: source `serendipity`, linkable `epiphany`,
+/// `fortuitous`, `fortunate`, `revelation`, `happy accident`.
+///
+/// The server is the unreachable port-9 default, so any network mutation the
+/// sheet starts fails fast and deterministically; tests assert on which
+/// mutation started, never on a success the backend would have to provide.
+final class AddLinkSheetUXUITests: UITestCase {
+    private static let notebookID = "ui-vocab-linked-cards-notebook"
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    // MARK: - #2031
+
+    @MainActor
+    func testAddLinkSearchFieldIsFocusedWhenSheetOpens() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-autofocus") else { return }
+        let searchField = app.textFields["addLink.searchField"]
+
+        XCTAssertTrue(
+            searchField.waitUntilValue(hasKeyboardFocus: true, timeout: 5),
+            "opening Add Link must focus the search field without an extra tap"
+        )
+        XCTAssertTrue(app.keyboards.firstMatch.waitUntilExists(timeout: 5), "keyboard must be up")
+        // Typing without tapping the field proves the focus is real.
+        app.typeText("fort")
+        XCTAssertEqual(searchField.value as? String, "fort")
+        XCTAssertTrue(lookupState(in: app).waitUntilValueEquals("results-2", timeout: 5))
+        captureStep("add-link-autofocus", app: app)
+    }
+
+    // MARK: - #2038 Return key
+
+    /// Nothing in the notebook has the word: Return puts the keyboard away and
+    /// flashes the create entry, but never starts a creation.
+    @MainActor
+    func testReturnOnUnknownWordRevealsCreateAndNeverCreates() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-return-unknown") else { return }
+        let searchField = app.textFields["addLink.searchField"]
+        XCTAssertTrue(searchField.waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("zzqxv")
+        guard app.buttons.matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 5, named: "AddLink create entry") != nil else { return }
+        XCTAssertTrue(
+            marker("addLink.return.action", in: app).waitUntilValueEquals("revealCreate", timeout: 5),
+            "an unknown word must announce Return as reveal-create, never create"
+        )
+
+        app.typeText("\n")
+        XCTAssertTrue(
+            marker("addLink.create.highlight", in: app).waitUntilValueEquals("on", timeout: 5),
+            "Return on an unknown word must point at the create entry"
+        )
+        XCTAssertTrue(app.keyboards.firstMatch.waitUntilGone(timeout: 5), "Return must put the keyboard away")
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "addLink.creation.progress").count,
+            0,
+            "Return must never start a creation"
+        )
+        XCTAssertEqual(searchField.value as? String, "zzqxv", "the typed word stays")
+        XCTAssertTrue(
+            marker("addLink.create.highlight", in: app).waitUntilValueEquals("off", timeout: 5),
+            "the highlight is brief"
+        )
+        captureStep("add-link-return-unknown", app: app)
+    }
+
+    /// Partial matches (even when several): Return only dismisses the keyboard;
+    /// nothing is linked or created.
+    @MainActor
+    func testReturnOnPartialMatchesOnlyDismissesKeyboard() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-return-partial") else { return }
+        XCTAssertTrue(app.textFields["addLink.searchField"].waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("fort")
+        XCTAssertTrue(lookupState(in: app).waitUntilValueEquals("results-2", timeout: 5))
+        XCTAssertTrue(
+            marker("addLink.return.action", in: app).waitUntilValueEquals("dismissKeyboard", timeout: 5),
+            "partial matches must announce Return as dismiss-keyboard"
+        )
+
+        app.typeText("\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitUntilGone(timeout: 5), "Return must put the keyboard away")
+        XCTAssertTrue(lookupState(in: app).waitUntilValueEquals("results-2", timeout: 5), "the list stays")
+        XCTAssertEqual(marker("addLink.row.returnHint", in: app).exists, false, "no row is singled out")
+        XCTAssertEqual(marker("addLink.error.reason", in: app).exists, false, "nothing was sent")
+        XCTAssertEqual(marker("addLink.creation.progress", in: app).exists, false)
+    }
+
+    /// An exactly-typed linkable word shows the ↵ hint on its row and Return
+    /// links it. The unreachable server fails the link, so the existing-word
+    /// failure banner is the evidence that THIS path (not creation) ran.
+    @MainActor
+    func testReturnOnExactWordLinksThatWord() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-return-exact") else { return }
+        XCTAssertTrue(app.textFields["addLink.searchField"].waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("epiphany")
+        XCTAssertTrue(
+            marker("addLink.row.returnHint", in: app).waitUntilExists(timeout: 5),
+            "the row Return will link shows the ↵ hint"
+        )
+        XCTAssertTrue(
+            marker("addLink.return.action", in: app).waitUntilValueEquals("linkExact", timeout: 5),
+            "the exact word must announce Return as link-exact"
+        )
+
+        app.typeText("\n")
+        XCTAssertTrue(
+            marker("addLink.error.reason", in: app).waitUntilExists(timeout: 10),
+            "Return on the exact word starts the existing-word link"
+        )
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "addLink.creation.progress").count,
+            0,
+            "linking an existing word never opens the creation progress"
+        )
+        captureStep("add-link-return-exact", app: app)
+    }
+
+    // MARK: - Helpers
+
+    /// Launches the linked-cards world, opens `serendipity`'s detail and its
+    /// Add Link sheet. Returns nil after recording a failure.
+    @MainActor
+    func openAddLinkSheet(
+        extraEnvironment: [String: String] = [:],
+        perfLog: String
+    ) -> XCUIApplication? {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: extraEnvironment,
+            perfLog: perfLog
+        )
+        let notebooks = AppPage(app: app).goToNotebooks()
+        guard notebooks.waitForNotebookCard(id: Self.notebookID, timeout: 10) else {
+            XCTFail("AddLink fixture 必須種出 notebook " + Self.notebookID)
+            return nil
+        }
+        notebooks.notebookCard(id: Self.notebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let page = VocabularySearchPage(app: app)
+        guard page.searchField.waitUntilExists(timeout: 10) else {
+            XCTFail("AddLink fixture 必須渲染 vocabulary search field")
+            return nil
+        }
+        page.search("serendipity")
+        guard page.waitForRowMaterialized(word: "serendipity", timeout: 10) else {
+            XCTFail("AddLink fixture 必須 materialize source row serendipity")
+            return nil
+        }
+        page.row(word: "serendipity").tapWhenReady()
+
+        guard let trigger = app.buttons
+            .matching(NSPredicate(format: "label == %@", "新增知識連結"))
+            .exactlyOneElement(timeout: 10, named: "AddLink detail trigger") else {
+            return nil
+        }
+        trigger.tapWhenReady()
+        guard app.textFields["addLink.searchField"].waitUntilExists(timeout: 5) else {
+            XCTFail("word detail 必須開啟 AddLink sheet")
+            return nil
+        }
+        return app
+    }
+
+    func lookupState(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "addLink.lookup.state").firstMatch
+    }
+
+    func marker(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+}
+
+private extension XCUIElement {
+    /// `hasKeyboardFocus` is the XCUIElement attribute XCTest itself uses to
+    /// route `typeText`; polling it avoids a fixed sleep.
+    func waitUntilValue(hasKeyboardFocus expected: Bool, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if exists, (value(forKey: "hasKeyboardFocus") as? Bool) == expected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return exists && (value(forKey: "hasKeyboardFocus") as? Bool) == expected
+    }
+}

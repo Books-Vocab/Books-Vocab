@@ -7,20 +7,19 @@ struct CardLinkGroupPresentation: Identifiable {
 
     var overflowCount: Int { 0 }
 
-    func limited(to count: Int) -> CardLinkGroupPresentation {
-        CardLinkGroupPresentation(
-            id: id,
-            label: label,
-            items: Array(items.prefix(max(0, count)))
-        )
-    }
-
     func shuffled() -> CardLinkGroupPresentation {
         CardLinkGroupPresentation(id: id, label: label, items: items.shuffled())
     }
 
-    func overflowed(relativeToFullGroup fullGroup: CardLinkGroupPresentation) -> Int {
-        max(0, fullGroup.items.count - items.count)
+    /// Stable partition that keeps links still being created in front, so a
+    /// shuffle followed by the strip's per-presentation cut can never hide them
+    /// behind "+N".
+    func pendingFirst() -> CardLinkGroupPresentation {
+        CardLinkGroupPresentation(
+            id: id,
+            label: label,
+            items: items.filter(\.isPendingCreation) + items.filter { !$0.isPendingCreation }
+        )
     }
 }
 
@@ -45,7 +44,14 @@ struct CardPresentation {
     let activeLinkGroups: [CardLinkGroupPresentation]
     let document: CardDocument
 
-    init(entry: VocabularyEntry, linkOrdering: [String] = Self.defaultLinkOrdering) {
+    /// - Parameter pendingLinks: placeholders for links still being created.
+    ///   `nil` reads the app-wide `PendingLinkProjection`; tests and previews pass
+    ///   an explicit list to stay deterministic.
+    init(
+        entry: VocabularyEntry,
+        linkOrdering: [String] = Self.defaultLinkOrdering,
+        pendingLinks: [KGCardLinkSummary]? = nil
+    ) {
         kgCardId = entry.kgCardId
         notebookId = entry.notebookId
         word = entry.word
@@ -64,12 +70,21 @@ struct CardPresentation {
 
         forms = (entry.rootForm.map { [$0] } ?? []) + entry.inflections.filter { $0 != entry.rootForm }
 
-        let grouped = entry.graphLinksByKind
+        var grouped = entry.graphLinksByKind
+        let pending = pendingLinks ?? PendingLinkProjection.shared.links(forSourceCardID: entry.kgCardId)
+        for placeholder in pending {
+            // Pending items lead their group so they are never the ones pushed
+            // into the "+N" overflow of the compact review strip.
+            let existing = grouped[placeholder.kind] ?? []
+            guard !existing.contains(where: { $0.id == placeholder.id }) else { continue }
+            grouped[placeholder.kind] = [placeholder] + existing
+        }
         linkGroups = linkOrdering.compactMap { kind in
             guard let items = grouped[kind], !items.isEmpty else { return nil }
             return CardLinkGroupPresentation(
                 id: kind,
-                label: items.first?.label ?? kind,
+                // A placeholder's label is provisional; real siblings own the group label.
+                label: items.first(where: { !$0.isPendingCreation })?.label ?? items.first?.label ?? kind,
                 items: items
             )
         }
@@ -121,6 +136,13 @@ struct CardPresentation {
     }
 
     static let defaultLinkOrdering = ["contrasts_with", "shares_usage"]
+
+    /// Review-session identity of a card (dateAdded + word). The one formula the
+    /// review card, the deck presenter and session-transient UI state share, so a
+    /// recycled resident slot can never be mistaken for the card it showed before.
+    var reviewCardKey: String {
+        "\(dateAdded.timeIntervalSinceReferenceDate)-\(word)"
+    }
 }
 
 extension VocabularyEntry {

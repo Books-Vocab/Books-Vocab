@@ -954,6 +954,9 @@
 "a11y.toggle.on" = "オン";
 "a11y.toggle.off" = "オフ";
 "todayReview.fold.collapse" = "折りたたむ";
+"todayReview.card.notebook.a11y" = "単語帳：%@";
+"todayReview.card.notebook.default" = "デフォルトの単語帳";
+"todayReview.card.notebook.unnamed" = "名前のない単語帳";
 "todayReview.saveFailure" = "復習結果が保存されませんでした。後でもう一度お試しください。";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
@@ -1295,3 +1298,55 @@
 "notebookSettings.serverUnsupported" = "サーバーはまだ単語帳設定に対応していません";
 "notebookSettings.retry" = "再試行";
 "kgVocab.row.selectMultipleAction" = "複数選択";
+
+"addLink.creation.alreadyRunning" = "この単語はすでに作成中です。";
+"addLink.sourceWord" = "元の単語：%@";
+"addLink.notebookScope" = "「%@」内の単語のみ検索します";
+"todayReview.link.pending.creating" = "作成中…";
+"todayReview.link.pending.hint" = "この単語カードをバックグラウンドで作成しています。完了すると自動的に通常のリンクになるので、閉じて復習を続けられます。";
+"todayReview.link.pending.failed" = "このリンクを作成できませんでした。再試行または削除できます。";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "既存の単語を探す";
+"addLink.step.translate" = "翻訳";
+"addLink.step.createCard" = "単語カードを作成";
+"addLink.step.enrich" = "意味と例文を追加";
+"addLink.step.createLink" = "2枚のカードをリンク";
+"addLink.step.localProjection" = "この端末にダウンロード";
+
+"todayReview.card.temporaryDetail.show" = "このカードの詳細を一時的に表示";
+"todayReview.card.temporaryDetail.restore" = "コンパクト表示に戻す";
+
+"addLink.error.quotaExhausted" = "本日のAIクォータを使い切りました。明日もう一度お試しください。";
+"addLink.error.sourceUnavailable" = "元のカードは利用できなくなりました（削除・アーカイブ・移動済み）。";
+"addLink.error.targetArchived" = "この単語はアーカイブされています。アーカイブを解除してからリンクしてください。";
+"addLink.error.targetIsSource" = "カードを自分自身にリンクすることはできません。";
+"addLink.error.serviceUnavailable" = "この手順に必要なサービスを利用できません。再試行してください。";
+"addLink.error.interrupted" = "完了前にサーバーが再起動しました。再試行してください。";
+"addLink.error.timedOut" = "時間がかかりすぎています。再試行してください。";
+"addLink.error.operationNotFound" = "サーバーにこのリクエストが見つかりません。再試行してください。";
+"addLink.error.sourceNotSynced" = "元のカードがまだ同期されていないため、リンクできません。";
+"addLink.error.invalidResponse" = "サーバーから予期しない応答がありました。再試行してください。";
+"addLink.error.refreshFailed" = "リンクは作成済みかもしれませんが、更新に失敗しました。再試行してください。";
+"addLink.creation.warning.summary" = "作成しましたが、一部が完了していません。";
+"addLink.creation.warning.enrichment" = "解説はまだ生成されていません。";
+"addLink.creation.warning.linkProjection" = "リンクは次回の同期後に表示されます。";
+"addLink.creation.warning.localSync" = "この端末では新しいカードの同期が完了していません。";
+"addLink.creation.backToSearch" = "検索に戻る";
+"addLink.target.linkable" = "この単語帳にすでにあります。リストから選んでリンクしてください。";
+"addLink.target.alreadyLinked" = "すでにリンク済みです。";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "「%@」を作成して「%@」にリンク";
+"addLink.create.notebook" = "追加先：%@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "折りたたむ";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "「%@」にはすでにリンク済みです";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "オフラインです。単語の作成やリンクには接続が必要です。";
+"addLink.offline.restored" = "オンラインに戻りました。";
+"addLink.offline.createReason" = "オフライン中は新しい単語を作成できません。";

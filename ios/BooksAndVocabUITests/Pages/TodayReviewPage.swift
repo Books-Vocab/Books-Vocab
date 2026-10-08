@@ -217,6 +217,16 @@ struct TodayReviewPage {
         queryElement("todayReview.card.back")
     }
 
+    /// Notebook badge on the active card (#2040). Present only when the session
+    /// spans ≥2 notebooks; `value` is the notebookId, `label` carries the name.
+    var notebookBadge: XCUIElement {
+        queryElement("todayReview.card.notebook")
+    }
+
+    var notebookBadgeCount: Int {
+        elements(for: "todayReview.card.notebook").count
+    }
+
     var frontNaturalContent: XCUIElement {
         scopedElement(
             "todayReview.card.front",
@@ -266,7 +276,34 @@ struct TodayReviewPage {
         element("todayReview.expandZone")
     }
 
+    /// #2041 compact-card chrome toggle on the ACTIVE card. Its accessibility
+    /// value is the button state: `showDetail` (compact now) or `restoreCompact`.
+    /// Query-only: a standard-preset card legitimately has none.
+    var temporaryDetailButton: XCUIElement {
+        queryElement("todayReview.card.temporaryDetail")
+    }
+
+    func waitForTemporaryDetail(_ value: String, timeout: TimeInterval = 8) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let matches = elements(for: "todayReview.card.temporaryDetail").allElementsBoundByIndex
+            if matches.count == 1, matches[0].exists, (matches[0].value as? String) == value { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        let matches = elements(for: "todayReview.card.temporaryDetail").allElementsBoundByIndex
+        return matches.count == 1 && (matches[0].value as? String) == value
+    }
+
     // MARK: - Toolbar
+
+    /// Previous / next chevrons (hidden while autoplay runs).
+    var previousButton: XCUIElement {
+        element("todayReview.nav.previous")
+    }
+
+    var nextButton: XCUIElement {
+        element("todayReview.nav.next")
+    }
 
     var rememberedButton: XCUIElement {
         element("todayReview.feedback.remembered")
@@ -314,6 +351,57 @@ struct TodayReviewPage {
             "Today Review add-link selector must resolve exactly once",
             file: file,
             line: line
+        )
+    }
+
+    // MARK: Pending (still being created) link
+
+    /// Strip item for a link whose target card is still being created. Its
+    /// accessibility value is the creation state: `creating` or `failed`.
+    func pendingLink(word: String) -> XCUIElement {
+        queryElement("todayReview.card.link.pending.\(word)")
+    }
+
+    /// Detail sheet opened by tapping a pending item.
+    var pendingLinkDetail: XCUIElement { queryElement("todayReview.card.link.pending.detail") }
+
+    /// Status block inside the detail sheet; value is `creating` or `failed`.
+    var pendingLinkDetailStatus: XCUIElement { queryElement("todayReview.card.link.pending.status") }
+
+    var pendingLinkRetryButton: XCUIElement { queryElement("todayReview.card.link.pending.retry") }
+
+    var pendingLinkDismissButton: XCUIElement { queryElement("todayReview.card.link.pending.dismiss") }
+
+    // MARK: Add Link sheet terminal states (#2030)
+
+    /// Raw failure reason (`target_archived`, `interrupted`, `timed_out`…) as its value.
+    var addLinkErrorReason: XCUIElement { queryElement("addLink.error.reason") }
+
+    var addLinkCreationRetryButton: XCUIElement { queryElement("addLink.creation.retry") }
+
+    /// Warning state only: accepts the partial result and closes the sheet.
+    var addLinkWarningDoneButton: XCUIElement { queryElement("addLink.creation.warning.done") }
+
+    /// Failed state only: returns to the search list.
+    var addLinkBackToSearchButton: XCUIElement { queryElement("addLink.creation.backToSearch") }
+
+    /// Spinner on the candidate row being linked.
+    func addLinkLinkingRow(cardID: String) -> XCUIElement {
+        queryElement("addLink.row.linking.\(cardID)")
+    }
+
+    // MARK: Link strip "+N" overflow (#2043)
+
+    /// "+N" / "收合" control of one link group; value is `collapsed` or `expanded`.
+    func linkOverflowToggle(group: String) -> XCUIElement {
+        queryElement("todayReview.card.link.overflow.\(group)")
+    }
+
+    /// Real (non-pending) link buttons currently drawn whose target card id has
+    /// `prefix`. Excludes the overflow toggle and pending placeholders.
+    func drawnLinks(cardIDPrefix prefix: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "todayReview.card.link.\(prefix)")
         )
     }
 

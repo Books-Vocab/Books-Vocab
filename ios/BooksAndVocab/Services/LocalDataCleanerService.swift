@@ -24,6 +24,10 @@ final class LocalDataCleanerService: LocalDataClearing {
         // so clear every user's snapshot to prevent a stale session from being
         // restored on re-login (or surviving until the 7-day maxAge expiry).
         TodayReviewSessionSnapshotStore.clear(for: nil)
+        // Pending Add Link creations persist the typed word and the operation keys of
+        // the account that started them. Drop them (and cancel the live ones) so
+        // neither a later account nor the previous one's re-login sees or resumes them.
+        await MainActor.run { AddLinkCreationHub.shared.clearAll() }
         // QuotaStore is a process-wide singleton holding account A's remaining quota.
         // clearUserData drops SwiftData rows but never touches it, so after an
         // account-switch account B briefly sees A's quota number until the next
