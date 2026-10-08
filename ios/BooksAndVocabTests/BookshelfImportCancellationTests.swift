@@ -172,4 +172,56 @@ struct BookshelfImportCancellationTests {
         #expect(coordinator.showError == false)
         #expect(toast.current == nil)
     }
+
+    @Test
+    func supersededImportThatAlreadyWroteFile_removesOrphanFileAndInsertsNoBook() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let coordinator = BookshelfCoordinator()
+        let service = ControlledImportService()
+        let toast = AppToastCoordinator()
+        let first = URL(fileURLWithPath: "/tmp/stale.txt")
+        let second = URL(fileURLWithPath: "/tmp/fresh.txt")
+
+        // Simulate the importer having already persisted the book file before it returns.
+        let orphanName = "issue-2441-\(UUID().uuidString).txt"
+        let directory = Book.localBooksDirectory
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let orphanURL = directory.appendingPathComponent(orphanName)
+        try Data("orphan".utf8).write(to: orphanURL)
+        defer { try? FileManager.default.removeItem(at: orphanURL) }
+
+        coordinator.handleFileImport(
+            .success([first]),
+            modelContext: context,
+            importService: service,
+            toastCoordinator: toast
+        )
+        #expect(await service.waitUntilStarted(first.lastPathComponent))
+        coordinator.handleFileImport(
+            .success([second]),
+            modelContext: context,
+            importService: service,
+            toastCoordinator: toast
+        )
+        #expect(await service.waitUntilStarted(second.lastPathComponent))
+
+        service.complete(
+            first.lastPathComponent,
+            with: .success(
+                ImportedBookDraft(
+                    title: "stale",
+                    author: "Author",
+                    coverImageData: nil,
+                    fileName: orphanName,
+                    format: .txt
+                )
+            )
+        )
+        service.complete(second.lastPathComponent, with: .cancellation)
+        await waitForQuiescence(coordinator, service: service)
+
+        #expect(FileManager.default.fileExists(atPath: orphanURL.path) == false)
+        #expect(try context.fetch(FetchDescriptor<Book>()).isEmpty)
+    }
 }
