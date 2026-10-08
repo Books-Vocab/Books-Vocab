@@ -56,6 +56,19 @@ def test_corrupt_file_does_not_abort_batch(tmp_path: Path, monkeypatch, capsys):
     assert exc.value.code == 1  # FAIL present
 
     import json
+
     data = json.loads(report.read_text())
     assert data["summary"]["fail"] == 1
     assert data["results"][0]["verdict"] == "FAIL"
+
+
+def test_empty_dir_exits_nonzero_without_report(tmp_path: Path, monkeypatch):
+    """No audio found must not pass vacuously (exit 2, no report)."""
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(
+        "sys.argv", ["audio_qa.py", str(tmp_path), "--report", str(report)]
+    )
+    with pytest.raises(SystemExit) as exc:
+        audio_qa.main()
+    assert exc.value.code == 2
+    assert not report.exists()
