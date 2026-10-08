@@ -25,6 +25,8 @@ final class LocaleAwareFormatter: @unchecked Sendable {
 
     private struct Storage {
         var dateFormatters: [String: DateFormatter] = [:]
+        /// Locale-neutral `yyyy-MM-dd` formatters keyed by time-zone identifier (hot path: no key building).
+        var machineFormatters: [String: DateFormatter] = [:]
         var templateFormatters: [String: DateFormatter] = [:]
         var styleFormatters: [String: DateFormatter] = [:]
         var relativeFormatters: [RelativeDateTimeFormatter.UnitsStyle: RelativeDateTimeFormatter] = [:]
@@ -103,17 +105,17 @@ final class LocaleAwareFormatter: @unchecked Sendable {
 
     /// Locale-neutral day key for projections that explicitly inject a timezone.
     func machineDayKey(from date: Date, timeZone: TimeZone) -> String {
-        let cacheKey = "MACHINE|yyyy-MM-dd|\(timeZone.identifier)"
+        let cacheKey = timeZone.identifier
         return lock.withLock { storage in
             let formatter: DateFormatter
-            if let cached = storage.dateFormatters[cacheKey] {
+            if let cached = storage.machineFormatters[cacheKey] {
                 formatter = cached
             } else {
                 let f = DateFormatter()
                 f.dateFormat = "yyyy-MM-dd"
                 f.locale = Locale(identifier: "en_US_POSIX")
                 f.timeZone = timeZone
-                storage.dateFormatters[cacheKey] = f
+                storage.machineFormatters[cacheKey] = f
                 formatter = f
             }
             return formatter.string(from: date)
