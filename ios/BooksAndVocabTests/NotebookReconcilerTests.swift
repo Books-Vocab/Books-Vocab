@@ -324,4 +324,39 @@ struct NotebookReconcilerTests {
 
         #expect(try ctx.fetch(FetchDescriptor<NotebookSettingsProjection>()).isEmpty)
     }
+
+    @Test func reconcile_failed_projection_with_older_remote_stays_failed() throws {
+        let ctx = try makeContext()
+        let notebook = localNB("nb-dirty", syncStatus: 1)
+        let projection = NotebookSettingsProjection(notebookId: notebook.remoteId)
+        var localPolicy = ReviewPolicy.default
+        localPolicy.mode = .custom
+        projection.applyLocalReviewPolicy(localPolicy, updatedAt: 50)
+        projection.syncState = .failed
+        projection.syncError = "offline"
+        ctx.insert(notebook)
+        ctx.insert(projection)
+        try ctx.save()
+
+        let stale = KGNotebook(
+            id: notebook.remoteId, name: notebook.name, color: nil, coverPattern: nil,
+            sortOrder: 0, isDefault: false, isDeleted: false, cardCount: 0, updatedAt: nil,
+            sourceSharedDeckId: nil, sourceVersion: nil,
+            settings: KGNotebookSettings(
+                reviewPolicy: KGNotebookSettingsGroup(
+                    value: KGNotebookReviewPolicy(.default), updatedAt: 40
+                ),
+                cardLayout: KGNotebookSettingsGroup<KGNotebookCardLayout>(value: nil, updatedAt: nil)
+            )
+        )
+        _ = NotebookReconciler.reconcile(
+            remote: [stale], local: [notebook], allEntries: [], modelContext: ctx
+        )
+        try ctx.save()
+
+        #expect(projection.syncState == .failed)
+        #expect(projection.syncError == "offline")
+        #expect(projection.reviewPolicyOverride == localPolicy)
+        #expect(projection.reviewPolicyUpdatedAt == 50)
+    }
 }

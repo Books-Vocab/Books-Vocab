@@ -332,16 +332,26 @@ def cmd_card_move(args: argparse.Namespace) -> int:
             with closing(_notebook_store(ctx.user_dir)) as nb_store:
                 all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
                 purged_links: list[str] = []
+                peers_by_nb: dict[str, set[str]] = {}
                 for gnb in all_nb_ids:
                     graph = _graph_store(ctx.user_dir, gnb)
                     for lk in graph.get_links_for(moved_id):
+                        peer = lk.to_id if lk.from_id == moved_id else lk.from_id
+                        peers_by_nb.setdefault(gnb, set()).add(peer)
                         graph.hard_delete_link(lk.id, source="ops")
                         purged_links.append(lk.id)
+            # touch barrier:對端失去 link,須 bump updated_at 讓裝置增量 pull 重讀。
+            touched_peers = sum(store.batch_touch(ids, notebook_id=gnb) for gnb, ids in peers_by_nb.items())
             updated = store.update(card.id, notebook_id=target_nb)
             if updated is None:
                 raise EditError(f"move 失敗(卡可能已刪除):{card.id}")
             state["card_id"] = updated.id
-            return {"card": _card_brief(updated), "purged_links": purged_links, "purged_count": len(purged_links)}
+            return {
+                "card": _card_brief(updated),
+                "purged_links": purged_links,
+                "purged_count": len(purged_links),
+                "touched_peers": touched_peers,
+            }
 
     def verify_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:

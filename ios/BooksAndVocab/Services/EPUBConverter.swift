@@ -34,7 +34,7 @@ struct EPUBConverter {
     /// Convert a plain-text file to EPUB3.
     func convertTXT(at url: URL, title: String, progress: (@Sendable (Double) -> Void)? = nil) throws -> URL {
         let data = try loadAndValidate(url, progress: progress)
-        let text = try decodeTextAllowingLatin1Fallback(data)
+        let text = try decodeTXT(data)
         let chapters = splitTXTIntoChapters(text, charsPerChapter: 5000)
         let htmlChapters = chapters.enumerated().map { idx, body in
             wrapXHTML(title: "\(title) — Chapter \(idx + 1)", body: body)
@@ -99,14 +99,63 @@ struct EPUBConverter {
         return utf8
     }
 
-    private func decodeTextAllowingLatin1Fallback(_ data: Data) throws -> String {
-        if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
-        if let latin1 = String(data: data, encoding: .isoLatin1) { return latin1 }
+    /// TXT decode order: UTF-8 (BOM stripped) -> GB18030 -> Big5, else `encodingFailed`.
+    /// No Latin-1 fallback: it accepts every byte string, so mis-encoded Chinese
+    /// files silently turned into mojibake and `encodingFailed` was unreachable.
+    ///
+    /// Every Big5 byte pair is also a valid GB18030 pair, so a plain "first success
+    /// wins" order would never reach Big5. When GB18030 decodes into scalars that
+    /// real Chinese text almost never contains (kana, Greek, Cyrillic, Hangul, PUA)
+    /// while Big5 decodes cleanly, the bytes are Big5 and that reading wins.
+    private func decodeTXT(_ data: Data) throws -> String {
+        let body = data.starts(with: [0xEF, 0xBB, 0xBF]) ? data.dropFirst(3) : data[...]
+        if let utf8 = String(data: Data(body), encoding: .utf8) { return utf8 }
+        let gb = String(data: data, encoding: Self.gb18030)
+        let big5 = String(data: data, encoding: Self.big5)
+        if let gb, let big5, Self.looksLikeMojibake(gb), !Self.looksLikeMojibake(big5) { return big5 }
+        if let decoded = gb ?? big5 { return decoded }
         throw EPUBConverterError.encodingFailed
     }
 
+    private static let gb18030 = cfEncoding(.GB_18030_2000)
+    private static let big5 = cfEncoding(.big5)
+
+    private static func cfEncoding(_ e: CFStringEncodings) -> String.Encoding {
+        String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(e.rawValue)))
+    }
+
+    private static func looksLikeMojibake(_ text: String) -> Bool {
+        text.unicodeScalars.contains { s in
+            switch s.value {
+            case 0x0370...0x03FF, 0x0400...0x04FF,   // Greek, Cyrillic
+                 0x3040...0x30FF,                    // Hiragana, Katakana
+                 0xAC00...0xD7AF,                    // Hangul syllables
+                 0xE000...0xF8FF:                    // Private Use Area
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    /// Drops characters that are illegal in XML 1.0 (C0 controls other than
+    /// \t \n \r, U+FFFE and U+FFFF) so chapters stay parseable.
+    private func stripXMLInvalid(_ text: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        for s in text.unicodeScalars {
+            switch s.value {
+            // XML 1.0 Char production: #x9 | #xA | #xD | #x20-#xD7FF | #xE000-#xFFFD | #x10000-#x10FFFF
+            case 9, 10, 13, 32...55_295, 57_344...65_533, 65_536...1_114_111:
+                scalars.append(s)
+            default:
+                continue
+            }
+        }
+        return String(scalars)
+    }
+
     private func escapeHTML(_ text: String) -> String {
-        text.replacingOccurrences(of: "&", with: "&amp;")
+        stripXMLInvalid(text).replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
     }
@@ -114,7 +163,7 @@ struct EPUBConverter {
     /// Split plain text into chapters of approximately `charsPerChapter` characters,
     /// breaking at paragraph boundaries.
     private func splitTXTIntoChapters(_ text: String, charsPerChapter: Int) -> [String] {
-        let lines = text.components(separatedBy: "\n")
+        let lines = text.components(separatedBy: .newlines)
         var chapters: [String] = []
         var current = ""
 

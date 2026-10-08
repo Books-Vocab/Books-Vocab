@@ -112,7 +112,10 @@ def _s3_client_cached(region: str, endpoint_url: str | None):
         config=Config(
             signature_version="s3v4",
             max_pool_connections=32,
-            retries={"max_attempts": 3, "mode": "standard"},
+            # Bound network waits so a stalled S3 call cannot hold a worker for botocore's 60s defaults.
+            connect_timeout=5,
+            read_timeout=15,
+            retries={"total_max_attempts": 3, "mode": "standard"},
         ),
     )
 

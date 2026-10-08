@@ -51,6 +51,56 @@ struct KGServiceLastSyncDateTests {
 
         #expect(KGService.loadPersistedLastSyncDate(defaults: defaults) == nil)
     }
+
+    // MARK: - Logout / account-switch cleanup (#2424)
+
+    private func makeEmptyContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+    }
+
+    /// `clearLocalData` is the single logout / account-switch cleanup path; it
+    /// must drop the persisted sync time so a cold start never shows account A's
+    /// "synced ..." under account B.
+    @Test func localDataCleanupRemovesPersistedLastSyncDate() async throws {
+        let defaults = UserDefaults.standard
+        let prior = defaults.object(forKey: KGService.SyncKeys.lastSyncDate)
+        defer {
+            if let prior { defaults.set(prior, forKey: KGService.SyncKeys.lastSyncDate) }
+            else { defaults.removeObject(forKey: KGService.SyncKeys.lastSyncDate) }
+        }
+        KGService.persistLastSyncDate(Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(KGService.loadPersistedLastSyncDate() != nil)
+
+        await LocalDataCleanerService().clearLocalData(
+            container: try makeEmptyContainer(), reason: "user_logout"
+        )
+
+        #expect(KGService.loadPersistedLastSyncDate() == nil)
+    }
+
+    /// The in-memory value also resets, without a relaunch: a live `KGService`
+    /// observes `.localUserDataDidClear`.
+    @Test func liveServiceLastSyncDateResetsOnLocalDataClear() async throws {
+        let defaults = UserDefaults.standard
+        let prior = defaults.object(forKey: KGService.SyncKeys.lastSyncDate)
+        defer {
+            if let prior { defaults.set(prior, forKey: KGService.SyncKeys.lastSyncDate) }
+            else { defaults.removeObject(forKey: KGService.SyncKeys.lastSyncDate) }
+        }
+        let service = KGService()
+        service.lastSyncDate = Date(timeIntervalSince1970: 1_800_000_000)
+
+        await LocalDataCleanerService().clearLocalData(
+            container: try makeEmptyContainer(), reason: "account_switch"
+        )
+        // The observer hops to the main actor; let it run.
+        for _ in 0..<50 where service.lastSyncDate != nil { try await Task.sleep(for: .milliseconds(20)) }
+
+        #expect(service.lastSyncDate == nil)
+    }
 }
 
 /// Pins the pipeline-pending retry schedule.

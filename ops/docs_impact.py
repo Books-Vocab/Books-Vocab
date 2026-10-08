@@ -207,22 +207,48 @@ def changed_paths_since(base: str) -> list[str]:
             "--since 問的是「這條分支自己改了什麼」;要比對無關歷史請改用 --files。"
         )
 
-    output = "\n".join(
-        [
-            run_git(
-                ["diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"],
-                check=False,
-            ),
-            run_git(
-                ["diff", "--name-only", "--diff-filter=ACMR", "--cached"], check=False
-            ),
-            run_git(["diff", "--name-only", "--diff-filter=ACMR"], check=False),
-            run_git(["ls-files", "--others", "--exclude-standard"], check=False),
-        ]
-    )
-    return sorted(
-        {normalize_path(line) for line in output.splitlines() if line.strip()}
-    )
+    paths: set[str] = set()
+    for diff_args in (
+        [f"{base}...HEAD"],
+        ["--cached"],
+        [],
+    ):
+        paths.update(
+            parse_name_status(
+                run_git(["diff", "--name-status", "-M", "-z", *diff_args], check=False)
+            )
+        )
+    # Untracked files carry no status; they are always additions.
+    for line in run_git(
+        ["ls-files", "--others", "--exclude-standard"], check=False
+    ).splitlines():
+        if line.strip():
+            paths.add(normalize_path(line))
+    return sorted(paths)
+
+
+def parse_name_status(output: str) -> set[str]:
+    """Parse `git diff --name-status -z` into the paths a change touched.
+
+    Deletions and the old side of a rename count: a registered source that vanished is
+    exactly when its doc goes stale. A copy leaves its source in place, so only the new
+    path counts.
+    """
+    fields = [field for field in output.split("\0") if field]
+    paths: set[str] = set()
+    index = 0
+    while index < len(fields):
+        status = fields[index]
+        if status[0] in "RC":
+            old, new = fields[index + 1], fields[index + 2]
+            paths.add(normalize_path(new))
+            if status[0] == "R":
+                paths.add(normalize_path(old))
+            index += 3
+        else:
+            paths.add(normalize_path(fields[index + 1]))
+            index += 2
+    return paths
 
 
 def source_matches(source: str, changed_path: str) -> bool:
@@ -242,9 +268,9 @@ def source_matches(source: str, changed_path: str) -> bool:
 def live_paths(root: Path) -> list[str]:
     """Every path a change could touch: tracked or new-but-not-ignored, minus deletions.
 
-    Same path kinds `changed_paths_since` reports (tracked edits plus new untracked
-    files), so a source is live here exactly when some real change could make impact
-    hit it. New files count because
+    Deliberately narrower than `changed_paths_since`, which also reports deleted and
+    renamed-away paths: a source is live here only if a path that exists could still
+    make impact hit it. New files count because
     registering a source in the same change that adds it is the normal flow; ignored
     artifacts and files already deleted from the worktree do not, because a fresh
     checkout (CI) would not have them.

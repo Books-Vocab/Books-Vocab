@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol
@@ -84,6 +85,26 @@ class _JudgeClaim:
         self.ack(self._ids)
 
 
+def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
+    """Map lower-cased word -> enrichment item for one batch of LLM output.
+
+    LLM JSON is untrusted: ``results`` may not be a list, and items may be
+    non-dicts or lack a str ``word``. Those are counted as skipped instead of
+    raising, which would abort the whole enrich run over one bad item.
+    Returns ``(result_map, skipped_count)``.
+    """
+    if not isinstance(results, list):
+        return {}, 1
+    result_map: dict[str, dict] = {}
+    skipped = 0
+    for item in results:
+        if isinstance(item, dict) and isinstance(item.get("word"), str):
+            result_map[item["word"].lower()] = item
+        else:
+            skipped += 1
+    return result_map, skipped
+
+
 async def _step_enrich(
     uid: str,
     user: UserRecord,
@@ -122,34 +143,42 @@ async def _step_enrich(
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
 
-    async for msg in enrich_cards_stream(llm, targets, batch_size=20, max_workers=5, model=provider.chat_model):
-        if msg.get("status") == "error":
-            logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
+    # aclosing: a consumer-side failure (e.g. SQLite busy in batch_update) must
+    # shut the stream's executor down now, not at GC, and before _run_step's
+    # retry can start a second stream.
+    async with contextlib.aclosing(
+        enrich_cards_stream(llm, targets, batch_size=20, max_workers=5, model=provider.chat_model)
+    ) as stream:
+        async for msg in stream:
+            if msg.get("status") == "error":
+                logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
 
-        if msg.get("results"):
-            result_map = {result["word"].lower(): result for result in msg["results"]}
-            batch_updates: list[tuple[str, dict]] = []
-            for card in targets:
-                enrichment = result_map.get(card.content.lower())
-                if not enrichment:
-                    continue
-                kwargs: dict[str, Any] = {}
-                if enrichment.get("pos"):
-                    if force or not card.pos:
-                        from ..vocab_shared import _normalize_pos
+            if msg.get("results"):
+                result_map, skipped = _index_enrichment_results(msg["results"])
+                if skipped:
+                    logger.warning("[%s] Skipped %d malformed enrichment items", uid, skipped)
+                batch_updates: list[tuple[str, dict]] = []
+                for card in targets:
+                    enrichment = result_map.get(card.content.lower())
+                    if not enrichment:
+                        continue
+                    kwargs: dict[str, Any] = {}
+                    if enrichment.get("pos"):
+                        if force or not card.pos:
+                            from ..vocab_shared import _normalize_pos
 
-                        kwargs["pos"] = _normalize_pos(enrichment["pos"])
-                if enrichment.get("note"):
-                    if force or not card.note:
-                        kwargs["note"] = enrichment["note"]
-                if enrichment.get("collocations"):
-                    kwargs["collocations"] = enrichment["collocations"]
-                if enrichment.get("meaning_fix"):
-                    kwargs["meaning"] = enrichment["meaning_fix"]
-                if kwargs:
-                    batch_updates.append((card.id, kwargs))
-            if batch_updates:
-                updated += cards.batch_update(batch_updates)
+                            kwargs["pos"] = _normalize_pos(enrichment["pos"])
+                    if enrichment.get("note"):
+                        if force or not card.note:
+                            kwargs["note"] = enrichment["note"]
+                    if enrichment.get("collocations"):
+                        kwargs["collocations"] = enrichment["collocations"]
+                    if enrichment.get("meaning_fix"):
+                        kwargs["meaning"] = enrichment["meaning_fix"]
+                    if kwargs:
+                        batch_updates.append((card.id, kwargs))
+                if batch_updates:
+                    updated += cards.batch_update(batch_updates)
 
     logger.info("[%s] Enriched %d cards", uid, updated)
     return updated
@@ -207,9 +236,11 @@ async def _step_embed_and_judge(
         loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(None, embeddings.add_batch, items)
-            newly_embedded = [card.id for card in missing if embeddings.has(card.id)]
         except (OpenAIError, OSError, ValueError) as exc:
             logger.warning("[%s] Batch embedding failed: %s", uid, exc)
+        # add_batch persists chunk by chunk, so a mid-batch failure still
+        # leaves the earlier chunks embedded (#2264): report those too.
+        newly_embedded = [card.id for card in missing if embeddings.has(card.id)]
 
         if newly_embedded:
             logger.info("[%s] Embedded %d cards, queued for judge", uid, len(newly_embedded))

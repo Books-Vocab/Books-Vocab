@@ -115,7 +115,6 @@ Scope: `ios/BooksAndVocab`
 - `VocabInlineActionButton`
 - `VocabSectionHeader`
 - `VocabSliderRow`
-- `VocabMetricHeroCard`
 - `VocabListCard`
 - `VocabStatusHero`
 - `VocabTimelineRow`
@@ -137,22 +136,21 @@ Scope: `ios/BooksAndVocab`
 主要檔案：
 - `ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift`
 - `ios/BooksAndVocab/Views/Reader/TranslationPanel.swift`
-- `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter+State.swift`
 - `ios/BooksAndVocab/Views/Reader/TranslationVocabPresenter.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderSettingsPanel.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift`
 - `ios/BooksAndVocab/Views/Reader/VocabHighlightColorPresetPicker.swift`
-- `ios/BooksAndVocab/Views/Reader/ReaderSettingsPanelPresenter.swift`
-- `ios/BooksAndVocab/Views/Reader/ReaderSettingsVocabPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderViewPresenter.swift`
 
 核心元件 / 容器：
 - `TranslationPanel`
-- `TranslationPanelPresenter`
+- `TranslationPanelPresenterState`
 - `TranslationVocabPresenter`
 - `ReaderSettingsPanel`
-- `ReaderSettingsPanelPresenter`
-- `ReaderSettingsVocabPresenter`
+- `ReaderSettingsPresenter`
 - `ReaderViewPresenter`
 - `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter（vocab 單一模式，glass 分支已移除）
 - `VocabHighlightColorPresetPicker` — Reader / Podcast 共用詞庫 highlight 顏色入口，採原生 iOS 26 `Picker(.palette)` 與 `VocabHighlightColorPreset` 色票；accessibility identifier 由 caller 注入，避免 Podcast 誤掛 Reader surface id
@@ -197,7 +195,7 @@ Scope: `ios/BooksAndVocab`
 ### Models / Tokens Layer
 
 主要檔案：
-- `ios/BooksAndVocab/Networking/RetryPolicy.swift`
+- `ios/BooksAndVocab/Services/RetryPolicy.swift`
 - `ios/BooksAndVocab/Models/AppMetrics.swift` — AppMetrics / AppSpacing / AppRoundness / AppElevation / AppMotion / ElevationDirection（無 AppLayout — readable-width 由 `WordDetailPresenter` local `maxContentWidth=640` 控）
 - `ios/BooksAndVocab/Models/AppFonts.swift` — AppFonts.serif/sans/mono + TypeScale(caption2/caption/subhead/body/h2/h1/hero) + Tracking + LineSpacing
 - `ios/BooksAndVocab/Models/AppColors.swift` — semantic palette tokens（含 brandHero light/dark）
@@ -281,7 +279,7 @@ Scope: `ios/BooksAndVocab`
 - `VocabStateMessageCard`
 
 代表畫面：
-- `TranslationPanelPresenter`
+- `TranslationPanelPresenterState`
 - `TranslationVocabPresenter`
 - `KGVocabView`
 - `SettingsPresenter` paywall 狀態區
@@ -324,7 +322,6 @@ Scope: `ios/BooksAndVocab`
 
 代表畫面：
 - `KGVocabPresenter`
-- `PendingVocabPresenter`
 - `VocabularyListPresenter`
 - `PodcastEpisodeListView`
 
@@ -371,7 +368,7 @@ Scope: `ios/BooksAndVocab`
 - `AnyTransition.feedbackBadge`
 
 代表畫面：
-- `TranslationPanelPresenter`
+- `TranslationPanelPresenterState`
 - `TranslationVocabPresenter`
 - `SyncPresenter`
 - `TodayReviewPresenter`

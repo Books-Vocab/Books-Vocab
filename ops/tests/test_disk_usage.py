@@ -178,6 +178,270 @@ def test_report_attributes_registered_lanes_and_canonical_main(tmp_path: Path) -
     assert report["policy"]["verdict"] == "pass"
 
 
+MIB = 1024 * 1024
+
+
+def _regenerable_lane(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A registered lane carrying a 1 MiB .venv and a 1 MiB node_modules."""
+
+    repo, worktree = _repo_with_worktree(tmp_path)
+    venv = worktree / "backend" / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "site.bin").write_bytes(b"v" * MIB)
+    modules = worktree / "node_modules" / "left-pad"
+    modules.mkdir(parents=True)
+    (modules / "index.bin").write_bytes(b"n" * MIB)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-REGENERABLE"],
+            }
+        ],
+    )
+    return repo, worktree, state
+
+
+def test_regenerable_dirs_are_listed_and_never_counted_in_lane_quota(
+    tmp_path: Path,
+) -> None:
+    repo, worktree, state = _regenerable_lane(tmp_path)
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=30)
+
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["regenerable_roots"] == ["backend/.venv", "node_modules"]
+    assert entry["allocated_bytes"] < MIB // 2
+    assert report["accounting"]["physical_lane_allocated_bytes"] < MIB // 2
+    regenerable = report["accounting"]["regenerable"]
+    assert regenerable["root_count"] == 2
+    assert regenerable["counted_in_quota"] is False
+    assert regenerable["measured"] is False
+    assert "allocated_bytes" not in regenerable
+    assert ".venv" in regenerable["names"]
+    assert "regenerable_allocated_bytes" not in entry
+
+
+def test_regenerable_bytes_cannot_trip_the_lane_quota(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Shrink "1 GiB" to 64 KiB so a 2 MiB .venv + node_modules would blow the
+    # 2-unit per-lane and 8-unit total quotas if they were counted.
+    monkeypatch.setattr(disk_usage, "GIB", 64 * 1024)
+    repo, worktree, state = _regenerable_lane(tmp_path)
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=30)
+    sized = disk_usage.build_report(
+        repo, state, time_budget_seconds=30, measure_regenerable=True
+    )
+
+    assert report["policy"]["quota_exceeded"] is False
+    assert report["policy"]["lane_budget_exceeded"] == []
+    assert "lane-total-budget-exceeded" not in report["policy"]["blocking_reasons"]
+    assert report["policy"]["verdict"] in {"pass", "warning"}
+    # Positive control: the lane is accounted, and the skipped bytes alone are
+    # over both quotas, so counting them would have blocked it.
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["accounted_in_aggregate"] is True
+    sized_entry = next(i for i in sized["lanes"] if i["path"] == str(worktree))
+    assert (
+        sized_entry["regenerable_allocated_bytes"]
+        > report["policy"]["total_lane_budget_bytes"]
+    )
+    assert (
+        sized_entry["regenerable_allocated_bytes"]
+        > report["policy"]["per_lane_budget_bytes"]
+    )
+
+
+def test_measure_regenerable_sizes_roots_beside_the_quota_bytes(
+    tmp_path: Path,
+) -> None:
+    repo, worktree, state = _regenerable_lane(tmp_path)
+
+    default = disk_usage.build_report(repo, state, time_budget_seconds=30)
+    sized = disk_usage.build_report(
+        repo, state, time_budget_seconds=30, measure_regenerable=True
+    )
+
+    default_entry = next(i for i in default["lanes"] if i["path"] == str(worktree))
+    sized_entry = next(i for i in sized["lanes"] if i["path"] == str(worktree))
+    assert sized_entry["allocated_bytes"] == default_entry["allocated_bytes"]
+    assert sized_entry["regenerable_allocated_bytes"] >= 2 * MIB
+    assert sized_entry["regenerable_measurement_complete"] is True
+    regenerable = sized["accounting"]["regenerable"]
+    assert regenerable["measured"] is True
+    assert regenerable["allocated_bytes"] >= 2 * MIB
+    assert regenerable["measurement_complete"] is True
+    assert (
+        sized["accounting"]["physical_lane_allocated_bytes"]
+        == default["accounting"]["physical_lane_allocated_bytes"]
+    )
+
+
+def test_measure_regenerable_overrun_is_partial_evidence_not_a_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree, state = _regenerable_lane(tmp_path)
+    original = disk_usage._measure_regenerable
+
+    def expired(
+        roots: list[Path], *, deadline: float | None = None
+    ) -> dict[str, object]:
+        return original(roots, deadline=time.monotonic() - 1)
+
+    monkeypatch.setattr(disk_usage, "_measure_regenerable", expired)
+
+    report = disk_usage.build_report(
+        repo, state, time_budget_seconds=30, measure_regenerable=True
+    )
+
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["regenerable_measurement_complete"] is False
+    assert report["accounting"]["regenerable"]["measurement_complete"] is False
+    assert report["measurement"]["status"] == "complete"
+    assert (
+        "measurement-time-budget-exceeded" not in report["policy"]["blocking_reasons"]
+    )
+
+
+def test_canonical_cache_and_backups_are_not_walked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, _ = _repo_with_worktree(tmp_path)
+    (repo / ".cache" / "ios-test-derived-data").mkdir(parents=True)
+    (repo / ".cache" / "ios-test-derived-data" / "blob.bin").write_bytes(b"c" * MIB)
+    (repo / "backups").mkdir()
+    (repo / "backups" / "dump.bin").write_bytes(b"b" * MIB)
+    (repo / "node_modules" / "pkg").mkdir(parents=True)
+    (repo / "node_modules" / "pkg" / "index.bin").write_bytes(b"n" * MIB)
+    state = tmp_path / "registry.json"
+    _write_registry(state, [])
+    scanned: list[str] = []
+    real_scandir = os.scandir
+
+    def spying_scandir(path: object = ".") -> object:
+        scanned.append(str(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", spying_scandir)
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=30)
+
+    inside = [p for p in scanned if p.startswith(str(repo))]
+    assert not [
+        p for p in inside if "/.cache" in p or "/backups" in p or "node_modules" in p
+    ]
+    assert str(repo) in inside, "positive control: the canonical walk ran"
+    accounting = report["accounting"]
+    assert accounting["workspace_unassigned_allocated_bytes"] < MIB // 2
+    assert accounting["workspace_unmeasured_roots"] == [
+        str(repo / ".cache"),
+        str(repo / "backups"),
+    ]
+    canonical = next(i for i in report["lanes"] if i["path"] == str(repo))
+    assert canonical["regenerable_roots"] == ["node_modules"]
+    assert report["measurement"]["status"] == "complete"
+
+
+def test_slow_xctest_devices_walk_cannot_starve_lane_attribution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Regression (2026-10-08): the XCTestDevices physical-extent walk (226k files)
+    # ran first and took 150-220 s of the 240 s window, so the lane attribution
+    # that gates every writer never got to run.  A platform walk that burns its
+    # whole budget may only make its own section incomplete.
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-STARVATION"],
+            }
+        ],
+    )
+    original = disk_usage.inspect_xctest_devices
+    observed: dict[str, object] = {}
+
+    def burns_the_budget(
+        *args: object, deadline: float | None = None, **kwargs: object
+    ):
+        assert deadline is not None
+        while time.monotonic() < deadline:
+            time.sleep(0.01)
+        observed["burned"] = True
+        return original(*args, deadline=deadline, **kwargs)
+
+    monkeypatch.setattr(disk_usage, "inspect_xctest_devices", burns_the_budget)
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=3)
+
+    assert observed.get("burned") is True, (
+        "positive control: the walk ran and burned the budget"
+    )
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["measurement_complete"] is True
+    assert entry["allocated_bytes"] > 0
+    assert entry["worktree_state"] in {"clean", "dirty"}
+    assert report["policy"]["measurement_incomplete_reasons"] == []
+    assert report["policy"]["unregistered_physical_worktrees"] == []
+
+
+def test_nested_worktree_index_maps_every_ancestor_in_one_pass() -> None:
+    root = Path("/w/lanes")
+    mid = root / "a"
+    leaf = mid / "inner" / "b"
+    sibling = Path("/w/other")
+    index = disk_usage._nested_worktree_index({root, mid, leaf, sibling})
+
+    assert index[root] == {mid, leaf}
+    assert index[mid] == {leaf}
+    assert leaf not in index and sibling not in index
+
+
+def test_scan_cost_is_linear_in_registry_records(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Regression (2026-10-08): ~1200 registry records made the post-deadline
+    # tail ~1.5M pure-Python path comparisons that no deadline interrupts.
+    repo, _ = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    records = [
+        {
+            "branch": f"merged-{index}",
+            "path": str(tmp_path / "gone" / f"lane-{index}"),
+            "status": "merged",
+            "claim_generation": 0,
+        }
+        for index in range(300)
+    ]
+    _write_registry(state, records)
+    original = disk_usage._relative_to
+    calls = 0
+
+    def counting(path: Path, root: Path) -> bool:
+        nonlocal calls
+        calls += 1
+        return original(path, root)
+
+    monkeypatch.setattr(disk_usage, "_relative_to", counting)
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=30)
+
+    assert report["history"]["records"] == 300
+    assert calls < 2000, f"{calls} _relative_to calls for 300 records is quadratic"
+
+
 def test_missing_active_registered_lane_is_visible_and_warning_only(
     tmp_path: Path,
 ) -> None:

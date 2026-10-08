@@ -45,7 +45,6 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | 檔案 | 說明 |
 |------|------|
 | `Scenes/VocabularyListPresenter.swift` | `struct VocabularyListPresenter<Content>: View` + `VocabularyListPresenterState` |
-| `Scenes/PendingVocabPresenter.swift` | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
 | `Scenes/KGVocabPresenter.swift` | Books & Vocab 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
 | `Scenes/KnowledgeGraphPresenter.swift` | 知識圖譜佈局 |
 | `Scenes/WordDetailPresenter.swift` | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆。**卡片生命週期動作依成本分層**：封存在標題列（`archivebox` ⇄ `archivebox.fill` 單擊切換，`canArchive` 對未同步卡收起——`archiveCard` 以 word+notebookId 定址伺服器，未同步必 404）；刪除壓在內容最底的 `cardManagementSection`，與卡片隔一條 `AppAirDivider`，並收編原本孤懸的「閱讀時不標記此單字」toggle |
@@ -118,6 +117,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/SelectionModeState.swift` | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | `struct OverviewTab: View`，Vocab 入口 overview tab |
 | `Scenes/AddLinkSheet.swift` | `struct AddLinkSheet: View`，KG 手動加連線 sheet；搜尋同 Notebook 的既有詞條並把流程狀態委派 `AddLinkCoordinator`，本地無此字時（即使有部分符合候選）提供建立並連結入口，已連結的精確符合顯示「已連結」；連結中的列顯示 `addLink.row.linking.<cardId>` 並鎖定所有列；只有完全成功自動關閉，警告需按完成；送出的 context 是 A 的 sense clue，不是 B 的例句。開啟即 focus 搜尋框；每次 render 只算一次候選（`AddLinkSearchSnapshot`），lookup marker／列表／選列共用 |
+| `Scenes/AddLinkSearchIndex.swift` | `AddLinkSearchIndex`，sheet 持有的逐詞條搜尋鍵快取（locale-folded word／translation、正規化 word）；以原始字串比對失效，locale 變更即清空；`localCandidates` 預設用拋棄式 index，行為等同未快取（#2406） |
 | `Scenes/AddLinkSearchSnapshot.swift` | 一次 query 的衍生值：trimmed query、`localCandidates`、`exactTargetState`（有輸入即算，部分符合候選旁也要能判「建立」）；純值，與逐處重算結果相同 |
 | `Scenes/AddLinkStepCopy.swift` | `enum AddLinkStep`：後端六個 step id（順序即後端回報順序）→ 描述該步實際動作的 `addLink.step.*` 文案；`AddLinkCreationCoordinator.initialSteps()` 只從這裡取標籤 |
 | `Scenes/AddLinkCreateCopy.swift` | `enum AddLinkCreateCopy`（#2037）：建立入口的純文案——完整動作句 `addLink.create.title`（新字＋來源字，超過 20 字元截斷、折疊空白、字內引號換成 `'`）與副行 `addLink.create.notebook`（單字本名稱由 `ReviewCardNotebookBadgeResolver` 解析，永不顯示 id）。舊 key `建立` 不改義 |

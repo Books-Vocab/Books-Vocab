@@ -18,9 +18,7 @@ from kg.billing_handlers import (
 
 
 def _active_entitlements():
-    return EntitlementsResponse(
-        pro=SubscriptionStatusResponse(is_active=True, status="active")
-    )
+    return EntitlementsResponse(pro=SubscriptionStatusResponse(is_active=True, status="active"))
 
 
 def _make_snapshot(transaction_id="txn-1", original_transaction_id="orig-1"):
@@ -38,6 +36,7 @@ def _make_snapshot(transaction_id="txn-1", original_transaction_id="orig-1"):
 
 
 # ── notification handler ───────────────────────────────────────────────────────
+
 
 def test_notification_normal_flow_updated(tmp_path):
     snapshot = _make_snapshot()
@@ -102,6 +101,7 @@ def test_notification_unmapped_transaction_accepted(tmp_path):
 
 # ── reconcile handler ──────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_reconcile_apple_api_failure_raises_502(tmp_path):
     import httpx
@@ -113,7 +113,8 @@ async def test_reconcile_apple_api_failure_raises_502(tmp_path):
 
     with pytest.raises(HTTPException) as exc_info:
         await reconcile_app_store_subscription_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             apple_bundle_id="com.example.app",
             users_lock_file=tmp_path / "lock",
             load_users=lambda: {},
@@ -143,7 +144,8 @@ async def test_reconcile_normal_flow_returns_entitlements(tmp_path):
     req = AppStoreReconcileRequest(transaction_id="txn-1", environment="production")
 
     result = await reconcile_app_store_subscription_response(
-        req, {"id": "u1"},
+        req,
+        {"id": "u1"},
         apple_bundle_id="com.example.app",
         users_lock_file=tmp_path / "lock",
         load_users=lambda: {},
@@ -157,3 +159,85 @@ async def test_reconcile_normal_flow_returns_entitlements(tmp_path):
 
     decode_fn.assert_called_once_with("signed.jws")
     assert isinstance(result, EntitlementsResponse)
+
+
+# ── #2253: reconcile must not touch or leak another live user's record ─────────
+
+
+def _reconcile_with(users, caller, token):
+    from kg.billing import resolve_user_id_from_subscription_index as resolve
+    from kg.billing import write_subscription_snapshot as real_write
+
+    snapshot = _make_snapshot()
+    if token is not None:
+        snapshot["app_account_token"] = token
+    saved = MagicMock()
+
+    async def fetch_ok(*args, **kwargs):
+        return {"signedTransactionInfo": "signed.jws"}
+
+    async def run(tmp_path):
+        return await reconcile_app_store_subscription_response(
+            AppStoreReconcileRequest(transaction_id="txn-1", environment="production"),
+            {"id": caller},
+            apple_bundle_id="com.example.app",
+            users_lock_file=tmp_path / "lock",
+            load_users=lambda: users,
+            save_users=saved,
+            fetch_transaction_info=fetch_ok,
+            decode_signed_transaction_info=lambda _s: snapshot,
+            resolve_user_id_from_subscription_index=resolve,
+            write_subscription_snapshot=real_write,
+            build_entitlements_response=lambda rec: EntitlementsResponse(
+                pro=SubscriptionStatusResponse(is_active=True, status="active", product_id="pro_monthly")
+            ),
+        )
+
+    return saved, run
+
+
+def _owned_users():
+    return {
+        "P": {"subscription": {"is_active": True, "status": "active", "original_transaction_id": "orig-1"}},
+        "Q": {"config": {}},
+        "_subscription_index": {"orig-1": "P", "txn-1": "P"},
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("token_owner", [None, "P"])
+async def test_reconcile_other_users_transaction_rejected_and_state_unchanged(tmp_path, token_owner):
+    import copy
+
+    from kg.billing.index import account_token_for_user
+
+    users = _owned_users()
+    before = copy.deepcopy(users)
+    token = account_token_for_user(token_owner) if token_owner else None
+    saved, run = _reconcile_with(users, "Q", token)
+    with pytest.raises(HTTPException) as exc:
+        await run(tmp_path)
+    assert exc.value.status_code in (403, 409)
+    assert "pro_monthly" not in str(exc.value.detail)
+    assert users == before
+    saved.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_own_token_claims_for_caller(tmp_path):
+    from kg.billing.index import account_token_for_user
+
+    users = _owned_users()
+    saved, run = _reconcile_with(users, "Q", account_token_for_user("Q"))
+    await run(tmp_path)
+    assert users["_subscription_index"]["orig-1"] == "Q"
+    assert "subscription" in users["Q"]
+    assert users["P"]["subscription"]["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_reconcile_owner_without_token_still_writes_to_self(tmp_path):
+    users = _owned_users()
+    _, run = _reconcile_with(users, "P", None)
+    await run(tmp_path)
+    assert users["_subscription_index"]["orig-1"] == "P"

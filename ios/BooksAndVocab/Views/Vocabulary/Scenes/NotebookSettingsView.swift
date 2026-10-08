@@ -22,7 +22,7 @@ struct NotebookSettingsView: View {
     @State private var draftPolicy = ReviewPolicy.default
     @State private var draftLayout = ReviewCardLayoutProfile.default
     @State private var hasLoadedDraft = false
-    @State private var saveGeneration = 0
+    @State private var saver = NotebookSettingsSaver()
     @State private var errorMessage: String?
     @State private var pendingRetry: PendingRetry?
     @State private var isLayoutEditorPresented = false
@@ -150,39 +150,21 @@ struct NotebookSettingsView: View {
         projection.applyLocalReviewPolicy(policy, updatedAt: timestamp)
         guard modelContext.safeSave() else { return }
 
-        saveGeneration += 1
-        let generation = saveGeneration
         Task { @MainActor in
-            do {
-                let remote = try await kgService.updateNotebookSettings(
-                    id: notebookId,
-                    reviewPolicy: KGNotebookSettingsPatchGroup(
-                        value: policy.map(KGNotebookReviewPolicy.init),
-                        updatedAt: timestamp
-                    ),
-                    cardLayout: nil
-                )
-                guard generation == saveGeneration else { return }
-                guard let settings = remote.settings else {
-                    throw NotebookSettingsViewError.serverDidNotReturnSettings
-                }
-                projection.applyRemote(settings)
+            let outcome = await saver.saveReviewPolicy(
+                projection: projection, policy: policy, updatedAt: timestamp, service: kgService
+            )
+            switch outcome {
+            case .superseded:
+                return
+            case let .applied(settings):
                 draftPolicy = settings.reviewPolicy.value?.reviewPolicy
                     ?? ReviewPolicy(reviewSettingsStore.settings)
                 errorMessage = nil
                 pendingRetry = nil
                 modelContext.safeSave()
-            } catch {
-                guard generation == saveGeneration else { return }
-                // Keep the optimistic projection. This is the durable local
-                // state used by review immediately, and the retry records the
-                // exact intent without reverting the user's visible choice.
-                projection.syncState = .failed
-                projection.syncError = error.localizedDescription
-                errorMessage = L10n.format("notebookSettings.syncFailedDetail", error.localizedDescription)
-                pendingRetry = .reviewPolicy(policy)
-                modelContext.safeSave()
-                toastCoordinator.error(L10n.string("notebookSettings.syncFailed"))
+            case let .failed(error):
+                surfaceFailure(error, retry: .reviewPolicy(policy))
             }
         }
     }
@@ -193,37 +175,29 @@ struct NotebookSettingsView: View {
         projection.applyLocalCardLayout(profile, updatedAt: timestamp)
         guard modelContext.safeSave() else { return }
 
-        saveGeneration += 1
-        let generation = saveGeneration
         Task { @MainActor in
-            do {
-                let remote = try await kgService.updateNotebookSettings(
-                    id: notebookId,
-                    reviewPolicy: nil,
-                    cardLayout: KGNotebookSettingsPatchGroup(
-                        value: profile.map(KGNotebookCardLayout.init),
-                        updatedAt: timestamp
-                    )
-                )
-                guard generation == saveGeneration else { return }
-                guard let settings = remote.settings else {
-                    throw NotebookSettingsViewError.serverDidNotReturnSettings
-                }
-                projection.applyRemote(settings)
+            let outcome = await saver.saveCardLayout(
+                projection: projection, profile: profile, updatedAt: timestamp, service: kgService
+            )
+            switch outcome {
+            case .superseded:
+                return
+            case let .applied(settings):
                 draftLayout = settings.cardLayout.value?.profile ?? reviewCardLayoutStore.profile
                 errorMessage = nil
                 pendingRetry = nil
                 modelContext.safeSave()
-            } catch {
-                guard generation == saveGeneration else { return }
-                projection.syncState = .failed
-                projection.syncError = error.localizedDescription
-                errorMessage = L10n.format("notebookSettings.syncFailedDetail", error.localizedDescription)
-                pendingRetry = .cardLayout(profile)
-                modelContext.safeSave()
-                toastCoordinator.error(L10n.string("notebookSettings.syncFailed"))
+            case let .failed(error):
+                surfaceFailure(error, retry: .cardLayout(profile))
             }
         }
+    }
+
+    private func surfaceFailure(_ error: Error, retry: PendingRetry) {
+        errorMessage = L10n.format("notebookSettings.syncFailedDetail", error.localizedDescription)
+        pendingRetry = retry
+        modelContext.safeSave()
+        toastCoordinator.error(L10n.string("notebookSettings.syncFailed"))
     }
 }
 
@@ -391,17 +365,6 @@ private struct NotebookCardLayoutSection: View {
             Text(L10n.string("notebookSettings.cardLayoutFooter"))
         }
         .accessibilityIdentifier("notebook.settings.layoutSection")
-    }
-}
-
-private enum NotebookSettingsViewError: LocalizedError {
-    case serverDidNotReturnSettings
-
-    var errorDescription: String? {
-        switch self {
-        case .serverDidNotReturnSettings:
-            return L10n.string("notebookSettings.serverUnsupported")
-        }
     }
 }
 

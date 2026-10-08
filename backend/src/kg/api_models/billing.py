@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -39,6 +40,21 @@ class AdminGrantRequest(BaseModel):
     reason: str | None = None
     expires_at: str | None = None
     granted_by: str | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def _normalize_expires_at(cls, value: str | None) -> str | None:
+        # An unparseable value would otherwise be stored verbatim and never
+        # expire (admin_grant_is_active treats it as "no expiry").
+        if value is None or not value.strip():
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("expires_at must be an ISO-8601 datetime") from exc
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).isoformat()
 
 
 class AdminUserEntitlementResponse(BaseModel):

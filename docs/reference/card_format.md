@@ -15,7 +15,7 @@ verified_against: 9d1fc2de80eb235fa74410b319324e3085cc07b2
 | `content` | ✓ | 單詞或片語 | `invoke` |
 | `meaning` | ✓ | 中文定義 | `引用法律或祈求` |
 | `pos` | | 詞性縮寫 | `v.` `n.` `adj.` `adv.` `prep.` |
-| `examples` | | 例句，用 `**word**` 標記目標詞 | `The lawyer **invoked** the law.` |
+| `examples` | | 例句，用 `**word**` 標記目標詞。backend 建例句時：context 內恰有一個與目標詞相符的 `**…**`（NFKC＋casefold＋去尾標點後比對）則原樣保留；否則去除標記、NFKC 正規化後以詞界（`(?<!\w)…(?!\w)`）、大小寫不敏感搜尋，保留原大小寫並標記第一個命中（再依序試 alternatives），皆無命中則回傳原 context | `The lawyer **invoked** the law.` |
 | `collocations` | | 常見搭配 | `invoke a law` |
 | `mode` | | `recognition`（預設）或 `production` | `recognition` |
 

@@ -266,6 +266,18 @@ KG_IOS_DISK_GUARD_STATE="$xctest_budget_state" KG_IOS_DISK_GUARD_ENFORCE_XCTEST=
   /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" >/dev/null 2>&1 || xctest_rc=$?
 [[ "$xctest_rc" -eq 75 ]] && ok "XCTestDevices budget block keeps 75" || bad "xctest block exit=$xctest_rc"
 
+xctest_slow_state="$TMP/guard-xctest-slow.json"
+cat > "$xctest_slow_state" <<'EOF2'
+{"schema":"kg.disk.guard.v1","verdict":"block","reason":"xctest-devices-measurement-incomplete","action":"retry-next-tick","xctest_devices_verdict":"block","xctest_devices_manual_review":0,"at":"2099-01-01T00:00:00Z"}
+EOF2
+xctest_slow_rc=0
+xctest_slow_out="$(KG_IOS_DISK_GUARD_STATE="$xctest_slow_state" KG_IOS_DISK_GUARD_ENFORCE_XCTEST=1 \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" || xctest_slow_rc=$?
+[[ "$xctest_slow_rc" -eq 75 ]] && ok "a time-limited XCTestDevices walk is temporary (75)" || bad "xctest slow-walk exit=$xctest_slow_rc: $xctest_slow_out"
+grep -q 'reason=xctest-devices-measurement-incomplete' <<<"$xctest_slow_out" && grep -q 'retryable=yes' <<<"$xctest_slow_out" \
+  && ok "a time-limited walk is named as such and retryable" || bad "slow-walk message: $xctest_slow_out"
+grep -q 'budget-exceeded' <<<"$xctest_slow_out" && bad "a time-limited walk is reported as a budget overrun" || ok "a time-limited walk is not reported as a budget overrun"
+
 echo "── ios_ops.sh test reads the guard before the lease and the build lock ──"
 early_lock="$TMP/early-build.lock"
 early_leases="$TMP/early-leases"
@@ -398,6 +410,49 @@ classify "unknown-physical-worktree" 77 "" unknown-physical-worktree
 classify "duplicate-physical-worktree" 77 "" duplicate-physical-worktree
 classify "physical-identity-mismatch" 77 "" physical-identity-mismatch
 classify "registry-records-invalid" 77 "" registry-records-invalid
+
+echo "── lane-usage-report-blocked: a stale report is never structural evidence ──"
+# Regression (2026-10-08): the tick's supervisor killed the scan and recorded
+# lane_usage_rc=75, which the consumer reads as "a complete report was written".
+# It then trusted a report from 80 minutes earlier, named a worktree that no
+# longer existed, and answered exit 77 retryable=no.  Only a report written by the
+# tick that produced the state may decide a structural block.
+set_mtime_ago() {  # $1=file $2=seconds
+  local ts=$(( $(date +%s) - $2 ))
+  touch -d "@$ts" "$1" 2>/dev/null || touch -t "$(date -r "$ts" '+%Y%m%d%H%M.%S')" "$1"
+}
+stale_case() {  # $1=label $2=expected rc $3=lane_usage_rc-or-empty $4=report age seconds, then reasons
+  local label="$1" want="$2" lrc="$3" age="$4" got=0 out
+  shift 4
+  lane_guard_with_rc "$lrc" > "$TMP/stale-guard.json"
+  if [[ "${1:-}" == "@named" ]]; then
+    cp "$lane_state" "$TMP/stale-usage.json"  # lists /x/orphan-one;/x/orphan-two as unregistered
+  else
+    lane_usage_with_reasons "$@" > "$TMP/stale-usage.json"
+  fi
+  set_mtime_ago "$TMP/stale-usage.json" "$age"
+  STALE_OUT="$(KG_IOS_DISK_GUARD_STATE="$TMP/stale-guard.json" KG_IOS_DISK_LANE_USAGE_STATE="$TMP/stale-usage.json" \
+    KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
+    /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test; rc=\$?; kg_ios_disk_budget_blocked_hint '[t]' \$rc; exit \$rc" 2>&1)" || got=$?
+  [[ "$got" -eq "$want" ]] && ok "$label exits $want" || bad "$label exit=$got (want $want): $STALE_OUT"
+}
+stale_case "report 80 minutes older than the tick that cites it (rc 75, structural reason)" 75 75 4800 @named
+grep -q 'retryable=no' <<<"$STALE_OUT" && bad "stale report still claims retryable=no" || ok "stale report does not claim retryable=no"
+grep -q 'laneUsageFresh=no' <<<"$STALE_OUT" && ok "stale report is named in the diagnostic" || bad "stale diagnostic missing: $STALE_OUT"
+grep -q 'unregisteredWorktrees=/x' <<<"$STALE_OUT" && bad "stale report's worktree names are presented as current" || ok "stale report's worktree names are not presented as current"
+grep -q 'guard --refresh' <<<"$STALE_OUT" && ok "stale report points at the refresh command" || bad "stale refresh hint missing: $STALE_OUT"
+grep -q 'clean rebuildable cache' <<<"$STALE_OUT" && bad "stale report advises cleaning cache" || ok "stale report does not advise cleaning cache"
+stale_case "stale report from an older producer that wrote no lane_usage_rc" 75 "" 4800 dirty-physical-worktree
+grep -q 'laneUsageFresh=no' <<<"$STALE_OUT" && ok "stale report without rc is named in the diagnostic" || bad "stale diagnostic missing: $STALE_OUT"
+stale_case "report a few seconds older than the tick (normal write order)" 77 75 20 @named
+grep -q 'retryable=no' <<<"$STALE_OUT" && ok "a report from the same tick stays structural" || bad "fresh report lost retryable=no: $STALE_OUT"
+grep -q 'unregisteredWorktrees=/x/orphan-one;/x/orphan-two' <<<"$STALE_OUT" && ok "positive control: a fresh report names its worktrees" || bad "fresh report lost its worktree names: $STALE_OUT"
+stale_case "report just inside the slack window" 77 75 100 unregistered-physical-worktree
+stale_case "report just outside the slack window" 75 75 160 unregistered-physical-worktree
+lane_guard_with_rc 75 > "$TMP/stale-guard.json"
+missing_out="$(KG_IOS_DISK_GUARD_STATE="$TMP/stale-guard.json" KG_IOS_DISK_LANE_USAGE_STATE="$TMP/no-such-lane-report.json" \
+  KG_IOS_DISK_GUARD_AUTO_REFRESH=0 /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" && missing_rc=0 || missing_rc=$?
+[[ "$missing_rc" -eq 75 ]] && ok "missing lane report is temporary, not structural" || bad "missing lane report exit=$missing_rc: $missing_out"
 
 echo "── in-lock preflight skips the guard only for a fresh early verdict ──"
 pf_env=(KG_IOS_DISK_CACHE_ROOTS="$cache_root/ios-build-derived-data" KG_IOS_DISK_CACHE_BUDGET_GIB=1

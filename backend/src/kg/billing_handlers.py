@@ -21,6 +21,7 @@ from .api_models import (
     EntitlementsResponse,
 )
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
+from .billing.index import resolve_claim_owner
 from .types import StoredUserRecord, SubscriptionRecord, UsersPayload
 from .users_lock import users_file_lock
 
@@ -173,6 +174,8 @@ def sync_app_store_subscription_response(
 
     with users_file_lock(users_lock_file):
         users = load_users()
+        if req.signed_transaction_info:
+            resolve_claim_owner(users, user["id"], snapshot)
         record = _write_snapshot(
             write_subscription_snapshot,
             users,
@@ -311,14 +314,8 @@ async def reconcile_app_store_subscription_response(
     def _persist_snapshot() -> StoredUserRecord:
         with users_file_lock(users_lock_file):
             users = load_users()
-            resolved_user_id = (
-                resolve_user_id_from_subscription_index(
-                    users,
-                    snapshot["original_transaction_id"],
-                    snapshot["transaction_id"],
-                )
-                or user["id"]
-            )
+            # Never write to (or return) another live user's record.
+            resolved_user_id = resolve_claim_owner(users, user["id"], snapshot, resolve_user_id_from_subscription_index)
             record = _write_snapshot(
                 write_subscription_snapshot,
                 users,

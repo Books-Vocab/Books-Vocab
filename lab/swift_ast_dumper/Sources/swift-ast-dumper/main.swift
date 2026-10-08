@@ -9,7 +9,11 @@
 // `AppSpacing.s2 + 2`), and trailing-closure scope (content stays the decorated node,
 // not flattened to its parent). Goal: drive `unparsed` to zero.
 //
-// Usage: swift-ast-dumper <file.swift> [--struct Name]
+// Usage: swift-ast-dumper <file.swift>... [--struct Name] [--emit <filter>]
+//   --struct Name     emit only the View struct called Name
+//   --emit <filter>   emit only structs whose source path contains <filter>
+// Exit: 0 ok; 1 no struct matched a filter or a file was unreadable (JSON is still
+// printed to stdout); 2 usage error.
 
 import Foundation
 import SwiftSyntax
@@ -662,18 +666,23 @@ final class StructCollector: SyntaxVisitor {
 // ---------------------------------------------------------------------------
 
 let argv = CommandLine.arguments
-var only: String?
-if let i = argv.firstIndex(of: "--struct"), i + 1 < argv.count { only = argv[i + 1] }
+let usage = "usage: swift-ast-dumper <file.swift>... [--struct Name] [--emit <filter>]"
+func usageError(_ msg: String? = nil) -> Never {
+    FileHandle.standardError.write(((msg.map { $0 + "\n" } ?? "") + usage + "\n").data(using: .utf8)!)
+    exit(2)
+}
+func flagValue(_ flag: String) -> String? {
+    guard let i = argv.firstIndex(of: flag) else { return nil }
+    guard i + 1 < argv.count else { usageError("missing value for \(flag)") }
+    return argv[i + 1]
+}
+let only = flagValue("--struct")
 // Symbol table is built from ALL passed files (app-wide custom modifiers live in
 // UIComponents/, Platform/, …), but only structs whose source path contains `emitFilter`
 // are emitted/measured. This separates "where definitions live" from "what we score".
-var emitFilter: String?
-if let i = argv.firstIndex(of: "--emit"), i + 1 < argv.count { emitFilter = argv[i + 1] }
+let emitFilter = flagValue("--emit")
 let files = argv.dropFirst().filter { $0.hasSuffix(".swift") }
-guard !files.isEmpty else {
-    FileHandle.standardError.write("usage: swift-ast-dumper <file.swift>... [--struct Name]\n".data(using: .utf8)!)
-    exit(2)
-}
+guard !files.isEmpty else { usageError() }
 
 // pass 1: parse every file, populate the cross-file symbol table AND collect the
 // View bodies to lower (with their source attribution). Lowering must wait until the
@@ -704,3 +713,15 @@ let out: [String: Any] = ["structs": structs, "skipped": skipped]
 let data = try JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
 FileHandle.standardOutput.write(data)
 FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+
+// Exit status: JSON is printed first (inspectable), then failures surface non-zero.
+var failed = false
+if structs.isEmpty, only != nil || emitFilter != nil {
+    FileHandle.standardError.write("no structs matched filter (--struct \(only ?? "-"), --emit \(emitFilter ?? "-"))\n".data(using: .utf8)!)
+    failed = true
+}
+if !skipped.isEmpty {
+    FileHandle.standardError.write("\(skipped.count) file(s) unreadable\n".data(using: .utf8)!)
+    failed = true
+}
+if failed { exit(1) }

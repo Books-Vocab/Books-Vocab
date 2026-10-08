@@ -18,6 +18,7 @@ from ..domain.observations import (
     PullRequestSnapshot,
     RegistrySnapshot,
 )
+from .pr_contract import salvage_body_issues, without_issues_section
 
 _ISSUE_REF = re.compile(r"(?:#|/issues/)(?P<number>[1-9][0-9]*)\b", re.IGNORECASE)
 _BARE_ISSUE_REF = re.compile(r"[1-9][0-9]*\Z")
@@ -178,8 +179,17 @@ def _pull_request_body_references_issue(
     """
 
     body = pull_request.body
-    if _DELIVERY_RECEIPT_MARKER in body and _references_issue(body, number):
-        return True
+    if _DELIVERY_RECEIPT_MARKER in body:
+        # The typed `## Issues` block is the only place Closes/Refs live, so the
+        # generic scan must not see it: `Refs #N` only advances N and may count
+        # solely while this PR is still open (owner-bound), never as completion.
+        issues = salvage_body_issues(body)
+        if number in issues.closes:
+            return True
+        if number in issues.refs and pull_request.state == "OPEN":
+            return True
+        if _references_issue(without_issues_section(body), number):
+            return True
     if _STRUCTURED_ISSUE_REF.search(body):
         return any(
             int(match.group("number")) == number

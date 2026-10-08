@@ -57,9 +57,37 @@ final class LocalBookFileManager: BookFileManaging {
                 AppLog.book.error("book file removal failed (\(url.path, privacy: .public)): \(error.localizedDescription)")
                 failures.append((url, error))
             }
+            Self.removeOriginals(forEpub: fileName, in: location, failures: &failures)
         }
         if !failures.isEmpty {
             throw BookFileDeletionError(fileName: fileName, failures: failures)
+        }
+    }
+
+    /// TXT/MD 匯入時保留的原始檔副本名稱：由 EPUB 檔名（含 UUID，天然唯一）推導，
+    /// 讓匯入與刪除共用同一規則，不依賴會撞名的來源檔名（#2440）。
+    static func originalCopyName(forEpub fileName: String, sourceExt: String) -> String {
+        let stem = (fileName as NSString).deletingPathExtension
+        return "\(stem).\(sourceExt.lowercased())"
+    }
+
+    /// 刪除某位置下該書的 Originals 副本（txt / md）；不存在視為已達成。
+    private static func removeOriginals(
+        forEpub fileName: String,
+        in location: URL,
+        failures: inout [(url: URL, error: Error)]
+    ) {
+        let originals = location.appendingPathComponent("Originals", isDirectory: true)
+        for ext in ["txt", "md"] {
+            let url = originals.appendingPathComponent(originalCopyName(forEpub: fileName, sourceExt: ext))
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch where isFileAbsent(error) {
+                continue
+            } catch {
+                AppLog.book.error("book original removal failed (\(url.path, privacy: .public)): \(error.localizedDescription)")
+                failures.append((url, error))
+            }
         }
     }
 

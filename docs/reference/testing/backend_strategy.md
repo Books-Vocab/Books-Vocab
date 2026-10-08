@@ -37,6 +37,7 @@ verified_against: af224fa2d86d76db01efe47b092706c80988e82e
 - 不允許 pipeline 核心模組出現 `print()`
 - 受管 router 的 `async def` route 不得在 event loop 直接呼叫 store／SQLite／`pipeline_log`／LLM（`tests/test_async_route_blocking_guard.py` 的 AST guard；新模組在 `GUARDED_ROUTE_MODULES` 加一列）
 - 背景任務失敗必須寫入 `ERROR` logs
+- 結構化 log 每筆 record 必為單行可 `json.loads` 的 JSON，使用者可控字串（換行、引號、`\r`）不得偽造或拆分 record（`tests/test_logging_config.py`，含 Google callback `error` 參數的端到端案例）
 - concurrent config writes 不得損壞 `users.json`
 - `orphan_scan --fix`（含 dry-run）在 `users.json` 缺失／損毀／空而 log 表仍有資料時必須 fail closed（`UserRegistryUnavailable`、CLI exit 1、零刪除；`tests/test_orphan_scan.py`）
 

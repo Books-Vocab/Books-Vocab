@@ -36,8 +36,14 @@ def cmd_link_add(args: argparse.Namespace) -> int:
     if not 0.0 <= args.confidence <= 1.0:
         raise EditError("--confidence 須在 0.0 ~ 1.0")
     nb_id = _resolve_notebook_id(ctx.user_dir, args.notebook)
-    plan = {"from": args.from_ref, "to": args.to_ref, "kind": args.kind,
-            "confidence": args.confidence, "reason": args.reason, "notebook_id": nb_id}
+    plan = {
+        "from": args.from_ref,
+        "to": args.to_ref,
+        "kind": args.kind,
+        "confidence": args.confidence,
+        "reason": args.reason,
+        "notebook_id": nb_id,
+    }
     state: dict[str, Any] = {}
 
     def apply_fn() -> dict[str, Any]:
@@ -61,25 +67,40 @@ def cmd_link_add(args: argparse.Namespace) -> int:
                     )
                 else:
                     link = graph.add_link(
-                        from_id=from_card.id, to_id=to_card.id,
-                        kind=LinkKind(args.kind), confidence=args.confidence, reason=args.reason,
+                        from_id=from_card.id,
+                        to_id=to_card.id,
+                        kind=LinkKind(args.kind),
+                        confidence=args.confidence,
+                        reason=args.reason,
                         source="ops",
                     )
                 state["link_id"] = link.id
+                if pre_existing is None or args.if_exists == "update":
+                    # touch barrier:iOS 增量 pull 靠 card.updated_at 才重讀 linksByKind。
+                    cards.batch_touch({from_card.id, to_card.id}, notebook_id=nb_id)
                 is_idem = pre_existing is not None and pre_existing.id == link.id
-                semantic = "updated-existing" if pre_existing is not None and args.if_exists == "update" else "kept-existing"
-                return {"link": {"id": link.id, "from": from_card.content, "to": to_card.content,
-                                 "kind": str(link.kind), "confidence": link.confidence, "reason": link.reason},
-                        "idempotent": is_idem,
-                        "if_exists": args.if_exists,
-                        "existing_semantics": semantic if pre_existing is not None else "created-new"}
+                semantic = (
+                    "updated-existing" if pre_existing is not None and args.if_exists == "update" else "kept-existing"
+                )
+                return {
+                    "link": {
+                        "id": link.id,
+                        "from": from_card.content,
+                        "to": to_card.content,
+                        "kind": str(link.kind),
+                        "confidence": link.confidence,
+                        "reason": link.reason,
+                    },
+                    "idempotent": is_idem,
+                    "if_exists": args.if_exists,
+                    "existing_semantics": semantic if pre_existing is not None else "created-new",
+                }
 
     def verify_fn() -> dict[str, Any]:
         # 讀**磁碟** JSON 驗證這條 link 落盤,而非讀快取實例的記憶體(dogfood C1)。
         with _command_store(_graph_store(ctx.user_dir, nb_id)) as graph:
             lid = state.get("link_id")
-            return {"ok": lid is not None and _link_on_disk(graph, lid),
-                    "link_count": graph.link_count()}
+            return {"ok": lid is not None and _link_on_disk(graph, lid), "link_count": graph.link_count()}
 
     return ctx.run(action="link-add", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -95,6 +116,8 @@ def cmd_link_delete(args: argparse.Namespace) -> int:
             if graph.get_link(args.link_id) is None:
                 raise EditError(f"link not found: {args.link_id}")
             from_id, to_id = graph.hard_delete_link(args.link_id, source="ops")
+            with _command_store(_card_store(ctx.user_dir)) as cards:
+                cards.batch_touch({from_id, to_id}, notebook_id=nb_id)
             return {"deleted_link": args.link_id, "from_id": from_id, "to_id": to_id}
 
     def verify_fn() -> dict[str, Any]:
@@ -103,6 +126,7 @@ def cmd_link_delete(args: argparse.Namespace) -> int:
             return {"ok": not _link_on_disk(graph, args.link_id)}
 
     return ctx.run(action="link-delete", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
 
 def cmd_link_list(args: argparse.Namespace) -> int:
     """列出某 notebook 的 active 連結(含 link id + 兩端 card content)。唯讀。
@@ -124,15 +148,22 @@ def cmd_link_list(args: argparse.Namespace) -> int:
                     continue
                 fc = cards.get(lk.from_id)
                 tc = cards.get(lk.to_id)
-                links.append({
-                    "id": lk.id,
-                    "from": fc.content if fc else lk.from_id,
-                    "to": tc.content if tc else lk.to_id,
-                    "kind": str(lk.kind), "confidence": lk.confidence, "reason": lk.reason,
-                })
-    emit({"action": "link-list", "uid": args.uid, "notebook_id": nb_id,
-          "count": len(links), "links": links}, json_mode=args.json)
+                links.append(
+                    {
+                        "id": lk.id,
+                        "from": fc.content if fc else lk.from_id,
+                        "to": tc.content if tc else lk.to_id,
+                        "kind": str(lk.kind),
+                        "confidence": lk.confidence,
+                        "reason": lk.reason,
+                    }
+                )
+    emit(
+        {"action": "link-list", "uid": args.uid, "notebook_id": nb_id, "count": len(links), "links": links},
+        json_mode=args.json,
+    )
     return 0
+
 
 def cmd_link_update(args: argparse.Namespace) -> int:
     """改連結 confidence/reason/kind —— 此前只能 delete+add(dogfood C8 / A LOW-4)。"""
@@ -152,16 +183,16 @@ def cmd_link_update(args: argparse.Namespace) -> int:
         updates["kind"] = LinkKind(args.kind)
     if not updates:
         raise EditError("link-update 需至少一個 --confidence / --reason / --kind")
-    plan = {"link_id": args.link_id, "notebook_id": nb_id,
-            "updates": {k: str(v) for k, v in updates.items()}}
+    plan = {"link_id": args.link_id, "notebook_id": nb_id, "updates": {k: str(v) for k, v in updates.items()}}
 
     def apply_fn() -> dict[str, Any]:
         with _command_store(_graph_store(ctx.user_dir, nb_id)) as graph:
             if graph.get_link(args.link_id) is None:
                 raise EditError(f"link not found: {args.link_id}")
             lk = graph.update_link(args.link_id, source="ops", **updates)
-            return {"link": {"id": lk.id, "confidence": lk.confidence,
-                             "reason": lk.reason, "kind": str(lk.kind)}}
+            with _command_store(_card_store(ctx.user_dir)) as cards:
+                cards.batch_touch({lk.from_id, lk.to_id}, notebook_id=nb_id)
+            return {"link": {"id": lk.id, "confidence": lk.confidence, "reason": lk.reason, "kind": str(lk.kind)}}
 
     def verify_fn() -> dict[str, Any]:
         # 讀盤確認 link 仍在(C1);值用記憶體實例比對(update_link 已 flush 落盤)。

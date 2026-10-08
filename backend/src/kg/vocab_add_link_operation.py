@@ -493,7 +493,11 @@ async def _default_enrich(
             raise RuntimeError("enrichment provider returned an error")
         results = message.get("results") or []
         result = next(
-            (item for item in results if item.get("word", "").casefold() == card.content.casefold()),
+            (
+                item
+                for item in results
+                if isinstance(item, dict) and str(item.get("word") or "").casefold() == card.content.casefold()
+            ),
             None,
         )
         if result is None:

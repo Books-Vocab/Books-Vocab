@@ -303,6 +303,8 @@ def _parser() -> argparse.ArgumentParser:
     publish = commands.add_parser("publish", help="publish and release one handback")
     publish.add_argument("--lane", required=True)
     publish.add_argument("--title", required=True)
+    publish.add_argument("--closes", type=int, action="append", metavar="N")
+    publish.add_argument("--refs", type=int, action="append", metavar="N")
 
     published_base = commands.add_parser(
         "record-published-base",
@@ -709,7 +711,12 @@ def run_command(
     if args.command == "receipt":
         return application.receipt(args.lane)
     if args.command == "publish":
-        return application.publish(lane_id=args.lane, title=args.title)
+        return application.publish(
+            lane_id=args.lane,
+            title=args.title,
+            closes=args.closes,
+            refs=args.refs,
+        )
     if args.command == "record-published-base":
         return application.record_published_base(args.pr)
     if args.command == "release-published":

@@ -91,4 +91,55 @@ if "$ROOT/ops/docs_impact.py" --root "$TMP/tree" --registry "$TMP/tree/missing.y
 fi
 require "registry" "$TMP/missing-registry.out"
 
+# --since must see deletions and renames: a deleted/renamed-away registered source is
+# exactly when its doc goes stale. --check-sources keeps treating a missing source as dead.
+GR="$TMP/gitrepo"
+mkdir -p "$GR/src" "$GR/docs"
+printf 'x\n' >"$GR/src/router.py"
+printf 'doc\n' >"$GR/docs/router.md"
+cat >"$GR/registry.yml" <<'EOF'
+version: 2
+description: fixture
+documents:
+  - id: sop.router
+    path: docs/router.md
+    kind: sop
+    authority: test
+    triggers: [router]
+    sources:
+      - src/router.py
+EOF
+git -C "$GR" init -q
+git -C "$GR" add -A
+git -C "$GR" -c user.name=t -c user.email=t@t commit -q -m base
+GBASE="$(git -C "$GR" rev-parse HEAD)"
+gimpact() { (cd "$GR" && "$ROOT/ops/docs_impact.py" --root "$GR" --registry "$GR/registry.yml" --since "$GBASE" "$@"); }
+
+# unstaged deletion
+rm "$GR/src/router.py"
+gimpact >"$TMP/del-unstaged"
+require "sop.router" "$TMP/del-unstaged"
+# staged deletion
+git -C "$GR" add -A
+gimpact >"$TMP/del-staged"
+require "sop.router" "$TMP/del-staged"
+# committed deletion
+git -C "$GR" -c user.name=t -c user.email=t@t commit -q -m del
+gimpact >"$TMP/del-committed"
+require "sop.router" "$TMP/del-committed"
+# the deleted source stays DEAD for --check-sources
+if (cd "$GR" && "$ROOT/ops/docs_impact.py" --root "$GR" --registry "$GR/registry.yml" --check-sources) >"$TMP/dead.out"; then
+  echo "deleted source unexpectedly passed --check-sources" >&2
+  exit 1
+fi
+require "DEAD_SOURCE" "$TMP/dead.out"
+
+# rename away: the OLD path's doc is reported, and the old path is in the changed set
+git -C "$GR" reset -q --hard "$GBASE"
+git -C "$GR" mv src/router.py src/router2.py
+git -C "$GR" -c user.name=t -c user.email=t@t commit -q -m rename
+gimpact >"$TMP/rename"
+require "sop.router" "$TMP/rename"
+require "src/router.py" "$TMP/rename"
+
 echo "docs-impact tests: PASS"

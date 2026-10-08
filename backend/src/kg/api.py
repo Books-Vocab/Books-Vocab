@@ -17,10 +17,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
-)
+from .logging_config import configure_logging
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Memory ring-buffer log handler for the admin dashboard.

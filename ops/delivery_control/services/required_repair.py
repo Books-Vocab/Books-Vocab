@@ -11,6 +11,7 @@ from ..domain.states import HoldKind
 from ..ports.github import GitHubQueryPort, GitHubWorkflowCommandPort
 from ..ports.registry import RegistryQueryPort
 from .pr_contract import (
+    parse_body_issues,
     parse_pull_request_body,
     pull_request_holds,
     render_pull_request_body,
@@ -83,7 +84,9 @@ class RequiredRepairService:
             raise PolicyViolation("GitHub PR mapping differs from direct PR read")
 
         holds = pull_request_holds(pull_request)
-        expected_body = render_pull_request_body(receipt, holds=holds)
+        expected_body = render_pull_request_body(
+            receipt, holds=holds, issues=parse_body_issues(pull_request.body)
+        )
         if (
             pull_request.state != "OPEN"
             or pull_request.draft

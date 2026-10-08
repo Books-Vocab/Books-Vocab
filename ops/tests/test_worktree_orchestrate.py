@@ -6,7 +6,7 @@ import sys
 from argparse import Namespace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import pytest
 
@@ -776,6 +776,125 @@ def test_gate_discards_remote_results_when_head_moves_before_record(
     assert payload["reason"] == "head-moved-before-gate-record"
     assert payload["results"] == []
     assert not gate_path.exists()
+
+
+def _run_local_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    heads: tuple[tuple[int, str], ...],
+    file_sets: tuple[list[str], ...],
+) -> tuple[int, dict[str, Any], Path]:
+    local_check = {"name": "local-child", "cwd": ".", "level": "block"}
+    files = iter(file_sets)
+    monkeypatch.setattr(
+        coordinator, "_changed_files", lambda worktree, base: next(files)
+    )
+    monkeypatch.setattr(
+        coordinator, "_plan_checks", lambda files, **kwargs: [local_check]
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_run_check",
+        lambda check, worktree: {
+            "name": "local-child",
+            "level": "block",
+            "status": "pass",
+            "rc": 0,
+            "executed": True,
+        },
+    )
+    head_reads = iter(heads)
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            next(head_reads) if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+    gate_path = tmp_path / "state" / "gate.json"
+    monkeypatch.setattr(
+        coordinator, "_gate_record_path", lambda state, worktree: gate_path
+    )
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+    return rc, json.loads(capsys.readouterr().out), gate_path
+
+
+_SAME_FILES = (["ops/a.py"], ["ops/a.py"])
+
+
+@pytest.mark.parametrize(
+    ("heads", "file_sets"),
+    [
+        pytest.param(((0, "a" * 40), (0, "b" * 40)), _SAME_FILES, id="head-moved"),
+        pytest.param(
+            ((0, "a" * 40), (0, "a" * 40)),
+            (["ops/a.py"], ["ops/a.py", "ops/b.py"]),
+            id="files-changed",
+        ),
+        pytest.param(((0, "a" * 40), (1, "")), _SAME_FILES, id="final-head-read-fails"),
+    ],
+)
+def test_gate_local_route_blocks_without_record_when_state_moves(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    heads: tuple[tuple[int, str], ...],
+    file_sets: tuple[list[str], ...],
+) -> None:
+    rc, payload, gate_path = _run_local_gate(
+        tmp_path, monkeypatch, capsys, heads=heads, file_sets=file_sets
+    )
+
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert payload["reason"] == "head-moved-before-gate-record"
+    assert payload["results"] == []
+    assert not gate_path.exists()
+
+
+def test_gate_local_route_blocks_when_initial_head_read_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc, payload, gate_path = _run_local_gate(
+        tmp_path, monkeypatch, capsys, heads=((1, ""),), file_sets=(["ops/a.py"],)
+    )
+
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert payload["reason"] == "head-read-before-gate"
+    assert payload["results"] == []
+    assert not gate_path.exists()
+
+
+def test_gate_local_route_records_pass_when_head_and_files_stable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc, payload, gate_path = _run_local_gate(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        heads=((0, "a" * 40), (0, "a" * 40)),
+        file_sets=_SAME_FILES,
+    )
+
+    assert rc == coordinator.EXIT_OK
+    assert payload["verdict"] == "pass"
+    assert payload["head"] == "a" * 40
+    assert json.loads(gate_path.read_text(encoding="utf-8"))["verdict"] == "pass"
 
 
 def _ios_failure_output(*, file: Path | None) -> str:

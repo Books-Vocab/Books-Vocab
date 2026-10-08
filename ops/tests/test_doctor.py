@@ -197,6 +197,12 @@ def test_disk_guard_levels() -> None:
     )
     assert doctor.evaluate_disk({"verdict": "warning", "reason": "x"}).level == "warn"
     assert doctor.evaluate_disk({"verdict": "block", "reason": "y"}).level == "block"
+    assert (
+        doctor.evaluate_disk(
+            {"verdict": "critical", "reason": "free-below-critical"}
+        ).level
+        == "block"
+    )
     assert doctor.evaluate_disk(None).level == "ok"  # no guard on this machine
 
 

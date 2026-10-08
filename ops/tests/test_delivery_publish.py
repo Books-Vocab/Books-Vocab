@@ -29,6 +29,8 @@ from delivery_control.domain.observations import (
 )
 from delivery_control.domain.policies import evaluate_publication
 from delivery_control.services.pr_contract import (
+    IssueLinks,
+    parse_body_issues,
     parse_pull_request_body,
     render_pull_request_body,
 )
@@ -2053,3 +2055,75 @@ def test_scope_collision_against_open_pr_ignores_shared_files_only(
     )
 
     assert collided is expected
+
+
+def test_publish_without_issues_renders_no_issues_section() -> None:
+    receipt = _receipt()
+    service, _git, github = _service(receipt)
+
+    service.publish(receipt=receipt, title="fix: delivery")
+
+    assert github.pull_request is not None
+    assert github.pull_request.body == render_pull_request_body(receipt)
+
+
+def test_publish_explicit_issues_beat_registry_defaults() -> None:
+    receipt = _receipt()
+    service, _git, github = _service(receipt)
+
+    service.publish(
+        receipt=receipt,
+        title="fix: delivery",
+        issues=IssueLinks(closes=(2029,), refs=(2026,)),
+        default_issues=IssueLinks(closes=(1,)),
+    )
+
+    assert github.pull_request is not None
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(
+        closes=(2029,), refs=(2026,)
+    )
+
+
+def test_publish_defaults_apply_only_when_no_pr_declares_issues() -> None:
+    receipt = _receipt()
+    service, _git, github = _service(receipt)
+    defaults = IssueLinks(closes=(2392,))
+
+    first = service.publish(
+        receipt=receipt, title="fix: delivery", default_issues=defaults
+    )
+    again = service.publish(
+        receipt=receipt, title="fix: delivery", default_issues=defaults
+    )
+
+    assert first.outcome is PublicationOutcome.CREATED
+    assert again.outcome is PublicationOutcome.ALREADY_PUBLISHED
+    assert github.pull_request is not None
+    assert parse_body_issues(github.pull_request.body) == defaults
+
+
+def test_republish_keeps_the_existing_pr_issues_over_registry_defaults() -> None:
+    receipt = _receipt()
+    existing = replace(
+        _pull_request(receipt),
+        body=render_pull_request_body(
+            receipt, issues=IssueLinks(closes=(2029,), refs=(2026,))
+        ),
+    )
+    service, _git, github = _service(
+        receipt,
+        git=FakeGit(receipt, remote_sha=receipt.head_sha),
+        github=FakeGitHub(receipt, pull_request=existing),
+    )
+
+    result = service.publish(
+        receipt=receipt,
+        title="fix: delivery",
+        default_issues=IssueLinks(closes=(1,)),
+    )
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert github.pull_request is not None
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(
+        closes=(2029,), refs=(2026,)
+    )

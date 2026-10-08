@@ -20,13 +20,15 @@ struct AddLinkSearchSnapshot {
     static func make(
         query: String,
         sourceEntry: VocabularyEntry,
-        allEntries: [VocabularyEntry]
+        allEntries: [VocabularyEntry],
+        index: AddLinkSearchIndex = AddLinkSearchIndex()
     ) -> AddLinkSearchSnapshot {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = AddLinkCoordinator.localCandidates(
             query: query,
             sourceEntry: sourceEntry,
-            allEntries: allEntries
+            allEntries: allEntries,
+            index: index
         )
         // Punctuation-only input (`?!`) cleans to nothing: there is no word to
         // look up, link or create.

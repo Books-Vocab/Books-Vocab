@@ -101,7 +101,7 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
             f"  SUM(CASE WHEN {es.PIPELINE_FAILURE_WHERE} THEN 1 ELSE 0 END) AS failed "
             "FROM pipeline_runs "
             f"WHERE {_utc_instant_predicate('started_at')} "
-            f"AND status IN ('ok', '{es.PIPELINE_FAILURE_STATUS}')",
+            f"AND {es.PIPELINE_TERMINAL_WHERE}",
             (candidate_bound, cutoff),
         ).fetchone()
     total = _cell(row, 0)

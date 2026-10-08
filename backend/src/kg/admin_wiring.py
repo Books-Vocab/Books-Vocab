@@ -50,6 +50,7 @@ PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
 logger = logging.getLogger(__name__)
 
+
 class SupportsAdminSettings(Protocol):
     admin_token: str
     admin_password: str
@@ -59,12 +60,16 @@ class SupportsAdminSettings(Protocol):
 RuntimeSettingsFn = Callable[[], SupportsAdminSettings]
 UsersLoader = Callable[[], UsersPayload]
 UsersSaver = Callable[[UsersPayload], None]
+
+
 class MemLogGetter(Protocol):
-    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
-        ...
+    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]: ...
+
+
 class CardStoreFactory(Protocol):
-    def __call__(self, data_dir: Path) -> CardStore:
-        ...
+    def __call__(self, data_dir: Path) -> CardStore: ...
+
+
 EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]
 AdminEndpointResult = dict[str, Any]
@@ -132,7 +137,6 @@ def create_admin_handlers_from_dependencies(
     load_users_fn = dependencies.load_users_fn
     save_users_fn = dependencies.save_users_fn
     mem_log_getter = dependencies.mem_log_getter
-    card_store_factory = dependencies.card_store_factory
     build_entitlements_response_fn = dependencies.build_entitlements_response_fn
     current_admin_grant_record_fn = dependencies.current_admin_grant_record_fn
 
@@ -154,12 +158,9 @@ def create_admin_handlers_from_dependencies(
             build_entitlements_response=build_entitlements_response_fn,
             current_admin_grant_record=current_admin_grant_record_fn,
             data_dir=settings.data_dir,
-            card_store_factory=card_store_factory,
         )
 
-    def admin_logs(
-        n: int = 200, level: str | None = None
-    ) -> AdminEndpointResult:
+    def admin_logs(n: int = 200, level: str | None = None) -> AdminEndpointResult:
         """Return recent in-memory log entries for the admin dashboard."""
         return admin_logs_response(
             log_getter=mem_log_getter,
@@ -269,9 +270,7 @@ def create_admin_handlers_from_dependencies(
         users_root = (runtime_settings_fn().data_dir / "users").resolve()
         user_dir = (users_root / uid).resolve()
         try:
-            within_root = (
-                os.path.commonpath([str(user_dir), str(users_root)]) == str(users_root)
-            )
+            within_root = os.path.commonpath([str(user_dir), str(users_root)]) == str(users_root)
         except ValueError:
             logger.warning(
                 "Failed to resolve commonpath for admin user_id=%r user_dir=%s users_root=%s",
@@ -284,25 +283,22 @@ def create_admin_handlers_from_dependencies(
             raise HTTPException(status_code=400, detail="Invalid user_id")
         return user_dir
 
-    def admin_graph_density(
-        user_id: str, notebook_id: str = "default"
-    ) -> AdminEndpointResult:
+    def admin_graph_density(user_id: str, notebook_id: str = "default") -> AdminEndpointResult:
         """Return time-series graph density data for a user."""
         from .admin_graph_density import compute_graph_density
+
         return compute_graph_density(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
-    def admin_graph_playback(
-        user_id: str, notebook_id: str = "default"
-    ) -> AdminEndpointResult:
+    def admin_graph_playback(user_id: str, notebook_id: str = "default") -> AdminEndpointResult:
         """Return full graph nodes + edges with timestamps for playback."""
         from .admin_graph_playback import compute_graph_playback
+
         return compute_graph_playback(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
-    def admin_pipeline_runs(
-        user_id: str, limit: int = 20
-    ) -> AdminEndpointResult:
+    def admin_pipeline_runs(user_id: str, limit: int = 20) -> AdminEndpointResult:
         """Return pipeline run history for a user."""
         from .pipeline_log import get_runs
+
         return {
             "user_id": user_id,
             "runs": get_runs(user_id, limit=_clamp_limit(limit, PIPELINE_RUNS_MAX)),
@@ -311,6 +307,7 @@ def create_admin_handlers_from_dependencies(
     def admin_judge_stats(user_id: str) -> AdminEndpointResult:
         """Return per-user judge acceptance stats."""
         from .judge_log import get_acceptance_stats
+
         return get_acceptance_stats(user_id=user_id)
 
     def admin_translate_history(
@@ -327,36 +324,34 @@ def create_admin_handlers_from_dependencies(
             ``translate_phrase`` / ``translate_explain``).
         """
         from .translate_log import get_log
+
         return {
             "user_id": user_id,
-            "history": get_log(
-                user_id, limit=_clamp_limit(limit, TRANSLATE_HISTORY_MAX), q=q, op=op
-            ),
+            "history": get_log(user_id, limit=_clamp_limit(limit, TRANSLATE_HISTORY_MAX), q=q, op=op),
             "q": q or "",
             "op": op or "",
         }
 
-    def admin_user_activity(
-        user_id: str, hours: int = 24
-    ) -> AdminEndpointResult:
+    def admin_user_activity(user_id: str, hours: int = 24) -> AdminEndpointResult:
         """Return merged recent-activity timeline (translate + pipeline + judge)."""
         from .admin_user_activity import get_user_activity
+
         return get_user_activity(user_id, hours=hours)
 
     def admin_user_usage(user_id: str, range: str = "24h") -> AdminEndpointResult:
         """Return per-type usage breakdown for a user, filtered by time range."""
         from .admin_handlers import admin_user_usage_response
+
         return admin_user_usage_response(user_id, range_=range)
 
-    def admin_user_cost_summary(
-        user_id: str, range: str = "month"
-    ) -> AdminEndpointResult:
+    def admin_user_cost_summary(user_id: str, range: str = "month") -> AdminEndpointResult:
         """Return per-service / per-model AI cost summary for a user.
 
         ``range`` accepts ``24h`` / ``7d`` / ``30d`` / ``month`` (default,
         current calendar month UTC) / ``all``.
         """
         from .admin_cost_summary import get_user_cost_summary
+
         try:
             return get_user_cost_summary(user_id, range_=range)
         except ValueError as exc:
@@ -369,21 +364,22 @@ def create_admin_handlers_from_dependencies(
         """Return real-time host metrics for admin dashboard."""
         return admin_host_metrics_response()
 
-    def admin_users_search(
-        q: str = "", limit: int = 50
-    ) -> AdminEndpointResult:
+    def admin_users_search(q: str = "", limit: int = 50) -> AdminEndpointResult:
         """Search users by uid prefix / email substring / display name substring."""
         from .admin_users_search import search_users
+
         return search_users(load_users_fn(), q=q, limit=limit)
 
     def admin_observability() -> AdminEndpointResult:
         """Return site-wide aggregated observability metrics (24h / 7d)."""
         from .admin_observability import collect_observability
+
         return collect_observability()
 
     def admin_stats_trends(days: int = 30) -> AdminEndpointResult:
         """Return site-wide 30-day error/token/DAU trend buckets."""
         from .admin_trends import collect_trends
+
         return collect_trends(window_days=days)
 
     async def admin_log_retention_run() -> AdminEndpointResult:
@@ -394,6 +390,7 @@ def create_admin_handlers_from_dependencies(
         consumers (cron-style monitors / dashboards) that prefer a flat map.
         """
         from .log_retention import run_all
+
         report = await run_in_threadpool(run_all)
         return {
             **report,
@@ -404,9 +401,7 @@ def create_admin_handlers_from_dependencies(
             "token_deleted": report["token_usage"]["deleted"],
         }
 
-    def admin_audit(
-        since: str | None = None, limit: int = 100, action: str | None = None
-    ) -> AdminEndpointResult:
+    def admin_audit(since: str | None = None, limit: int = 100, action: str | None = None) -> AdminEndpointResult:
         """Return recent admin mutation audit log entries.
 
         Optional ``action`` query param filters to an exact action
@@ -433,9 +428,8 @@ def create_admin_handlers_from_dependencies(
         from starlette.concurrency import run_in_threadpool
 
         from .orphan_scan import scan
-        return await run_in_threadpool(
-            scan, data_dir=runtime_settings_fn().data_dir
-        )
+
+        return await run_in_threadpool(scan, data_dir=runtime_settings_fn().data_dir)
 
     return AdminHandlers(
         admin_ui=admin_ui,

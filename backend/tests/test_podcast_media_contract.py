@@ -87,3 +87,20 @@ def test_s3_reversed_range_is_forwarded_for_416_semantics():
             "Range": "bytes=10-5",
         }
     ]
+
+
+def test_podcast_s3_client_has_bounded_network_timeouts(monkeypatch):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
+    media_mod._s3_client_cached.cache_clear()
+    try:
+        config = media_mod._s3_client_cached("us-east-1", None).meta.config
+    finally:
+        media_mod._s3_client_cached.cache_clear()
+
+    assert config.connect_timeout <= 5
+    assert config.read_timeout <= 15
+    assert config.retries["total_max_attempts"] <= 3
+    assert config.retries["mode"] == "standard"
+    assert config.signature_version == "s3v4"
+    assert config.max_pool_connections == 32

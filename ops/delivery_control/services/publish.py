@@ -22,9 +22,12 @@ from ..ports.github import (
 )
 from .correlation import scope_matches_snapshot
 from .pr_contract import (
+    NO_ISSUES,
+    IssueLinks,
     parse_pull_request_body,
     pull_request_holds,
     render_pull_request_body,
+    salvage_body_issues,
 )
 from .publish_head_readback import wait_for_pull_request_head
 from .publish_preflight import PublicationContext
@@ -123,7 +126,14 @@ class PublishService:
         self.github_command = github_command
         self.github_workflow = github_workflow
 
-    def publish(self, *, receipt: HandbackReceipt, title: str) -> PublicationResult:
+    def publish(
+        self,
+        *,
+        receipt: HandbackReceipt,
+        title: str,
+        issues: IssueLinks | None = None,
+        default_issues: IssueLinks = NO_ISSUES,
+    ) -> PublicationResult:
         if (
             not title
             or title != title.strip()
@@ -179,9 +189,16 @@ class PublishService:
             # PR.  Holds already declared by an older receipt are not restored
             # here: an explicit reconcile-holds clearance is authoritative.
             effective_holds = existing_holds | (initial_holds - previously_declared)
+        if issues is None:
+            # Explicit links win; otherwise the PR's own links survive a
+            # republish, and only a PR without any takes the registry default.
+            issues = (
+                salvage_body_issues(pull_request.body) if pull_request else IssueLinks()
+            ) or default_issues
         body = render_pull_request_body(
             receipt,
             holds=effective_holds,
+            issues=issues,
         )
         if pull_request is None:
             pull_request = self.github_command.create_pull_request(
