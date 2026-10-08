@@ -34,32 +34,44 @@ class TestJsonSchemaScorer:
 class TestTranslateQualityScorer:
     def test_trad_chinese_pass(self):
         scorer = TranslateQualityScorer()
-        result = scorer.score({"t": "輝煌的", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"})
+        result = scorer.score(
+            {"t": "輝煌的", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"}
+        )
         assert result["trad_chinese"] == 1.0
 
     def test_trad_chinese_fail_simplified(self):
         scorer = TranslateQualityScorer()
-        result = scorer.score({"t": "辉煌的", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"})
+        result = scorer.score(
+            {"t": "辉煌的", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"}
+        )
         assert result["trad_chinese"] == 0.0
 
     def test_pos_suffix_adj_correct(self):
         scorer = TranslateQualityScorer()
-        result = scorer.score({"t": "輝煌的", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"})
+        result = scorer.score(
+            {"t": "輝煌的", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"}
+        )
         assert result["pos_correct"] == 1.0
 
     def test_pos_suffix_adj_wrong(self):
         scorer = TranslateQualityScorer()
-        result = scorer.score({"t": "輝煌", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"})
+        result = scorer.score(
+            {"t": "輝煌", "p": "adj.", "r": "resplendent"}, {"word": "resplendent"}
+        )
         assert result["pos_correct"] == 0.0
 
     def test_pos_suffix_adv_correct(self):
         scorer = TranslateQualityScorer()
-        result = scorer.score({"t": "端莊地", "p": "adv.", "r": "dignifiedly"}, {"word": "dignifiedly"})
+        result = scorer.score(
+            {"t": "端莊地", "p": "adv.", "r": "dignifiedly"}, {"word": "dignifiedly"}
+        )
         assert result["pos_correct"] == 1.0
 
     def test_pos_no_suffix_rule_for_noun(self):
         scorer = TranslateQualityScorer()
-        result = scorer.score({"t": "記憶", "p": "n.", "r": "memory"}, {"word": "memory"})
+        result = scorer.score(
+            {"t": "記憶", "p": "n.", "r": "memory"}, {"word": "memory"}
+        )
         assert result["pos_correct"] == 1.0
 
     def test_lemma_empty(self):
@@ -77,8 +89,18 @@ class TestJudgeBatchScorer:
     def test_valid_batch(self):
         scorer = JudgeBatchScorer()
         parsed = [
-            {"word": "sloppy", "link": "contrasts_with", "confidence": 0.9, "reason": "相反的意思"},
-            {"word": "careless", "link": "shares_usage", "confidence": 0.8, "reason": "類似用法"},
+            {
+                "word": "sloppy",
+                "link": "contrasts_with",
+                "confidence": 0.9,
+                "reason": "相反的意思",
+            },
+            {
+                "word": "careless",
+                "link": "shares_usage",
+                "confidence": 0.8,
+                "reason": "類似用法",
+            },
         ]
         result = scorer.score(parsed, {})
         assert result["link_valid"] == 1.0
@@ -89,7 +111,12 @@ class TestJudgeBatchScorer:
         scores = score_result(
             "judge_batch",
             [
-                {"word": "sloppy", "link": "contrasts_with", "confidence": 0.9, "reason": "相反"},
+                {
+                    "word": "sloppy",
+                    "link": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "相反",
+                },
                 "junk",
             ],
             {},
@@ -103,21 +130,43 @@ class TestJudgeBatchScorer:
         result = scorer.score(parsed, {})
         assert result["link_valid"] == 0.0
 
+    def test_unhashable_link_scores_zero(self):
+        scorer = JudgeBatchScorer()
+        for bad in (["shares_usage"], {"k": 1}):
+            parsed = [{"word": "x", "link": bad, "confidence": 0.5, "reason": "test"}]
+            assert scorer.score(parsed, {})["link_valid"] == 0.0
+
     def test_confidence_out_of_range(self):
         scorer = JudgeBatchScorer()
-        parsed = [{"word": "x", "link": "contrasts_with", "confidence": 1.5, "reason": "test"}]
+        parsed = [
+            {"word": "x", "link": "contrasts_with", "confidence": 1.5, "reason": "test"}
+        ]
         result = scorer.score(parsed, {})
         assert result["confidence_range"] == 0.0
 
     def test_confidence_nan(self):
         scorer = JudgeBatchScorer()
-        parsed = [{"word": "x", "link": "contrasts_with", "confidence": float("nan"), "reason": "test"}]
+        parsed = [
+            {
+                "word": "x",
+                "link": "contrasts_with",
+                "confidence": float("nan"),
+                "reason": "test",
+            }
+        ]
         result = scorer.score(parsed, {})
         assert result["confidence_range"] == 0.0
 
     def test_reason_simplified(self):
         scorer = JudgeBatchScorer()
-        parsed = [{"word": "x", "link": "contrasts_with", "confidence": 0.9, "reason": "这完全没有关联"}]
+        parsed = [
+            {
+                "word": "x",
+                "link": "contrasts_with",
+                "confidence": 0.9,
+                "reason": "这完全没有关联",
+            }
+        ]
         result = scorer.score(parsed, {})
         assert result["reason_trad"] == 0.0
 
@@ -141,19 +190,57 @@ class TestEnrichScorer:
 
     def test_invalid_pos(self):
         scorer = EnrichScorer()
-        parsed = [{"word": "x", "pos": "adjective", "note": "test", "collocations": [], "meaning_fix": None}]
+        parsed = [
+            {
+                "word": "x",
+                "pos": "adjective",
+                "note": "test",
+                "collocations": [],
+                "meaning_fix": None,
+            }
+        ]
         result = scorer.score(parsed, {})
         assert result["pos_valid"] == 0.0
 
+    def test_unhashable_pos_scores_zero(self):
+        scorer = EnrichScorer()
+        for bad in (["n."], {"k": 1}):
+            parsed = [
+                {
+                    "word": "x",
+                    "pos": bad,
+                    "note": "test",
+                    "collocations": [],
+                    "meaning_fix": None,
+                }
+            ]
+            assert scorer.score(parsed, {})["pos_valid"] == 0.0
+
     def test_note_simplified(self):
         scorer = EnrichScorer()
-        parsed = [{"word": "x", "pos": "n.", "note": "强调重点", "collocations": [], "meaning_fix": None}]
+        parsed = [
+            {
+                "word": "x",
+                "pos": "n.",
+                "note": "强调重点",
+                "collocations": [],
+                "meaning_fix": None,
+            }
+        ]
         result = scorer.score(parsed, {})
         assert result["note_trad"] == 0.0
 
     def test_meaning_fix_adj_suffix_wrong(self):
         scorer = EnrichScorer()
-        parsed = [{"word": "x", "pos": "adj.", "note": "test", "collocations": [], "meaning_fix": "輝煌"}]
+        parsed = [
+            {
+                "word": "x",
+                "pos": "adj.",
+                "note": "test",
+                "collocations": [],
+                "meaning_fix": "輝煌",
+            }
+        ]
         result = scorer.score(parsed, {})
         assert result["meaning_fix_trad"] == 0.0
 

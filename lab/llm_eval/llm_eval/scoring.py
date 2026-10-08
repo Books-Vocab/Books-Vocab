@@ -22,6 +22,7 @@ logger = logging.getLogger("llm_eval")
 # Using opencc-python-reimplemented (pure Python, no native deps).
 try:
     import opencc
+
     _S2T_CONVERTER = opencc.OpenCC("s2t")
 except Exception:
     _S2T_CONVERTER = None
@@ -42,8 +43,7 @@ _VALID_LINK_KINDS: set[str] = {"contrasts_with", "shares_usage", "not_applicable
 class Scorer(Protocol):
     """A scorer evaluates one parsed output and returns a dict of scores."""
 
-    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
-        ...
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]: ...
 
 
 class JsonSchemaScorer:
@@ -70,10 +70,7 @@ class JsonSchemaScorer:
                 result["schema_conform"] = 0.0
                 return result
             missing = [
-                key
-                for item in items
-                for key in self.required_keys
-                if key not in item
+                key for item in items for key in self.required_keys if key not in item
             ]
             result["schema_conform"] = 1.0 if not missing else 0.0
             return result
@@ -136,7 +133,7 @@ class JudgeBatchScorer:
             if not isinstance(item, dict):
                 continue
             link = item.get("link", "")
-            if link not in _VALID_LINK_KINDS:
+            if not isinstance(link, str) or link not in _VALID_LINK_KINDS:
                 link_valid = 0.0
             conf = item.get("confidence", 0.0)
             try:
@@ -174,7 +171,7 @@ class EnrichScorer:
             if not isinstance(item, dict):
                 continue
             pos = item.get("pos", "")
-            if pos and pos not in _VALID_POS:
+            if pos and (not isinstance(pos, str) or pos not in _VALID_POS):
                 pos_valid = 0.0
             note = str(item.get("note", ""))
             if note and _contains_simplified(note):
@@ -221,7 +218,9 @@ _PROMPT_SCORERS: dict[str, list[Scorer]] = {
         JsonSchemaScorer(["link", "reason"]),
     ],
     "enrich": [
-        JsonSchemaScorer(["word", "pos", "note", "collocations", "meaning_fix"], allow_list=True),
+        JsonSchemaScorer(
+            ["word", "pos", "note", "collocations", "meaning_fix"], allow_list=True
+        ),
         EnrichScorer(),
     ],
 }
