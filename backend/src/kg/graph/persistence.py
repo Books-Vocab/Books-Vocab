@@ -170,6 +170,7 @@ class _PersistenceMixin:
     _links_snapshot_sequence: int
     _last_flushed_links_snapshot_sequence: int
     _blocked_snapshot_sequence: int
+    _last_flushed_blocked_snapshot_sequence: int
     # Cross-process staleness tracking (#2086); see module docstring.
     _links_disk_sig: DiskSignature | None
     _blocked_disk_sig: DiskSignature | None
@@ -448,6 +449,10 @@ class _PersistenceMixin:
             return
         with self._blocked_write_lock, path_write_lock(self.blocked_path):
             sequence = getattr(snapshot, "sequence", None)
+            # A newer snapshot already reached disk; flushing this older one
+            # would treat the newer pairs as unblocked and erase them.
+            if sequence is not None and sequence < getattr(self, "_last_flushed_blocked_snapshot_sequence", 0):
+                return
             disk_sig = self._disk_signature(self.blocked_path)
             read_rows = self._try_read_json_list(self.blocked_path)
             disk_pairs = self._parse_blocked_rows(read_rows or [])
@@ -470,6 +475,8 @@ class _PersistenceMixin:
                 merged |= {p for p in disk_pairs if p not in self._known_blocked_pairs}
             rows = [list(p) for p in merged]
             self._atomic_json_write(self.blocked_path, rows, indent=None)
+            if sequence is not None:
+                self._last_flushed_blocked_snapshot_sequence = sequence
             new_sig = self._disk_signature(self.blocked_path)
             with self._lock:
                 _clear_pending(self._pending_blocked_pairs, covered)
