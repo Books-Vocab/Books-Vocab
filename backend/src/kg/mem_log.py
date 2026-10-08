@@ -12,7 +12,6 @@ import logging
 import re
 import threading
 
-
 _SENSITIVE_QUERY_RE = re.compile(r"([?&](?:token|code|state))=[^&\s\"]+")
 
 
