@@ -420,12 +420,10 @@ function bindInteractions() {
         const y = e.clientY - rect.top;
         const node = findNode(x, y);
         if (node) {
-            if (selectedId === node.id) {
-                selectedId = null;
-            } else {
-                selectedId = node.id;
-                postBridge({ type: 'nodeClick', nodeId: node.id });
-            }
+            // Always notify native: the detail may have been dismissed while
+            // selectedId stayed set, so a toggle-off here would swallow the tap.
+            selectedId = node.id;
+            postBridge({ type: 'nodeClick', nodeId: node.id });
         } else {
             selectedId = null;
         }
@@ -507,10 +505,10 @@ window.initGraph = function(jsonStr) {
     buildAdjCache();
 
     const cx = W / 2, cy = H / 2;
-    const gravity = forces.centerStrength || 0.05;
+    const gravity = forces.centerStrength ?? 0.05;
 
     sim = d3.forceSimulation(nodes)
-        .force('charge',  d3.forceManyBody().strength(-(forces.repel || 80)))
+        .force('charge',  d3.forceManyBody().strength(-(forces.repel ?? 80)))
         .force('link',    d3.forceLink(links).id(d => d.id)
                             .distance(forces.linkDistance || 50)
                             .strength(forces.linkStrength != null ? forces.linkStrength : undefined))
@@ -536,8 +534,8 @@ window.initGraph = function(jsonStr) {
 window.updateForces = function(arg) {
     forces = typeof arg === 'string' ? JSON.parse(arg) : arg;
     if (!sim) return;
-    const gravity2 = forces.centerStrength || 0.05;
-    sim.force('charge',  d3.forceManyBody().strength(-(forces.repel || 80)));
+    const gravity2 = forces.centerStrength ?? 0.05;
+    sim.force('charge',  d3.forceManyBody().strength(-(forces.repel ?? 80)));
     sim.force('link',    d3.forceLink(links).id(d => d.id)
                            .distance(forces.linkDistance || 50)
                            .strength(forces.linkStrength != null ? forces.linkStrength : undefined));
