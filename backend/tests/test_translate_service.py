@@ -207,3 +207,67 @@ async def test_empty_llm_response_not_cached(content, tmp_path, monkeypatch):
     assert tl.lookup("hollow", ctx_hash, "en", "zh-Hant", "translate_quick") is None
 
     tl._reset()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ['{"t":"x","p":["n"]}', '{"t":"x","r":123}'])
+async def test_non_string_optional_fields_not_cached(content, tmp_path, monkeypatch):
+    """p/r must be str or None; otherwise fail closed and never reach translate_log.record."""
+    import kg.translate_log as tl
+    from kg.exceptions import ExternalServiceError
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    tl._reset()
+    record = []
+    monkeypatch.setattr(tl, "record", lambda **kw: record.append(kw))
+
+    req = TranslateRequest(word="hollow", context="A hollow victory.")
+    with pytest.raises(ExternalServiceError) as exc_info:
+        await run_quick_translate(
+            req,
+            {"id": "u_test"},
+            llm=TrackedLLM(_fake_async_client(content), "u_test"),
+            logger=SimpleNamespace(error=lambda *a, **kw: None),
+        )
+    assert exc_info.value.label == "translate_quick/invalid_response"
+    assert record == []
+    tl._reset()
+
+
+@pytest.mark.asyncio
+async def test_cached_row_with_non_string_optional_field_is_a_miss(tmp_path, monkeypatch):
+    """A poisoned cached row is re-fetched and overwritten by a valid LLM response."""
+    import kg.translate_log as tl
+    from kg.translate_service import _context_around_word
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    tl._reset()
+
+    ctx = _context_around_word("The story evokes memories.", "evoke")
+    common = dict(
+        operation="translate_quick",
+        word="evoke",
+        context=ctx,
+        context_hash=_compute_context_hash(ctx),
+        source_lang="en",
+        target_lang="zh-Hant",
+        latency_ms=100,
+        model="gemini-2.5-flash-lite",
+    )
+    tl.record(user_id="u_other", response_raw='{"t":"x","p":["n"]}', **common)
+
+    recorded = []
+    real_record = tl.record
+    monkeypatch.setattr(tl, "record", lambda **kw: (recorded.append(kw), real_record(**kw))[1])
+
+    client = _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
+    result = await run_quick_translate(
+        TranslateRequest(word="evoke", context="The story evokes memories."),
+        {"id": "u_test"},
+        llm=TrackedLLM(client, "u_test"),
+        logger=SimpleNamespace(error=lambda *a, **kw: None),
+    )
+    assert result.t == "喚起"
+    client.chat.completions.create.assert_called_once()
+    assert [r["response_raw"] for r in recorded] == ['{"t":"喚起","p":"v.","r":"evoke"}']
+    tl._reset()

@@ -155,6 +155,11 @@ def _validate_translation_payload(data: dict[str, Any], *, required_field: str, 
     value = data.get(required_field)
     if not isinstance(value, str) or not value.strip():
         raise ExternalServiceError(f"{operation}/invalid_response")
+    # Optional fields (translate_quick p/r): absent or None is fine, anything
+    # else must be a string so a malformed value is never cached or served.
+    for optional_field in ("p", "r"):
+        if not isinstance(data.get(optional_field), str | None):
+            raise ExternalServiceError(f"{operation}/invalid_response")
 
 
 async def _run_llm_translate(
@@ -176,9 +181,16 @@ async def _run_llm_translate(
 
     # Cache lookup — model is part of the key (see translate_log.lookup docstring).
     cached = translate_log.lookup(word_key, ctx_hash, source_lang, target_lang, operation, model)
+    cached_data: dict[str, Any] | None = None
     if cached is not None:
         cached_data = _parse_json_payload(cached)
-        _validate_translation_payload(cached_data, required_field=required_field, operation=operation)
+        try:
+            _validate_translation_payload(cached_data, required_field=required_field, operation=operation)
+        except ExternalServiceError:
+            # Poisoned row: treat as a miss so a valid LLM response overwrites it.
+            logging.getLogger("kg").warning("%s: invalid cached payload for %r, refetching", operation, word_key)
+            cached_data = None
+    if cached_data is not None:
         # Record precise hit counter for admin observability. Short-circuits
         # never reach record(); without this they'd be invisible to metrics.
         try:
