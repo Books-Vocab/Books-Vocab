@@ -346,6 +346,45 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   ' "$MERGE_GROUP_REQUIRED")"
   grep -q '^    name: agent-review$' <<<"$agent_review_block" \
     || fail "merge-group independent review gate does not emit the required context"
+  # Vacuous-pass contract, parsed structurally (not by regex) so quoted keys and
+  # flow-style YAML cannot slip past it. Branch protection and the merge queue
+  # match the job's `name:`, not its YAML key, so a renamed `required` job leaves
+  # the context never reported; a skipped or soft-failed job counts as passing.
+  #
+  # ACCEPTED residuals: this static test cannot see inside a run script, so it
+  # does NOT catch a deliberate `exit 0` / `if false` wrapping in a script, a
+  # later `backend=false` write to $GITHUB_OUTPUT, or shell function shadowing
+  # (e.g. redefining `git` or `uv`). Those are out of scope for a static
+  # contract test; reviewing the workflow diff owns them.
+  while IFS= read -r contract_failure; do
+    [[ -n "$contract_failure" ]] && fail "$contract_failure"
+  done < <(ruby -e 'require "yaml"
+    jobs = (YAML.load_file(ARGV[0]) || {})["jobs"] || {}
+    required = jobs["required"].is_a?(Hash) ? jobs["required"] : {}
+    review = jobs["agent-review"].is_a?(Hash) ? jobs["agent-review"] : {}
+    out = []
+    unless required["name"] == "required"
+      out << "merge-group required job name is #{required["name"].inspect}, not exactly required; branch protection and the merge queue read the job name, not the YAML key"
+    end
+    if review.key?("if")
+      out << "merge-group agent-review job sets a job-level if: and can be skipped (a skipped required check counts as passing)"
+    end
+    if review.key?("continue-on-error")
+      out << "merge-group agent-review job sets job-level continue-on-error"
+    end
+    steps = required["steps"].is_a?(Array) ? required["steps"] : []
+    { "short repository gate" => "./ops/test_ops.sh", "diff check" => "git diff --check" }.each do |label, needle|
+      hits = steps.select { |s| s.is_a?(Hash) && s["run"].to_s.include?(needle) }
+      if hits.size != 1
+        out << "merge-group required job must have exactly one #{label} step running #{needle}, found #{hits.size}"
+        next
+      end
+      step = hits.first
+      out << "merge-group #{label} step is conditional (if:) and can be skipped" if step.key?("if")
+      out << "merge-group #{label} step sets continue-on-error" if step.key?("continue-on-error")
+      out << "merge-group #{label} step masks failures with a || fallback" if step["run"].to_s.include?("||")
+    end
+    puts out' "$MERGE_GROUP_REQUIRED" 2>&1 || echo "merge-group contract check could not parse $MERGE_GROUP_REQUIRED")
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate is not bound to the merge-group HEAD"
   grep -q 'mergeQueue' "$MERGE_GROUP_REQUIRED" \
