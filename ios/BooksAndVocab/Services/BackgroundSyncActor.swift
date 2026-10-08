@@ -552,7 +552,8 @@ extension BackgroundSyncActor {
         let records = try modelContext.fetch(descriptor)
         guard !records.isEmpty else { return [] }
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        // VocabularyEntry.id 非 unique(CloudKit 重複列可造成):重複 key 取第一個,不可 trap。
+        let entriesByID = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return records.compactMap { record in
             // 優先用複習當下固化在事件上的 kgCardId(自包含,不退化)。只有 legacy 紀錄
             // (固化前)才回退舊的 entryID→entry→kgCardId 三段反查 —— 卡若已離場仍會是
@@ -632,11 +633,20 @@ extension BackgroundSyncActor {
         let existing = try modelContext.fetch(descriptor)
         var existingIDs = Set(existing.map(\.id))
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+        // 同一 kgCardId 可能對應多個本機 entry(重複列):依 (dateAdded, id.uuidString) 排序後
+        // 取第一個,使掛載對象與 fetch 順序無關、確定性可重現,且不可 trap。
         let entryIDsByCardID = Dictionary(
-            uniqueKeysWithValues: entries.compactMap { entry -> (String, UUID)? in
-                guard let cardID = entry.kgCardId, !cardID.isEmpty else { return nil }
-                return (cardID, entry.id)
-            }
+            entries
+                .sorted { lhs, rhs in
+                    lhs.dateAdded != rhs.dateAdded
+                        ? lhs.dateAdded < rhs.dateAdded
+                        : lhs.id.uuidString < rhs.id.uuidString
+                }
+                .compactMap { entry -> (String, UUID)? in
+                    guard let cardID = entry.kgCardId, !cardID.isEmpty else { return nil }
+                    return (cardID, entry.id)
+                },
+            uniquingKeysWith: { first, _ in first }
         )
         var inserted = 0
 

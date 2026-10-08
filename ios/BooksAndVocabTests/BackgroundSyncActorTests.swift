@@ -693,6 +693,29 @@ struct BackgroundSyncActorTests {
         #expect(item.interval_after == nil)             // legacy 無 SRS 快照
     }
 
+    @Test func buildReviewEventsPushPayload_duplicateEntryId_doesNotTrap() async throws {
+        // 兩個 entry 共用同一 id(VocabularyEntry.id 非 unique,CloudKit 重複列可造成):
+        // Dictionary(uniqueKeysWithValues:) 會 trap,必須改為確定性去重並仍解出 card_id。
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let sharedID = UUID()
+        for word in ["dup-a", "dup-b"] {
+            let entry = VocabularyEntry(word: word, translation: "m", context: "ctx", bookTitle: "Book")
+            entry.id = sharedID
+            entry.kgCardId = "card-dup"
+            entry.markSynced()
+            context.insert(entry)
+        }
+        let record = ReviewRecord(word: "dup-a", entryID: sharedID, feedback: 0)  // kgCardId nil
+        record.id = UUID(uuidString: "77777777-7777-7777-7777-777777777777")!
+        context.insert(record)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let item = try #require(try await actor.buildReviewEventsPushPayload().first)
+        #expect(item.card_id == "card-dup")
+    }
+
     // MARK: - Review-state push watermark
 
     /// Every synced card's SRS state was re-sent on every sync (644 cards in
@@ -935,6 +958,39 @@ struct BackgroundSyncActorTests {
         #expect(record.word == "beta")
         #expect(record.notebookId == "nb2")
         #expect(record.feedback == 0)
+    }
+
+    @Test func mergeReviewEvents_duplicateKgCardId_doesNotTrapAndAttachesToEarliestEntry() async throws {
+        // 兩個本機 entry 共用同一 kgCardId:不得 trap,且事件固定掛到 dateAdded 最早者。
+        let container = try makeContainer()
+        let seedContext = ModelContext(container)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = VocabularyEntry(word: "Chateau", translation: "m", context: "ctx", bookTitle: "Book")
+        later.kgCardId = "card-chateau"
+        later.dateAdded = base.addingTimeInterval(100)
+        later.markSynced()
+        let earlier = VocabularyEntry(word: "chateau,", translation: "m", context: "ctx", bookTitle: "Book")
+        earlier.kgCardId = "card-chateau"
+        earlier.dateAdded = base
+        earlier.markSynced()
+        seedContext.insert(later)
+        seedContext.insert(earlier)
+        try seedContext.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.mergeReviewEvents([KGReviewEventPayload(
+            event_id: "88888888-8888-8888-8888-888888888888",
+            card_id: "card-chateau",
+            word_snapshot: "chateau",
+            notebook_id: "default",
+            feedback: 1,
+            reviewed_at: "2026-06-04T10:00:00+00:00",
+            created_at: "2026-06-04T10:00:00+00:00"
+        )])
+
+        let context = ModelContext(container)
+        let record = try #require(try context.fetch(FetchDescriptor<ReviewRecord>()).first)
+        #expect(record.entryID == earlier.id)
     }
 
     @Test func mergeReviewEvents_restoresAfterLocalClear() async throws {
