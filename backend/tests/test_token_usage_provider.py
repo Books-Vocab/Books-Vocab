@@ -126,8 +126,10 @@ def test_get_all_stats_unaffected_by_new_columns(tmp_path, monkeypatch):
     tt.record("u1", "judge", 20, 7, provider="deepseek", model="deepseek-v4-flash")
     stats = tt.get_all_stats()
     _teardown(tt)
-    assert stats["u1"]["judge"] == {
+    bucket = stats["u1"]["judge"]
+    assert {k: bucket[k] for k in ("input_tokens", "output_tokens", "calls")} == {
         "input_tokens": 30,
         "output_tokens": 12,
         "calls": 2,
     }
+    assert bucket["cost_usd"] > 0

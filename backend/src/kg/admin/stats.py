@@ -45,7 +45,7 @@ def admin_stats_response(
     card_store_factory: CardStoreFactory,
 ) -> dict[str, Any]:
     from ..deps_quota import _is_pro
-    from ..quota_service import get_all_quota_usage, token_cost_usd
+    from ..quota_service import _daily_limit, get_all_quota_usage
 
     users_data = load_users()
     token_stats = get_all_stats()
@@ -73,10 +73,7 @@ def admin_stats_response(
         total_input = sum(d["input_tokens"] for d in utoken.values())
         total_output = sum(d["output_tokens"] for d in utoken.values())
 
-        est_cost = sum(
-            token_cost_usd(call_type, data["input_tokens"], data["output_tokens"])
-            for call_type, data in utoken.items()
-        )
+        est_cost = sum(data["cost_usd"] for data in utoken.values())
 
         entitlements = build_entitlements_response(info if isinstance(info, dict) else None)
         admin_grant = current_admin_grant_record(info if isinstance(info, dict) else None)
@@ -93,7 +90,15 @@ def admin_stats_response(
                 "est_cost_usd": round(est_cost, 6),
                 "pro": entitlements.pro.model_dump(),
                 "admin_grant": admin_grant,
-                "quota": quota_usage.get(uid, {"used_usd": 0.0, "limit_usd": 0.30, "fraction_used": 0.0, "calls": {}}),
+                "quota": quota_usage.get(
+                    uid,
+                    {
+                        "used_usd": 0.0,
+                        "limit_usd": _daily_limit(is_pro_by_user.get(uid, False)),
+                        "fraction_used": 0.0,
+                        "calls": {},
+                    },
+                ),
             }
         )
 

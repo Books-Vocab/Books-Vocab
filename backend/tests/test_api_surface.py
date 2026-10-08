@@ -687,8 +687,8 @@ def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
 
     usage = {
         "other_user": {
-            "translate_quick": {"input_tokens": 1000, "output_tokens": 500, "calls": 2},
-            "embed": {"input_tokens": 2000, "output_tokens": 0, "calls": 1},
+            "translate_quick": {"input_tokens": 1000, "output_tokens": 500, "calls": 2, "cost_usd": 0.000301},
+            "embed": {"input_tokens": 2000, "output_tokens": 0, "calls": 1, "cost_usd": 0.0},
         }
     }
 
