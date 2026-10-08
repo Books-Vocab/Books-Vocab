@@ -340,3 +340,41 @@ def test_identity_linked_during_remote_phase_is_erased_too(tmp_path):
     assert "late" not in saved
     assert {"canonical", "late"} <= set(saved["_terminated"])
     assert not (tmp_path / "users" / "late").exists()
+
+
+def test_self_service_delete_purges_subscription_index_for_canonical_and_linked(tmp_path):
+    """#2255: stale transaction→uid mappings would let a later App Store
+    notification re-create the erased record; only the other user's entry stays."""
+    users_data = {
+        "canonical": {
+            "linked_ids": ["linked1"],
+            "config": {},
+            "subscription": {"status": "active", "original_transaction_id": "orig-1", "transaction_id": "txn-1"},
+        },
+        "linked1": {"_linked_to": "canonical", "config": {}},
+        "keeper": {"config": {}},
+        "_subscription_index": {
+            "orig-1": "canonical",
+            "txn-1": "canonical",
+            "txn-l": "linked1",
+            "txn-keep": "keeper",
+        },
+    }
+
+    _call_delete(tmp_path, users_data, None, bucket=None, user_id="linked1")
+
+    saved = json.loads((tmp_path / "users.json").read_text())
+    assert saved["_subscription_index"] == {"txn-keep": "keeper"}
+    assert saved["keeper"] == {"config": {}}
+
+
+def test_self_service_delete_drops_subscription_index_bucket_when_emptied(tmp_path):
+    users_data = {
+        "canonical": {"linked_ids": [], "config": {}},
+        "_subscription_index": {"orig-1": "canonical", "txn-1": "canonical"},
+    }
+
+    _call_delete(tmp_path, users_data, None, bucket=None, user_id="canonical")
+
+    saved = json.loads((tmp_path / "users.json").read_text())
+    assert "_subscription_index" not in saved
