@@ -83,3 +83,16 @@ def test_foreign_duplicate_of_mutated_pair_still_collapsed(tmp_path):
 
     on_disk = json.loads(path.read_text())
     assert [r["id"] for r in on_disk if {r["from_id"], r["to_id"]} == {"a", "b"}] == [target.id]
+
+
+def test_update_link_deprecated_survives_pre_reconcile(tmp_path):
+    """A not-yet-flushed status change must win over the still-active disk row."""
+    store = _new_store(tmp_path)
+    store.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "keep")
+    target = store.add_link("c", "d", LinkKind.CONTRASTS_WITH, 0.9, "drop")
+
+    store.update_link(target.id, status="deprecated")
+
+    assert store.get_link(target.id).status == "deprecated"
+    persisted = {row["id"]: row["status"] for row in json.loads((tmp_path / "links.json").read_text())}
+    assert persisted[target.id] == "deprecated"
