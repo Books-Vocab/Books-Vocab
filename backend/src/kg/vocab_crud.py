@@ -276,6 +276,9 @@ def list_vocab_cards(
             notebook_id=notebook_id,
         )
 
+    seed = getattr(graph, "seed", None)
+    if callable(seed):
+        seed(cards)
     cards_by_id = _resolve_with_neighbours(cards, graph, cards_store)
     responses = [card_response_builder(card, graph, cards_by_id) for card in cards]
     return responses, _page_cursor(cards, limit, request_scope)
