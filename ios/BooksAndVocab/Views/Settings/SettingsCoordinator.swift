@@ -587,7 +587,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             showDeleteAccountConfirm = false
             authManager.logout(modelContainer: modelContext.container, reason: "delete_account")
         } catch {
-            deleteAccountError = L10n.format("無法刪除帳號：%@", error.localizedDescription)
+            deleteAccountError = L10n.format("無法刪除帳號：%@", SyncFailurePresentation.reason(for: error))
             // 失敗時關閉 confirm sheet，讓使用者看到錯誤 alert
             showDeleteAccountConfirm = false
         }

@@ -78,7 +78,7 @@ final class KnowledgeGraphCoordinator: KnowledgeGraphCoordinating {
         do {
             links = try await kgService.pullGraphLinks()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = SyncFailurePresentation.reason(for: error)
         }
     }
 }

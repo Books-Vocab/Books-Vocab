@@ -150,7 +150,7 @@ struct KnowledgeGraphView: View {
         do {
             coordinator.links = try await kgService.pullGraphLinks(notebookId: notebookId)
         } catch {
-            coordinator.errorMessage = error.localizedDescription
+            coordinator.errorMessage = SyncFailurePresentation.reason(for: error)
         }
     }
 
