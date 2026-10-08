@@ -33,7 +33,9 @@ struct LocaleAwareFormatterTests {
         defer { store.setLanguage(.system) }
 
         let date = Date(timeIntervalSince1970: 0)
-        let s = LocaleAwareFormatter.shared.string(from: date, format: "yyyy-MM-dd")
+        let s = LocaleAwareFormatter.shared.string(
+            from: date, format: "yyyy-MM-dd", timeZone: TimeZone(secondsFromGMT: 0)!
+        )
         #expect(s == "1970-01-01")
     }
 
