@@ -109,9 +109,28 @@ final class NotebookSettingsProjection {
         cardLayoutProductionRaw = profile?.production.rawValue
     }
 
+    /// True when this device holds a group write newer than what the remote
+    /// reports, i.e. the server has not (yet) accepted the local edit.
+    func isLocalAhead(of settings: KGNotebookSettings) -> Bool {
+        Self.isAhead(reviewPolicyUpdatedAt, of: settings.reviewPolicy.updatedAt)
+            || Self.isAhead(cardLayoutUpdatedAt, of: settings.cardLayout.updatedAt)
+    }
+
+    private static func isAhead(_ local: Double?, of remote: Double?) -> Bool {
+        guard let local else { return false }
+        guard let remote else { return true }
+        return local > remote
+    }
+
+    /// Merges a server snapshot group by group (last-writer-wins). A dirty
+    /// projection (.pending/.failed) only becomes .synced once the server has
+    /// caught up with every local group; a stale remote must not erase the
+    /// retry obligation or its error.
     func applyRemote(_ settings: KGNotebookSettings) {
+        let stillDirty = syncState != .synced && isLocalAhead(of: settings)
         applyRemoteReviewPolicy(settings.reviewPolicy)
         applyRemoteCardLayout(settings.cardLayout)
+        guard !stillDirty else { return }
         syncState = .synced
         syncError = nil
     }
