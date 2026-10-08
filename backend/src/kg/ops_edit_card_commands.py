@@ -38,9 +38,7 @@ def _resolve_notebook_id_for_command(user_dir: Path, ref: str) -> str:
         for notebook in store.all():
             if notebook.name == ref:
                 return notebook.id
-    raise EditError(
-        f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
-    )
+    raise EditError(f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)")
 
 
 def cmd_card_add(args: argparse.Namespace) -> int:
@@ -48,18 +46,26 @@ def cmd_card_add(args: argparse.Namespace) -> int:
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
     nb = _resolve_notebook_id_for_command(ctx.user_dir, args.notebook)
     plan = {
-        "content": args.content, "meaning": args.meaning, "pos": args.pos,
-        "notebook_id": nb, "mode": args.mode,
-        "examples": args.example or [], "collocations": args.collocation or [],
+        "content": args.content,
+        "meaning": args.meaning,
+        "pos": args.pos,
+        "notebook_id": nb,
+        "mode": args.mode,
+        "examples": args.example or [],
+        "collocations": args.collocation or [],
         "review": args.review,
     }
 
     def apply_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:
             card = store.add(
-                content=args.content, meaning=args.meaning, pos=args.pos,
-                examples=args.example or [], collocations=args.collocation or [],
-                mode=args.mode, notebook_id=nb,
+                content=args.content,
+                meaning=args.meaning,
+                pos=args.pos,
+                examples=args.example or [],
+                collocations=args.collocation or [],
+                mode=args.mode,
+                notebook_id=nb,
             )
             updates: dict[str, Any] = {}
             if args.note is not None:
@@ -98,7 +104,11 @@ def cmd_card_update(args: argparse.Namespace) -> int:
         try:
             value = json.loads(raw)
         except json.JSONDecodeError:
-            logger.debug("Failed to parse --set value as JSON for user command (field=%s, raw=%r), treating as string", field, raw)
+            logger.debug(
+                "Failed to parse --set value as JSON for user command (field=%s, raw=%r), treating as string",
+                field,
+                raw,
+            )
             value = raw  # 裸字串
         updates[field] = value
     if not updates:
@@ -174,11 +184,8 @@ def cmd_card_set_review(args: argparse.Namespace) -> int:
                 time_ok = nxt is not None and _as_utc(nxt) < now
             else:  # reviewed
                 time_ok = nxt is not None and _as_utc(nxt) > now
-            ok = (c.review_count == state["expect_rc"]
-                  and c.last_review_feedback == state["expect_fb"]
-                  and time_ok)
-            return {"ok": ok, "review_count": c.review_count,
-                    "next_review_at": str(nxt), "time_invariant_ok": time_ok}
+            ok = c.review_count == state["expect_rc"] and c.last_review_feedback == state["expect_fb"] and time_ok
+            return {"ok": ok, "review_count": c.review_count, "next_review_at": str(nxt), "time_invariant_ok": time_ok}
 
     return ctx.run(action="card-set-review", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -227,7 +234,8 @@ def cmd_card_import(args: argparse.Namespace) -> int:
     blank_meaning = sum(1 for r in rows if not (r.get("meaning") or "").strip())
     has_review_col = "review_state" in fieldnames
     plan = {
-        "csv": str(csv_path), "notebook_id": nb_id,
+        "csv": str(csv_path),
+        "notebook_id": nb_id,
         "row_count": len(rows),
         "skipped_blank_content": len(all_rows) - len(rows),
         "blank_meaning_rows": blank_meaning,  # >0 會在 commit 時被擋
@@ -243,9 +251,7 @@ def cmd_card_import(args: argparse.Namespace) -> int:
         review_state / review_interval 的格式驗證全部前移到寫入前。
         """
         if blank_meaning:
-            raise EditError(
-                f"{blank_meaning} 列 meaning 空白;demo 卡需有定義,檢查 CSV 欄位名/內容"
-            )
+            raise EditError(f"{blank_meaning} 列 meaning 空白;demo 卡需有定義,檢查 CSV 欄位名/內容")
         for i, r in enumerate(rows):
             rv = (r.get("review_state") or "").strip()
             if not rv:
@@ -282,17 +288,17 @@ def cmd_card_import(args: argparse.Namespace) -> int:
                     store.update(card.id, **_review_fields(rv, iv, now))
             post_ids = {c.id for c in store.all(notebook_id=nb_id)}
             actually_new = len(post_ids - pre_ids)
-            return {"rows": len(rows), "actually_new": actually_new,
-                    "skipped_dup": len(rows) - actually_new}
+            return {"rows": len(rows), "actually_new": actually_new, "skipped_dup": len(rows) - actually_new}
 
     def verify_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:
-            missing = [r["content"] for r in rows
-                       if store.find_by_content(r["content"].strip(), notebook_id=nb_id) is None]
-            return {"ok": not missing, "missing_count": len(missing),
-                    "missing_sample": missing[:5]}
+            missing = [
+                r["content"] for r in rows if store.find_by_content(r["content"].strip(), notebook_id=nb_id) is None
+            ]
+            return {"ok": not missing, "missing_count": len(missing), "missing_sample": missing[:5]}
 
     return ctx.run(action="card-import", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
 
 def cmd_card_move(args: argparse.Namespace) -> int:
     """把卡移到別的筆記本 —— 修正 card-add 誤存 name 的孤兒卡(dogfood A LOW-4)。
@@ -318,12 +324,11 @@ def cmd_card_move(args: argparse.Namespace) -> int:
                 raise EditError(f"卡已在 notebook {target_nb},無需移動")
             clash = store.find_by_content(card.content, notebook_id=target_nb)
             if clash is not None and clash.id != card.id:
-                raise EditError(
-                    f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}"
-                )
+                raise EditError(f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}")
             moved_id = card.id
             # 搬本前先硬刪所有 notebook graph 中涉及此卡的 link(搬後必跨本)。掃全部本
             # (default + 所有既存)的 graph,找 from/to == moved_id 的 link 刪除。
+            ctx.mark_destructive()
             with closing(_notebook_store(ctx.user_dir)) as nb_store:
                 all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
                 purged_links: list[str] = []
@@ -336,9 +341,7 @@ def cmd_card_move(args: argparse.Namespace) -> int:
             if updated is None:
                 raise EditError(f"move 失敗(卡可能已刪除):{card.id}")
             state["card_id"] = updated.id
-            return {"card": _card_brief(updated),
-                    "purged_links": purged_links,
-                    "purged_count": len(purged_links)}
+            return {"card": _card_brief(updated), "purged_links": purged_links, "purged_count": len(purged_links)}
 
     def verify_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:

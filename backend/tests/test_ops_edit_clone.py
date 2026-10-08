@@ -40,19 +40,19 @@ CREATE TABLE notebook (
 )
 """
 
-SRC = "000287.04e254024c2f4341849278a933743257.0228"   # 仿真 Apple uid(帶點)
-TGT = "113011687278246580678"                          # 仿真 Google uid
+SRC = "000287.04e254024c2f4341849278a933743257.0228"  # 仿真 Apple uid(帶點)
+TGT = "113011687278246580678"  # 仿真 Google uid
 
 # (id, content, review_count, lapse, streak, feedback, last_reviewed, created, interval, is_deleted)
 _SOURCE_CARDS = [
     ("c1", "serendipity", 5, 1, 2, 1, "2026-05-20 10:00:00.000000", "2026-03-01 08:00:00.000000", 200.0, 0),
-    ("c2", "ephemeral",   3, 0, 3, 1, "2026-05-25 12:00:00.000000", "2026-03-10 09:00:00.000000", 96.0, 0),
-    ("c3", "petrichor",   1, 0, 1, 1, "2026-05-30 14:00:00.000000", "2026-05-29 09:00:00.000000", 48.0, 0),
-    ("c4", "nascent",     0, 0, 0, -1, None,                          "2026-05-31 09:00:00.000000", 12.0, 0),
-    ("c5", "obsolete",    2, 0, 2, 1, "2026-04-15 10:00:00.000000", "2026-03-05 08:00:00.000000", 120.0, 1),
+    ("c2", "ephemeral", 3, 0, 3, 1, "2026-05-25 12:00:00.000000", "2026-03-10 09:00:00.000000", 96.0, 0),
+    ("c3", "petrichor", 1, 0, 1, 1, "2026-05-30 14:00:00.000000", "2026-05-29 09:00:00.000000", 48.0, 0),
+    ("c4", "nascent", 0, 0, 0, -1, None, "2026-05-31 09:00:00.000000", 12.0, 0),
+    ("c5", "obsolete", 2, 0, 2, 1, "2026-04-15 10:00:00.000000", "2026-03-05 08:00:00.000000", 120.0, 1),
 ]
-_EXPECTED_EVENTS = 5 + 3 + 1 + 2   # review_count>0 的卡(含已刪 c5)= 11
-_EXPECTED_ACTIVE_CARDS = 4         # c1..c4(c5 已刪)
+_EXPECTED_EVENTS = 5 + 3 + 1 + 2  # review_count>0 的卡(含已刪 c5)= 11
+_EXPECTED_ACTIVE_CARDS = 4  # c1..c4(c5 已刪)
 
 
 def _udir(data_dir: Path, uid: str) -> Path:
@@ -67,9 +67,34 @@ def _insert_card(conn: sqlite3.Connection, row: tuple) -> None:
         "review_interval_hours, next_review_at, last_reviewed_at, review_count, lapse_count, "
         "review_streak, last_review_feedback, pronunciation, is_archived, notebook_id, source, "
         "content_nfc_lower) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (cid, content, "noun", f"def of {content}", "[]", "[]", None, 0.5, "recognition",
-         created, created, deleted, None, "[]", interval, None, last_rev, rc, lapse, streak,
-         fb, None, 0, "default", None, content.lower()),
+        (
+            cid,
+            content,
+            "noun",
+            f"def of {content}",
+            "[]",
+            "[]",
+            None,
+            0.5,
+            "recognition",
+            created,
+            created,
+            deleted,
+            None,
+            "[]",
+            interval,
+            None,
+            last_rev,
+            rc,
+            lapse,
+            streak,
+            fb,
+            None,
+            0,
+            "default",
+            None,
+            content.lower(),
+        ),
     )
 
 
@@ -100,12 +125,33 @@ def _seed_source(data_dir: Path) -> None:
     _make_cards_db(ud / "cards.db", _SOURCE_CARDS)
     _make_notebooks_db(ud / "notebooks.db")
     # graph(2 條 active link)+ 衍生檔
-    (ud / "graph_default.json").write_text(json.dumps([
-        {"id": "l1", "from_id": "c1", "to_id": "c2", "kind": "contrasts_with",
-         "confidence": 0.8, "reason": "r1", "created_at": "2026-03-01T00:00:00Z", "status": "active"},
-        {"id": "l2", "from_id": "c2", "to_id": "c3", "kind": "shares_usage",
-         "confidence": 0.7, "reason": "r2", "created_at": "2026-03-02T00:00:00Z", "status": "active"},
-    ]), encoding="utf-8")
+    (ud / "graph_default.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.8,
+                    "reason": "r1",
+                    "created_at": "2026-03-01T00:00:00Z",
+                    "status": "active",
+                },
+                {
+                    "id": "l2",
+                    "from_id": "c2",
+                    "to_id": "c3",
+                    "kind": "shares_usage",
+                    "confidence": 0.7,
+                    "reason": "r2",
+                    "created_at": "2026-03-02T00:00:00Z",
+                    "status": "active",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
     (ud / "embeddings_default.npy").write_bytes(b"\x93NUMPY-fake-bytes")
     (ud / "embeddings_meta_default.json").write_text('{"dim":8}', encoding="utf-8")
     (ud / "candidates_default.json").write_text("[]", encoding="utf-8")
@@ -130,12 +176,17 @@ def _seed_target(data_dir: Path) -> None:
 
 
 def _write_users_json(data_dir: Path) -> None:
-    (data_dir / "users.json").write_text(json.dumps({
-        SRC: {"provider": "apple", "email": "max970228@gmail.com", "config": {}},
-        TGT: {"provider": "google", "email": "booksvocabtest@gmail.com",
-              "subscription": {"plan": "free"}},
-        "_email_index": {"max970228@gmail.com": SRC, "booksvocabtest@gmail.com": TGT},
-    }, ensure_ascii=False), encoding="utf-8")
+    (data_dir / "users.json").write_text(
+        json.dumps(
+            {
+                SRC: {"provider": "apple", "email": "max970228@gmail.com", "config": {}},
+                TGT: {"provider": "google", "email": "booksvocabtest@gmail.com", "subscription": {"plan": "free"}},
+                "_email_index": {"max970228@gmail.com": SRC, "booksvocabtest@gmail.com": TGT},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _full_fixture(tmp_path: Path) -> Path:
@@ -203,7 +254,7 @@ def test_clone_synthesizes_review_events(tmp_path):
     assert _event_count(tmp_path, TGT) == _EXPECTED_EVENTS
     out = json.loads(r.stdout)
     assert out["verified"]["ok"] is True
-    assert out["verified"]["files_ok"] is True   # 衍生檔大小逐一比對通過
+    assert out["verified"]["files_ok"] is True  # 衍生檔大小逐一比對通過
 
 
 def test_clone_preserves_target_identity(tmp_path):
@@ -213,7 +264,7 @@ def test_clone_preserves_target_identity(tmp_path):
     assert users[TGT]["provider"] == "google"
     assert users[TGT]["email"] == "booksvocabtest@gmail.com"
     assert users[TGT]["subscription"] == {"plan": "free"}
-    assert users[SRC]["email"] == "max970228@gmail.com"   # 來源身份亦不動
+    assert users[SRC]["email"] == "max970228@gmail.com"  # 來源身份亦不動
 
 
 def test_clone_excludes_source_private_files(tmp_path):
@@ -242,15 +293,25 @@ def test_clone_emits_source_fingerprint_and_can_pin_it(tmp_path):
     fingerprint = json.loads(first.stdout)["result"]["source_fingerprint"]
     assert fingerprint
     pinned = _edit(
-        str(tmp_path), "clone-demo", SRC, TGT,
-        "--expect-source-fingerprint", fingerprint,
-        "--commit", "--json",
+        str(tmp_path),
+        "clone-demo",
+        SRC,
+        TGT,
+        "--expect-source-fingerprint",
+        fingerprint,
+        "--commit",
+        "--json",
     )
     assert pinned.returncode == 0, pinned.stderr
     mismatch = _edit(
-        str(tmp_path), "clone-demo", SRC, TGT,
-        "--expect-source-fingerprint", "deadbeef",
-        "--commit", "--json",
+        str(tmp_path),
+        "clone-demo",
+        SRC,
+        TGT,
+        "--expect-source-fingerprint",
+        "deadbeef",
+        "--commit",
+        "--json",
     )
     assert mismatch.returncode == 1
     assert "fingerprint" in (mismatch.stdout + mismatch.stderr).lower()
@@ -276,3 +337,58 @@ def test_clone_rejects_unsafe_source_uid(tmp_path):
     _full_fixture(tmp_path)
     r = _edit(str(tmp_path), "clone-demo", "../evil", TGT, "--commit", "--json")
     assert r.returncode == 1
+
+
+def _run_clone_in_process(data_dir: Path, monkeypatch, capsys, *, fail: bool) -> dict:
+    import argparse
+
+    import kg.ops_edit_seed_commands as seed_cmd
+
+    monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
+    if fail:
+        real_replace = Path.replace
+
+        def boom(self, *a, **k):
+            # 只讓 clone 的 .clone-tmp 換入失敗;EditContext 備份自己的 replace 要放行。
+            if self.name.endswith(seed_cmd._CLONE_TMP_SUFFIX):
+                raise OSError("replace failed")
+            return real_replace(self, *a, **k)
+
+        monkeypatch.setattr(Path, "replace", boom)
+    args = argparse.Namespace(
+        source_uid=SRC,
+        target_uid=TGT,
+        commit=True,
+        json=True,
+        expect_source_fingerprint=None,
+    )
+    capsys.readouterr()
+    rc = seed_cmd.cmd_clone_demo(args)
+    out = json.loads(capsys.readouterr().out)
+    out["_rc"] = rc
+    return out
+
+
+def test_clone_failure_after_unlink_reports_data_mutated(tmp_path, monkeypatch, capsys):
+    _full_fixture(tmp_path)
+    out = _run_clone_in_process(tmp_path, monkeypatch, capsys, fail=True)
+    assert out["_rc"] == 1
+    assert out["data_mutated"] is True
+    assert out["backup"]
+    assert f"restore {TGT}" in out["recovery_path"]
+    assert out["backup"] in out["recovery_path"]
+
+
+def test_clone_staging_failure_is_not_mutating(tmp_path, monkeypatch, capsys):
+    import kg.ops_edit_seed_commands as seed_cmd
+
+    _full_fixture(tmp_path)
+
+    def boom(*_a, **_k):
+        raise OSError("copy failed")
+
+    monkeypatch.setattr(seed_cmd, "_sqlite_online_backup", boom)
+    out = _run_clone_in_process(tmp_path, monkeypatch, capsys, fail=False)
+    assert out["_rc"] == 1
+    assert out["data_mutated"] is False
+    assert out["recovery_path"] is None

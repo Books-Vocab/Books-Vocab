@@ -54,10 +54,17 @@ from .ops_edit_support import (
 from .text_utils import normalize_nfc_lower
 
 # 擴充 review 形式(計數器直設,`ops_cli world-export` 的無損重放面)的合法鍵。
-_REVIEW_COUNTER_KEYS = frozenset({
-    "review_count", "review_streak", "lapse_count", "review_interval_hours",
-    "next_review_at", "last_reviewed_at", "last_review_feedback",
-})
+_REVIEW_COUNTER_KEYS = frozenset(
+    {
+        "review_count",
+        "review_streak",
+        "lapse_count",
+        "review_interval_hours",
+        "next_review_at",
+        "last_reviewed_at",
+        "last_review_feedback",
+    }
+)
 
 
 def _review_form(rv: Any, label: str) -> str:
@@ -89,9 +96,7 @@ def _parse_review_counters(rv: dict[str, Any], label: str) -> dict[str, Any]:
     """
     unknown = set(rv) - _REVIEW_COUNTER_KEYS
     if unknown:
-        raise EditError(
-            f"{label} 計數器形式含未知鍵 {sorted(unknown)}(允許 {sorted(_REVIEW_COUNTER_KEYS)})"
-        )
+        raise EditError(f"{label} 計數器形式含未知鍵 {sorted(unknown)}(允許 {sorted(_REVIEW_COUNTER_KEYS)})")
     out: dict[str, Any] = {}
     for key in ("review_count", "review_streak", "lapse_count"):
         if key in rv:
@@ -117,9 +122,7 @@ def _parse_review_counters(rv: dict[str, Any], label: str) -> dict[str, Any]:
     return out
 
 
-def _seed_shape_diff(
-    expected: list[dict[str, Any]], actual: list[tuple[str, str]]
-) -> tuple[list[str], list[str]]:
+def _seed_shape_diff(expected: list[dict[str, Any]], actual: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
     """spec 期望的卡片形狀 vs 磁碟實況,回 ``(extra, missing)``。
 
     比對鍵是 ``(notebook_id, normalize_nfc_lower(content))`` —— 與 `CardStore.add`
@@ -166,8 +169,10 @@ def _dangling_active_notebook(dd: Path, uid: str, live_nb_ids: set[str]) -> list
         return [f"vocab_ui.active_notebook_id 型別非法:{active_nb!r}"]
     if active_nb in live_nb_ids:
         return []
-    return [f"vocab_ui.active_notebook_id={active_nb} 指向已不存在的 notebook"
-            f"(修法:ops-edit user-config-set {uid} --active-notebook <name|id>)"]
+    return [
+        f"vocab_ui.active_notebook_id={active_nb} 指向已不存在的 notebook"
+        f"(修法:ops-edit user-config-set {uid} --active-notebook <name|id>)"
+    ]
 
 
 def _seed_replace_verdict(
@@ -194,9 +199,14 @@ def _seed_replace_verdict(
     """
     extra, missing = _seed_shape_diff(expected, actual)
     return {
-        "ok": (len(actual) == len(expected) and not link_errors
-               and not field_mismatches and not extra and not missing
-               and not dangling_config),
+        "ok": (
+            len(actual) == len(expected)
+            and not link_errors
+            and not field_mismatches
+            and not extra
+            and not missing
+            and not dangling_config
+        ),
         # 「筆數不符但 extra/missing 皆空」= 同本大小寫變體重複。沒有 expected_cards
         # 這個對照數字,那個形狀的紅看起來會像沉默。
         "expected_cards": len(expected),
@@ -305,12 +315,8 @@ def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
                 raise EditError(f"notebooks[{name!r}].{key} 須為字串或 null:{value!r}")
         if "source_version" in n:
             source_version = n["source_version"]
-            if source_version is not None and (
-                isinstance(source_version, bool) or not isinstance(source_version, int)
-            ):
-                raise EditError(
-                    f"notebooks[{name!r}].source_version 須為整數或 null:{source_version!r}"
-                )
+            if source_version is not None and (isinstance(source_version, bool) or not isinstance(source_version, int)):
+                raise EditError(f"notebooks[{name!r}].source_version 須為整數或 null:{source_version!r}")
         if n.get("is_default"):
             default_entries += 1
     if default_entries > 1:
@@ -336,7 +342,7 @@ def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
             if ref not in declared:
                 raise EditError(
                     f"cards[{i}] 在 --replace 下指向未宣告的 notebook {ref!r}:"
-                    f"replace 會先清空整層 vocab,只能引用本 spec 宣告的本或 \"default\""
+                    f'replace 會先清空整層 vocab,只能引用本 spec 宣告的本或 "default"'
                     f"(本 spec 宣告:{sorted(declared)})"
                 )
         for i, lk in enumerate(spec.links):
@@ -344,7 +350,7 @@ def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
             if ref not in declared:
                 raise EditError(
                     f"links[{i}] 在 --replace 下指向未宣告的 notebook {ref!r}:"
-                    f"replace 會先清空整層 vocab,只能引用本 spec 宣告的本或 \"default\""
+                    f'replace 會先清空整層 vocab,只能引用本 spec 宣告的本或 "default"'
                     f"(本 spec 宣告:{sorted(declared)})"
                 )
     for i, c in enumerate(spec.cards):
@@ -359,9 +365,7 @@ def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
                 raise EditError(f"cards[{i}].{key} 須為字串或 null:{value!r}")
         if "difficulty" in c:
             difficulty = c["difficulty"]
-            if difficulty is not None and (
-                isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))
-            ):
+            if difficulty is not None and (isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))):
                 raise EditError(f"cards[{i}].difficulty 須為數值或 null:{difficulty!r}")
         for key in ("is_archived", "is_reader_hidden", "is_review_excluded"):
             if key in c and not isinstance(c[key], bool):
@@ -393,8 +397,6 @@ def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
             raise EditError(f"spec.links[{i}] confidence 須在 0.0~1.0:{conf}")
 
 
-
-
 def build_seed_plan(spec: SeedSpec, ctx: EditContext, *, replace: bool) -> dict[str, Any]:
     dist = {"new": 0, "due": 0, "reviewed": 0, "counters": 0, "unspecified": 0}
     for c in spec.cards:
@@ -405,10 +407,12 @@ def build_seed_plan(spec: SeedSpec, ctx: EditContext, *, replace: bool) -> dict[
         st = rv.get("state") if isinstance(rv, dict) else None
         dist[st if st in _VALID_REVIEW_STATES else "unspecified"] += 1
     plan = {
-        "notebooks": len(spec.notebooks), "cards": len(spec.cards), "links": len(spec.links),
+        "notebooks": len(spec.notebooks),
+        "cards": len(spec.cards),
+        "links": len(spec.links),
         "notebook_names": [n.get("name") for n in spec.notebooks],
         "card_sample": [c.get("content") for c in spec.cards[:5]],
-        "link_sample": [f'{link.get("from")}→{link.get("to")} ({link.get("kind")})' for link in spec.links[:3]],
+        "link_sample": [f"{link.get('from')}→{link.get('to')} ({link.get('kind')})" for link in spec.links[:3]],
         "review_distribution": dist,
         "replace": replace,
     }
@@ -417,9 +421,7 @@ def build_seed_plan(spec: SeedSpec, ctx: EditContext, *, replace: bool) -> dict[
         # 看見「這次會清掉哪幾個檔、目標現有幾張卡」,而不是事後從 backup 反推。
         # 先讀 cards.db，再列 wipe_files，避免 WAL sidecar 漏出預覽。
         plan["target_active_cards_before"] = _count_active_cards(ctx.user_dir / "cards.db")
-        plan["wipe_files"] = sorted(
-            p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name)
-        )
+        plan["wipe_files"] = sorted(p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name))
     return plan
 
 
@@ -438,9 +440,7 @@ def apply_seed(
     # 不在 _is_vocab_file 涵蓋範圍內,不受影響;EditContext 已在 apply 前建快照。
     removed_files: list[str] = []
     if replace:
-        removed_files = sorted(
-            p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name)
-        )
+        removed_files = sorted(p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name))
         if removed_files:
             ctx.mark_destructive()
         for name in removed_files:
@@ -466,8 +466,7 @@ def apply_seed(
         elif name in name_to_id:
             nb_id, reused = name_to_id[name], True
         else:
-            nb = nb_store.create(name=name, color=n.get("color"),
-                                 cover_pattern=n.get("cover_pattern"))
+            nb = nb_store.create(name=name, color=n.get("color"), cover_pattern=n.get("cover_pattern"))
             nb_id, reused = nb.id, False
         # 「確保狀態」語意:spec 宣告的欄位一律 upsert(reuse 者對齊 spec,
         # 新建者冗餘覆蓋無害 —— NotebookStore.update 有 has_changes 檢查)。
@@ -499,9 +498,7 @@ def apply_seed(
             return name_to_id[ref]
         if ref in existing_ids:
             return ref
-        raise EditError(
-            f"seed 指向不存在的 notebook {ref!r}(既非 spec 建立、也非既存 name/id)"
-        )
+        raise EditError(f"seed 指向不存在的 notebook {ref!r}(既非 spec 建立、也非既存 name/id)")
 
     card_store = _card_store(ctx.user_dir)
     # 真實新增數用 pre/post id diff(對齊 card-import)——CardStore.add 對既有
@@ -512,8 +509,10 @@ def apply_seed(
     for c in spec.cards:
         nb_id = _resolve_nb(c.get("notebook", "default"))
         card = card_store.add(
-            content=c["content"], meaning=c.get("meaning", ""),
-            pos=c.get("pos"), examples=c.get("examples") or [],
+            content=c["content"],
+            meaning=c.get("meaning", ""),
+            pos=c.get("pos"),
+            examples=c.get("examples") or [],
             collocations=c.get("collocations") or [],
             mode=c.get("mode", "recognition"),
             root_form=c.get("root_form"),
@@ -569,19 +568,22 @@ def apply_seed(
             if counters.get("review_count", 0) > 0:
                 # 計數器 ⇒ 逐筆 review events 一併合成(對齊 clone-demo 的合成
                 # 契約),否則 iOS heatmap/streak 與卡片聚合對不上。
-                synth_states.append(CardReviewState(
-                    card_id=card.id, content=c["content"], notebook_id=nb_id,
-                    review_count=counters["review_count"],
-                    lapse_count=counters.get("lapse_count", 0),
-                    review_streak=counters.get("review_streak", 0),
-                    last_review_feedback=counters.get("last_review_feedback", -1),
-                    last_reviewed_at=counters["last_reviewed_at"],
-                    created_at=card.created_at,
-                    review_interval_hours=counters.get("review_interval_hours", 12.0),
-                ))
+                synth_states.append(
+                    CardReviewState(
+                        card_id=card.id,
+                        content=c["content"],
+                        notebook_id=nb_id,
+                        review_count=counters["review_count"],
+                        lapse_count=counters.get("lapse_count", 0),
+                        review_streak=counters.get("review_streak", 0),
+                        last_review_feedback=counters.get("last_review_feedback", -1),
+                        last_reviewed_at=counters["last_reviewed_at"],
+                        created_at=card.created_at,
+                        review_interval_hours=counters.get("review_interval_hours", 12.0),
+                    )
+                )
         card_store.update(card.id, **updates)
-        card_checks.append({"content": c["content"].strip(), "nb_id": nb_id,
-                            "meaning": c.get("meaning", "")})
+        card_checks.append({"content": c["content"].strip(), "nb_id": nb_id, "meaning": c.get("meaning", "")})
     state["card_checks"] = card_checks
     post_ids = {c.id for c in card_store.all()}
     actually_new = len(post_ids - pre_ids)
@@ -597,8 +599,14 @@ def apply_seed(
             from_card = _resolve_card_in_notebook(card_store, lk["from"], nb_id)
             to_card = _resolve_card_in_notebook(card_store, lk["to"], nb_id)
             graph = _graph_store(ctx.user_dir, nb_id)
-            graph.add_link(from_id=from_card.id, to_id=to_card.id, kind=LinkKind(lk["kind"]),
-                           confidence=float(lk["confidence"]), reason=lk["reason"], source="ops")
+            graph.add_link(
+                from_id=from_card.id,
+                to_id=to_card.id,
+                kind=LinkKind(lk["kind"]),
+                confidence=float(lk["confidence"]),
+                reason=lk["reason"],
+                source="ops",
+            )
             added_links += 1
         except (EditError, ValueError, KeyError) as exc:
             link_errors.append(f"{lk.get('from')}→{lk.get('to')}: {exc}")
@@ -616,13 +624,15 @@ def apply_seed(
                 store.close()
 
     state["link_errors"] = link_errors
-    return {"notebooks_created": created_nb, "cards_added": actually_new,
-            "skipped_dup": len(spec.cards) - actually_new,
-            "links_added": added_links, "link_errors": link_errors,
-            "review_events_written": events_written,
-            "removed_files": removed_files}
-
-
+    return {
+        "notebooks_created": created_nb,
+        "cards_added": actually_new,
+        "skipped_dup": len(spec.cards) - actually_new,
+        "links_added": added_links,
+        "link_errors": link_errors,
+        "review_events_written": events_written,
+        "removed_files": removed_files,
+    }
 
 
 def verify_seed(
@@ -647,9 +657,12 @@ def verify_seed(
         elif chk["meaning"] and found.meaning != chk["meaning"]:
             field_mismatches.append(f"{chk['content']}@{chk['nb_id']}: meaning not applied")
     # link 失敗 / 欄位未落盤都算 verify 失敗 —— 否則無聲失敗報 ok。
-    out: dict[str, Any] = {"ok": total >= len(spec.cards) and not errs and not field_mismatches,
-                           "total_cards": total, "link_errors": errs,
-                           "field_mismatches": field_mismatches[:5]}
+    out: dict[str, Any] = {
+        "ok": total >= len(spec.cards) and not errs and not field_mismatches,
+        "total_cards": total,
+        "link_errors": errs,
+        "field_mismatches": field_mismatches[:5],
+    }
     if replace:
         # replace 宣告「spec = 精確最終狀態」,所以判準也必須是精確的:
         # `total >= len(spec.cards)` 對 additive 是對的(既有卡本來就該留著),但對
@@ -659,14 +672,16 @@ def verify_seed(
         # identity 不動 ⇒ 舊的 active notebook 指標會指向剛被清掉的 id。
         live_nb_ids = {nb.id for nb in _notebook_store(ctx.user_dir).all()} | {"default"}
         dangling = _dangling_active_notebook(ctx.data_dir, ctx.uid, live_nb_ids)
-        out.update(_seed_replace_verdict(
-            state.get("card_checks", []), actual_pairs,
-            link_errors=errs, field_mismatches=field_mismatches,
-            dangling_config=dangling,
-        ))
+        out.update(
+            _seed_replace_verdict(
+                state.get("card_checks", []),
+                actual_pairs,
+                link_errors=errs,
+                field_mismatches=field_mismatches,
+                dangling_config=dangling,
+            )
+        )
     return out
-
-
 
 
 def _run_seed(
@@ -684,11 +699,12 @@ def _run_seed(
         verify_fn=lambda: verify_seed(spec, ctx, state, replace=replace),
     )
 
+
 def cmd_clone_demo(args: argparse.Namespace) -> int:
     """高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history。"""
     dd = data_dir()
     src_uid = args.source_uid
-    assert_safe_uid(src_uid)                       # '../evil' 類在此 fail-loud
+    assert_safe_uid(src_uid)  # '../evil' 類在此 fail-loud
     src_dir = user_dir_for(dd, src_uid)
     if not src_dir.exists():
         raise EditError(f"source user not found: {src_uid}(在 {dd}/users/ 下無此目錄)")
@@ -705,8 +721,7 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
     source_fingerprint = _clone_source_fingerprint(src_dir)
     if args.expect_source_fingerprint and args.expect_source_fingerprint != source_fingerprint:
         raise EditError(
-            f"source fingerprint mismatch: expected {args.expect_source_fingerprint}, "
-            f"got {source_fingerprint}"
+            f"source fingerprint mismatch: expected {args.expect_source_fingerprint}, got {source_fingerprint}"
         )
     source_links = _count_graph_links(src_dir)
     plan = {
@@ -734,9 +749,8 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
             shutil.copy2(sp, tp)
             staged.append((tgt / sp.name, tp))
         # 2. 清掉目標端舊 vocab 層(孤兒 graph/embeddings、-wal/-shm、舊 review_events)。
-        removed = sorted(
-            p.name for p in tgt.iterdir() if p.is_file() and _is_vocab_file(p.name)
-        )
+        ctx.mark_destructive()
+        removed = sorted(p.name for p in tgt.iterdir() if p.is_file() and _is_vocab_file(p.name))
         for p in tgt.iterdir():
             if p.is_file() and _is_vocab_file(p.name):
                 p.unlink()
@@ -771,12 +785,8 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
         # backup API 重排頁面大小會變,只驗存在且非空。補上 count-only verify 的盲點:
         # 一個 present-but-truncated 的 .npy 不會被卡數/連結數揪出。
         files_ok = all(
-            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size == sp.stat().st_size
-            for sp in other_files
-        ) and all(
-            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size > 0
-            for sp in sqlite_files
-        )
+            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size == sp.stat().st_size for sp in other_files
+        ) and all((tgt / sp.name).exists() and (tgt / sp.name).stat().st_size > 0 for sp in sqlite_files)
         ok = (
             active == plan["source_active_cards"]
             and events == plan["synthesized_events"]
@@ -792,6 +802,7 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
         }
 
     return ctx.run(action="clone-demo", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
 
 def cmd_world_snapshot(args: argparse.Namespace) -> int:
     dd = data_dir()
@@ -844,9 +855,7 @@ def cmd_world_restore(args: argparse.Namespace) -> int:
         names = tar.getnames()
     top_dirs = {n.split("/")[0] for n in names if n and not n.startswith("/")}
     if top_dirs != {_WORLD_BACKUP_ROOT}:
-        raise EditError(
-            f"world snapshot root 不符: top={sorted(top_dirs)}, 預期僅 {{{_WORLD_BACKUP_ROOT!r}}}"
-        )
+        raise EditError(f"world snapshot root 不符: top={sorted(top_dirs)}, 預期僅 {{{_WORLD_BACKUP_ROOT!r}}}")
     plan = {
         "restore_from": str(snapshot_path),
         "target_data_dir": str(dd),
