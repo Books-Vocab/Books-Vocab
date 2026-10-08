@@ -9,7 +9,8 @@ import os
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
@@ -18,6 +19,7 @@ import numpy as np
 from openai import OpenAIError
 
 from ._fsutil import fsync_dir as _fsync_dir
+from .graph.filelock import path_write_lock
 from .retry import llm_retryable_exceptions
 
 logger = logging.getLogger(__name__)
@@ -120,8 +122,12 @@ class EmbeddingStore:
         self._id_pos: dict[str, int] = {}  # card_id -> row index (O(1) lookup)
         self._norms: np.ndarray | None = None  # cached L2 norms
         self._dirty: bool = False
+        # Rows changed by update() but not yet flushed; re-applied on top of a
+        # disk refresh so a stale-view reload cannot drop the new vector.
+        self._dirty_rows: dict[str, np.ndarray] = {}
         self._lock = threading.RLock()
-        self._load()
+        self._disk_sig: tuple | None = None
+        self._initial_load()
 
     # ------------------------------------------------------------------
     # Meta sidecar (model/dim guard)
@@ -195,8 +201,32 @@ class EmbeddingStore:
                         e,
                     )
 
+    def _initial_load(self) -> None:
+        """First load, serialised with writers when files already exist.
+
+        Without the file lock, a writer's two ``replace()`` calls (npy, then
+        ids) can land between this instance's ``np.load`` and ``ids`` read; the
+        torn pair looks like row/id desync and a perfectly healthy store is
+        quarantined as corrupt. The disk signature is taken under the same lock
+        so it describes exactly what was loaded. With no files yet there is
+        nothing to tear and no reason to create the lock file (or its
+        directory): the signature is taken *before* the load so a file that
+        appears meanwhile only ever triggers a refresh, never hides one.
+        """
+        if self.embeddings_path.exists() or self.ids_path.exists():
+            with path_write_lock(self.embeddings_path):
+                self._load()
+                self._disk_sig = self._disk_signature()
+            return
+        self._disk_sig = self._disk_signature()
+        self._load()
+
     def _load(self) -> None:
         """Load vectors + ids from disk, gated by sidecar match.
+
+        Never leaves a half-built view: the in-memory state is replaced in one
+        step (``_adopt`` / ``_reset_empty``), so lock-free ``has`` / ``count``
+        readers never observe an empty store while a refresh is reading disk.
 
         Cases:
         * No .npy / no ids → fresh empty store (no sidecar written yet).
@@ -213,6 +243,7 @@ class EmbeddingStore:
           interrupted save wedges it). Pipeline backfill re-embeds next run.
         """
         if not (self.embeddings_path.exists() and self.ids_path.exists()):
+            self._reset_empty()
             return
 
         meta = self._read_meta()
@@ -244,6 +275,7 @@ class EmbeddingStore:
             self.dim,
         )
         self._quarantine_stale(str(stale_model), int(stale_dim) if isinstance(stale_dim, int) else 0)
+        self._reset_empty()
         # Sidecar must reflect active config now.
         self._write_meta()
 
@@ -293,12 +325,35 @@ class EmbeddingStore:
         if reason is not None:
             return self._degrade_corrupt(reason)
 
-        self._embeddings = vectors
-        self._ids = ids
-        self._id_set = set(self._ids)
-        self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
-        self._invalidate_norms()
+        self._adopt(vectors, ids)
         return True
+
+    def _adopt(self, vectors: np.ndarray, ids: list[str]) -> None:
+        """Replace the in-memory view with freshly loaded ``vectors`` / ``ids``.
+
+        Everything is built locally first (pending ``update()`` vectors are
+        re-applied for ids still present, so a stale-view reload cannot drop
+        them) and then assigned back-to-back with no IO in between.
+        """
+        id_set = set(ids)
+        id_pos = {cid: i for i, cid in enumerate(ids)}
+        for cid, vec in self._dirty_rows.items():
+            idx = id_pos.get(cid)
+            if idx is not None:
+                vectors[idx] = vec
+        self._ids = ids
+        self._id_set = id_set
+        self._id_pos = id_pos
+        self._embeddings = vectors
+        self._invalidate_norms()
+
+    def _reset_empty(self) -> None:
+        """Swap in a clean empty view (no files / quarantined files)."""
+        self._ids = []
+        self._id_set = set()
+        self._id_pos = {}
+        self._embeddings = None
+        self._invalidate_norms()
 
     def _degrade_corrupt(self, reason: str, *, detail: str | None = None) -> bool:
         """Shared degrade path for any recoverable on-disk corruption: log a
@@ -318,12 +373,8 @@ class EmbeddingStore:
             f"; {detail}" if detail else "",
         )
         self._quarantine_corrupt(reason)
-        # Drop any half-loaded state; come up as a clean empty store.
-        self._embeddings = None
-        self._ids = []
-        self._id_set = set()
-        self._id_pos = {}
-        self._invalidate_norms()
+        # Come up as a clean empty store.
+        self._reset_empty()
         return False
 
     def _shape_dim_violation(self, vectors: np.ndarray) -> str | None:
@@ -373,6 +424,65 @@ class EmbeddingStore:
         if self._norms is None and self._embeddings is not None:
             self._norms = np.linalg.norm(self._embeddings, axis=1)
         return self._norms
+
+    def _disk_signature(self) -> tuple:
+        """``(inode, mtime_ns, size)`` of both data files (``None`` if absent).
+
+        Every ``_save`` swaps both files in via ``os.replace`` (new inode), so
+        any write by another instance or process changes the signature. One
+        ``stat`` per file; never reads file contents.
+        """
+        sig: list[tuple[int, int, int] | None] = []
+        for path in (self.embeddings_path, self.ids_path):
+            try:
+                st = path.stat()
+            except OSError:
+                sig.append(None)
+            else:
+                sig.append((st.st_ino, st.st_mtime_ns, st.st_size))
+        return tuple(sig)
+
+    def _refresh_locked(self) -> bool:
+        """Reload from disk if another writer changed the files.
+
+        Caller must hold ``self._lock`` *and* the file lock (``_write_txn``);
+        this method never takes either itself (``flock`` is not re-entrant).
+        Pending ``update()`` vectors are re-applied for ids still present.
+        Returns True if memory was replaced.
+        """
+        if self._disk_signature() == self._disk_sig:
+            return False
+        # No clearing first: ``_load`` swaps the new view in one step, so the
+        # lock-free ``has`` / ``count`` never see an empty store mid-read.
+        self._load()
+        self._disk_sig = self._disk_signature()
+        return True
+
+    @contextmanager
+    def _write_txn(self) -> Iterator[None]:
+        """Read-modify-write transaction: instance lock, then cross-process
+        file lock, then refresh so the disk is authoritative at write time."""
+        with self._lock, path_write_lock(self.embeddings_path):
+            self._refresh_locked()
+            yield
+
+    def refresh_if_stale(self) -> bool:
+        """Adopt another instance's/process's persisted rows if the files changed.
+
+        Unchanged files cost one ``stat`` per file. Never raises: on failure
+        the cached view is kept (mirrors ``GraphStore.refresh_if_stale``).
+        """
+        try:
+            if self._disk_signature() == self._disk_sig:
+                return False
+            with self._write_txn():
+                pass
+            return True
+        except Exception:
+            logger.warning(
+                "EmbeddingStore refresh failed for %s; keeping cached view", self.embeddings_path, exc_info=True
+            )
+            return False
 
     @_synchronized
     def _save(self) -> None:
@@ -427,6 +537,7 @@ class EmbeddingStore:
         # so a fresh store (no legacy files) still gets a guard on first save.
         if not self._meta_path.exists():
             self._write_meta()
+        self._disk_sig = self._disk_signature()
 
     def bind(self, llm) -> BoundEmbeddingStore:
         """Return a caller-scoped handle that embeds through ``llm``.
@@ -511,6 +622,9 @@ class EmbeddingStore:
         stay persisted, later chunks are never sent, and the next call embeds
         only the ids that are still missing.
         """
+        # Pick up rows another instance persisted so they are not re-embedded
+        # (and re-billed).
+        self.refresh_if_stale()
         # Filter out already-embedded cards and duplicate IDs in this batch.
         with self._lock:
             seen_ids = set(self._id_set)
@@ -523,7 +637,9 @@ class EmbeddingStore:
 
         batch_size = _EMBED_BATCH_LIMIT
         for start in range(0, len(new_items), batch_size):
-            # Skip ids a concurrent add landed while earlier chunks were embedding.
+            # Skip ids a concurrent add (any instance) landed while earlier
+            # chunks were embedding; the stat-only refresh avoids re-billing them.
+            self.refresh_if_stale()
             chunk = [item for item in new_items[start : start + batch_size] if item[0] not in self._id_set]
             if not chunk:
                 continue
@@ -532,29 +648,35 @@ class EmbeddingStore:
             vecs = self._embed([text for _, text in chunk], llm=llm)
             self._append_rows(chunk, vecs)
 
-    @_synchronized
     def _append_rows(self, items: list[tuple[str, str]], vecs: np.ndarray) -> None:
-        """Append ``vecs`` (row i embeds ``items[i]``) and persist them."""
-        # A concurrent add may have landed some of these ids while we were
-        # embedding; appending them again would duplicate rows.
-        keep = [i for i, (cid, _) in enumerate(items) if cid not in self._id_set]
-        if not keep:
-            return
-        if len(keep) != len(items):
-            vecs = vecs[keep]
-        new_ids = [items[i][0] for i in keep]
+        """Append ``vecs`` (row i embeds ``items[i]``) and persist them.
 
-        if self._embeddings is None:
-            self._embeddings = vecs
-        else:
-            self._embeddings = np.vstack([self._embeddings, vecs])
+        Runs as one write transaction: instance lock, cross-process file lock,
+        then a refresh from disk, so rows another instance persisted since our
+        last load are neither dropped by this save nor appended twice.
+        """
+        with self._write_txn():
+            # A concurrent add (any instance, via the refresh) may have landed
+            # some of these ids while we were embedding; appending them again
+            # would duplicate rows.
+            keep = [i for i, (cid, _) in enumerate(items) if cid not in self._id_set]
+            if not keep:
+                return
+            if len(keep) != len(items):
+                vecs = vecs[keep]
+            new_ids = [items[i][0] for i in keep]
 
-        base = len(self._ids)
-        self._ids.extend(new_ids)
-        self._id_set.update(new_ids)
-        self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
-        self._invalidate_norms()
-        self._save()
+            if self._embeddings is None:
+                self._embeddings = vecs
+            else:
+                self._embeddings = np.vstack([self._embeddings, vecs])
+
+            base = len(self._ids)
+            self._ids.extend(new_ids)
+            self._id_set.update(new_ids)
+            self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
+            self._invalidate_norms()
+            self._save()
 
     def remove(self, card_id: str) -> bool:
         """Evict a single card's vector (delegates to remove_batch).
@@ -563,7 +685,6 @@ class EmbeddingStore:
         """
         return self.remove_batch([card_id]) > 0
 
-    @_synchronized
     def remove_batch(self, card_ids: list[str]) -> int:
         """Evict multiple cards' vectors in one pass.
 
@@ -574,21 +695,27 @@ class EmbeddingStore:
 
         Performs at most one disk save for the whole batch.
         """
-        if not card_ids or self._embeddings is None:
+        if not card_ids:
             return 0
 
-        to_drop = {cid for cid in card_ids if cid in self._id_set}
-        if not to_drop:
-            return 0
+        with self._write_txn():
+            if self._embeddings is None:
+                return 0
 
-        keep_mask = np.array([cid not in to_drop for cid in self._ids], dtype=bool)
-        self._embeddings = self._embeddings[keep_mask]
-        self._ids = [cid for cid in self._ids if cid not in to_drop]
-        self._id_set = set(self._ids)
-        self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
-        self._invalidate_norms()
-        self._save()
-        return len(to_drop)
+            to_drop = {cid for cid in card_ids if cid in self._id_set}
+            if not to_drop:
+                return 0
+
+            keep_mask = np.array([cid not in to_drop for cid in self._ids], dtype=bool)
+            self._embeddings = self._embeddings[keep_mask]
+            self._ids = [cid for cid in self._ids if cid not in to_drop]
+            self._id_set = set(self._ids)
+            self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
+            for cid in to_drop:
+                self._dirty_rows.pop(cid, None)
+            self._invalidate_norms()
+            self._save()
+            return len(to_drop)
 
     def update(self, card_id: str, text: str, *, llm=None) -> None:
         """Update existing embedding.
@@ -608,10 +735,10 @@ class EmbeddingStore:
             if idx is None:
                 return
             self._embeddings[idx] = vecs[0]
+            self._dirty_rows[card_id] = vecs[0]
             self._invalidate_norms()
             self._dirty = True
 
-    @_synchronized
     def flush(self) -> None:
         """Persist any dirty (deferred) writes to disk.
 
@@ -619,8 +746,10 @@ class EmbeddingStore:
         """
         if not self._dirty:
             return
-        self._save()
-        self._dirty = False
+        with self._write_txn():
+            self._save()
+            self._dirty = False
+            self._dirty_rows.clear()
 
     @_synchronized
     def find_similar(self, card_id: str, k: int = 10) -> list[tuple[str, float]]:
@@ -628,6 +757,7 @@ class EmbeddingStore:
 
         Returns list of (card_id, similarity_score) sorted by similarity descending.
         """
+        self.refresh_if_stale()
         if self._embeddings is None or card_id not in self._id_set:
             return []
 
@@ -685,6 +815,7 @@ class EmbeddingStore:
         """
         # Unknown / empty: every requested id still gets a key (callers iterate
         # the input list and expect a result per id).
+        self.refresh_if_stale()
         result: dict[str, list[tuple[str, float]]] = {cid: [] for cid in card_ids}
         if self._embeddings is None:
             return result
