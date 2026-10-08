@@ -84,6 +84,23 @@ struct ExternalAPIKeyServiceTests {
         #expect(transport.requests[0].httpMethod == "DELETE")
     }
 
+    @Test func createNotebook_does_not_retry_non_idempotent_post() async throws {
+        let transport = RecordingKGHTTPTransport(
+            responses: [
+                .init(statusCode: 503, body: #"{"detail":"temporary"}"#)
+            ]
+        )
+        let service = makeService(transport: transport)
+
+        await #expect(throws: KGError.self) {
+            try await service.createNotebook(name: "Reading")
+        }
+
+        #expect(transport.requests.count == 1)
+        #expect(transport.requests[0].httpMethod == "POST")
+        #expect(transport.requests[0].url?.path == "/api/notebooks")
+    }
+
     private func makeService(transport: RecordingKGHTTPTransport) -> KGService {
         KGService(
             authSession: FixedExternalAPIAuthSession(),

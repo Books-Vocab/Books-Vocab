@@ -16,11 +16,14 @@ extension KGService {
         var body: [String: String] = ["name": name]
         if let color { body["color"] = color }
         if let coverPattern { body["cover_pattern"] = coverPattern }
+        // Creation is not idempotent server-side: retrying a timed-out POST
+        // would create duplicate notebooks, so this is deliberately single-shot.
         return try await authenticatedDecode(
             KGNotebook.self,
             path: "api/notebooks",
             method: "POST",
-            body: try JSONEncoder().encode(body)
+            body: try JSONEncoder().encode(body),
+            retryPolicy: .none
         )
     }
 
