@@ -278,16 +278,20 @@ def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lo
     assert generated_dense == marketing_dense
 
 
-def test_generic_emitter_has_only_history_plan_clock_and_explicit_legacy_contract() -> (
-    None
-):
+def test_generic_emitter_and_clock_module_have_only_history_plan_clock() -> None:
     emitter = _text(ROOT / "ops/demo/emit_ios.py")
     clock_module = _text(ROOT / "ops/review_calendar_clock.py")
 
     assert "clock_from_spec" not in emitter
     assert "clock_from_plan" in emitter
-    assert "legacy" in clock_module.lower()
     assert "drift" in emitter
+    # The history plan is the only clock source; the spec-based legacy clock
+    # was deleted (#2273). Only its source label stays, for ui_world_manifest.
+    clock_entrypoints = re.findall(
+        r"^def (\w*clock_from_\w+)\(", clock_module, re.MULTILINE
+    )
+    assert clock_entrypoints == ["clock_from_plan"]
+    assert "LEGACY_SPEC_HISTORY_SOURCE =" in clock_module
 
 
 def test_generated_evidence_metadata_uses_portable_v2_provenance() -> None:

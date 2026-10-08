@@ -185,6 +185,14 @@ def test_ack_concurrent_verify_consumes_once(tmp_path: Path):
     assert sorted(results) == ["ok", "replay"]
 
 
+def test_felix_compute_stub_surfaces_are_retired():
+    # The launcher is the only Felix compute entrypoint; the admin/worker
+    # placeholder stubs were deleted (#2273) and must not come back.
+    assert not (OPS / "felix_compute_admin.py").exists()
+    assert not (OPS / "felix_compute_worker.py").exists()
+    assert (OPS / "felix_compute_launcher.py").exists()
+
+
 def _repo_with_symlinks(tmp_path: Path, links: dict[str, str]) -> tuple[Path, str]:
     repo = tmp_path / "repo-links"
     repo.mkdir()
