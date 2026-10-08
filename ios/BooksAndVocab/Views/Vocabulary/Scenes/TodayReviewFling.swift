@@ -77,4 +77,15 @@ enum TodayReviewFling {
     static func liveIntensity(swipeOffset: CGFloat, threshold: CGFloat) -> Double {
         max(-1, min(1, Double(swipeOffset / max(threshold, 1))))
     }
+
+    /// 卡片上「記得 / 忘記」方向標記的不透明度（#2045）：沿 `direction` 的位移 / 閾值，
+    /// 0 → 閾值線性漸入、飽和為 1，反方向恆 0（兩個標記常駐、只有值變，不用 if/else 切換）。
+    /// 由 swipeOffset 直接推導（不經凍結的 toolbar intensity）：fling 時 offset 被 spring
+    /// 推到終點，標記沿同一條曲線漸入（按鈕路徑也一樣）；回彈時沿 snap-back spring 淡出；
+    /// settle 的 no-anim 內 offset 歸零 → 標記同幀歸 0，不留殘影。
+    static func markerOpacity(swipeOffset: CGFloat, threshold: CGFloat, direction: CGFloat) -> Double {
+        let sign: CGFloat = direction < 0 ? -1 : 1
+        let along = max(swipeOffset * sign, 0)
+        return Double(min(along / max(threshold, 1), 1))
+    }
 }

@@ -119,6 +119,12 @@ enum TodayReviewMetrics {
     static let swipeThreshold: CGFloat = 100
     static let swipeMaxRotation: Double = 12
     static let swipeOpacityFloor: Double = 0.3
+    /// 卡片方向標記（#2045）：靜態傾角（記得往左傾、忘記往右傾，跟著卡片旋轉）、
+    /// 與卡片上緣 / 側緣的內距、外框線寬、底色不透明度（壓在卡片內容上仍可讀）。
+    static let swipeMarkerTilt: Double = 12
+    static let swipeMarkerInset: CGFloat = AppSpacing.s4
+    static let swipeMarkerBorderWidth: CGFloat = 2
+    static let swipeMarkerFillOpacity: Double = 0.85
 
     // MARK: Autoplay player
     static let autoplayProgressBarHeight: CGFloat = 4

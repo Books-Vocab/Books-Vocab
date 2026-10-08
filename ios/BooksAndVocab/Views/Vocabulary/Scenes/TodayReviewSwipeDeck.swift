@@ -141,6 +141,11 @@ extension TodayReviewPresenter {
             #endif
             .animation((dismissPhase == .idle && !suppressFoldAnimation) ? AppMotion.reviewRevealSpring : nil,
                        value: slotShowsAnswer)
+            // #2045 方向標記：常駐 overlay（不改 slot 結構與 layout 高度），只有 active
+            // 吃 swipeOffset，其餘 slot 恆 0。放在姿態 modifier 之前 → 跟著卡片位移與旋轉。
+            .overlay(alignment: .top) {
+                swipeMarkers(swipeOffset: isActive ? swipeOffset : 0)
+            }
             // 姿態 = 純值 diff（modifier 結構固定）。順序對齊舊雙軌：
             // scale → offset → rotation → opacity；rotation anchor 在 role 翻面
             // 時切換（active=.bottom / preview=.center），翻面瞬間角度恆 0，無跳動。
@@ -173,6 +178,49 @@ extension TodayReviewPresenter {
     }
     #endif
 
+    /// 「記得 / 忘記」方向標記（#2045）。兩個標記常駐、不透明度連續由 swipeOffset 推導
+    /// （`TodayReviewFling.markerOpacity`），無 if/else 結構切換：拖動漸入、回彈沿 snap-back
+    /// spring 淡出、fling（swipe 或按鈕）沿同一條 fling spring 漸入、settle no-anim 同幀歸 0。
+    /// 純裝飾：不吃命中、不進 a11y（評分語意由下方按鈕承載）。
+    func swipeMarkers(swipeOffset: CGFloat) -> some View {
+        let threshold = TodayReviewMetrics.swipeThreshold
+        return HStack(alignment: .top, spacing: 0) {
+            swipeMarker(
+                title: L10n.string("記得"),
+                tint: appSkin.palette.success,
+                tilt: -TodayReviewMetrics.swipeMarkerTilt
+            )
+            .opacity(TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: 1))
+            Spacer(minLength: 0)
+            swipeMarker(
+                title: L10n.string("忘記"),
+                tint: appSkin.palette.destructive,
+                tilt: TodayReviewMetrics.swipeMarkerTilt
+            )
+            .opacity(TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: -1))
+        }
+        .padding(TodayReviewMetrics.swipeMarkerInset)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func swipeMarker(title: String, tint: Color, tilt: Double) -> some View {
+        Text(title)
+            .font(appSkin.typography.sectionTitle)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, AppSpacing.s3)
+            .padding(.vertical, AppSpacing.s1)
+            .background(
+                AppRoundedRect(roundness: appSkin.roundness.control)
+                    .fill(appSkin.palette.cardBackground.opacity(TodayReviewMetrics.swipeMarkerFillOpacity))
+            )
+            .overlay(
+                AppRoundedRect(roundness: appSkin.roundness.control)
+                    .stroke(tint, lineWidth: TodayReviewMetrics.swipeMarkerBorderWidth)
+            )
+            .rotationEffect(.degrees(tilt))
+    }
 
     // MARK: Settle seam（fling 完成時刻的 role 輪替）
 
