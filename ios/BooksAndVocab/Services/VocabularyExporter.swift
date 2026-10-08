@@ -84,7 +84,11 @@ enum VocabularyExporter {
     }
 
     private static func escapeCSV(_ text: String) -> String {
-        let escaped = text.replacingOccurrences(of: "\"", with: "\"\"")
+        // 防試算表公式注入：欄位內容來自不受信任的書籍，開頭為公式觸發字元時
+        // 前置 `'` 讓 Excel/Numbers/Sheets 視為純文字（會改動資料，屬已知取捨）。
+        let formulaTriggers: Set<Character> = ["=", "+", "-", "@", "\t", "\r", "\n"]
+        let safe = text.first.map(formulaTriggers.contains) == true ? "'" + text : text
+        let escaped = safe.replacingOccurrences(of: "\"", with: "\"\"")
         return "\"\(escaped)\""
     }
 
