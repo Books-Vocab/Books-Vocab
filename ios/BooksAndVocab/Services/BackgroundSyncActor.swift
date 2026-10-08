@@ -442,12 +442,6 @@ actor BackgroundSyncActor {
         AppLog.sync.info("markReviewStatesPushed: acknowledged \(marked) card review states")
     }
 
-    func distinctNotebookIds() throws -> [String] {
-        let descriptor = FetchDescriptor<VocabularyEntry>()
-        let entries = try modelContext.fetch(descriptor)
-        return Array(Set(entries.map(\.notebookId)))
-    }
-
     private static let dayFormatter = AppDateFormatters.dayKey
 
     // MARK: - Merge Key Helper
