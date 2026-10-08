@@ -99,6 +99,7 @@ struct SubscriptionPaywallSheet: View {
                         )
                     }
                     .buttonStyle(.vocabAction(.primary))
+                    .disabled(subscriptionManager.isLoading)
                 }
 
                 Button {
