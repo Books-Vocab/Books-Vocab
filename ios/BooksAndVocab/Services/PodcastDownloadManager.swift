@@ -94,10 +94,57 @@ final class PodcastDownloadManager: NSObject {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         let task = session.downloadTask(with: request)
-        taskToRemoteId[task.taskIdentifier] = episode.remoteId
-        remoteIdToTask[episode.remoteId] = task
-        progress[episode.remoteId] = 0
+        beginTracking(task, remoteId: episode.remoteId)
         task.resume()
+    }
+
+    /// Binds a download task to the episode it fetches — the single
+    /// bookkeeping entry point every delegate callback resolves through.
+    /// Internal (not private) so delegate tests can drive callbacks with a
+    /// stub task instead of a live background session.
+    func beginTracking(_ task: URLSessionDownloadTask, remoteId: String) {
+        taskToRemoteId[task.taskIdentifier] = remoteId
+        remoteIdToTask[remoteId] = task
+        progress[remoteId] = 0
+    }
+
+    /// Why a finished download must not become the episode's audio.
+    enum DownloadRejection: Equatable {
+        /// Non-2xx status: the body is an error page (401 token expired
+        /// mid-download, 403, 404, 5xx / CDN error), not audio.
+        case httpStatus(Int)
+        /// 2xx but the body is a structured/text error payload.
+        case unexpectedContentType(String)
+    }
+
+    /// Validates the response of a finished download task. `nil` = usable.
+    ///
+    /// Content type is a denylist of error-body types (JSON / XML / text)
+    /// rather than an `audio/*` allowlist: the backend serves `audio/mpeg`,
+    /// but a storage redirect may legitimately answer with
+    /// `application/octet-stream` and must not be rejected. A missing
+    /// response (non-HTTP) is accepted.
+    nonisolated static func downloadRejection(for response: URLResponse?) -> DownloadRejection? {
+        guard let http = response as? HTTPURLResponse else { return nil }
+        guard (200..<300).contains(http.statusCode) else {
+            return .httpStatus(http.statusCode)
+        }
+        guard let mime = http.mimeType?.lowercased() else { return nil }
+        let isErrorBody = mime.hasPrefix("text/")
+            || mime == "application/json"
+            || mime == "application/xml"
+            || mime.hasSuffix("+json")
+            || mime.hasSuffix("+xml")
+        return isErrorBody ? .unexpectedContentType(mime) : nil
+    }
+
+    private static func message(for rejection: DownloadRejection) -> String {
+        switch rejection {
+        case .httpStatus(let status):
+            return L10n.format("sync.failure.reason.serverRejectedCode", String(status))
+        case .unexpectedContentType:
+            return L10n.string("sync.failure.reason.serverRejected")
+        }
     }
 
     func cancel(remoteId: String) {
@@ -200,6 +247,17 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
+        // URLSession calls this for ANY completed response, including 4xx/5xx
+        // whose body is an error page. Reject before stashing so an error body
+        // never lands as `<remoteId>.mp3` / `localAudioPath` (#2104).
+        if let rejection = Self.downloadRejection(for: downloadTask.response) {
+            try? FileManager.default.removeItem(at: location)
+            let taskId = downloadTask.taskIdentifier
+            Task { @MainActor in
+                self.markFailed(taskId: taskId, message: Self.message(for: rejection))
+            }
+            return
+        }
         // didFinishDownloadingTo's URL is valid only inside this callback —
         // copy to a temp file we control before hopping to MainActor.
         let tempDir = FileManager.default.temporaryDirectory
