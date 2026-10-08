@@ -51,9 +51,7 @@ class LexicalService:
         rate_limiter: LexicalRateLimiter | None = None,
     ) -> None:
         if provider.capabilities.cache_policy != "persistent":
-            raise ForbiddenError(
-                f"Dictionary provider {provider.provider_id} does not permit persistent caching"
-            )
+            raise ForbiddenError(f"Dictionary provider {provider.provider_id} does not permit persistent caching")
         self.provider = provider
         self.cache = cache
         self.telemetry = telemetry or cache
@@ -63,12 +61,8 @@ class LexicalService:
         self.provider_hourly_limit = max(1, min(provider_hourly_limit, 999))
 
     def _reserve_provider_request(self) -> None:
-        if not self.cache.reserve_provider_request(
-            self.provider.provider_id, hourly_limit=self.provider_hourly_limit
-        ):
-            raise ExternalServiceError(
-                "dictionary_provider_hourly_limit", headers={"Retry-After": "3600"}
-            )
+        if not self.cache.reserve_provider_request(self.provider.provider_id, hourly_limit=self.provider_hourly_limit):
+            raise ExternalServiceError("dictionary_provider_hourly_limit", headers={"Retry-After": "3600"})
 
     def _instrumented(self, operation: str, call) -> LexicalLookupResult:
         """Record exactly one outcome + latency per admitted lookup."""
@@ -119,17 +113,11 @@ class LexicalService:
         target_language: str,
         limiter_key: str | None,
     ) -> LexicalLookupResult:
-        if (
-            limiter_key is not None
-            and self.rate_limiter is not None
-            and not self.rate_limiter.admit(limiter_key)
-        ):
-            raise ExternalServiceError(
-                "dictionary_provider_rate_limited", headers={"Retry-After": "60"}
-            )
-        cached = self.cache.get_query(
-            self.provider.provider_id, query, source_language, target_language
-        )
+        if limiter_key is not None and self.rate_limiter is not None and not self.rate_limiter.admit(limiter_key):
+            raise ExternalServiceError("dictionary_provider_rate_limited", headers={"Retry-After": "60"})
+        # One canonical string feeds the cache key and the provider call alike.
+        query = LexicalCache.normalize_query(query)
+        cached = self.cache.get_query(self.provider.provider_id, query, source_language, target_language)
         if cached is not None and cached.fresh:
             return LexicalLookupResult(
                 entry=cached.entry,
@@ -140,24 +128,16 @@ class LexicalService:
             self._reserve_provider_request()
         except ExternalServiceError:
             if cached is not None and cached.entry is not None:
-                return LexicalLookupResult(
-                    entry=cached.entry, cache_status="stale", provider_called=False
-                )
+                return LexicalLookupResult(entry=cached.entry, cache_status="stale", provider_called=False)
             raise
         try:
-            entry = self.provider.search(
-                query, source_language=source_language, target_language=target_language
-            )
+            entry = self.provider.search(query, source_language=source_language, target_language=target_language)
         except ExternalServiceError:
             if cached is not None and cached.entry is not None:
                 return LexicalLookupResult(entry=cached.entry, cache_status="stale")
             raise
-        self.cache.put(
-            self.provider.provider_id, query, source_language, target_language, entry
-        )
-        return LexicalLookupResult(
-            entry=entry, cache_status="miss" if entry is not None else "negative"
-        )
+        self.cache.put(self.provider.provider_id, query, source_language, target_language, entry)
+        return LexicalLookupResult(entry=entry, cache_status="miss" if entry is not None else "negative")
 
     def get_entry(
         self,
@@ -195,16 +175,12 @@ class LexicalService:
     ) -> LexicalLookupResult:
         cached = self.cache.get_entry(provider, entry_key)
         if cached is not None and cached.fresh and cached.entry is not None:
-            return LexicalLookupResult(
-                entry=cached.entry, cache_status="fresh", provider_called=False
-            )
+            return LexicalLookupResult(entry=cached.entry, cache_status="fresh", provider_called=False)
         try:
             self._reserve_provider_request()
         except ExternalServiceError:
             if cached is not None and cached.entry is not None:
-                return LexicalLookupResult(
-                    entry=cached.entry, cache_status="stale", provider_called=False
-                )
+                return LexicalLookupResult(entry=cached.entry, cache_status="stale", provider_called=False)
             raise
         try:
             entry = self.provider.get_entry(entry_key, target_language=target_language)
@@ -214,5 +190,8 @@ class LexicalService:
             raise
         if entry is None:
             raise NotFoundError("Dictionary entry", entry_key)
-        self.cache.put(provider, entry.word, entry.language, target_language, entry)
+        # Key the row by the word actually fetched: a provider headword in a
+        # different casing must not seed that other casing's search row.
+        _source_language, requested_word = _decode_entry_key(entry_key)
+        self.cache.put(provider, requested_word, entry.language, target_language, entry)
         return LexicalLookupResult(entry=entry, cache_status="miss")

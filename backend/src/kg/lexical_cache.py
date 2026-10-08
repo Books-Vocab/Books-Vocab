@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
+import unicodedata
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,8 @@ from .lexical_models import LexicalEntry
 
 logger = logging.getLogger(__name__)
 LOOKUP_EVENT_RETENTION_DAYS = 14
+# v2 keys preserve query casing (#2257); legacy case-folded v1 rows stay unreadable.
+QUERY_KEY_VERSION = "v2"
 
 
 def _utc_instant(value: object) -> datetime | None:
@@ -89,8 +92,21 @@ class LexicalCache:
             )
 
     @staticmethod
+    def normalize_query(query: str) -> str:
+        """Canonical query text: NFC + stripped, case preserved (headwords are case-sensitive)."""
+        return unicodedata.normalize("NFC", query).strip()
+
+    @staticmethod
     def query_key(provider: str, query: str, source_language: str, target_language: str) -> str:
-        return "|".join((provider, source_language.lower(), target_language.lower(), query.strip().casefold()))
+        return "|".join(
+            (
+                QUERY_KEY_VERSION,
+                provider,
+                source_language.lower(),
+                target_language.lower(),
+                LexicalCache.normalize_query(query),
+            )
+        )
 
     def get_query(
         self, provider: str, query: str, source_language: str, target_language: str
