@@ -55,6 +55,22 @@ def test_manifest_round_trips() -> None:
     assert recovered == books
 
 
+def test_manifest_sanitizes_pipes_and_newlines() -> None:
+    books = saga.plan_books([_meta("Crime | Punishment", "A | B\nC"), _meta("Next")])
+    recovered = saga.parse_series_manifest(saga.render_series_manifest("S", books))
+    assert [b.title for b in recovered] == ["Crime / Punishment", "Next"]
+    assert recovered[0].author == "A / B C"
+
+
+def test_parse_rejects_malformed_row() -> None:
+    text = (
+        "<!-- READING_ORDER:START -->\n| 1 | a | T | A |\n| 2 | b | only |\n"
+        "<!-- READING_ORDER:END -->"
+    )
+    with pytest.raises(ValueError):
+        saga.parse_series_manifest(text)
+
+
 def test_parse_rejects_missing_markers() -> None:
     with pytest.raises(ValueError, match="markers"):
         saga.parse_series_manifest("# Mistborn\nno markers here")
@@ -85,9 +101,9 @@ def test_spoiler_horizon_is_later_books_only() -> None:
 def test_flatten_chapters_continuous_numbering() -> None:
     books = saga.plan_books(MISTBORN)
     per_book = [
-        [("a.x", "A1"), ("b.x", "A2")],          # book 1: 2 chapters
+        [("a.x", "A1"), ("b.x", "A2")],  # book 1: 2 chapters
         [("c.x", "B1"), ("d.x", "B2"), ("e.x", "B3")],  # book 2: 3 chapters
-        [("f.x", "C1")],                          # book 3: 1 chapter
+        [("f.x", "C1")],  # book 3: 1 chapter
     ]
     flat = saga.flatten_chapters(books, per_book)
     assert [fc.seq for fc in flat] == [1, 2, 3, 4, 5, 6]
@@ -100,7 +116,9 @@ def test_flatten_chapters_continuous_numbering() -> None:
 def test_flatten_rejects_length_mismatch() -> None:
     books = saga.plan_books(MISTBORN)
     with pytest.raises(ValueError, match="mismatch"):
-        saga.flatten_chapters(books, [[("a", "x")]])  # only 1 book's chapters for 3 books
+        saga.flatten_chapters(
+            books, [[("a", "x")]]
+        )  # only 1 book's chapters for 3 books
 
 
 def test_book_boundaries() -> None:

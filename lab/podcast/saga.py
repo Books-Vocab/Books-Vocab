@@ -73,8 +73,15 @@ def plan_books(book_metas: list[dict]) -> list[BookEntry]:
     for i, meta in enumerate(book_metas, 1):
         title = meta["title"]
         slug = f"{i:02d}_{_sanitize_slug(title)}"
-        entries.append(BookEntry(index=i, title=title, author=meta["author"], slug=slug))
+        entries.append(
+            BookEntry(index=i, title=title, author=meta["author"], slug=slug)
+        )
     return entries
+
+
+def _cell(s: str) -> str:
+    """Make a value safe for one markdown table cell ('|' and newlines break rows)."""
+    return re.sub(r"\s+", " ", s).replace("|", "/").strip()
 
 
 def render_series_manifest(saga_title: str, books: list[BookEntry]) -> str:
@@ -102,13 +109,15 @@ def render_series_manifest(saga_title: str, books: list[BookEntry]) -> str:
         "|---|-----|-------|--------|",
     ]
     for b in books:
-        lines.append(f"| {b.index} | {b.slug} | {b.title} | {b.author} |")
+        lines.append(f"| {b.index} | {b.slug} | {_cell(b.title)} | {_cell(b.author)} |")
     lines.append("<!-- READING_ORDER:END -->")
     lines.append("")
     return "\n".join(lines)
 
 
-_ROW_RE = re.compile(r"^\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|", re.MULTILINE)
+_ROW_RE = re.compile(
+    r"^\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|", re.MULTILINE
+)
 _BLOCK_RE = re.compile(
     r"<!--\s*READING_ORDER:START\s*-->(.*?)<!--\s*READING_ORDER:END\s*-->", re.DOTALL
 )
@@ -127,10 +136,22 @@ def parse_series_manifest(text: str) -> list[BookEntry]:
     for m in _ROW_RE.finditer(block.group(1)):
         idx, slug, title, author = m.groups()
         entries.append(
-            BookEntry(index=int(idx), title=title.strip(), author=author.strip(), slug=slug.strip())
+            BookEntry(
+                index=int(idx),
+                title=title.strip(),
+                author=author.strip(),
+                slug=slug.strip(),
+            )
         )
     if not entries:
         raise ValueError("series.md reading-order table is empty")
+    body_rows = [
+        ln
+        for ln in block.group(1).splitlines()
+        if ln.lstrip().startswith("|") and re.match(r"^\|\s*\d+\s*\|", ln)
+    ]
+    if len(body_rows) != len(entries):
+        raise ValueError("series.md reading-order table has malformed rows")
     # Reading order must be a contiguous 1..N with no gaps/dupes — else the
     # spoiler horizon ("books after index k") would be ill-defined.
     indices = [e.index for e in entries]
@@ -139,7 +160,9 @@ def parse_series_manifest(text: str) -> list[BookEntry]:
     return entries
 
 
-def spoiler_horizon_books(books: list[BookEntry], current_index: int) -> list[BookEntry]:
+def spoiler_horizon_books(
+    books: list[BookEntry], current_index: int
+) -> list[BookEntry]:
     """Books that are OFF-LIMITS when discussing the book at `current_index`
     under readalong spoiler mode — i.e. every later book in reading order."""
     return [b for b in books if b.index > current_index]
@@ -178,8 +201,11 @@ def flatten_chapters(
         for name, text in chapters:
             flat.append(
                 FlatChapter(
-                    seq=seq, book_index=book.index, book_slug=book.slug,
-                    name=name, text=text,
+                    seq=seq,
+                    book_index=book.index,
+                    book_slug=book.slug,
+                    name=name,
+                    text=text,
                 )
             )
             seq += 1
