@@ -11,7 +11,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.operation_lock import OperationLock
+from delivery_control.adapters.operation_lock import _HELD_LOCKS, OperationLock
 from delivery_control.cli import main
 
 
@@ -59,24 +59,27 @@ def test_operation_lock_releases_after_context_exit(tmp_path: Path) -> None:
 def test_cli_reuses_the_outer_lease_for_nested_registry_mutation(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    lock_path = OperationLock(tmp_path, command="probe").path
+
     class FakeApplication:
         repo = tmp_path
 
         def __init__(self) -> None:
-            self.calls: list[int] = []
+            self.calls: list[tuple[int, int]] = []
 
-        def enqueue(
-            self, *, pull_request_number: int, holds: frozenset[object]
-        ) -> object:
-            del holds
-            self.calls.append(pull_request_number)
-            return {"queued": True}
+        def record_published_base(self, pull_request_number: int) -> object:
+            # record-published-base keeps the whole-command lease: the CLI
+            # re-entered the outer lease instead of contending on the flock.
+            depth = _HELD_LOCKS[lock_path][1]
+            with OperationLock(tmp_path, command="registry:record-published-base"):
+                self.calls.append((pull_request_number, depth))
+            return {"recorded": True}
 
     application = FakeApplication()
     with OperationLock(tmp_path, command="sync-main"):
         assert (
             main(
-                ["queue", "--pr", "41"],
+                ["record-published-base", "--pr", "41"],
                 application_factory=lambda **_: application,
             )
             == 0
@@ -84,7 +87,7 @@ def test_cli_reuses_the_outer_lease_for_nested_registry_mutation(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
-    assert application.calls == [41]
+    assert application.calls == [(41, 2)]
 
 
 def test_suite_lock_is_isolated_from_the_real_delivery_lock(

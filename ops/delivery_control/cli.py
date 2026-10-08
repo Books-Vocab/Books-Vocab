@@ -29,6 +29,7 @@ from .domain.runtime_models import RuntimeReceipt, RuntimeState
 from .domain.states import HoldKind
 from .domain.unreachable_commits import UNREACHABLE_COMMIT_PATH_LIMIT
 from .services.candidate_contract import parse_candidate_body, render_candidate_body
+from .services.cleanup import OperationLease
 from .services.pr_contract import validate_pull_request_body
 
 COMMAND_SCHEMA = "kg.delivery.command.v1"
@@ -68,6 +69,12 @@ MUTATING_COMMANDS = frozenset(
         *MAIN_PRESERVATION_COMMANDS,
     }
 )
+# Mutations that take the operation lease only around their own registry and
+# local worktree/ref sections (#2236), so GitHub API calls, ls-remote and push
+# never hold it.  _run_command_serialized hands them a per-section lease on the
+# same lock path.  queue writes only GitHub, guarded there by expected head,
+# base and body readback; cleanup sections are resumable from cleanup_pending.
+SCOPED_LEASE_COMMANDS = frozenset({"queue", "cleanup-merged", "release-published"})
 
 
 def _jsonable(value: object) -> object:
@@ -469,7 +476,12 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_command(args: argparse.Namespace, application: DeliveryApplication) -> object:
+def run_command(
+    args: argparse.Namespace,
+    application: DeliveryApplication,
+    *,
+    operation_lease: OperationLease | None = None,
+) -> object:
     if args.command == "inspect":
         return application.inspect(
             supervision_worktree_paths=tuple(args.supervision_worktree)
@@ -701,7 +713,7 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "record-published-base":
         return application.record_published_base(args.pr)
     if args.command == "release-published":
-        return application.release_published(args.pr)
+        return application.release_published(args.pr, operation_lease=operation_lease)
     if args.command == "queue":
         return application.enqueue(
             pull_request_number=args.pr,
@@ -718,7 +730,7 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "trigger-required":
         return application.trigger_required(args.pr)
     if args.command == "cleanup-merged":
-        return application.cleanup_merged(args.pr)
+        return application.cleanup_merged(args.pr, operation_lease=operation_lease)
     if args.command == "abandon-pr":
         return application.abandon_pr(args.pr)
     if args.command == "cleanup-abandoned":
@@ -870,7 +882,14 @@ def _run_command_serialized(
         # Lightweight application fakes used by unit tests do not own a
         # repository.  Real applications always expose the canonical path.
         return run_command(args, application)
-    with OperationLock(Path(repo), command=args.command):
+    canonical = Path(repo)
+    if args.command in SCOPED_LEASE_COMMANDS:
+        return run_command(
+            args,
+            application,
+            operation_lease=lambda section: OperationLock(canonical, command=section),
+        )
+    with OperationLock(canonical, command=args.command):
         return run_command(args, application)
 
 

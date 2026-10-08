@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
@@ -11,7 +13,11 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.application_services import DeliveryApplication
-from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
+from delivery_control.domain.errors import (
+    CompareAndSwapConflict,
+    DeliverySourceError,
+    PolicyViolation,
+)
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CanonicalCheckoutSnapshot,
@@ -845,6 +851,149 @@ def test_merged_cleanup_rechecks_pr_before_terminal_disposition() -> None:
     assert registry.transitions == ["cleanup_pending"]
     assert registry.record.status == "cleanup_pending"
     assert git.actions == ["delete-remote"]
+
+
+class LeaseRecorder:
+    """Record which observed port calls run inside an operation-lease section."""
+
+    def __init__(self) -> None:
+        self.depth = 0
+        self.calls: list[tuple[str, bool]] = []
+        self.sections: list[list[str]] = []
+
+    @contextmanager
+    def lease(self, label: str) -> Iterator[None]:
+        del label
+        if self.depth == 0:
+            self.sections.append([])
+        self.depth += 1
+        try:
+            yield
+        finally:
+            self.depth -= 1
+
+    def observe(self, target: object, prefix: str, *names: str) -> None:
+        for name in names:
+            original = getattr(target, name)
+
+            def observed(
+                *args: object,
+                _name: str = f"{prefix}.{name}",
+                _original: Callable[..., object] = original,
+                **kwargs: object,
+            ) -> object:
+                call = f"{_name}:{args[1]}" if _name == "registry.resolve" else _name
+                self.calls.append((call, self.depth > 0))
+                if self.depth > 0:
+                    self.sections[-1].append(call)
+                return _original(*args, **kwargs)
+
+            setattr(target, name, observed)
+
+
+@pytest.mark.parametrize(
+    ("state", "terminal", "pull_request_reads"),
+    (("OPEN", "published", 4), ("MERGED", "merged", 5)),
+)
+def test_cleanup_holds_the_lease_only_around_registry_and_local_ref_sections(
+    state: str, terminal: str, pull_request_reads: int
+) -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    github = FakeGitHub(_pull_request(receipt, state=state), receipt)
+    recorder = LeaseRecorder()
+    recorder.observe(
+        git,
+        "git",
+        "canonical_checkout",
+        "remove_worktree",
+        "delete_local_branch",
+        "remote_branch_sha",
+        "delete_remote_branch",
+    )
+    recorder.observe(registry, "registry", "find_exact_claim", "resolve")
+    recorder.observe(github, "github", "get_pull_request", "changed_paths")
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=github,
+        lease=recorder.lease,
+    )
+
+    if state == "OPEN":
+        result = service.release_after_publish(receipt=receipt, pull_request_number=9)
+    else:
+        result = service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert result.disposition == terminal
+    assert recorder.depth == 0
+    assert recorder.sections == [
+        ["git.canonical_checkout"],
+        [
+            "registry.find_exact_claim",
+            "registry.resolve:cleanup_pending",
+            "registry.find_exact_claim",
+        ],
+        ["git.remove_worktree"],
+        ["git.delete_local_branch"],
+        [f"registry.resolve:{terminal}"],
+    ]
+    network = {
+        "github.get_pull_request",
+        "github.changed_paths",
+        "git.remote_branch_sha",
+        "git.delete_remote_branch",
+    }
+    assert [call for call, held in recorder.calls if call in network and held] == []
+    assert (("git.delete_remote_branch", False) in recorder.calls) == (
+        state == "MERGED"
+    )
+    assert [call for call, _ in recorder.calls].count(
+        "github.get_pull_request"
+    ) == pull_request_reads
+
+
+def test_lease_refusal_mid_cleanup_resumes_from_cleanup_pending_on_rerun() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    entries = 0
+
+    @contextmanager
+    def busy_at_local_branch_section(label: str) -> Iterator[None]:
+        nonlocal entries
+        entries += 1
+        if entries == 4:
+            raise DeliverySourceError(
+                f"delivery mutation already in progress; command={label}; "
+                "retry after the active operation exits"
+            )
+        yield
+
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(_pull_request(receipt, state="MERGED"), receipt),
+        lease=busy_at_local_branch_section,
+    )
+
+    with pytest.raises(DeliverySourceError, match="already in progress"):
+        service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert registry.record.status == "cleanup_pending"
+    assert git.actions == ["remove-worktree"]
+    assert git.local_sha == HEAD and git.remote_sha == HEAD
+
+    result = service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert result.disposition == "merged"
+    assert registry.transitions == ["cleanup_pending", "merged"]
+    assert git.actions == ["remove-worktree", "delete-local", "delete-remote"]
 
 
 @pytest.mark.parametrize(
