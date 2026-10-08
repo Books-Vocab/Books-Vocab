@@ -6,8 +6,8 @@ import io
 import json
 import logging
 
-import kg.api as api_mod
-from kg.log_format import JsonLogFormatter
+from kg.logging_config import JsonLogFormatter, configure_logging
+from kg.request_context import request_id_var
 from test_web_auth import web_auth_env  # noqa: F401 - fixture reuse
 
 PAYLOAD = '\n"}{"level":"ERROR"\r\\ back\\slash'
@@ -47,11 +47,27 @@ def test_request_id_included_when_present():
     assert data["request_id"] == "abc123"
 
 
-def test_api_installs_json_formatter_on_root_handlers():
-    handlers = logging.getLogger().handlers
-    assert handlers
-    assert any(isinstance(h.formatter, JsonLogFormatter) for h in handlers)
-    assert api_mod  # import side effect under test
+def test_request_id_taken_from_contextvar_when_record_lacks_it():
+    token = request_id_var.set("ctx-42")
+    try:
+        data = json.loads(JsonLogFormatter().format(_record("x")))
+    finally:
+        request_id_var.reset(token)
+    assert data["request_id"] == "ctx-42"
+    assert "request_id" not in json.loads(JsonLogFormatter().format(_record("x")))
+
+
+def test_configure_logging_installs_json_handler_on_empty_root():
+    root = logging.getLogger()
+    saved, level = root.handlers[:], root.level
+    root.handlers = []
+    try:
+        configure_logging()
+        assert len(root.handlers) == 1
+        assert isinstance(root.handlers[0].formatter, JsonLogFormatter)
+        assert root.level == logging.INFO
+    finally:
+        root.handlers, root.level = saved, level
 
 
 def test_google_callback_error_payload_is_one_parseable_record(web_auth_env):  # noqa: F811

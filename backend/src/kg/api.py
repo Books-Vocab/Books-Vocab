@@ -17,11 +17,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from .log_format import JsonLogFormatter
+from .logging_config import configure_logging
 
-logging.basicConfig(level=logging.INFO)
-for _handler in logging.getLogger().handlers:
-    _handler.setFormatter(JsonLogFormatter())
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Memory ring-buffer log handler for the admin dashboard.
