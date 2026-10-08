@@ -91,6 +91,7 @@ final class TodayReviewGapUITests: UITestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.6))
             guard review.cardFront.exists, review.expandZone.exists else {
                 captureStep("card-\(i)-missing-elements", app: app)
+                XCTFail("card \(i) 缺 cardFront/expandZone，無法量到版面")
                 break
             }
 
@@ -132,6 +133,10 @@ final class TodayReviewGapUITests: UITestCase {
         tableAttachment.name = "gap-samples"
         add(tableAttachment)
 
+        XCTAssertEqual(
+            samples.count, Self.deckSize,
+            "樣本數必須等於牌組大小，否則表示中途量測中斷"
+        )
         let offenders = samples.filter { $0.gap >= Self.gapThreshold }
         XCTAssertTrue(
             offenders.isEmpty,
