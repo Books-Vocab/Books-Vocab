@@ -173,9 +173,16 @@ def test_ios_ops_chain_reaches_ios_ops_logs_and_flags_absolute_calls() -> None:
     assert ROOT / "ops/ios_ops.sh" in chain
     hits = MODULE.abs_calls("ios-ops")
     assert hits
-    assert {67, 90, 165, 209} <= {
-        line for path, line, _ in hits if path.name == "ios_ops_logs.sh"
+    # The four known call sites are located in the file itself, not pinned by
+    # line number: any edit above them would otherwise break this assertion.
+    source = (ROOT / "ops/lib/ios_ops_logs.sh").read_text().splitlines()
+    sites = {
+        number
+        for number, text in enumerate(source, start=1)
+        if text.lstrip().startswith(("/usr/bin/log stream", '/usr/bin/"${args[@]}"'))
     }
+    assert len(sites) == 4
+    assert sites <= {line for path, line, _ in hits if path.name == "ios_ops_logs.sh"}
 
 
 def test_lldb_forensics_chain_has_no_absolute_path_invocation() -> None:

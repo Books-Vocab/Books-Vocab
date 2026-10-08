@@ -714,6 +714,30 @@ stream_json="$(KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --j
 leak_check="$(set -o pipefail; source "$IOS_OPS_LOGS_LIB"; KG_IOS_OPS_LOG_STREAM_FIXTURE=1 cmd_logs_follow_text 'p' 1 >/dev/null 2>&1; if set -o | grep -q 'pipefail.*on'; then echo intact; else echo leaked; fi)"
 [[ "$leak_check" == "intact" ]] \
   && ok "logs --follow does not leak pipefail to caller" || fail_t "logs --follow leaked pipefail: $leak_check"
+# GitHub Actions runner steps start children with SIGPIPE ignored (the .NET runner ignores it and
+# exec preserves SIG_IGN), so no SIGPIPE ever ends `producer | grep | head -n N`: BSD grep and jq
+# swallow EPIPE and keep draining the producer, and the macOS job hung here until its 30 min cap.
+# Reproduce that condition on any host; the process group is killed at the deadline so a
+# regression fails (rc 142) instead of hanging the suite or leaking a spinning producer.
+run_sigpipe_ignored() {
+  perl -e '
+    $SIG{PIPE} = "IGNORE";
+    my $pid = fork();
+    if (!$pid) { setpgrp(0, 0); exec @ARGV; exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", -$pid; exit 142 };
+    alarm 20;
+    waitpid($pid, 0);
+    exit($? >> 8 || ($? & 127 ? 128 + ($? & 127) : 0));
+  ' "$@"
+}
+ignored_rc=0
+ignored_text="$(run_sigpipe_ignored env KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --limit 1 2>/dev/null)" || ignored_rc=$?
+[[ "$ignored_rc" -eq 0 && "$(echo "$ignored_text" | grep -c .)" -eq 1 ]] && echo "$ignored_text" | grep -q 'sync completed' \
+  && ok "logs --follow stops at limit with SIGPIPE ignored (text)" || fail_t "logs --follow SIGPIPE-ignored text rc=$ignored_rc out=$ignored_text"
+ignored_rc=0
+ignored_json="$(run_sigpipe_ignored env KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --json --limit 1 2>/dev/null)" || ignored_rc=$?
+[[ "$ignored_rc" -eq 0 && "$(echo "$ignored_json" | grep -c .)" -eq 1 ]] && echo "$ignored_json" | jq -e '.schema=="kg.ios.log-stream.v1" and .message=="sync completed"' >/dev/null \
+  && ok "logs --follow stops at limit with SIGPIPE ignored (json)" || fail_t "logs --follow SIGPIPE-ignored json rc=$ignored_rc out=$ignored_json"
 
 section "JSON smoke fixtures"
 delegate_tmp="$(mktemp -d)"
