@@ -75,7 +75,7 @@ gcloud billing accounts list   # 確認 011E6D-6EE0E0-B1F479 仍是 open
 對照 cost_baseline.md §4 表格:
 
 ```
-內部歸因(§1.3 jq 加總)vs 外部帳單(§1.2 + §1.4 + §1.5)
+內部歸因(§1.3 cost-overview 以 jq 加總 users[].total_cost_usd)vs 外部帳單(§1.2 + §1.4 + §1.5)
 ```
 
 `|drift| ≤ 10%` 健康,結束。
@@ -110,7 +110,7 @@ Reconciliation: 內部 $A vs 外部 $B,drift Δ%(<10% = 健康)
 
 ```bash
 # 全用戶排名(per-user,先鎖定可疑 user)
-./ops/devops_kg_safe.sh ops-cli cost-overview --range 30d --json | jq '.users'
+./ops/devops_kg_safe.sh ops-cli cost-overview --range 30d --json | jq '.users[:5]'
 # 該 user 的 call_type 拆解
 ./ops/devops_kg_safe.sh ops-cli cost <uid> --range 30d --json | jq '.by_call_type'
 # 或 endpoint 拆 service
@@ -133,7 +133,7 @@ curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range
 ./ops/devops_kg_safe.sh ops-cli timeseries calls --bucket day --range 30d --uid <uid>
 ```
 
-`token_usage` 在全域 `token_usage.db`,不在 per-user `cards.db`,`db-query` 查不到;時間維度一律走 `timeseries`。
+`token_usage` 在全域 `token_usage.db`,不在 per-user `cards.db`,`db-query` 查不到;時間維度一律走 `timeseries`(全站加 `--uid all`,預設即 all)。
 
 ### 3.4 哪個 endpoint?
 
