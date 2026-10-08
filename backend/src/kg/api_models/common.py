@@ -4,10 +4,11 @@ import re
 import unicodedata
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, Field
 
 _WS = re.compile(r"[\s\u200b]+")
 _MULTISPACE = re.compile(r" {2,}")
+MAX_SOURCE_URL_LENGTH = 2048
 
 
 def _normalize_context(v: str) -> str:
@@ -29,6 +30,8 @@ def _validate_http_url(value: str) -> str:
     """
     if not value:
         return value
+    if len(value) > MAX_SOURCE_URL_LENGTH:
+        raise ValueError(f"VocabSource.url must be at most {MAX_SOURCE_URL_LENGTH} characters")
     lower = value.lower()
     if not (lower.startswith("http://") or lower.startswith("https://")):
         raise ValueError("VocabSource.url must use http or https scheme")
@@ -37,6 +40,6 @@ def _validate_http_url(value: str) -> str:
 
 class VocabSource(BaseModel):
     type: Literal["book", "web"]
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=500)
     url: Annotated[str, AfterValidator(_validate_http_url)] | None = None  # web only
-    chapter: str | None = None  # book only
+    chapter: str | None = Field(default=None, max_length=500)  # book only
