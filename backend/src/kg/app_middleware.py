@@ -11,6 +11,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from kg.settings import DEFAULT_PUBLIC_WEB_BASE_URL
+
 RateLimiter = Any
 
 
@@ -216,7 +218,11 @@ def install_app_middlewares_from_dependencies(
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-XSS-Protection"] = "0"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.url.scheme == "https":
+        # TLS terminates at Cloudflare, so request.url.scheme is always http here and browsers
+        # ignore HSTS on http responses anyway; gate on the configured public origin instead.
+        settings = getattr(request.app.state, "kg_settings", None)
+        public_url = getattr(settings, "public_web_base_url", DEFAULT_PUBLIC_WEB_BASE_URL)
+        if public_url.startswith("https://"):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
