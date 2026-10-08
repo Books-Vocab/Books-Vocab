@@ -335,6 +335,78 @@ def test_verified_transaction_snapshot_carries_grace_period_expires_at():
     assert verified_transaction_snapshot(payload, parse_datetime_fn=parse_datetime)["grace_period_expires_at"] is None
 
 
+def _grace_notification_jws(*, notification_type: str, uuid: str, signed_date: str, grace_ms: int | None):
+    """Signed-notification stand-in: only the Apple JWS signature check is stubbed."""
+    payloads = {
+        "notification": {
+            "notificationType": notification_type,
+            "signedDate": _ms(signed_date),
+            "notificationUUID": uuid,
+            "data": {"signedTransactionInfo": "transaction"},
+        },
+        "transaction": {
+            "productId": "pro_monthly",
+            "transactionId": f"txn-{uuid}",
+            "originalTransactionId": "orig-1",
+            "environment": "Production",
+            "expiresDate": _ms("2020-01-01T00:00:00+00:00"),
+        },
+    }
+    if grace_ms is not None:
+        payloads["notification"]["data"]["signedRenewalInfo"] = "renewal"
+        payloads["renewal"] = {"gracePeriodExpiresDate": grace_ms, "autoRenewStatus": 1}
+    return payloads
+
+
+def _real_decode_notification(tmp_path: Path, users, *, notification_type: str, **kwargs):
+    payloads = _grace_notification_jws(notification_type=notification_type, **kwargs)
+    return app_store_notifications_response(
+        AppStoreNotificationRequest(notification_type=notification_type, signed_payload="notification"),
+        users_lock_file=tmp_path / "users.lock",
+        load_users=lambda: users,
+        save_users=lambda updated: None,
+        decode_notification_payload=lambda request: decode_notification_payload(
+            request,
+            bundle_id="com.example.app",
+            allow_unsigned_notifications=False,
+            parse_datetime_fn=parse_datetime,
+            verify_signed_jws=lambda token, *, bundle_id: SimpleNamespace(payload=payloads[token]),
+        ),
+        append_app_store_event=lambda event: None,
+        resolve_user_id_from_subscription_index=lambda loaded, original, transaction: "u1",
+        write_subscription_snapshot=write_subscription_snapshot,
+        build_entitlements_response=_entitlements,
+    )
+
+
+def test_fail_to_renew_notification_persists_grace_deadline_and_later_renew_clears_it(tmp_path):
+    users = {}
+
+    _real_decode_notification(
+        tmp_path,
+        users,
+        notification_type="DID_FAIL_TO_RENEW",
+        uuid="grace",
+        signed_date="2026-08-01T00:00:00+00:00",
+        grace_ms=_ms("2099-01-01T00:00:00+00:00"),
+    )
+    subscription = users["u1"]["subscription"]
+    assert subscription["status"] == "grace_period"
+    assert subscription["grace_period_expires_at"] == "2099-01-01T00:00:00+00:00"
+
+    _real_decode_notification(
+        tmp_path,
+        users,
+        notification_type="DID_RENEW",
+        uuid="renewed",
+        signed_date="2026-08-02T00:00:00+00:00",
+        grace_ms=None,
+    )
+    subscription = users["u1"]["subscription"]
+    assert subscription["status"] != "grace_period"
+    assert subscription["grace_period_expires_at"] is None
+
+
 def test_notification_envelope_signed_date_wins_over_transaction_signed_date():
     payloads = {
         "notification": {
