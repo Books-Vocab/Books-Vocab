@@ -62,10 +62,16 @@ transcript 或 log。
   反引號／反斜線。命中即 exit 1 並印 `blocked sensitive file read`，命令不送到 remote。攔截變體與
   誤殺防護（`os.environ`、`id_*.pub`、一般 `ls`／`docker logs`、文件化的 `container-script`）由
   `ops/test_devops.sh` 的 sensitive file reads 段守住。
+- `logs [n]`／`docker-logs [n]` 的行數會拼進 remote shell 字串，只接受純數字，否則 exit 64 且不送到
+  remote；`docker-logs '1; cat …/users.json'` 這類注入因此無法繞過上述兩道 guard。
+- 已知誤殺：`*.pem` 也擋公開憑證（`openssl x509 -in …/cert.pem`），`.env` 規則也擋 `.env.example`。
+  TLS 憑證到期改看 `health --json` 的 `cert_days_left`。
 - **邊界聲明**：這是誤觸防護，**不是安全邊界**。glob（`cat ~/kg-data/u*`）、字串組裝
-  （`python3 -c`、base64）、未展開變數與容器內的 `os.environ` 都能繞過；`run` 仍是 owner 等級的
-  逃生口。agent 不得透過任何 remote 執行入口讀取上述檔案或其等價內容，需要用戶資訊時用 typed
-  command，其餘交 owner。
+  （`python3 -c`、base64）、未展開變數與容器內的 `os.environ` 都能繞過；輸出與 `.env` 同值秘密的
+  環境傾印也不擋：`container-run env`、`printenv <KEY>`、`docker inspect <container>`、
+  `docker compose config`（deny-list 不收它們，因為 `docker inspect -f '{{.State…}}'`、
+  `env VAR=x cmd` 這類唯讀用法會被誤殺）。`run` 仍是 owner 等級的逃生口。agent 不得透過任何
+  remote 執行入口讀取上述檔案或其等價內容，需要用戶資訊時用 typed command，其餘交 owner。
 
 ## Required Preflight
 1. Confirm standby production checkout (`~/kg-prod/backend`, or `KG_REMOTE_DIR`); `~/knowledge_graph_api` is historical Lightsail rollback only.

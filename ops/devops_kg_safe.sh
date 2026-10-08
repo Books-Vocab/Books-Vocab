@@ -149,6 +149,12 @@ refuse_sensitive_read() {
   exit 1
 }
 
+# logs / docker-logs splice the line count into a remote shell string, so a
+# value like `1; cat users.json` would bypass both guards above: digits only.
+require_line_count() {  # <sub> <n>
+  [[ "$2" =~ ^[0-9]+$ ]] || { echo "✗ usage: $0 $1 [n]  (n: line count, digits only)" >&2; exit 64; }
+}
+
 main() {
   local sub="${1:-}"
 
@@ -192,9 +198,11 @@ main() {
       run_fixed_remote "cd ${KG_REMOTE_DIR:-~/kg-prod/backend} && ../ops/backup_status.sh"
       ;;
     logs)
-      preflight
       shift
-      "$BASE" logs "${1:-80}"
+      local n="${1:-80}"
+      require_line_count logs "$n"
+      preflight
+      "$BASE" logs "$n"
       ;;
     caddy-status)
       # 相容保留 caddy-status 名稱，但 payload 是固定 Cloudflare Tunnel schema。
@@ -216,7 +224,9 @@ main() {
       ;;
     docker-logs)
       shift
-      run_fixed_remote "docker logs knowledge-graph-api -n ${1:-100}"
+      local n="${1:-100}"
+      require_line_count docker-logs "$n"
+      run_fixed_remote "docker logs knowledge-graph-api -n $n"
       ;;
     disk-usage)
       run_fixed_remote "df -h"
