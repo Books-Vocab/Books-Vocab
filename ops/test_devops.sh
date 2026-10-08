@@ -774,6 +774,20 @@ sens_expect_allowed "container-script benign script" "python3 /tmp/benign.py" tr
   container-script "$SENS_FIX/benign.py" --dry-run
 sens_expect_allowed "documented podcast_backfill_disk container-script" "python3 /tmp/podcast_backfill_disk.py --check" \
   transport container-script "$WORKSPACE/ops/podcast_backfill_disk.py" --check
+# logs／docker-logs 的行數被拼進 remote shell 字串，`1; cat users.json` 會同時繞過
+# is_blocked_run 與上面的 deny-list：只准純數字，否則 exit 64 且不得到達 base。
+for sens_sub in logs docker-logs; do
+  sens_call base "$sens_sub" '1; cat ~/kg-data/users.json'
+  if [[ "$sens_rc" == 64 ]] && grep -q "usage: .* $sens_sub" <<< "$sens_out" && [[ ! -e "$SENS_TRACE" ]]; then
+    ok "$sens_sub rejects a non-numeric line count (exit 64) before reaching the base"
+  else
+    fail_t "$sens_sub LINE-COUNT INJECTION not refused (rc=$sens_rc trace=$([[ -e "$SENS_TRACE" ]] && echo hit || echo none))"
+  fi
+done
+# 正控：純數字與預設值照常透傳，上面的「沒留痕」才不是 stub 壞了。
+sens_expect_allowed "logs numeric line count" "logs 7" base logs 7
+sens_expect_allowed "logs default line count" "logs 80" base logs
+sens_expect_allowed "docker-logs numeric line count" "run docker logs knowledge-graph-api -n 7" base docker-logs 7
 rm -rf "$SENS_FIX"
 
 # ── 結果 ──────────────────────────────────────────────────────────────────
