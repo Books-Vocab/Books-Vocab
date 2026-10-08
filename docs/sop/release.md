@@ -33,7 +33,7 @@ verified_against: 24f2120d7118af81b6812a50a4c489aff3b466ec
 2. Run release status and inspect changed surfaces, migrations, configuration and compatibility risks.
    Run `./ops/release_train.py` for backend: it must report no `block` (prod fast-forward, formatted release files, an `origin/prod`-exact felix clone, healthy reconciler, fresh backup, production env) and lists hot-path files that need the owner's explicit go.
 3. Select backend, iOS, or both. Do not publish a surface that was not explicitly selected.
-4. Run the release entrypoint in dry-run mode first. Confirm target, version, approval and rollback candidate.
+4. The releasing agent decides the version (semver from the changes since the last shipped tag: feature = minor, fixes only = patch, breaking API/data change = major) and writes the changelog itself; no user confirmation is needed for either, and the report and PR state the chosen version with a one-line reason. Run the release entrypoint in dry-run mode first as the agent's own verification, and confirm target, approval and rollback candidate.
 5. Execute only the approved release command. Production writes must pass the safety wrapper and health gate.
 6. Verify the deployed/build state independently and record the exact version and evidence.
 7. If health verification fails, stop traffic or revert according to `docs/sop/deploy.md`; do not improvise a second path.
