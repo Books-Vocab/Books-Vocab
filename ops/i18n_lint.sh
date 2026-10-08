@@ -11,8 +11,12 @@
 #                A. Key Coverage — every static key referenced from .swift must exist
 #                   in en.lproj/Localizable.strings or .stringsdict.
 #                B. EN Purity — en.lproj values may not contain CJK Unified Ideographs.
-#                C. Plural Coverage — for L10n.format keys whose en.lproj value contains
-#                   %lld/%d, a matching .stringsdict entry must exist.
+#                C. Plural Rules — for L10n.format keys whose en.lproj value contains
+#                   %lld/%d (or that already have an en .stringsdict entry), every
+#                   locale (en/zh-Hant/zh-Hans/ja/ko) must have a .stringsdict entry
+#                   whose variables are NSStringPluralRuleType with ValueType lld
+#                   (plural_missing / plural_type); en must define `one` and `other`
+#                   (plural_form).
 #
 # Allowlist:
 #   - Per-line:  `// i18n-allow: <reason>`  on the same line to exempt
@@ -280,16 +284,18 @@ for k, v in d.items():
 PY
 }
 
-# Check C: for L10n.format keys whose en.lproj/.strings value uses %lld/%d
-# (integer specifier likely intended as plural-rule subject), a matching
-# .stringsdict NSStringLocalizedFormatKey entry MUST exist. Otherwise English
-# falls back to the singular-only template and 1/many distinction is lost.
+# Check C: plural keys (L10n.format keys whose en .strings value uses %lld/%d,
+# plus any L10n.format key already in the en .stringsdict) must have, in every
+# shipped locale, a .stringsdict entry whose variables are plural rules with
+# ValueType lld. `d` truncates Int64 counts to 32 bits at runtime; a missing
+# locale entry silently falls back to the raw .strings template.
 scan_plural_coverage() {
   [ -f "$KEY_EXTRACTOR" ] || return 0
   [ -f "$EN_STRINGS" ] || return 0
-  "${PY_CMD[@]}" - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
+  "${PY_CMD[@]}" - "$KEY_EXTRACTOR" "$EN_STRINGS" "$IOS_SRC" <<'PY' || true
 import json, plistlib, re, subprocess, sys
-extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
+extractor, en_strings, ios_src = sys.argv[1], sys.argv[2], sys.argv[3]
+LOCALES = ("en", "zh-Hant", "zh-Hans", "ja", "ko")
 try:
     payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
@@ -305,21 +311,43 @@ src = re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
 en_value = {}
 for m in re.finditer(r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;', src):
     en_value[m.group(1)] = m.group(2)
-sd_keys = set()
-try:
-    with open(en_stringsdict, "rb") as f:
-        sd_keys = set(plistlib.load(f).keys())
-except FileNotFoundError:
-    pass
-except Exception as e:
-    sys.stderr.write(f"[i18n_lint] cannot parse {en_stringsdict}: {e}\n")
+sd = {}      # locale -> parsed stringsdict (None = file missing)
+broken = set()
+for loc in LOCALES:
+    path = f"{ios_src}/{loc}.lproj/Localizable.stringsdict"
+    try:
+        with open(path, "rb") as f:
+            sd[loc] = plistlib.load(f)
+    except FileNotFoundError:
+        sd[loc] = {}
+    except Exception as e:
+        sys.stderr.write(f"[i18n_lint] cannot parse {path}: {e}\n")
+        sd[loc] = {}
+        broken.add(loc)
+for loc in sorted(broken):
+    print(f"plural_missing: <{loc}.lproj stringsdict unparseable; coverage unverified>")
 int_spec = re.compile(r"%(?:\d+\$)?(?:[+\- 0#]*\d*(?:\.\d+)?)?(?:ll|l|h|hh|z|j|t)?[di]")
-for k in sorted(payload.get("plural_keys", [])):
-    val = en_value.get(k)
-    if not val:
-        continue
-    if int_spec.search(val) and k not in sd_keys:
-        print(f"plural_missing: {k!r} (en value uses %d/%lld but no stringsdict entry)")
+keys = set()
+for k in payload.get("plural_keys", []):
+    if k in sd["en"] or int_spec.search(en_value.get(k) or ""):
+        keys.add(k)
+for k in sorted(keys):
+    for loc in LOCALES:
+        if loc in broken:
+            continue
+        entry = sd[loc].get(k)
+        if not isinstance(entry, dict):
+            print(f"plural_missing: {k!r} (no stringsdict entry in {loc})")
+            continue
+        for var, body in entry.items():
+            if var == "NSStringLocalizedFormatKey" or not isinstance(body, dict):
+                continue
+            spec = body.get("NSStringFormatSpecTypeKey")
+            vt = body.get("NSStringFormatValueTypeKey")
+            if spec != "NSStringPluralRuleType" or vt != "lld":
+                print(f"plural_type: {k!r} [{loc}] var {var!r} SpecType={spec} ValueType={vt} (want NSStringPluralRuleType/lld)")
+            if loc == "en" and not {"one", "other"} <= body.keys():
+                print(f"plural_form: {k!r} [en] var {var!r} missing one/other")
 PY
 }
 
@@ -386,7 +414,7 @@ print_findings() {
     echo
   fi
   if [ -n "$plural_missing_hits" ]; then
-    echo "=== Plural rule missing ($plural_missing_count) ==="
+    echo "=== Plural rule problems ($plural_missing_count) ==="
     printf '%s\n' "$plural_missing_hits"
     echo
   fi

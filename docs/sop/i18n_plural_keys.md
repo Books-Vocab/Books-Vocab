@@ -52,4 +52,4 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 ## 與 lint 連動
 
-`ops/i18n_lint.sh --strict`（Check C — Plural Coverage）會偵測 `L10n.format(<key>, …)` 引用的 key 在 `Localizable.stringsdict` 是否定義；缺定義或型別不符（非 `lld`）會擋 PR。詳見 `docs/sop/i18n_lint.md`。
+`ops/i18n_lint.sh --strict`（Check C — Plural Rules）對 `L10n.format(<key>, …)` 的 key（en `.strings` 值含 `%d`/`%lld`，或 en `.stringsdict` 已有該 key）逐一檢查 en／zh-Hant／zh-Hans／ja／ko 五個 `Localizable.stringsdict`：任一語系缺 entry（含檔案缺失或無法解析）、變數的 `NSStringFormatSpecTypeKey` 非 `NSStringPluralRuleType`、`NSStringFormatValueTypeKey` 非 `lld`，或 en 缺 `one`／`other`，皆擋 PR。其他語系的 form 子集（如 ja／ko 只需 `other`）不檢查。詳見 `docs/sop/i18n_lint.md`。

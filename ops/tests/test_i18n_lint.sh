@@ -60,6 +60,48 @@ lint "$TMP/crash" --strict
 expect "extractor crash" 1 "key extractor failed; coverage unverified" \
   "missing_key: <key extractor failed" "plural_missing: <key extractor failed"
 
+echo "── Check C: plural key must be a valid plural entry in all 5 locales ──"
+# the key extractor resolves paths relative to the repo root, so fixtures live under it (.cache is gitignored)
+mkdir -p .cache; PL="$(mktemp -d "$PWD/.cache/i18n-plural.XXXXXX")"; trap 'rm -rf "$TMP" "$PL"' EXIT
+mkplural() {  # $1 = dir, $2 = locale:ValueType:forms (space-sep, forms like "one,other"), ... overrides via PL_* env
+  local d="$1" loc vt forms spec f
+  mkdir -p "$d"
+  printf 'let s = L10n.format("k_plural", Int64(3))\n' >"$d/App.swift"
+  for loc in en zh-Hant zh-Hans ja ko; do
+    mkdir -p "$d/$loc.lproj"
+    [[ "$loc" == en ]] && printf '"k_plural" = "%%lld cards";\n' >"$d/$loc.lproj/Localizable.strings" \
+      || : >"$d/$loc.lproj/Localizable.strings"
+    vt=lld; forms="one other"; spec=NSStringPluralRuleType
+    [[ "$loc" == "${PL_LOC:-}" ]] && { vt="${PL_VT:-lld}"; forms="${PL_FORMS:-one other}"; spec="${PL_SPEC:-NSStringPluralRuleType}"; }
+    {
+      echo '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
+      if [[ "$loc" == "${PL_SKIP:-}" ]]; then :; else
+        echo "<key>k_plural</key><dict><key>NSStringLocalizedFormatKey</key><string>%#@n@</string><key>n</key><dict>"
+        echo "<key>NSStringFormatSpecTypeKey</key><string>$spec</string><key>NSStringFormatValueTypeKey</key><string>$vt</string>"
+        for f in $forms; do echo "<key>$f</key><string>%lld x</string>"; done
+        echo "</dict></dict>"
+      fi
+      echo '</dict></plist>'
+    } >"$d/$loc.lproj/Localizable.stringsdict"
+  done
+}
+mkplural "$PL/pl_ok"; lint "$PL/pl_ok" --strict
+expect "valid 5-locale plural" 0
+PL_LOC=ko PL_VT=d mkplural "$PL/pl_d"; lint "$PL/pl_d" --strict
+expect "ValueType=d in ko" 1 "plural_type:" "k_plural" "[ko]"
+PL_SKIP=ko mkplural "$PL/pl_noko"; lint "$PL/pl_noko" --strict
+expect "no ko entry" 1 "plural_missing:" "k_plural" "ko"
+PL_LOC=en PL_FORMS=other mkplural "$PL/pl_noone"; lint "$PL/pl_noone" --strict
+expect "en lacks one" 1 "plural_form:" "k_plural" "[en]"
+PL_LOC=en PL_FORMS=one mkplural "$PL/pl_noother"; lint "$PL/pl_noother" --strict
+expect "en lacks other" 1 "plural_form:" "k_plural"
+PL_LOC=ja PL_SPEC=NSStringVariableWidthRuleType mkplural "$PL/pl_spec"; lint "$PL/pl_spec" --strict
+expect "non-plural SpecType in ja" 1 "plural_type:" "[ja]"
+mkplural "$PL/pl_nofile"; rm "$PL/pl_nofile/zh-Hans.lproj/Localizable.stringsdict"; lint "$PL/pl_nofile" --strict
+expect "missing stringsdict file" 1 "plural_missing:" "zh-Hans"
+mkplural "$PL/pl_bad"; printf 'not a plist' >"$PL/pl_bad/ja.lproj/Localizable.stringsdict"; lint "$PL/pl_bad" --strict
+expect "unparseable stringsdict" 1 "plural_missing:" "ja"
+
 echo "── --strict fails with exit 2 when the baseline has no localized_calls= line ──"
 printf 'findings=0\n' >"$TMP/nowm.txt"
 rc=0; out="$(KG_I18N_SRC="$FIX/watermark" KG_I18N_BASELINE="$TMP/nowm.txt" ./ops/i18n_lint.sh --strict 2>&1)" || rc=$?
