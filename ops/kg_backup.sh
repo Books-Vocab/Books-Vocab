@@ -2,12 +2,17 @@
 # Stream-backup KG production data to AWS S3.
 #
 # Pipeline:
-#   tar -czf - data/  →  tee >(sha256sum)  →  aws s3 cp - s3://...
+#   stage data/ (SQLite online snapshots + hardlinks)
+#     →  tar -czf - data/  →  tee >(sha256sum)  →  aws s3 cp - s3://...
 # Writes a one-line audit log per run (path from $KG_BACKUP_LOG):
 #   <timestamp> exit=<rc> bytes=<size> sha256=<hash> key=<s3 key>
+# A run that stops before the upload logs `exit=<rc> <reason>` instead.
 #
-# Intentionally NO local intermediate file: avoids filling the data disk and
-# removes the "backup tarball deleted by same incident" risk.
+# The archive itself is never written locally: avoids filling the data disk and
+# removes the "backup tarball deleted by same incident" risk. The only local
+# intermediate copy is the staging tree: one online snapshot per *.db (non-DB
+# files are hardlinked, or copied with cp -p across filesystems). The trap
+# removes it on every exit path, including INT/TERM/HUP.
 #
 # Portable across the two prod hosts (paths come from env, not hardcoded):
 #   - standby (current prod, macOS/OrbStack): invoked by the LaunchAgent
@@ -32,31 +37,81 @@ KEY="data/${DATE}.tar.gz"
 S3_URI="s3://${BUCKET}/${KEY}"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
+die() { local rc="$1"; shift; log "exit=$rc $*"; exit "$rc"; }
 
+STAGE=""
+cleanup() { if [[ -n "$STAGE" ]]; then rm -rf "$STAGE"; fi; }
+on_signal() { log "exit=$1 interrupted by signal"; exit "$1"; }
+trap cleanup EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 trap 'rc=$?; log "exit=$rc (unexpected)"; exit $rc' ERR
 
-if [[ ! -d "$DATA_DIR" ]]; then
-  log "exit=2 missing data dir: $DATA_DIR"
-  exit 2
-fi
+[[ -d "$DATA_DIR" ]] || die 2 "missing data dir: $DATA_DIR"
+command -v sqlite3 >/dev/null 2>&1 || die 3 "sqlite3 missing"
+DATA_ABS="$(cd "$DATA_DIR" && pwd)" || die 3 "cannot enter data dir: $DATA_DIR"
+ROOT="$(basename "$DATA_ABS")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kg_backup_stage.XXXXXX")" || die 3 "cannot create staging dir"
 
-# Exclude macOS AppleDouble droppings (from prior local-restore round-trips)
-# and SQLite WAL/SHM journal sidecars. WAL/SHM are not needed: SQLite at next
-# open will replay WAL into the main DB. Including them would either error
-# (WAL referencing missing main) or restore inconsistent state.
-TMP_SHA="$(mktemp)"
-TMP_SIZE="$(mktemp)"
-trap 'rm -f "$TMP_SHA" "$TMP_SIZE"' EXIT
+# The backend keeps every DB open in WAL mode, so committed rows can live only
+# in <db>-wal until a checkpoint. Tarring the live files would drop them, and a
+# concurrent checkpoint could tear the main file (Issue #2250). Each *.db is
+# therefore captured with SQLite's online backup API: a consistent copy that
+# includes committed WAL content. The snapshots are self-contained, so -wal/-shm
+# and any -journal (a hot one would roll a consistent snapshot back on open)
+# stay out of the archive, as do macOS AppleDouble/Finder droppings.
+#
+# The source is opened as file:...?mode=rw (never creates a vanished DB) with
+# no_ckpt_on_close (never checkpoints or writes the live DB; at most it leaves
+# empty -wal/-shm sidecars). Not -readonly: macOS /usr/bin/sqlite3 refuses a
+# read-only open of a WAL DB whose sidecars are absent, which is the normal
+# state of every DB the backend has closed. CLI exit codes are not trusted
+# (sqlite 3.53 exits 0 having skipped .backup under some flag mixes), so the
+# setting echo, a non-empty snapshot and quick_check=ok are all required.
+uri_path() { local p="${1//%/%25}"; p="${p//\?/%3F}"; printf '%s' "${p//\#/%23}"; }
+snapshot_db() {  # <src> <dst>
+  local snap="$STAGE/.snap.db" out check
+  rm -f "$snap" "$snap-journal" "$snap-wal" "$snap-shm"
+  # .backup takes a fixed relative name, so no path is ever quoted for the CLI.
+  out="$(cd "$STAGE" && sqlite3 -cmd '.timeout 30000' -cmd '.dbconfig no_ckpt_on_close on' \
+    "file:$(uri_path "$1")?mode=rw" '.backup .snap.db' </dev/null)" || return 1
+  [[ "$out" == *"no_ckpt_on_close on"* && -s "$snap" ]] || return 1
+  check="$(sqlite3 "$snap" 'PRAGMA quick_check' </dev/null)" || return 1
+  [[ "$check" == ok ]] || return 1
+  mv "$snap" "$2"
+}
+
+# Walk in the foreground so a find error fails the run instead of silently
+# dropping files; never fall back to copying a live DB.
+(cd "$DATA_ABS" && find . \( -name '._*' -o -name '.DS_Store' -o -name '*-wal' -o -name '*-shm' -o -name '*-journal' \) -prune \
+  -o \( -type d -o -type f -o -type l \) -print0) >"$STAGE/.list" || die 3 "file walk failed: $DATA_DIR"
+
+while IFS= read -r -d '' path; do
+  rel="${path#./}"
+  src="$DATA_ABS/$rel"
+  dst="$STAGE/$ROOT/$rel"
+  if [[ -L "$src" ]]; then
+    target="$(readlink "$src")" && ln -s "$target" "$dst" || die 3 "stage symlink failed: $rel"
+  elif [[ -d "$src" ]]; then
+    mkdir -p "$dst" || die 3 "stage mkdir failed: $rel"
+  elif [[ "$rel" == *.db ]]; then
+    snapshot_db "$src" "$dst" || die 3 "snapshot failed: $rel"
+  else
+    ln "$src" "$dst" 2>/dev/null || cp -p "$src" "$dst" || die 3 "stage copy failed: $rel"
+  fi
+done <"$STAGE/.list"
 
 set +e
-tar -C "$(dirname "$DATA_DIR")" \
+tar -C "$STAGE" \
     --exclude='._*' \
     --exclude='.DS_Store' \
     --exclude='*-wal' \
     --exclude='*-shm' \
-    -czf - "$(basename "$DATA_DIR")" \
-  | tee >(sha256sum | awk '{print $1}' >"$TMP_SHA") \
-  | tee >(wc -c >"$TMP_SIZE") \
+    --exclude='*-journal' \
+    -czf - "$ROOT" \
+  | tee >(sha256sum | awk '{print $1}' >"$STAGE/.sha") \
+  | tee >(wc -c >"$STAGE/.size") \
   | aws s3 cp - "$S3_URI" \
       --region "$REGION" \
       --expected-size 2000000000 \
@@ -65,12 +120,13 @@ rc=${PIPESTATUS[3]}
 set -e
 
 # Ensure the `tee >(...)` process-substitution children have finished writing
-# TMP_SHA / TMP_SIZE before we read them. Without this the read races the async
+# .sha / .size before we read them. Without this the read races the async
 # subshells; it happens to win under the current aws consumer but that's luck,
 # not contract.
 wait
 
-SHA="$(cat "$TMP_SHA")"
-SIZE="$(cat "$TMP_SIZE")"
+SHA="$(cat "$STAGE/.sha")"
+# BSD wc (macOS) left-pads the count; backup_status.sh expects bytes=<digits>.
+SIZE="$(tr -d '[:space:]' <"$STAGE/.size")"
 log "exit=$rc bytes=$SIZE sha256=$SHA key=$KEY"
 exit "$rc"
