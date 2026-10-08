@@ -189,3 +189,41 @@ def test_cli_emits_json_and_maps_block_to_exit_one(tmp_path: Path) -> None:
     output = json.loads(result.stdout)
     assert output["verdict"] == "BLOCK"
     assert "exact_head_mismatch" in output["blockers"]
+
+
+@pytest.mark.parametrize("via", ["file", "stdin", "stdin_dash"])
+@pytest.mark.parametrize(
+    ("raw", "detail_prefix"),
+    [
+        (b"\xff\xfe\x00{", "input_unreadable"),
+        (b"[" * 200000, "input_invalid_json"),
+    ],
+    ids=["invalid_utf8", "deeply_nested"],
+)
+def test_cli_unreadable_or_malformed_input_is_source_failure_without_traceback(
+    tmp_path: Path, via: str, raw: bytes, detail_prefix: str
+) -> None:
+    command = [sys.executable, str(SCRIPT), "--json"]
+    stdin_bytes: bytes | None = None
+    if via == "file":
+        evidence_path = tmp_path / "evidence.json"
+        evidence_path.write_bytes(raw)
+        command += ["--input", str(evidence_path)]
+    else:
+        stdin_bytes = raw
+        if via == "stdin_dash":
+            command += ["--input", "-"]
+
+    result = subprocess.run(
+        command,
+        input=stdin_bytes,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 3
+    assert result.stderr == b""
+    output = json.loads(result.stdout)
+    assert output["schema"] == "kg.review.preflight.v1"
+    assert output["verdict"] == "source_failure"
+    assert output["details"][0].startswith(detail_prefix)
