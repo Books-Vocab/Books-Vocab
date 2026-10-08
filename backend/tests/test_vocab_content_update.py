@@ -8,6 +8,7 @@ meaning / note (with `explanation` accepted as a write-through alias for note).
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from types import SimpleNamespace
 
@@ -241,3 +242,45 @@ def test_static_batch_archive_still_archives(isolated_api):
     body = r.json()
     assert body["updated_words"] == [word]
     assert body["not_found"] == []
+
+
+# Guard: every static PATCH route under /api/vocab/<segment> shadows
+# PATCH /api/vocab/{word}, so it must forward a content edit for a card whose
+# word equals the segment. Enumerated from the router so a new static PATCH
+# route fails here until it forwards (or the set below is consciously updated).
+# Out of scope by design: POST /api/vocab/batch-delete is static but not PATCH;
+# GET /api/vocab/review-events (pull) still captures a card named
+# "review-events" because a GET has no body to dispatch on (known gap, #2261).
+_STATIC_PATCH_SEGMENT = re.compile(r"^/api/vocab/([^/{}]+)$")
+
+
+def _static_patch_segments():
+    from kg.routers.vocab import router
+
+    return sorted(
+        {
+            m.group(1)
+            for route in router.routes
+            if "PATCH" in (getattr(route, "methods", None) or ()) and (m := _STATIC_PATCH_SEGMENT.match(route.path))
+        }
+    )
+
+
+def test_static_patch_segments_are_exactly_the_known_set():
+    assert _static_patch_segments() == ["batch-archive", "review", "review-events"]
+
+
+@pytest.mark.parametrize("segment", _static_patch_segments())
+def test_every_static_patch_segment_forwards_content_edit(isolated_api, segment):
+    _seed_word(isolated_api, word=segment, translation="舊")
+    r = isolated_api.client.patch(
+        f"/api/vocab/{segment}",
+        params={"notebook_id": "default"},
+        json={"meaning": "new meaning", "explanation": "teacher note"},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["content"] == segment
+    stored = _stored_card(isolated_api, segment)
+    assert stored is not None
+    assert (stored.meaning, stored.note) == ("new meaning", "teacher note")
