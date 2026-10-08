@@ -24,9 +24,10 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
-from sqlalchemy import func
+from sqlalchemy import Index, func
+from sqlalchemy.schema import CreateIndex
 from sqlmodel import Field as SQLField
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, SQLModel, and_, create_engine, or_, select
 
 from .sqlite_ledger import (
     as_utc as _as_utc,
@@ -273,6 +274,10 @@ class GraphSnapshot(SQLModel, table=True):
     起套後續事件重建任意時間點;也是 event log 被截斷時的安全網。
     """
 
+    # Covers the newest-per-notebook read (WHERE notebook_id ORDER BY taken_at,
+    # snapshot_id DESC LIMIT n): an index seek instead of sorting every blob row.
+    __table_args__ = (Index("ix_graphsnapshot_notebook_taken_at", "notebook_id", "taken_at", "snapshot_id"),)
+
     snapshot_id: str = SQLField(primary_key=True)
     notebook_id: str = SQLField(index=True)
     taken_at: datetime = SQLField(index=True)
@@ -302,6 +307,8 @@ class GraphSnapshotStore:
     """
 
     PERIODIC_EVENT_THRESHOLD = 50
+    # Rows per page once the newest snapshot turns out corrupt (see _latest_valid).
+    _FALLBACK_PAGE_SIZE = 8
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -309,6 +316,16 @@ class GraphSnapshotStore:
         self.engine = create_engine(f"sqlite:///{self.path.absolute()}")
         _install_serializable_sqlite(self.engine)
         GraphSnapshot.metadata.create_all(self.engine, tables=[GraphSnapshot.__table__], checkfirst=True)
+        self._ensure_indexes()
+
+    def _ensure_indexes(self) -> None:
+        """create_all skips a table that already exists, so a store created before an
+        index was declared never gets it. Create every declared index idempotently."""
+        with self.engine.connect() as conn:
+            indexes = GraphSnapshot.__table__.indexes  # type: ignore[attr-defined]
+            for index in sorted(indexes, key=lambda ix: str(ix.name)):
+                conn.execute(CreateIndex(index, if_not_exists=True))
+            conn.commit()
 
     def save(
         self,
@@ -359,19 +376,37 @@ class GraphSnapshotStore:
         )
 
     def _latest_valid(self, session: Session, notebook_id: str) -> GraphSnapshotView | None:
-        rows = session.exec(
+        """Newest readable snapshot, ordered by (taken_at, snapshot_id) descending.
+
+        Loads only the newest row in the common case. Corrupt rows are skipped by
+        keyset pagination over that order, so a bad blob never pulls the whole
+        notebook history into memory.
+        """
+        newest_first = (
             select(GraphSnapshot)
             .where(GraphSnapshot.notebook_id == notebook_id)
             .order_by(
                 GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
                 GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
             )
-        ).all()
-        for row in rows:
-            view = self._view(row)
-            if view is not None:
-                return view
-        return None
+        )
+        stmt, page_size = newest_first, 1
+        while True:
+            rows = session.exec(stmt.limit(page_size)).all()
+            for row in rows:
+                view = self._view(row)
+                if view is not None:
+                    return view
+            if len(rows) < page_size:
+                return None
+            last = rows[-1]
+            stmt = newest_first.where(
+                or_(
+                    GraphSnapshot.taken_at < last.taken_at,
+                    and_(GraphSnapshot.taken_at == last.taken_at, GraphSnapshot.snapshot_id < last.snapshot_id),
+                )
+            )
+            page_size = self._FALLBACK_PAGE_SIZE
 
     def latest(self, notebook_id: str) -> GraphSnapshotView | None:
         with Session(self.engine) as session:
