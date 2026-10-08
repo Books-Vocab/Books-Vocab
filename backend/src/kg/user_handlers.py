@@ -267,7 +267,8 @@ def _tombstone_accounts(
     *,
     purge_external_api_keys: Callable[[UsersPayload, list[str]], None] | None,
 ) -> None:
-    """Revoke, permanently terminate and remove ``ids_to_delete`` in place."""
+    """Revoke, permanently terminate and remove ``ids_to_delete`` in place,
+    dropping every email / subscription index entry that maps to them."""
     # Stamped at commit time (under the lock) so tokens issued while remote
     # assets were being deleted are revoked too.
     now_iso = datetime.now(tz=UTC).isoformat()
@@ -287,13 +288,18 @@ def _tombstone_accounts(
     terminated_ids.update(ids_to_delete)
     users["_terminated"] = sorted(terminated_ids)
 
-    email_index = users.get("_email_index")
-    if isinstance(email_index, dict):
-        stale_emails = [email for email, mapped_uid in email_index.items() if mapped_uid in ids_to_delete]
-        for email in stale_emails:
-            email_index.pop(email, None)
-        if not email_index:
-            users.pop("_email_index", None)
+    # Scrub both identity indexes, like the operator delete (cmd_user_delete):
+    # a surviving `_subscription_index` entry would let a later App Store
+    # notification re-create the erased record through the snapshot writer.
+    for bucket_name in ("_email_index", "_subscription_index"):
+        bucket = users.get(bucket_name)
+        if not isinstance(bucket, dict):
+            continue
+        stale_keys = [key for key, mapped_uid in bucket.items() if mapped_uid in ids_to_delete]
+        for key in stale_keys:
+            bucket.pop(key, None)
+        if not bucket:
+            users.pop(bucket_name, None)
 
     for uid in ids_to_delete:
         users.pop(uid, None)

@@ -40,7 +40,9 @@ def _build_certificate(subject_cn: str, issuer_cert=None, issuer_key=None, *, ap
         .serial_number(x509.random_serial_number())
         .not_valid_before(now - timedelta(days=1))
         .not_valid_after(now + timedelta(days=30))
-        .add_extension(x509.BasicConstraints(ca=issuer_cert is None or issuer_key is not None, path_length=None), critical=True)
+        .add_extension(
+            x509.BasicConstraints(ca=issuer_cert is None or issuer_key is not None, path_length=None), critical=True
+        )
     )
     if app_store_oid:
         # Real App Store signing leaves carry this marker extension; pin it so the
@@ -77,10 +79,7 @@ def _certificate_chain():
 
 
 def _sign_jws(payload: dict, leaf_key, chain: list[x509.Certificate]) -> str:
-    x5c = [
-        base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode("ascii")
-        for cert in chain
-    ]
+    x5c = [base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode("ascii") for cert in chain]
     return pyjwt.encode(payload, leaf_key, algorithm="ES256", headers={"alg": "ES256", "x5c": x5c})
 
 
@@ -363,9 +362,7 @@ def test_refund_event_invalidates_entitlement(signed_app_store_env):
     assert sync_resp.json()["pro"]["is_active"] is True
 
     # REFUND notification: Apple includes a revocationDate on the signed transaction info.
-    refunded_payload = _transaction_payload(
-        transaction_id="tx-refund-2", original_transaction_id="otx-refund-1"
-    )
+    refunded_payload = _transaction_payload(transaction_id="tx-refund-2", original_transaction_id="otx-refund-1")
     refunded_payload["revocationDate"] = int(datetime.now(tz=UTC).timestamp() * 1000)
     refunded_payload["revocationReason"] = 1
     signed_transaction_info = _sign_jws(
@@ -450,3 +447,69 @@ def test_sandbox_environment_routes_reconcile_to_sandbox_endpoint(signed_app_sto
     # signed JWS payload) must NOT yield a real Pro entitlement on a production
     # deployment. The snapshot is still persisted for diagnostics.
     assert r.json()["pro"]["is_active"] is False
+
+
+def test_signed_notification_after_self_service_delete_does_not_resurrect_user(signed_app_store_env):
+    """#2255: an Apple notification arriving after self-service account deletion
+    must not re-create the erased users.json record through a stale index entry."""
+    env = signed_app_store_env
+    chain = [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]]
+    bundle_id = app.state.kg_settings.apple_bundle_id
+
+    sync_response = env.client.post(
+        "/api/billing/app-store/sync",
+        json={
+            "product_id": TEST_PRO_PRODUCT_ID,
+            "environment": "sandbox",
+            "signed_transaction_info": _sign_jws(
+                _transaction_payload(transaction_id="tx-del-1", original_transaction_id="otx-del-1"),
+                env.chain["leaf_key"],
+                chain,
+            ),
+        },
+        headers=env.headers,
+    )
+    assert sync_response.status_code == 200, sync_response.text
+    assert json.loads(env.users_file.read_text())["_subscription_index"]["otx-del-1"] == env.user_id
+
+    deleted = env.client.delete("/api/user/account", headers=env.headers)
+    assert deleted.status_code == 200, deleted.text
+    after_delete = json.loads(env.users_file.read_text())
+    assert env.user_id not in after_delete.get("_subscription_index", {}).values()
+
+    signed_payload = _sign_jws(
+        {
+            "notificationType": "DID_RENEW",
+            "subtype": None,
+            "bundleId": bundle_id,
+            "data": {
+                "bundleId": bundle_id,
+                "signedTransactionInfo": _sign_jws(
+                    _transaction_payload(transaction_id="tx-del-2", original_transaction_id="otx-del-1"),
+                    env.chain["leaf_key"],
+                    chain,
+                ),
+                "signedRenewalInfo": _sign_jws(
+                    {
+                        "bundleId": bundle_id,
+                        "productId": TEST_PRO_PRODUCT_ID,
+                        "originalTransactionId": "otx-del-1",
+                        "autoRenewStatus": 1,
+                    },
+                    env.chain["leaf_key"],
+                    chain,
+                ),
+            },
+        },
+        env.chain["leaf_key"],
+        chain,
+    )
+    r = env.client.post("/api/billing/app-store/notifications", json={"signed_payload": signed_payload})
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "accepted"
+    assert body["updated"] is False
+    assert body["reason"] == "unmapped_transaction"
+    assert body["user_id"] is None
+    assert env.user_id not in json.loads(env.users_file.read_text())

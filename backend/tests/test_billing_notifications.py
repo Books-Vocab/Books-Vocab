@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,9 +52,7 @@ def _entitlements_from_record(record):
     sub = (record or {}).get("subscription") if isinstance(record, dict) else None
     is_active = bool(sub and sub.get("is_active"))
     status = (sub or {}).get("status", "inactive") if sub else "inactive"
-    return EntitlementsResponse(
-        pro=SubscriptionStatusResponse(is_active=is_active, status=status)
-    )
+    return EntitlementsResponse(pro=SubscriptionStatusResponse(is_active=is_active, status=status))
 
 
 def test_refund_notification_revokes_entitlement_and_reclaims_quota(tmp_path):
@@ -634,12 +633,13 @@ async def test_reconcile_partial_failure_does_not_corrupt(tmp_path):
             }
         },
         "_subscription_index": {
-            "orig-1": "u1", "txn-1": "u1",
-            "orig-2": "u2", "txn-2": "u2",
+            "orig-1": "u1",
+            "txn-1": "u1",
+            "orig-2": "u2",
+            "txn-2": "u2",
         },
     }
     # deep-copy snapshot for post-failure comparison
-    import copy
     expected_after = copy.deepcopy(pre_state)
 
     save_calls = {"count": 0}
@@ -660,7 +660,8 @@ async def test_reconcile_partial_failure_does_not_corrupt(tmp_path):
 
     with pytest.raises(RuntimeError, match="simulated DB hiccup"):
         await reconcile_app_store_subscription_response(
-            req, {"id": "u2"},
+            req,
+            {"id": "u2"},
             apple_bundle_id="com.example.app",
             users_lock_file=tmp_path / "lock",
             load_users=lambda: pre_state,
@@ -676,3 +677,132 @@ async def test_reconcile_partial_failure_does_not_corrupt(tmp_path):
     assert save_calls["count"] == 0
     # Existing users untouched, retry can pick up from the same baseline.
     assert pre_state == expected_after
+
+
+# ── stale subscription index after account deletion (#2255) ──────────────────
+
+_STALE_INDEX = {"orig-1": "ghost", "txn-1": "ghost"}
+
+
+@pytest.mark.parametrize(
+    "stale_state",
+    [
+        pytest.param({"_terminated": ["ghost"]}, id="deleted-owner"),
+        pytest.param({}, id="owner-without-record"),
+    ],
+)
+def test_notification_for_stale_index_owner_is_unmapped_and_never_resurrects(tmp_path, stale_state):
+    users_store = {"_subscription_index": dict(_STALE_INDEX), **copy.deepcopy(stale_state)}
+    save_users = MagicMock()
+    append_event = MagicMock()
+
+    result = app_store_notifications_response(
+        AppStoreNotificationRequest(notification_type="DID_RENEW", signed_payload="signed.payload"),
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=save_users,
+        decode_notification_payload=MagicMock(return_value=(_make_snapshot(), {"notificationType": "DID_RENEW"})),
+        append_app_store_event=append_event,
+        resolve_user_id_from_subscription_index=_real_resolver(),
+        write_subscription_snapshot=_real_write_snapshot(),
+        build_entitlements_response=_entitlements_from_record,
+    )
+
+    assert result == {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
+    assert "ghost" not in users_store
+    assert users_store["_subscription_index"] == _STALE_INDEX
+    save_users.assert_not_called()
+    append_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stale_index_falls_back_to_live_caller(tmp_path):
+    users_store = {
+        "live": {"config": {}},
+        "_terminated": ["ghost"],
+        "_subscription_index": dict(_STALE_INDEX),
+    }
+    save_users = MagicMock()
+
+    async def fetch_ok(*args, **kwargs):
+        return {"signedTransactionInfo": "signed.jws"}
+
+    result = await reconcile_app_store_subscription_response(
+        AppStoreReconcileRequest(transaction_id="txn-1", environment="production"),
+        {"id": "live"},
+        apple_bundle_id="com.example.app",
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=save_users,
+        fetch_transaction_info=fetch_ok,
+        decode_signed_transaction_info=MagicMock(return_value=_make_snapshot()),
+        resolve_user_id_from_subscription_index=_real_resolver(),
+        write_subscription_snapshot=_real_write_snapshot(),
+        build_entitlements_response=_entitlements_from_record,
+    )
+
+    assert "ghost" not in users_store
+    assert users_store["live"]["subscription"]["original_transaction_id"] == "orig-1"
+    assert set(users_store["_subscription_index"].values()) == {"live"}
+    assert result.pro.is_active is True
+    save_users.assert_called_once()
+
+
+def test_resolver_returns_only_owners_with_a_live_record():
+    users = {
+        "live": {"config": {}},
+        "_terminated": ["ghost"],
+        "_subscription_index": {
+            "orig-1": "ghost",
+            "txn-live": "live",
+            "txn-gone": "gone",
+            "orig-meta": "_subscription_index",
+        },
+    }
+    before = copy.deepcopy(users)
+    resolve = _real_resolver()
+
+    assert resolve(users, "orig-1", "txn-live") == "live"
+    assert resolve(users, "orig-1", "txn-gone") is None
+    assert resolve(users, "orig-meta", None) is None
+    assert users == before
+
+
+def test_notification_still_reaches_owner_who_signed_in_again_after_deletion(tmp_path):
+    """`_terminated` is a permanent revocation marker, not a liveness signal:
+    the same provider id may sign in again (``resolve_and_link_user``) and own a
+    fresh record. Its App Store notifications must keep applying, otherwise a
+    REFUND would never revoke the re-registered account's entitlement."""
+    users_store = {
+        "apple-X": {
+            "provider": "apple",
+            "config": {},
+            "subscription": {
+                "is_active": True,
+                "status": "active",
+                "product_id": "pro_monthly",
+                "transaction_id": "txn-1",
+                "original_transaction_id": "orig-1",
+            },
+        },
+        "_terminated": ["apple-X"],
+        "_revoked_before": {"apple-X": "2025-01-01T00:00:00+00:00"},
+        "_subscription_index": {"orig-1": "apple-X", "txn-1": "apple-X"},
+    }
+    refund_snapshot = {**_make_snapshot(), "status": "expired", "will_renew": False}
+
+    result = app_store_notifications_response(
+        AppStoreNotificationRequest(notification_type="REFUND", signed_payload="signed.payload"),
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=MagicMock(),
+        decode_notification_payload=MagicMock(return_value=(refund_snapshot, {"notificationType": "REFUND"})),
+        append_app_store_event=MagicMock(),
+        resolve_user_id_from_subscription_index=_real_resolver(),
+        write_subscription_snapshot=_real_write_snapshot(),
+        build_entitlements_response=_entitlements_from_record,
+    )
+
+    assert result["updated"] is True
+    assert result["user_id"] == "apple-X"
+    assert users_store["apple-X"]["subscription"]["is_active"] is False
