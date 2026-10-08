@@ -712,8 +712,13 @@ struct PendingLinkProjectionTests {
         let group = CardLinkGroupPresentation(id: "shares_usage", label: "x", items: normals + [pending])
 
         for _ in 0..<50 {
-            let compact = group.shuffled().pendingFirst().limited(to: 2)
-            #expect(compact.items.first?.isPendingCreation == true)
+            // The prepared card keeps every link; the strip cuts per presentation.
+            let ordered = group.shuffled().pendingFirst()
+            let prepared = ReviewCardLinkGroup(id: ordered.id, label: ordered.label, items: ordered.items, overflowCount: 0)
+            for presentation in [ReviewCardLayoutSolver.GraphLinkPresentation.twoPerGroup, .onePerGroup] {
+                let row = ReviewCardLinkStripLayout.row(for: prepared, presentation: presentation, isExpanded: false)
+                #expect(row.leading.first?.isPendingCreation == true)
+            }
         }
     }
 
