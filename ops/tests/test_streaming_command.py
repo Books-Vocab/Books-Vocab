@@ -131,12 +131,16 @@ def test_completed_process_returns_the_monotonic_elapsed(tmp_path: Path) -> None
 
     assert completed.elapsed_s >= 0.03
     assert completed.elapsed_s < 2
-    done = next(line for line in progress.getvalue().splitlines() if "phase=done" in line)
+    done = next(
+        line for line in progress.getvalue().splitlines() if "phase=done" in line
+    )
     displayed = float(_field(done, "elapsed").rstrip("s"))
     assert displayed == pytest.approx(completed.elapsed_s, abs=0.11)
 
 
-def test_silent_child_heartbeat_reports_stalled_with_stable_field_order(tmp_path: Path) -> None:
+def test_silent_child_heartbeat_reports_stalled_with_stable_field_order(
+    tmp_path: Path,
+) -> None:
     """A child that is alive but producing nothing must be distinguishable.
 
     This is the half of the contract that ``alive=true`` alone could never carry:
@@ -213,7 +217,9 @@ def test_busy_child_heartbeat_never_reports_stalled(tmp_path: Path) -> None:
     # claim being pinned is narrower: a child we have watched produce is never
     # slandered. `assert producing` keeps that from passing vacuously.
     producing = [beat for beat in beats if int(_field(beat, "outBytes")) > 0]
-    assert producing, f"the child produced {len(lines)} lines but no beat saw any: {beats}"
+    assert producing, (
+        f"the child produced {len(lines)} lines but no beat saw any: {beats}"
+    )
     assert all(_field(beat, "stalled") == "false" for beat in producing), producing
     _assert_stalled_agrees_with_idle(beats, 0.5)
     seen = [int(_field(beat, "outBytes")) for beat in beats]
@@ -360,7 +366,9 @@ def test_interrupt_terminates_child_process_group(tmp_path: Path, monkeypatch) -
             return original_get(self, timeout=timeout)
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(streaming_command.queue.Queue, "get", interrupt_after_grandchild_started)
+    monkeypatch.setattr(
+        streaming_command.queue.Queue, "get", interrupt_after_grandchild_started
+    )
     pids: dict[str, int] = {}
     try:
         with pytest.raises(KeyboardInterrupt):
@@ -374,7 +382,10 @@ def test_interrupt_terminates_child_process_group(tmp_path: Path, monkeypatch) -
             )
         pids = json.loads(pid_file.read_text(encoding="utf-8"))
         deadline = time.monotonic() + 2
-        while any(_process_is_live(pid) for pid in pids.values()) and time.monotonic() < deadline:
+        while (
+            any(_process_is_live(pid) for pid in pids.values())
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.02)
         assert not any(_process_is_live(pid) for pid in pids.values())
     finally:
@@ -383,7 +394,9 @@ def test_interrupt_terminates_child_process_group(tmp_path: Path, monkeypatch) -
                 os.kill(pid, signal.SIGKILL)
 
 
-def test_interrupt_during_spawned_progress_terminates_process_group(tmp_path: Path) -> None:
+def test_interrupt_during_spawned_progress_terminates_process_group(
+    tmp_path: Path,
+) -> None:
     pid_file = tmp_path / "early-pids.json"
     child_script = (
         "import json,os,subprocess,sys,time; "
@@ -428,7 +441,10 @@ def test_interrupt_during_spawned_progress_terminates_process_group(tmp_path: Pa
             )
         pids = json.loads(pid_file.read_text(encoding="utf-8"))
         deadline = time.monotonic() + 2
-        while any(_process_is_live(pid) for pid in pids.values()) and time.monotonic() < deadline:
+        while (
+            any(_process_is_live(pid) for pid in pids.values())
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.02)
         assert not any(_process_is_live(pid) for pid in pids.values())
     finally:
@@ -467,7 +483,10 @@ def test_timeout_terminates_child_process_group(tmp_path: Path) -> None:
         assert completed.returncode == 124
         pids = json.loads(pid_file.read_text(encoding="utf-8"))
         deadline = time.monotonic() + 2
-        while any(_process_is_live(pid) for pid in pids.values()) and time.monotonic() < deadline:
+        while (
+            any(_process_is_live(pid) for pid in pids.values())
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.02)
         assert not any(_process_is_live(pid) for pid in pids.values())
     finally:
@@ -522,6 +541,7 @@ def test_timeout_kills_grandchild_after_group_leader_exits(tmp_path: Path) -> No
 # that locale—not that every Bash implementation returns the same parser error.
 # ============================================================================
 
+
 def _effective_ctype(text: str) -> str:
     for line in text.splitlines():
         if line.startswith("LC_CTYPE="):
@@ -534,10 +554,16 @@ def test_child_lc_ctype_is_chosen_by_the_tool_not_inherited(tmp_path, monkeypatc
     monkeypatch.setenv("LC_CTYPE", "en_US.ISO8859-1")
     with redirect_stderr(io.StringIO()):
         completed = run_streamed_command(
-            [sys.executable, "-c",
-             "import os,sys; sys.stdout.write(os.environ.get('LC_CTYPE','<unset>'))"],
-            cwd=tmp_path, label_key="gate", label="ctype-probe",
-            progress_prefix="[test]", heartbeat_interval=0.05,
+            [
+                sys.executable,
+                "-c",
+                "import os,sys; sys.stdout.write(os.environ.get('LC_CTYPE','<unset>'))",
+            ],
+            cwd=tmp_path,
+            label_key="gate",
+            label="ctype-probe",
+            progress_prefix="[test]",
+            heartbeat_interval=0.05,
         )
     # The literal, not just the module constant: comparing the child's value only to
     # `streaming_command.CHILD_LC_CTYPE` is self-consistent for ANY value, including
@@ -562,28 +588,36 @@ def test_child_lc_ctype_choice_survives_a_caller_who_set_lc_all(tmp_path, monkey
     with redirect_stderr(io.StringIO()):
         completed = run_streamed_command(
             ["/usr/bin/locale"],
-            cwd=tmp_path, label_key="gate", label="ctype-effective",
-            progress_prefix="[test]", heartbeat_interval=0.05,
+            cwd=tmp_path,
+            label_key="gate",
+            label="ctype-effective",
+            progress_prefix="[test]",
+            heartbeat_interval=0.05,
         )
     assert completed.returncode == 0
     assert _effective_ctype(completed.stdout) == "C.UTF-8"
 
 
-@pytest.mark.parametrize("caller_env", [
-    pytest.param({}, id="bare-caller"),
-    pytest.param({"LC_ALL": "C"}, id="caller-forced-LC_ALL-C"),
-    pytest.param({"LC_CTYPE": "C"}, id="caller-forced-LC_CTYPE-C"),
-])
+@pytest.mark.parametrize(
+    "caller_env",
+    [
+        pytest.param({}, id="bare-caller"),
+        pytest.param({"LC_ALL": "C"}, id="caller-forced-LC_ALL-C"),
+        pytest.param({"LC_CTYPE": "C"}, id="caller-forced-LC_CTYPE-C"),
+    ],
+)
 def test_lc_ctype_choice_matches_direct_child_shell_parse(
-        tmp_path, monkeypatch, caller_env):
+    tmp_path, monkeypatch, caller_env
+):
     """Assert runner and direct child take the same locale-dependent parse path."""
     monkeypatch.delenv("LC_ALL", raising=False)
     monkeypatch.delenv("LC_CTYPE", raising=False)
     for key, value in caller_env.items():
         monkeypatch.setenv(key, value)
     script = tmp_path / "fw.sh"
-    script.write_text('set -u\ndest=hello\necho "dir: $dest（marked）"\n',
-                      encoding="utf-8")
+    script.write_text(
+        'set -u\ndest=hello\necho "dir: $dest（marked）"\n', encoding="utf-8"
+    )
     direct = subprocess.run(
         ["bash", str(script)],
         cwd=tmp_path,
@@ -595,8 +629,12 @@ def test_lc_ctype_choice_matches_direct_child_shell_parse(
     with redirect_stderr(io.StringIO()):
         completed = run_streamed_command(
             ["bash", str(script)],
-            cwd=tmp_path, label_key="gate", label="ctype-behaviour",
-            progress_prefix="[test]", heartbeat_interval=0.05, merge_stderr=True,
+            cwd=tmp_path,
+            label_key="gate",
+            label="ctype-behaviour",
+            progress_prefix="[test]",
+            heartbeat_interval=0.05,
+            merge_stderr=True,
         )
     assert completed.returncode == direct.returncode
     assert completed.stdout == direct.stdout.decode("utf-8", errors="replace")
@@ -609,8 +647,11 @@ def test_the_chosen_lc_ctype_is_visible_in_the_progress_stream(tmp_path):
     with redirect_stderr(stderr):
         run_streamed_command(
             [sys.executable, "-c", "pass"],
-            cwd=tmp_path, label_key="gate", label="ctype-visible",
-            progress_prefix="[test]", heartbeat_interval=0.05,
+            cwd=tmp_path,
+            label_key="gate",
+            label="ctype-visible",
+            progress_prefix="[test]",
+            heartbeat_interval=0.05,
         )
     start = [ln for ln in stderr.getvalue().splitlines() if "phase=start" in ln]
     assert start, stderr.getvalue()
@@ -622,11 +663,17 @@ def test_an_explicit_env_argument_still_gets_the_chosen_lc_ctype(tmp_path):
     orchestrator's git mutations — the ones whose parse must match the gates'."""
     with redirect_stderr(io.StringIO()):
         completed = run_streamed_command(
-            [sys.executable, "-c",
-             "import os,sys; g=os.environ.get; sys.stdout.write('|'.join("
-             "(g('LC_CTYPE','<unset>'), g('CANARY','<unset>'), g('LC_ALL','<unset>'))))"],
-            cwd=tmp_path, label_key="gate", label="ctype-explicit-env",
-            progress_prefix="[test]", heartbeat_interval=0.05,
+            [
+                sys.executable,
+                "-c",
+                "import os,sys; g=os.environ.get; sys.stdout.write('|'.join("
+                "(g('LC_CTYPE','<unset>'), g('CANARY','<unset>'), g('LC_ALL','<unset>'))))",
+            ],
+            cwd=tmp_path,
+            label_key="gate",
+            label="ctype-explicit-env",
+            progress_prefix="[test]",
+            heartbeat_interval=0.05,
             env={"CANARY": "kept", "LC_ALL": "C"},
         )
     # The caller's own variables survive; only the locale decision is overridden.
@@ -648,24 +695,36 @@ def test_timeout_is_reported_as_its_own_fact_not_only_as_a_return_code() -> None
     """
     killed = run_streamed_command(
         ["bash", "-c", "sleep 30"],
-        cwd=Path.cwd(), label_key="source", label="killed",
-        progress_prefix="[test]", heartbeat_interval=5.0, timeout_seconds=0.5,
+        cwd=Path.cwd(),
+        label_key="source",
+        label="killed",
+        progress_prefix="[test]",
+        heartbeat_interval=5.0,
+        timeout_seconds=0.5,
     )
     assert killed.returncode == 124 and killed.timed_out is True
 
     volunteered = run_streamed_command(
         ["bash", "-c", "exit 124"],
-        cwd=Path.cwd(), label_key="source", label="volunteered",
-        progress_prefix="[test]", heartbeat_interval=5.0, timeout_seconds=30,
+        cwd=Path.cwd(),
+        label_key="source",
+        label="volunteered",
+        progress_prefix="[test]",
+        heartbeat_interval=5.0,
+        timeout_seconds=30,
     )
     assert volunteered.returncode == 124, "the fixture stopped testing the collision"
     assert volunteered.timed_out is False, (
-        "a child that exited 124 on its own was reported as killed by the deadline")
+        "a child that exited 124 on its own was reported as killed by the deadline"
+    )
 
     unbounded = run_streamed_command(
         ["bash", "-c", "true"],
-        cwd=Path.cwd(), label_key="source", label="unbounded",
-        progress_prefix="[test]", heartbeat_interval=5.0,
+        cwd=Path.cwd(),
+        label_key="source",
+        label="unbounded",
+        progress_prefix="[test]",
+        heartbeat_interval=5.0,
     )
     assert unbounded.timed_out is False, "the flag must exist even with no deadline set"
 
@@ -677,8 +736,11 @@ def test_non_finite_or_non_positive_durations_are_rejected(field, bad) -> None:
     with pytest.raises(ValueError, match=field):
         run_streamed_command(
             ["bash", "-c", "true"],
-            cwd=Path.cwd(), label_key="source", label="bad",
-            progress_prefix="[test]", **kwargs,
+            cwd=Path.cwd(),
+            label_key="source",
+            label="bad",
+            progress_prefix="[test]",
+            **kwargs,
         )
 
 

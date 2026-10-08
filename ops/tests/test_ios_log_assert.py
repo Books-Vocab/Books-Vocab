@@ -4,6 +4,7 @@ Both modules are test/ops-side only — they never touch the iOS app's logging
 implementation. The parser consumes either the `kg.ios.logs.v1` envelope emitted
 by `ios_ops.sh logs --json` or raw `log stream/show --style ndjson` lines.
 """
+
 import importlib.util
 import json
 import sys
@@ -26,10 +27,14 @@ log_assert = _load("ios_log_assert")
 
 # ─────────────────────────────── naming contract ───────────────────────────────
 
+
 def test_parse_valid_four_segment_name():
     m = naming.parse("podcast.player.play.readyLatency")
     assert (m.feature, m.scenario, m.action, m.metric) == (
-        "podcast", "player", "play", "readyLatency"
+        "podcast",
+        "player",
+        "play",
+        "readyLatency",
     )
     assert m.kind == "latency"
 
@@ -99,25 +104,58 @@ def test_known_features_cover_app_surfaces():
 ENVELOPE = {
     "schema": "kg.ios.logs.v1",
     "entries": [
-        {"timestamp": "t1", "eventType": "logEvent", "subsystem": "com.Max0228.BooksBrowser",
-         "category": "Sync", "message": "sync completed reader.open.load.firstPaint=812ms"},
-        {"timestamp": "t2", "eventType": "logEvent", "subsystem": "com.Max0228.BooksBrowser",
-         "category": "Reader", "message": "notebook.list.scroll.frames=119"},
+        {
+            "timestamp": "t1",
+            "eventType": "logEvent",
+            "subsystem": "com.Max0228.BooksBrowser",
+            "category": "Sync",
+            "message": "sync completed reader.open.load.firstPaint=812ms",
+        },
+        {
+            "timestamp": "t2",
+            "eventType": "logEvent",
+            "subsystem": "com.Max0228.BooksBrowser",
+            "category": "Reader",
+            "message": "notebook.list.scroll.frames=119",
+        },
     ],
 }
 
-NDJSON = "\n".join([
-    json.dumps({"timestamp": "t1", "eventType": "logEvent", "messageType": "Default",
-                "subsystem": "com.Max0228.BooksBrowser", "category": "Sync",
-                "eventMessage": "podcast.player.play.readyLatency=240ms"}),
-    json.dumps({"timestamp": "t2", "eventType": "logEvent", "messageType": "Error",
-                "subsystem": "com.Max0228.BooksBrowser", "category": "Reader",
-                "eventMessage": "decode failed"}),
-    "",  # blank line tolerated
-    json.dumps({"timestamp": "t3", "eventType": "logEvent", "messageType": "Fault",
-                "subsystem": "com.Max0228.BooksBrowser", "category": "Reader",
-                "eventMessage": "fatal"}),
-])
+NDJSON = "\n".join(
+    [
+        json.dumps(
+            {
+                "timestamp": "t1",
+                "eventType": "logEvent",
+                "messageType": "Default",
+                "subsystem": "com.Max0228.BooksBrowser",
+                "category": "Sync",
+                "eventMessage": "podcast.player.play.readyLatency=240ms",
+            }
+        ),
+        json.dumps(
+            {
+                "timestamp": "t2",
+                "eventType": "logEvent",
+                "messageType": "Error",
+                "subsystem": "com.Max0228.BooksBrowser",
+                "category": "Reader",
+                "eventMessage": "decode failed",
+            }
+        ),
+        "",  # blank line tolerated
+        json.dumps(
+            {
+                "timestamp": "t3",
+                "eventType": "logEvent",
+                "messageType": "Fault",
+                "subsystem": "com.Max0228.BooksBrowser",
+                "category": "Reader",
+                "eventMessage": "fatal",
+            }
+        ),
+    ]
+)
 
 
 def test_normalize_detects_envelope():
@@ -156,23 +194,29 @@ def test_summarize_error_rate_null_without_levels():
 
 def test_metric_token_regex_rejects_over_long_dotted_path():
     # 5 dotted segments must NOT silently truncate to the first 4
-    text = json.dumps({"category": "Reader",
-                       "eventMessage": "x.reader.open.load.firstPaint=5"})
+    text = json.dumps(
+        {"category": "Reader", "eventMessage": "x.reader.open.load.firstPaint=5"}
+    )
     s = log_assert.summarize(log_assert.normalize_events(text))
     assert s["metrics"] == {}  # over-long path is rejected, not truncated
 
 
 def test_metric_token_regex_ignores_dotted_prefix():
     # a contract-valid token glued behind a dotted prefix must not match
-    text = json.dumps({"category": "Reader",
-                       "eventMessage": "ns.podcast.player.play.readyLatency=9"})
+    text = json.dumps(
+        {"category": "Reader", "eventMessage": "ns.podcast.player.play.readyLatency=9"}
+    )
     s = log_assert.summarize(log_assert.normalize_events(text))
     assert "podcast.player.play.readyLatency" not in s["metrics"]
 
 
 def test_two_metrics_one_message():
-    text = json.dumps({"category": "Reader",
-                       "eventMessage": "two podcast.player.play.readyLatency=1 and notebook.list.scroll.frames=2"})
+    text = json.dumps(
+        {
+            "category": "Reader",
+            "eventMessage": "two podcast.player.play.readyLatency=1 and notebook.list.scroll.frames=2",
+        }
+    )
     s = log_assert.summarize(log_assert.normalize_events(text))
     assert s["metrics"]["podcast.player.play.readyLatency"]["avg"] == 1.0
     assert s["metrics"]["notebook.list.scroll.frames"]["avg"] == 2.0
@@ -199,7 +243,9 @@ def test_frame_metrics_are_bucketed_separately():
 
 def test_metric_aggregates_min_max_avg():
     text = "\n".join(
-        json.dumps({"category": "Reader", "eventMessage": f"reader.open.load.firstPaint={v}ms"})
+        json.dumps(
+            {"category": "Reader", "eventMessage": f"reader.open.load.firstPaint={v}ms"}
+        )
         for v in (100, 200, 300)
     )
     s = log_assert.summarize(log_assert.normalize_events(text))
@@ -216,6 +262,7 @@ def test_features_summary_groups_by_feature():
 
 
 # ─────────────────────────────── assertions ───────────────────────────────
+
 
 def test_assert_max_error_rate_fails_when_exceeded():
     s = log_assert.summarize(log_assert.normalize_events(NDJSON))

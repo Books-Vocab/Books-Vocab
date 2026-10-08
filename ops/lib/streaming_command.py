@@ -74,7 +74,9 @@ def _child_env(env: dict[str, str] | None) -> dict[str, str]:
     return resolved
 
 
-def _terminate_process_group(proc: subprocess.Popen[bytes], timeout: float = 5.0) -> None:
+def _terminate_process_group(
+    proc: subprocess.Popen[bytes], timeout: float = 5.0
+) -> None:
     """Terminate the isolated child session, escalating to KILL at deadline."""
     try:
         os.killpg(proc.pid, signal.SIGTERM)
@@ -203,7 +205,9 @@ def run_streamed_command(
     process_group = process_group_id(proc.pid) or proc.pid
     if start_identity is None and proc.poll() is None:
         _terminate_process_group(proc)
-        registry.finish(task_id, terminal_outcome="spawn-failed:missing-process-identity")
+        registry.finish(
+            task_id, terminal_outcome="spawn-failed:missing-process-identity"
+        )
         raise RuntimeError(f"task {task_id} spawned without process identity")
     if start_identity is None:
         start_identity = "exited-before-identity"
@@ -390,7 +394,9 @@ def run_streamed_command(
 
 def _capture_cli(argv: list[str] | None = None) -> int:
     """Expose the runner to shell control planes without polluting stdout."""
-    parser = argparse.ArgumentParser(description="capture a command with visible progress")
+    parser = argparse.ArgumentParser(
+        description="capture a command with visible progress"
+    )
     parser.add_argument("--cwd", required=True)
     parser.add_argument("--label", required=True)
     parser.add_argument("--heartbeat-interval", type=float, default=20.0)

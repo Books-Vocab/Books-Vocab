@@ -26,6 +26,7 @@ CLI:
     ... | ./ops/ios_log_assert.py --max-error-rate 0.05 --require-feature podcast
           --min-events 10        # non-zero exit if any assertion fails
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,7 +66,11 @@ def _event_from_obj(obj: dict) -> Event:
     msg = next(
         (
             v
-            for v in (obj.get("message"), obj.get("eventMessage"), obj.get("formatString"))
+            for v in (
+                obj.get("message"),
+                obj.get("eventMessage"),
+                obj.get("formatString"),
+            )
             if isinstance(v, str) and v
         ),
         "",
@@ -134,15 +139,20 @@ def extract_metrics(events: list[Event]) -> dict:
             try:
                 parsed = naming.parse(name)
             except ValueError:
-                logger.debug("Skipping invalid metric token %r in message %r", name, ev.message)
+                logger.debug(
+                    "Skipping invalid metric token %r in message %r", name, ev.message
+                )
                 continue
-            slot = acc.setdefault(name, {
-                "kind": parsed.kind,
-                "feature": parsed.feature,
-                "count": 0,
-                "unit": None,
-                "_values": [],
-            })
+            slot = acc.setdefault(
+                name,
+                {
+                    "kind": parsed.kind,
+                    "feature": parsed.feature,
+                    "count": 0,
+                    "unit": None,
+                    "_values": [],
+                },
+            )
             slot["count"] += 1
             val = m.group("value")
             if val is not None:
@@ -189,7 +199,10 @@ def summarize(events: list[Event]) -> dict:
             try:
                 seen.add(naming.parse(m.group("name")).feature)
             except ValueError:
-                logger.debug("Skipping invalid metric token for feature extraction: %r", m.group("name"))
+                logger.debug(
+                    "Skipping invalid metric token for feature extraction: %r",
+                    m.group("name"),
+                )
                 continue
         for feat in seen:
             if feat in features:
@@ -246,15 +259,30 @@ def _render_text(summary: dict) -> str:
         f"events: {summary['totalEvents']}",
     ]
     rate = summary["errorRate"]
-    lines.append(f"errorRate: {'n/a (no messageType)' if rate is None else f'{rate:.3f}'}")
+    lines.append(
+        f"errorRate: {'n/a (no messageType)' if rate is None else f'{rate:.3f}'}"
+    )
     if summary["byLevel"]:
-        lines.append("byLevel: " + ", ".join(f"{k}={v}" for k, v in sorted(summary["byLevel"].items())))
-    lines.append("byCategory: " + (", ".join(f"{k}={v}" for k, v in sorted(summary["byCategory"].items())) or "—"))
+        lines.append(
+            "byLevel: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(summary["byLevel"].items()))
+        )
+    lines.append(
+        "byCategory: "
+        + (
+            ", ".join(f"{k}={v}" for k, v in sorted(summary["byCategory"].items()))
+            or "—"
+        )
+    )
     if summary["metrics"]:
         lines.append("metrics:")
         for name, a in sorted(summary["metrics"].items()):
             u = a["unit"] or ""
-            stat = f"avg={a['avg']}{u} min={a['min']}{u} max={a['max']}{u} n={a['count']}" if a["avg"] is not None else f"n={a['count']} (no values)"
+            stat = (
+                f"avg={a['avg']}{u} min={a['min']}{u} max={a['max']}{u} n={a['count']}"
+                if a["avg"] is not None
+                else f"n={a['count']} (no values)"
+            )
             lines.append(f"  [{a['kind']}] {name}: {stat}")
     else:
         lines.append("metrics: (none matched the naming contract)")
@@ -272,13 +300,19 @@ def _error_rate(value: str) -> float:
 
 
 def _cli(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description="Log Assertion Parser for iOS runtime logs")
+    ap = argparse.ArgumentParser(
+        description="Log Assertion Parser for iOS runtime logs"
+    )
     ap.add_argument("--input", help="read from file instead of stdin")
     ap.add_argument("--json", action="store_true", help="emit the summary as JSON")
     ap.add_argument("--max-error-rate", type=_error_rate, default=None)
     ap.add_argument("--min-events", type=int, default=None)
-    ap.add_argument("--require-feature", action="append", dest="require_features", default=[])
-    ap.add_argument("--require-metric", action="append", dest="require_metrics", default=[])
+    ap.add_argument(
+        "--require-feature", action="append", dest="require_features", default=[]
+    )
+    ap.add_argument(
+        "--require-metric", action="append", dest="require_metrics", default=[]
+    )
     args = ap.parse_args(argv)
 
     raw = Path(args.input).read_text() if args.input else sys.stdin.read()
