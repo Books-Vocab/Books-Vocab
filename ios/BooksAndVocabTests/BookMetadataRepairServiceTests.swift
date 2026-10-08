@@ -82,6 +82,44 @@ final class BookMetadataRepairServiceTests {
 
     // MARK: - Tests
 
+    /// #2107：App.init 只建 service；`BookManifestStore()` 預設 root 會讀 `Book.booksDirectory`
+    /// （冷快取時在 main thread 跑 ubiquity lookup），所以 store 必須延遲到真的寫 manifest 才建。
+    @Test func manifestStoreIsResolvedLazilyNotAtConstruction() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var storeBuilds = 0
+        let suiteName = "BookMetadataRepairTests-\(UUID().uuidString)"
+        createdSuiteNames.append(suiteName)
+        let fileName = "0B1C2D3E-1111-4222-8333-444455556666.epub"
+        try writeReadableFile(fileName, in: root)
+        let extractor = FakeExtractor(.success(ExtractedBookMetadata(
+            title: "Lazy Title", author: "Lazy Author", coverImageData: nil
+        )))
+        let service = BookMetadataRepairService(
+            extractor: extractor,
+            manifestStore: {
+                storeBuilds += 1
+                return BookManifestStore(rootDirectory: root)
+            }(),
+            userDefaults: UserDefaults(suiteName: suiteName)!,
+            fileURLProvider: { root.appendingPathComponent($0.epubFileName) }
+        )
+        #expect(storeBuilds == 0, "construction must not resolve the manifest store")
+
+        // 乾淨書庫：沒有候選，store 仍不應被建立。
+        #expect(await service.repairIfNeeded(context: context) == 0)
+        #expect(storeBuilds == 0)
+
+        let book = Book(title: "0B1C2D3E-1111-4222-8333-444455556666", author: "", fileName: fileName, format: .epub)
+        context.insert(book)
+        try context.save()
+        #expect(await service.repairIfNeeded(context: context) == 1)
+        #expect(storeBuilds == 1, "store is built on first manifest write")
+    }
+
     @Test func repairsDirtyRowAndManifestPreservingReadingPosition() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)

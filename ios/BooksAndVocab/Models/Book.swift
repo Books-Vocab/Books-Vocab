@@ -102,11 +102,17 @@ final class Book {
         }
     }
 
-    /// 本機 Books 目錄
-    private static var _cachedLocalDir: URL?
+    /// 本機 Books 目錄快取。啟動 migration 現在在 detached task 讀它（#2107），
+    /// 與 main thread 的 resolveFileURL / booksDirectory 並發，裸 static var 會 data race，
+    /// 故與 iCloud 快取同樣用 OSAllocatedUnfairLock 保護。
+    private static let _localDirLock = OSAllocatedUnfairLock<URL?>(initialState: nil)
 
     static var localBooksDirectory: URL {
-        if let cached = _cachedLocalDir { return cached }
+        // Fast path: cached value, no I/O.
+        if let cached = _localDirLock.withLock({ $0 }) { return cached }
+
+        // Slow path: createDirectory 在鎖外執行（spinlock 不適合阻塞 I/O）；
+        // write-if-nil，先寫者勝，createDirectory 冪等。
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Books")
         do {
@@ -114,8 +120,11 @@ final class Book {
         } catch {
             AppLog.book.warning("Failed to create local Books directory: \(error.localizedDescription)")
         }
-        _cachedLocalDir = dir
-        return dir
+        return _localDirLock.withLock { cached in
+            if let existing = cached { return existing }
+            cached = dir
+            return dir
+        }
     }
 
     /// 清除 iCloud 目錄快取，讓下次存取時以當前 Apple ID 重取容器路徑。

@@ -247,6 +247,9 @@ struct BooksAndVocabApp: App {
                     // 污染的書（title=UUID、cover=0）。不放進 init / 同步啟動路徑，
                     // 避免 Readium parsing 拖慢冷啟動。service 內建 in-flight guard +
                     // 候選門檻，語言切換重建 view tree 時對乾淨書庫近乎零成本。
+                    // 先背景暖 iCloud 目錄快取：needsRepair 的 fileURL 解析與 manifest store 都在
+                    // main actor 讀 Book 目錄，冷快取會在 main 上跑 ubiquity lookup（#2107）。
+                    await Task.detached(priority: .utility) { _ = Book.iCloudBooksDirectory }.value
                     await bookMetadataRepairService.repairIfNeeded(context: modelContainer.mainContext)
                 }
                 #endif
