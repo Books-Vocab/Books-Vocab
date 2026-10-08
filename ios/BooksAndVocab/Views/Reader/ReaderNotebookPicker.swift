@@ -22,6 +22,7 @@ struct ReaderNotebookPicker: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.toastCoordinator) private var toastCoordinator
 
     var body: some View {
         let presentation = ReaderNotebookPickerPresentation(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
@@ -34,7 +35,7 @@ struct ReaderNotebookPicker: View {
                     selectedNotebookId: book.preferredNotebookId,
                     onSelect: { notebook in
                         book.preferredNotebookId = notebook.remoteId
-                        persistBookBinding()
+                        guard persistBookBinding(userInitiated: true) else { return }
                         dismiss()
                     }
                 )
@@ -68,10 +69,16 @@ struct ReaderNotebookPicker: View {
         }
     }
 
-    private func persistBookBinding() {
-        if modelContext.safeSave() {
+    /// 使用者主動選擇時失敗要 toast 並讓 sheet 保持開啟；onAppear 的清理維持靜默。
+    @discardableResult
+    private func persistBookBinding(userInitiated: Bool = false) -> Bool {
+        let saved = userInitiated
+            ? modelContext.safeSaveWithToast(toastCoordinator)
+            : modelContext.safeSave()
+        if saved {
             BookManifestStore().writeBestEffort(book: book)
         }
+        return saved
     }
 }
 #endif

@@ -20,6 +20,7 @@ struct PodcastNotebookPicker: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appTheme) private var theme
+    @Environment(\.toastCoordinator) private var toastCoordinator
 
     var body: some View {
         NavigationStack {
@@ -29,7 +30,7 @@ struct PodcastNotebookPicker: View {
                     selectedNotebookId: series.preferredNotebookId,
                     onSelect: { notebook in
                         series.preferredNotebookId = notebook.remoteId
-                        _ = modelContext.safeSave()
+                        guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
                         dismiss()
                     }
                 )
