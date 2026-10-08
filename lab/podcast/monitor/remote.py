@@ -21,6 +21,7 @@ The previous PODCAST_SSH_KEY / PODCAST_REMOTE_SERVER / PODCAST_REMOTE_DIR
 envs are now unused — kept undocumented for one release so a stale shell that
 exports them doesn't actively break, but they have no effect.
 """
+
 from __future__ import annotations
 
 import json
@@ -157,7 +158,9 @@ def list_remote_series() -> list[dict]:
             else:
                 raise _map_client_error(exc, "get_object index.json") from exc
         else:
-            raise RemoteError(0, f"get_object index.json: {exc}", ["get_object"]) from exc
+            raise RemoteError(
+                0, f"get_object index.json: {exc}", ["get_object"]
+            ) from exc
 
     if not isinstance(index, list):
         index = []
@@ -243,8 +246,8 @@ def delete_remote_series(series_id: str) -> dict:
       * ``fully_deleted``: True if zero residual objects exist under the prefix
       * ``remaining``: number of series in the rebuilt index
       * ``rm_errors``: list of per-object delete errors (empty on success)
-      * ``bad_metadata_files``: list of metadata.json keys that wouldn't parse
-        (those series are skipped in the rebuilt index)
+      * ``bad_metadata_files``: always empty on return; any unreadable
+        metadata.json aborts with ``RemoteError`` before index.json is touched
     """
     validate_series_id(series_id)
     bucket = _bucket()
@@ -277,7 +280,10 @@ def delete_remote_series(series_id: str) -> dict:
             )
             for err in resp.get("Errors", []) or []:
                 rm_errors.append(
-                    {"path": err.get("Key", ""), "err": f"{err.get('Code')}: {err.get('Message')}"},
+                    {
+                        "path": err.get("Key", ""),
+                        "err": f"{err.get('Code')}: {err.get('Message')}",
+                    },
                 )
         except Exception as exc:  # noqa: BLE001
             if hasattr(exc, "response"):
@@ -323,12 +329,22 @@ def delete_remote_series(series_id: str) -> dict:
             raise _map_client_error(exc, "rebuild index list_objects_v2") from exc
         raise RemoteError(0, f"rebuild index: {exc}", ["list_objects_v2"]) from exc
 
-    # 5. Write the rebuilt index back.
+    # 5. Write the rebuilt index back — but never a shortened one: a series
+    # whose metadata.json could not be read would be silently unpublished.
+    if bad_metadata_files:
+        raise RemoteError(
+            0,
+            "index.json not rewritten; unreadable metadata: "
+            + ", ".join(b["path"] for b in bad_metadata_files),
+            ["get_object"],
+        )
     try:
         s3.put_object(
             Bucket=bucket,
             Key="index.json",
-            Body=(json.dumps(rebuilt, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+            Body=(json.dumps(rebuilt, indent=2, ensure_ascii=False) + "\n").encode(
+                "utf-8"
+            ),
             ContentType="application/json; charset=utf-8",
         )
     except Exception as exc:  # noqa: BLE001
