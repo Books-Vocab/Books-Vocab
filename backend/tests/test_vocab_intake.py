@@ -115,9 +115,8 @@ class TestBuildExample:
         assert _build_example("run", "I run fast") == "I **run** fast"
 
     def test_case_insensitive_match_normalises_word_case(self):
-        # Match is case-insensitive but the replacement uses the entry word
-        # verbatim — "Run" in context becomes "**run**" (the entry's casing).
-        assert _build_example("run", "Run forward") == "**run** forward"
+        # Match is case-insensitive and the context's original casing is kept.
+        assert _build_example("run", "Run forward") == "**Run** forward"
 
     def test_replaces_only_first_occurrence(self):
         out = _build_example("run", "run run run")
@@ -133,6 +132,36 @@ class TestBuildExample:
         # Word not present but an alternative (e.g. lemma) is — wrap that.
         out = _build_example("ran", "He runs daily", alternatives=["runs"])
         assert out == "He **runs** daily"
+
+    def test_keeps_client_marker_on_target(self):
+        assert _build_example("art", "She started to love **art**.") == "She started to love **art**."
+        assert _build_example("on", "Once upon a time, he sat **on** it.") == "Once upon a time, he sat **on** it."
+
+    def test_no_marker_respects_word_boundary(self):
+        assert _build_example("art", "She started to love art.") == "She started to love **art**."
+
+    def test_sentence_initial_casing_kept(self):
+        assert _build_example("once", "Once upon a time.") == "**Once** upon a time."
+
+    def test_ligature_context_is_nfkc_normalised(self):
+        out = _build_example("finance", "Personal \ufb01nance matters.")
+        assert out == "Personal **finance** matters."
+
+    def test_fullwidth_context(self):
+        out = _build_example("art", "She loves \uff41\uff52\uff54.")
+        assert out == "She loves **art**."
+
+    def test_multiple_spans_fall_through_to_search(self):
+        out = _build_example("art", "The **start** of **art** here.")
+        assert out == "The start of **art** here."
+
+    def test_mismatched_marker_falls_through_to_search(self):
+        out = _build_example("art", "I started **love** art.")
+        assert out == "I started love **art**."
+
+    def test_alternatives_use_word_boundaries(self):
+        out = _build_example("ran", "He started running, he runs daily", alternatives=["run", "runs"])
+        assert out == "He started running, he **runs** daily"
 
     def test_returns_context_unchanged_when_no_match(self):
         out = _build_example("ran", "She walks daily", alternatives=["run"])
