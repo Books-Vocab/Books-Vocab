@@ -21,7 +21,7 @@ verified_against: 24f2120d7118af81b6812a50a4c489aff3b466ec
 | Concern | Source of truth | Entry |
 |---|---|---|
 | Code and review | GitHub PR merged to `main` | GitHub |
-| Version and release notes | repository release metadata | `ops/release.sh status/changelog` |
+| Version and release notes | repository release metadata | `ops/release.sh status/changelog`；維護中的 changelog 在 `docs/reference/changelog/{ios,api}.md`（`release` 時 Unreleased 節改名為新版號） |
 | Backend production state | production ref／container health | `ops/release.sh` + `ops/devops_kg_safe.sh` |
 | iOS build/TestFlight | App Store Connect and build artifacts | `docs/sop/ios.md`、`ops/ios_release.sh` |
 | Cross-surface release diff | Git anchors + ASC + live probe | `ops/release_report.py` |

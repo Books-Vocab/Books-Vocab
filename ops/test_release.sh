@@ -1106,6 +1106,20 @@ echo "$cl_out" | grep -q 'after shipping' \
   && ok "changelog still lists commits made after the released tag" \
   || fail_t "changelog silently emptied itself (no error, just no content): $cl_out"
 
+# 分類器：test 不是功能、feat(ios) 與純路徑 iOS commit 都算（舊版只認 `ios:` 前綴且把 test 當功能）
+section "changelog classifier: test is not a feature, feat(ios) and path-only ios count"
+git -C "$fx_cl" commit -q --allow-empty -m "test(ios): add login coverage"
+git -C "$fx_cl" commit -q --allow-empty -m "feat(ios): dark app icon"
+mkdir -p "$fx_cl/ios/BooksAndVocab"; echo x > "$fx_cl/ios/BooksAndVocab/A.swift"
+git -C "$fx_cl" add ios && git -C "$fx_cl" commit -q -m "tidy the reader margins"
+cl_d="$(bash "$fx_cl/ops/release_changelog.sh" ios --draft 2>&1)"
+cl_new="$(echo "$cl_d" | awk '/^#### New/{f=1;next} /^#/{f=0} f&&/^- /')"
+echo "$cl_new" | grep -q 'login coverage' \
+  && fail_t "test commit counted as feature: $cl_new" || ok "test(ios) commit is not a feature"
+echo "$cl_new" | grep -q 'dark app icon' && ok "feat(ios) title counted as New" || fail_t "feat(ios) missed: $cl_d"
+echo "$cl_d" | grep -q 'tidy the reader margins' && ok "path-only ios commit counted" || fail_t "path-only ios commit missed: $cl_d"
+echo "$cl_d" | grep -q '^## Unreleased' && ok "--draft prints an Unreleased section" || fail_t "no Unreleased header: $cl_d"
+
 # ── 19. shipped ios：驗證式物化上架 tag（非背書式） ─────────────────────────
 # 「哪顆 build 上架了」的 owner 是 ASC，「哪顆 commit 產生它」的 owner 是 repo。
 # shipped 做的是這兩者的 join，而且只在確認上架後才物化成 ios/<x.y.z>。

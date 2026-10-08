@@ -222,6 +222,27 @@ documents:
       - backend/src/kg/external_api_rate_limit.py
       - backend/src/kg/api_models/external_api.py
 
+  - id: reference.changelog_ios
+    path: docs/reference/changelog/ios.md
+    kind: reference
+    authority: derived
+    triggers:
+      - release-changed
+    sources:
+      - ios/BooksAndVocab/
+      - ops/release_changelog.sh
+
+  - id: reference.changelog_api
+    path: docs/reference/changelog/api.md
+    kind: reference
+    authority: derived
+    triggers:
+      - release-changed
+    sources:
+      - backend/src/kg/api.py
+      - backend/src/kg/routers/
+      - ops/release_changelog.sh
+
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
     kind: reference
