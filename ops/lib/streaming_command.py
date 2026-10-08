@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import queue
 import signal
@@ -149,11 +150,13 @@ def run_streamed_command(
     enforced ``timeout_seconds``. ``returncode == 124`` cannot answer the latter — a
     child may exit 124 by itself — see the assignments at the end of this function.
     """
-    if heartbeat_interval <= 0:
+    if not math.isfinite(heartbeat_interval) or heartbeat_interval <= 0:
         raise ValueError("heartbeat_interval must be positive")
     if capture_limit <= 0:
         raise ValueError("capture_limit must be positive")
-    if timeout_seconds is not None and timeout_seconds <= 0:
+    if timeout_seconds is not None and (
+        not math.isfinite(timeout_seconds) or timeout_seconds <= 0
+    ):
         raise ValueError("timeout_seconds must be positive")
 
     registry = TaskRegistry(

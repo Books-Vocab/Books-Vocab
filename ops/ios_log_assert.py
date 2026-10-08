@@ -32,6 +32,7 @@ import argparse
 import importlib.util
 import logging
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,7 +61,15 @@ class Event:
 
 
 def _event_from_obj(obj: dict) -> Event:
-    msg = obj.get("message") or obj.get("eventMessage") or obj.get("formatString") or ""
+    # Untrusted log JSON: a non-string field (number/null/list) must not reach regex scans.
+    msg = next(
+        (
+            v
+            for v in (obj.get("message"), obj.get("eventMessage"), obj.get("formatString"))
+            if isinstance(v, str) and v
+        ),
+        "",
+    )
     return Event(
         timestamp=obj.get("timestamp"),
         subsystem=obj.get("subsystem"),
@@ -252,11 +261,21 @@ def _render_text(summary: dict) -> str:
     return "\n".join(lines)
 
 
+def _error_rate(value: str) -> float:
+    try:
+        rate = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number between 0 and 1") from exc
+    if not math.isfinite(rate) or not 0 <= rate <= 1:
+        raise argparse.ArgumentTypeError("must be a finite number between 0 and 1")
+    return rate
+
+
 def _cli(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Log Assertion Parser for iOS runtime logs")
     ap.add_argument("--input", help="read from file instead of stdin")
     ap.add_argument("--json", action="store_true", help="emit the summary as JSON")
-    ap.add_argument("--max-error-rate", type=float, default=None)
+    ap.add_argument("--max-error-rate", type=_error_rate, default=None)
     ap.add_argument("--min-events", type=int, default=None)
     ap.add_argument("--require-feature", action="append", dest="require_features", default=[])
     ap.add_argument("--require-metric", action="append", dest="require_metrics", default=[])

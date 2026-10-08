@@ -668,3 +668,24 @@ def test_timeout_is_reported_as_its_own_fact_not_only_as_a_return_code() -> None
         progress_prefix="[test]", heartbeat_interval=5.0,
     )
     assert unbounded.timed_out is False, "the flag must exist even with no deadline set"
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), 0, -1.0])
+@pytest.mark.parametrize("field", ["timeout_seconds", "heartbeat_interval"])
+def test_non_finite_or_non_positive_durations_are_rejected(field, bad) -> None:
+    kwargs = {"heartbeat_interval": 5.0, "timeout_seconds": 30.0, field: bad}
+    with pytest.raises(ValueError, match=field):
+        run_streamed_command(
+            ["bash", "-c", "true"],
+            cwd=Path.cwd(), label_key="source", label="bad",
+            progress_prefix="[test]", **kwargs,
+        )
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "0", "-1"])
+@pytest.mark.parametrize("flag", ["--timeout-seconds", "--heartbeat-interval"])
+def test_capture_cli_rejects_bad_durations_without_spinning(flag, bad) -> None:
+    with pytest.raises(ValueError):
+        streaming_command._capture_cli(
+            ["--cwd", str(Path.cwd()), "--label", "x", flag, bad, "--", "true"]
+        )

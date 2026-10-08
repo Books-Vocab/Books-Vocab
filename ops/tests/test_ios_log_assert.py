@@ -238,3 +238,36 @@ def test_assert_min_events():
     s = log_assert.summarize(log_assert.normalize_events(NDJSON))
     assert log_assert.run_assertions(s, min_events=99)
     assert log_assert.run_assertions(s, min_events=1) == []
+
+
+# ───────────────────── CLI numeric validation (#2454) ─────────────────────
+
+import pytest
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-inf", "-1", "2", "abc"])
+def test_max_error_rate_rejects_non_probabilities_at_argparse(bad, capsys):
+    with pytest.raises(SystemExit) as exc:
+        log_assert._cli(["--max-error-rate", bad])
+    assert exc.value.code == 2
+    assert "--max-error-rate" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("good", ["0", "0.05", "1"])
+def test_max_error_rate_accepts_probabilities(good, tmp_path):
+    f = tmp_path / "log.ndjson"
+    f.write_text('{"message": "x", "messageType": "Default"}\n')
+    assert log_assert._cli(["--input", str(f), "--max-error-rate", good]) == 0
+
+
+@pytest.mark.parametrize("msg", [123, None, 1.5, True, ["a"], {"k": "v"}])
+def test_non_string_message_summarises_without_typeerror(msg):
+    raw = json.dumps([{"message": msg, "messageType": "Default"}])
+    events = log_assert.normalize_events(raw)
+    assert isinstance(events[0].message, str)
+    assert log_assert.summarize(events)["totalEvents"] == 1
+
+
+def test_non_string_message_falls_through_to_next_string_field():
+    raw = json.dumps([{"message": 123, "eventMessage": "real text"}])
+    assert log_assert.normalize_events(raw)[0].message == "real text"

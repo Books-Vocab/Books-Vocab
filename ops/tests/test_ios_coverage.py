@@ -2,6 +2,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ops" / "ios_coverage.py"
@@ -241,3 +243,38 @@ def test_ios_coverage_reports_lowest_covered_files_for_selected_target() -> None
             "executableLines": 10,
         }
     ]
+
+
+_PASSING_FIXTURE = {
+    "targets": [
+        {
+            "name": "BooksAndVocab.app",
+            "lineCoverage": 0.5,
+            "coveredLines": 5,
+            "executableLines": 10,
+            "files": [],
+        }
+    ]
+}
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-inf", "abc", "150", "-1"])
+def test_invalid_fail_under_lines_is_a_structured_error_not_a_traceback(
+    bad: str,
+) -> None:
+    proc = run_coverage(_PASSING_FIXTURE, f"--fail-under-lines={bad}")
+
+    assert proc.returncode == 2, (bad, proc.stdout, proc.stderr)
+    assert "Traceback" not in proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["verdict"] == "error"
+    assert payload["thresholds"]["lineCoverage"]["failUnder"] is None
+    assert payload["errors"][0]["key"] == "coverage-unavailable"
+    assert "--fail-under-lines" in payload["errors"][0]["error"]
+
+
+def test_real_threshold_failure_still_exits_one() -> None:
+    proc = run_coverage(_PASSING_FIXTURE, "--fail-under-lines", "90")
+
+    assert proc.returncode == 1, proc.stderr
+    assert json.loads(proc.stdout)["verdict"] == "fail"

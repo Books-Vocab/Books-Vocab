@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -241,9 +242,19 @@ def parse_threshold(value: str | None) -> float | None:
         threshold = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("--fail-under-lines must be numeric") from exc
-    if threshold < 0 or threshold > 100:
-        raise argparse.ArgumentTypeError("--fail-under-lines must be between 0 and 100")
+    if not math.isfinite(threshold) or threshold < 0 or threshold > 100:
+        raise argparse.ArgumentTypeError(
+            "--fail-under-lines must be a finite number between 0 and 100"
+        )
     return threshold
+
+
+def safe_threshold(value: str | None) -> float | None:
+    """Echo a valid threshold into error payloads; an invalid one is the error itself."""
+    try:
+        return parse_threshold(value)
+    except argparse.ArgumentTypeError:
+        return None
 
 
 def parse_nonnegative_int(value: str) -> int:
@@ -274,7 +285,7 @@ def make_error_payload(args: argparse.Namespace, message: str) -> dict[str, Any]
             "lowestFiles": [],
         },
         "thresholds": {
-            "lineCoverage": {"failUnder": parse_threshold(args.fail_under_lines)}
+            "lineCoverage": {"failUnder": safe_threshold(args.fail_under_lines)}
         },
         "targets": [],
         "errors": [
@@ -370,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        parse_threshold(args.fail_under_lines)
         raw_payload, error = read_xccov_payload(args)
         if error:
             payload = make_error_payload(args, error)
