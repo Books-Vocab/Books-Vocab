@@ -245,13 +245,84 @@ def test_issue_without_an_acceptance_command_is_reported_as_unverifiable() -> No
     assert any("#2" in line for line in finding.detail)
 
 
-def test_acceptance_is_never_executed_for_issues_not_authored_by_the_owner() -> None:
+def test_acceptance_runs_only_for_trusted_associations() -> None:
     issues = [
         {"number": 1, "body": BODY, "authorAssociation": "OWNER"},
         {"number": 2, "body": BODY, "authorAssociation": "NONE"},
         {"number": 3, "body": BODY, "authorAssociation": "CONTRIBUTOR"},
+        {"number": 4, "body": BODY, "authorAssociation": "MEMBER"},
+        {"number": 5, "body": "## Acceptance\nprose", "authorAssociation": "MEMBER"},
     ]
-    assert [i["number"] for i in doctor.runnable_issues(issues)] == [1]
+    assert [i["number"] for i in doctor.runnable_issues(issues)] == [1, 4]
+
+
+def test_parse_acceptance_accepts_h3_criteria_and_stops_at_next_heading() -> None:
+    body = (
+        "### Acceptance criteria\n```sh\necho a\n```\n### Notes\n```sh\necho no\n```\n"
+    )
+    assert doctor.parse_acceptance(body) == ["echo a"]
+    body = "## Acceptance\n```bash\necho b\n```\n### Later\n```sh\necho no\n```\n"
+    assert doctor.parse_acceptance(body) == ["echo b"]
+
+
+def _gh_api(stdout: str, returncode: int = 0, stderr: str = ""):
+    class Done:
+        pass
+
+    done = Done()
+    done.stdout, done.returncode, done.stderr = stdout, returncode, stderr
+    return lambda cmd, cwd, timeout=60: done
+
+
+def test_collect_issues_drops_prs_maps_association_and_joins_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page1 = [
+        {"number": 1, "body": "", "author_association": "OWNER", "labels": []},
+        {"number": 2, "pull_request": {}, "author_association": "OWNER", "labels": []},
+    ]
+    page2 = [
+        {
+            "number": 3,
+            "author_association": "MEMBER",
+            "labels": [{"name": doctor.HEALTH_LABEL}],
+        },
+        {"number": 4, "author_association": "NONE", "labels": []},
+    ]
+    monkeypatch.setattr(doctor, "_run", _gh_api(json.dumps(page1) + json.dumps(page2)))
+    issues = doctor.collect_issues(OPS.parent)
+    assert [i["number"] for i in issues] == [1, 4]
+    assert [i["authorAssociation"] for i in issues] == ["OWNER", "NONE"]
+
+
+def test_collect_issues_failure_raises_with_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(doctor, "_run", _gh_api("", 1, "HTTP 502 boom"))
+    with pytest.raises(doctor.IssueFetchError, match="HTTP 502 boom"):
+        doctor.collect_issues(OPS.parent)
+
+
+def test_main_reports_warn_not_ok_when_issue_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(repo: Path) -> list[dict]:
+        raise doctor.IssueFetchError("HTTP 502 boom")
+
+    monkeypatch.setattr(doctor, "collect_issues", boom)
+    monkeypatch.setattr(doctor, "collect_ci", lambda repo: [])
+    monkeypatch.setattr(doctor, "collect_complexity", lambda repo: (None, None))
+    monkeypatch.setattr(doctor, "collect_delivery", lambda repo: None)
+    monkeypatch.setattr(doctor, "collect_prod_info", lambda: None)
+    monkeypatch.setattr(
+        doctor, "collect_release_gap", lambda repo, now, info: (FULL, 1, 1.0)
+    )
+    monkeypatch.setattr(doctor, "collect_sentry_local", lambda repo: None)
+    doctor.main(["--json", "--ci"])
+    report = json.loads(capsys.readouterr().out)
+    issues = [f for f in report["findings"] if f["section"] == "issues"]
+    assert len(issues) == 1 and issues[0]["level"] == "warn"
+    assert "HTTP 502 boom" in json.dumps(issues[0])
 
 
 def test_running_acceptance_is_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
