@@ -164,16 +164,18 @@ class _LinksMixin:
 
             with self._lock:
                 removed_local = False
+                local_by_pair: dict[tuple[str, str], list[str]] = {}
+                if canonical_by_pair:
+                    for link_id, managed in self._links.items():
+                        if managed.status in ("active", "hidden"):
+                            local_by_pair.setdefault(self._normalize_pair(managed.from_id, managed.to_id), []).append(
+                                link_id
+                            )
                 for pair, canonical in canonical_by_pair.items():
-                    for link_id, managed in list(self._links.items()):
-                        if link_id == canonical.id or managed.status not in (
-                            "active",
-                            "hidden",
-                        ):
+                    for link_id in local_by_pair.get(pair, ()):
+                        if link_id == canonical.id:
                             continue
-                        if self._normalize_pair(managed.from_id, managed.to_id) != pair:
-                            continue
-                        self._links.pop(link_id, None)
+                        managed = self._links.pop(link_id)
                         self._unindex_link(managed)
                         self._pending_link_ids.pop(link_id, None)
                         removed_local = True
@@ -204,6 +206,7 @@ class _LinksMixin:
         *,
         pair_locks: set[tuple[str, str]] | None = None,
         preferred_link: GraphLink | None = None,
+        pre_reconcile: bool = True,
     ) -> GraphLink | None:
         """Flush links, then enforce semantic uniqueness for affected pairs."""
         pairs = pair_locks if pair_locks is not None else self._snapshot_link_pairs(snapshot)
@@ -222,7 +225,10 @@ class _LinksMixin:
             # that another instance persisted first. Reconcile before flushing
             # so the stale snapshot cannot put its provisional row first and
             # accidentally replace the durable winner.
-            self._reconcile_persisted_pairs(snapshot, pair_locks)
+            # A hard delete skips it: the row is gone locally on purpose, and
+            # adopting the durable copy here would resurrect it.
+            if pre_reconcile:
+                self._reconcile_persisted_pairs(snapshot, pair_locks)
             with self._lock:
                 snapshot = self._links_to_serializable()
             self._flush_links(snapshot)
@@ -447,7 +453,7 @@ class _LinksMixin:
             from_id, to_id, kind = lk.from_id, lk.to_id, str(lk.kind)
             self._touch_links((link_id,))
             snapshot = self._links_to_serializable()
-        self._flush_links_and_reconcile(snapshot)
+        self._flush_links_and_reconcile(snapshot, pair_locks={self._normalize_pair(from_id, to_id)})
         self._emit_graph_event(
             "link_updated",
             link_id=link_id,
@@ -476,7 +482,7 @@ class _LinksMixin:
             from_id, to_id, kind, conf = lk.from_id, lk.to_id, str(lk.kind), lk.confidence
             self._touch_links((link_id,))
             snapshot = self._links_to_serializable()
-        self._flush_links_and_reconcile(snapshot)
+        self._flush_links_and_reconcile(snapshot, pair_locks={self._normalize_pair(from_id, to_id)})
         self._emit_graph_event(
             "link_hidden",
             link_id=link_id,
@@ -503,7 +509,7 @@ class _LinksMixin:
             from_id, to_id, kind, conf = lk.from_id, lk.to_id, str(lk.kind), lk.confidence
             self._touch_links((link_id,))
             snapshot = self._links_to_serializable()
-        self._flush_links_and_reconcile(snapshot)
+        self._flush_links_and_reconcile(snapshot, pair_locks={self._normalize_pair(from_id, to_id)})
         self._emit_graph_event(
             "link_unhidden",
             link_id=link_id,
@@ -538,7 +544,9 @@ class _LinksMixin:
             self._touch_blocked((pair,))
             links_snapshot = self._links_to_serializable()
             blocked_snapshot = self._blocked_to_serializable()
-        self._flush_links_and_reconcile(links_snapshot)
+        self._flush_links_and_reconcile(
+            links_snapshot, pair_locks={self._normalize_pair(from_id, to_id)}, pre_reconcile=False
+        )
         self._flush_blocked(blocked_snapshot)
         self._emit_graph_event(
             "link_deleted",
