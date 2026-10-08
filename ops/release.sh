@@ -923,7 +923,7 @@ prepare_api_version_transaction() {
 
   for ((i=0; i<3; i++)); do
     path="${API_VERSION_PATHS[$i]}"
-    mode="$(stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path")"
+    mode="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")"
     if ! chmod "$mode" "${API_VERSION_CANDIDATES[$i]}"; then
       api_version_cleanup_temps
       err "無法保留 API 版號檔 mode：${path#$root/}"

@@ -21,22 +21,21 @@ LINUX_GROUPS=(
   ios-cache-evict review-flip-probe ios-device-files ios-device-logs ios-test-discovery
   userland-portability script-help install-hooks lib-sourcing heavy-slots podcast-ops
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
-  ios-release sim-pool-disposable review-probe
+  release ios-release sim-pool-disposable review-probe
   sentry-tool
   worktree-extended ios-ui-review review-preflight lab-podcast
 )
 
-# These groups are intentionally executed by ci_expected_fail_exclusions.sh on
-# Linux.  Keep this list at three: the contract test uses it as the expected
-# platform-failure surface.
-MAC_GROUPS=(
-  release ios-ops lldb-forensics
-)
+# Groups intentionally executed by ci_expected_fail_exclusions.sh on Linux to
+# prove they fail there.  Empty is valid: the former three (release, ios-ops,
+# lldb-forensics) are either Linux-portable or run natively in the macOS job.
+# Add a group here only for a real, unportable macOS-only dependency.
+MAC_GROUPS=()
 
 # Native macOS groups run in their own macOS job and must not be treated as an
 # expected Linux failure.  They still belong to the complete classification.
 MAC_NATIVE_GROUPS=(
-  ios-sentry-wiring
+  ios-sentry-wiring ios-ops lldb-forensics
 )
 
 # declared_groups <dispatcher> <DEFAULT_TESTS|OPTIONAL_TESTS>
@@ -59,7 +58,7 @@ declared=()
 while IFS= read -r group; do
   [[ -n "$group" ]] && declared+=("$group")
 done < <(declared_groups ops/test_ops.sh DEFAULT_TESTS)
-MAC_ALL_GROUPS=("${MAC_GROUPS[@]}" "${MAC_NATIVE_GROUPS[@]}")
+MAC_ALL_GROUPS=(${MAC_GROUPS[@]+"${MAC_GROUPS[@]}"} "${MAC_NATIVE_GROUPS[@]}")
 all=("${LINUX_GROUPS[@]}" "${MAC_ALL_GROUPS[@]}")
 failed=0
 
@@ -82,7 +81,7 @@ for group in "${LINUX_GROUPS[@]}"; do
     failed=1
   fi
 done
-for group in "${MAC_GROUPS[@]}"; do
+for group in ${MAC_GROUPS[@]+"${MAC_GROUPS[@]}"}; do
   if contains "$group" "${MAC_NATIVE_GROUPS[@]}"; then
     echo "✗ group appears in both expected-fail and native macOS classifications: $group" >&2
     failed=1
@@ -304,7 +303,7 @@ if [[ "${1:-}" == "--print-linux-groups" ]]; then
 fi
 if [[ "${1:-}" == "--print-mac-groups" ]]; then
   (( failed == 0 )) || exit 1
-  printf '%s\n' "${MAC_GROUPS[@]}"
+  (( ${#MAC_GROUPS[@]} == 0 )) || printf '%s\n' "${MAC_GROUPS[@]}"
   exit 0
 fi
 if (( failed != 0 )); then
