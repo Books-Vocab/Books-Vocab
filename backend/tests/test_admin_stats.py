@@ -51,23 +51,14 @@ def tt_db(tmp_path, monkeypatch):
         tt._conn = None
 
 
-class _Cards:
-    def __init__(self, _dir):
-        pass
-
-    def count(self):
-        return 0
-
-
-def _stats(tt, users):
+def _stats(tt, users, data_dir=Path("/nonexistent-kg-test")):
     ent = SimpleNamespace(pro=SimpleNamespace(model_dump=lambda: {}))
     return admin_stats_response(
         load_users=lambda: users,
         get_all_stats=tt.get_all_stats,
         build_entitlements_response=lambda _info: ent,
         current_admin_grant_record=lambda _info: {},
-        data_dir=Path("/nonexistent-kg-test"),
-        card_store_factory=_Cards,
+        data_dir=data_dir,
     )
 
 
@@ -105,3 +96,78 @@ def test_no_usage_quota_fallback_uses_tier_limit(tt_db, monkeypatch):
     assert by_id["pro"]["quota"]["limit_usd"] == quota_service._daily_limit(True)
     assert by_id["free"]["quota"]["fraction_used"] == 0.0
     assert by_id["free"]["quota"]["calls"] == {}
+
+
+def test_count_active_cards_is_read_only_and_creates_nothing(tmp_path):
+    import sqlite3
+
+    from kg.admin.stats import _count_active_cards
+
+    ghost = tmp_path / "users" / "ghost"
+    assert _count_active_cards(ghost) == 0
+    assert not ghost.exists()
+
+    user_dir = tmp_path / "users" / "u1"
+    user_dir.mkdir(parents=True)
+    conn = sqlite3.connect(user_dir / "cards.db")
+    conn.execute("CREATE TABLE card (id INTEGER, is_deleted BOOLEAN)")
+    conn.executemany("INSERT INTO card VALUES (?, ?)", [(1, 0), (2, 0), (3, 1)])
+    conn.commit()
+    conn.close()
+    assert _count_active_cards(user_dir) == 2
+
+
+def test_collect_process_reuses_one_process_for_cpu_delta(monkeypatch):
+    import kg.admin.stats as stats
+
+    created: list[object] = []
+
+    class FakeProc:
+        def __init__(self):
+            created.append(self)
+            self.calls = 0
+
+        def cpu_percent(self, interval=None):
+            self.calls += 1
+            return 0.0 if self.calls == 1 else 42.0
+
+        def memory_info(self):
+            return SimpleNamespace(rss=1)
+
+        def num_threads(self):
+            return 1
+
+        def num_fds(self):
+            return 3
+
+        def create_time(self):
+            return 1.0
+
+    class FakeError(Exception):
+        pass
+
+    psutil = SimpleNamespace(Process=FakeProc, Error=FakeError)
+    monkeypatch.setattr(stats, "_proc", None)
+
+    stats._collect_process(psutil)
+    second, _ = stats._collect_process(psutil)
+
+    assert len(created) == 1
+    assert second["cpu_percent"] == 42.0
+
+
+def test_admin_stats_vocab_count_is_read_only_per_user(tt_db, tmp_path):
+    import sqlite3
+
+    has_cards = tmp_path / "users" / "u1"
+    has_cards.mkdir(parents=True)
+    conn = sqlite3.connect(has_cards / "cards.db")
+    conn.execute("CREATE TABLE card (id INTEGER, is_deleted BOOLEAN)")
+    conn.executemany("INSERT INTO card VALUES (?, ?)", [(1, 0), (2, 0), (3, 1)])
+    conn.commit()
+    conn.close()
+
+    out = _stats(tt_db, {"u1": {"email": "a@b.c"}, "ghost": {"email": "g@b.c"}}, data_dir=tmp_path)
+
+    assert {u["user_id"]: u["vocab_count"] for u in out["users"]} == {"u1": 2, "ghost": 0}
+    assert not (tmp_path / "users" / "ghost").exists()

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -11,7 +13,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import HTTPException
-from sqlalchemy.exc import SQLAlchemyError
 
 from ..api_models import EntitlementsResponse
 from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
@@ -24,12 +25,16 @@ class MemLogGetter(Protocol):
     def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]: ...
 
 
-class CardStore(Protocol):
-    def count(self) -> int: ...
-
-
-class CardStoreFactory(Protocol):
-    def __call__(self, data_dir: Path) -> CardStore: ...
+def _count_active_cards(user_dir: Path) -> int:
+    """Read-only card count; never creates dirs/DB files or touches the hot store cache."""
+    db_path = user_dir / "cards.db"
+    if not db_path.is_file():
+        return 0
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted = 0").fetchone()[0])
+    finally:
+        conn.close()
 
 
 def admin_stats_response(
@@ -39,7 +44,6 @@ def admin_stats_response(
     build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
     data_dir: Path,
-    card_store_factory: CardStoreFactory,
 ) -> dict[str, Any]:
     from ..deps_quota import _is_pro
     from ..quota_service import _daily_limit, get_all_quota_usage
@@ -57,9 +61,8 @@ def admin_stats_response(
         user_dir = data_dir / "users" / uid
         vocab_count = 0
         try:
-            store = card_store_factory(user_dir)
-            vocab_count = store.count()
-        except (OSError, ValueError, SQLAlchemyError):
+            vocab_count = _count_active_cards(user_dir)
+        except (OSError, sqlite3.Error):
             logger.warning("Failed to load card store for user %s", uid, exc_info=True)
 
         utoken = token_stats.get(uid, {})
@@ -159,13 +162,30 @@ def _collect_disks(psutil: Any) -> list[dict[str, Any]]:
     return disks
 
 
+_proc: Any = None
+_proc_lock = threading.Lock()
+
+
+def _sample_process_cpu(psutil: Any) -> tuple[Any, float]:
+    """Return ``(proc, cpu%)`` from a persistent Process.
+
+    psutil's ``cpu_percent(None)`` reports usage since the previous call on the
+    *same* object, so a fresh Process per request would always read 0.0. The
+    first sample after boot is a priming 0.0."""
+    global _proc
+    with _proc_lock:
+        if _proc is None:
+            _proc = psutil.Process()
+            _proc.cpu_percent(None)
+        return _proc, _proc.cpu_percent(interval=None)
+
+
 def _collect_process(psutil: Any) -> tuple[dict[str, Any], float]:
     """Return ``(process_info, now)``; ``now`` is the single wall-clock read used
     for both the process uptime and the response ``timestamp`` field."""
-    proc = psutil.Process()
     try:
+        proc, p_cpu = _sample_process_cpu(psutil)
         p_rss = proc.memory_info().rss
-        p_cpu = proc.cpu_percent(interval=0.0)
         p_threads = proc.num_threads()
         try:
             p_fds = proc.num_fds()  # POSIX only
