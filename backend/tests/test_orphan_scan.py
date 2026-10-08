@@ -1,4 +1,5 @@
 """Tests for kg.orphan_scan — data consistency scanner."""
+
 from __future__ import annotations
 
 import json
@@ -21,6 +22,7 @@ ADMIN_TOKEN = "test-admin-token-orphan"
 # Mirrors test_admin_observability.py's pattern.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     """Build an isolated data_dir with one user, one notebook, one card."""
@@ -31,6 +33,7 @@ def env(tmp_path, monkeypatch):
     import kg.judge_log as jl
     import kg.token_tracker as tt
     import kg.translate_log as tl
+
     monkeypatch.setattr(jl, "DATA_DIR", data_dir)
     monkeypatch.setattr(jl, "DB_PATH", data_dir / "judge_log.db")
     monkeypatch.setattr(tt, "DATA_DIR", data_dir)
@@ -59,7 +62,9 @@ def env(tmp_path, monkeypatch):
     real_nb = nbs.create(name="kept", color=None)
     cards = CardStore(user_dir / "cards.db")
     real_card = cards.add(
-        content="apple", pos="n.", meaning="蘋果",
+        content="apple",
+        pos="n.",
+        meaning="蘋果",
         notebook_id=real_nb.id,
     )
 
@@ -93,6 +98,7 @@ def env(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Scanner module — pure functions
 # ---------------------------------------------------------------------------
+
 
 def test_scan_clean_env_returns_zero_orphans(env):
     from kg.orphan_scan import scan
@@ -156,16 +162,24 @@ def test_scan_detects_translate_log_for_ghost_user(env):
     tl.record(
         user_id="ghost_user",
         operation="translate_quick",
-        word="x", context="", context_hash="h",
-        source_lang="en", target_lang="zh-Hant",
-        response_raw="{}", latency_ms=1,
+        word="x",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
     )
     tl.record(
         user_id=env.user_id,  # real user — must NOT be flagged
         operation="translate_quick",
-        word="y", context="", context_hash="h2",
-        source_lang="en", target_lang="zh-Hant",
-        response_raw="{}", latency_ms=1,
+        word="y",
+        context="",
+        context_hash="h2",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
     )
 
     report = scan(data_dir=env.data_dir)
@@ -210,7 +224,9 @@ def test_scan_judge_log_pointing_to_live_card_not_flagged(env):
     # Second live card in the same notebook so both judge endpoints are live.
     cards = CardStore(env.user_dir / "cards.db")
     second = cards.add(
-        content="banana", pos="n.", meaning="香蕉",
+        content="banana",
+        pos="n.",
+        meaning="香蕉",
         notebook_id=env.real_notebook_id,
     )
 
@@ -246,6 +262,7 @@ def test_scan_detects_token_usage_for_ghost_user(env):
 # Fix — must require explicit confirm=True, dry_run gives counts only.
 # ---------------------------------------------------------------------------
 
+
 def test_fix_requires_explicit_confirm(env):
     """Calling fix() without confirm=True must raise."""
     from kg.orphan_scan import fix
@@ -261,9 +278,13 @@ def test_fix_dry_run_reports_but_does_not_mutate(env):
     tl.record(
         user_id="ghost_user",
         operation="translate_quick",
-        word="x", context="", context_hash="h",
-        source_lang="en", target_lang="zh-Hant",
-        response_raw="{}", latency_ms=1,
+        word="x",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
     )
 
     summary = fix(data_dir=env.data_dir, confirm=True, dry_run=True)
@@ -288,21 +309,47 @@ def test_fix_confirm_true_actually_removes_orphans(env):
 
     # 2. orphan graph_link
     graph_path = env.user_dir / f"graph_{env.real_notebook_id}.json"
-    graph_path.write_text(json.dumps([{
-        "id": "lk_orphan", "from_id": env.real_card_id, "to_id": "card_ghost",
-        "kind": "shares_usage", "confidence": 0.9, "reason": "test",
-        "created_at": "2024-01-01T00:00:00+00:00", "status": "active",
-    }]))
+    graph_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "lk_orphan",
+                    "from_id": env.real_card_id,
+                    "to_id": "card_ghost",
+                    "kind": "shares_usage",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "status": "active",
+                }
+            ]
+        )
+    )
 
     # 3. translate_log ghost user
-    tl.record(user_id="ghost_user", operation="translate_quick", word="x", context="",
-              context_hash="h", source_lang="en", target_lang="zh-Hant",
-              response_raw="{}", latency_ms=1)
+    tl.record(
+        user_id="ghost_user",
+        operation="translate_quick",
+        word="x",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
+    )
 
     # 4. judge_log ghost card
-    jl.record(user_id=env.user_id, notebook_id=env.real_notebook_id,
-              from_id=env.real_card_id, to_id="card_ghost", similarity=0.7,
-              verdict="accept", confidence=0.9, accepted=True)
+    jl.record(
+        user_id=env.user_id,
+        notebook_id=env.real_notebook_id,
+        from_id=env.real_card_id,
+        to_id="card_ghost",
+        similarity=0.7,
+        verdict="accept",
+        confidence=0.9,
+        accepted=True,
+    )
 
     # 5. token_usage ghost user
     tt.record("ghost_user", "translate_quick", 1, 1)
@@ -318,9 +365,7 @@ def test_fix_confirm_true_actually_removes_orphans(env):
 
     # Soft-deleted card stays in db but is_deleted=1.
     with sqlite3.connect(str(env.user_dir / "cards.db")) as conn:
-        row = conn.execute(
-            "SELECT is_deleted FROM card WHERE id = ?", (bogus_card.id,)
-        ).fetchone()
+        row = conn.execute("SELECT is_deleted FROM card WHERE id = ?", (bogus_card.id,)).fetchone()
         assert row is not None
         assert int(row[0]) == 1
 
@@ -329,6 +374,7 @@ def test_fix_confirm_true_actually_removes_orphans(env):
 # Admin endpoint — read-only, requires admin token.
 # ---------------------------------------------------------------------------
 
+
 def test_admin_orphans_endpoint_requires_auth(env):
     resp = env.client.get("/api/admin/orphans/scan")
     assert resp.status_code == 403
@@ -336,9 +382,18 @@ def test_admin_orphans_endpoint_requires_auth(env):
 
 def test_admin_orphans_endpoint_returns_report(env):
     import kg.translate_log as tl
-    tl.record(user_id="ghost_user", operation="translate_quick", word="x", context="",
-              context_hash="h", source_lang="en", target_lang="zh-Hant",
-              response_raw="{}", latency_ms=1)
+
+    tl.record(
+        user_id="ghost_user",
+        operation="translate_quick",
+        word="x",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
+    )
 
     resp = env.client.get(
         "/api/admin/orphans/scan",
@@ -355,6 +410,7 @@ def test_admin_orphans_endpoint_returns_report(env):
 # Regression — perf / concurrency hardening for review PR #436
 # ---------------------------------------------------------------------------
 
+
 def test_admin_orphans_endpoint_does_not_block_event_loop(env):
     """The endpoint must hand the sync scan off to a thread so concurrent
     requests overlap instead of serialising on the event loop."""
@@ -367,15 +423,22 @@ def test_admin_orphans_endpoint_does_not_block_event_loop(env):
 
     # Inject enough orphans that scan does measurable real work.
     for i in range(5):
-        tl.record(user_id=f"ghost_{i}", operation="translate_quick", word=str(i),
-                  context="", context_hash=f"h{i}", source_lang="en",
-                  target_lang="zh-Hant", response_raw="{}", latency_ms=1)
+        tl.record(
+            user_id=f"ghost_{i}",
+            operation="translate_quick",
+            word=str(i),
+            context="",
+            context_hash=f"h{i}",
+            source_lang="en",
+            target_lang="zh-Hant",
+            response_raw="{}",
+            latency_ms=1,
+        )
 
     transport = httpx.ASGITransport(app=app)
 
     async def hit():
-        async with httpx.AsyncClient(transport=transport,
-                                     base_url="http://testserver") as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             r = await client.get(
                 "/api/admin/orphans/scan",
                 headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
@@ -405,9 +468,16 @@ def test_scan_judge_log_uses_cached_live_cards(env, monkeypatch):
     import kg.judge_log as jl
     from kg import orphan_scan
 
-    jl.record(user_id=env.user_id, notebook_id=env.real_notebook_id,
-              from_id=env.real_card_id, to_id="card_ghost", similarity=0.7,
-              verdict="accept", confidence=0.9, accepted=True)
+    jl.record(
+        user_id=env.user_id,
+        notebook_id=env.real_notebook_id,
+        from_id=env.real_card_id,
+        to_id="card_ghost",
+        similarity=0.7,
+        verdict="accept",
+        confidence=0.9,
+        accepted=True,
+    )
 
     call_count = {"n": 0}
     real_all = orphan_scan._all_cards_with_state
@@ -434,11 +504,22 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
 
     # Set up an orphan link so fix() reaches the graph-rewrite branch.
     graph_path = env.user_dir / f"graph_{env.real_notebook_id}.json"
-    graph_path.write_text(json.dumps([{
-        "id": "lk_orphan", "from_id": env.real_card_id, "to_id": "card_ghost",
-        "kind": "shares_usage", "confidence": 0.9, "reason": "test",
-        "created_at": "2024-01-01T00:00:00+00:00", "status": "active",
-    }]))
+    graph_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "lk_orphan",
+                    "from_id": env.real_card_id,
+                    "to_id": "card_ghost",
+                    "kind": "shares_usage",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "status": "active",
+                }
+            ]
+        )
+    )
 
     # Patch Path.stat so only the in-loop guard comparison sees a drifted
     # mtime, mimicking a concurrent writer touching the file between the
@@ -462,6 +543,7 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
         if self == graph_path:
             stat_calls["n"] += 1
             if stat_calls["n"] >= 3:
+
                 class _FakeStat:
                     def __init__(self, base, bumped_ns):
                         self._base = base
@@ -482,6 +564,7 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
 # ---------------------------------------------------------------------------
 # _atomic_write_json — durability
 # ---------------------------------------------------------------------------
+
 
 def test_atomic_write_json_fsyncs_parent_dir(tmp_path, monkeypatch):
     """``_atomic_write_json`` must fsync the parent directory after the rename
@@ -514,3 +597,137 @@ def test_atomic_write_json_fsyncs_parent_dir(tmp_path, monkeypatch):
     assert json.loads(target.read_text()) == [{"id": "a"}]
     # The parent directory must have been fsynced after the rename.
     assert fsynced_dir_count["n"] >= 1, "parent directory was not fsynced after rename"
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed when the users registry is unavailable (#2306)
+# ---------------------------------------------------------------------------
+
+
+def _seed_log_rows(env) -> None:
+    import kg.judge_log as jl
+    import kg.token_tracker as tt
+    import kg.translate_log as tl
+
+    tl.record(
+        user_id=env.user_id,
+        operation="translate_quick",
+        word="x",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
+    )
+    jl.record(
+        user_id=env.user_id,
+        notebook_id=env.real_notebook_id,
+        from_id=env.real_card_id,
+        to_id="card_ghost",
+        similarity=0.7,
+        verdict="accept",
+        confidence=0.9,
+        accepted=True,
+    )
+    tt.record(env.user_id, "translate_quick", 1, 1)
+
+
+def _log_row_counts(data_dir: Path) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for db, table in (
+        ("translate_log.db", "translate_log"),
+        ("judge_log.db", "judge_log"),
+        ("token_usage.db", "token_usage"),
+    ):
+        with sqlite3.connect(str(data_dir / db)) as conn:
+            out[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    return out
+
+
+def _break_missing(env) -> None:
+    (env.data_dir / "users.json").unlink()
+
+
+def _break_malformed(env) -> None:
+    (env.data_dir / "users.json").write_text("{not json")
+
+
+def _break_non_dict(env) -> None:
+    (env.data_dir / "users.json").write_text("[]")
+
+
+def _break_empty_registry(env) -> None:
+    (env.data_dir / "users.json").write_text(json.dumps({"_meta": {}}))
+
+
+@pytest.mark.parametrize("breaker", [_break_missing, _break_malformed, _break_non_dict, _break_empty_registry])
+@pytest.mark.parametrize("dry_run_flags", [[], ["--dry-run"]])
+def test_fix_cli_fails_closed_when_registry_unavailable(env, breaker, dry_run_flags, capsys):
+    from kg.orphan_scan import main
+
+    _seed_log_rows(env)
+    before = _log_row_counts(env.data_dir)
+    assert all(v > 0 for v in before.values())
+    breaker(env)
+
+    rc = main(["--fix", "--confirm", *dry_run_flags, "--data-dir", str(env.data_dir)])
+
+    assert rc != 0
+    assert "error" in capsys.readouterr().err
+    assert _log_row_counts(env.data_dir) == before
+
+
+def test_fix_cli_fails_closed_when_registry_unreadable(env, monkeypatch, capsys):
+    from kg.orphan_scan import main
+
+    _seed_log_rows(env)
+    before = _log_row_counts(env.data_dir)
+    real_read_text = Path.read_text
+
+    def _boom(self, *a, **kw):
+        if self.name == "users.json":
+            raise OSError("permission denied")
+        return real_read_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", _boom)
+
+    rc = main(["--fix", "--confirm", "--data-dir", str(env.data_dir)])
+
+    assert rc != 0
+    assert "error" in capsys.readouterr().err
+    assert _log_row_counts(env.data_dir) == before
+
+
+def test_fix_api_raises_when_registry_missing(env):
+    from kg.orphan_scan import UserRegistryUnavailable, fix
+
+    _seed_log_rows(env)
+    _break_missing(env)
+    with pytest.raises(UserRegistryUnavailable):
+        fix(data_dir=env.data_dir, confirm=True, dry_run=True)
+
+
+def test_fix_cli_valid_registry_removes_only_ghosts(env):
+    import kg.token_tracker as tt
+    from kg.orphan_scan import main
+
+    _seed_log_rows(env)
+    tt.record("ghost_user", "translate_quick", 1, 1)
+    assert _log_row_counts(env.data_dir)["token_usage"] == 2
+
+    rc = main(["--fix", "--confirm", "--data-dir", str(env.data_dir)])
+
+    assert rc == 0
+    counts = _log_row_counts(env.data_dir)
+    assert counts["token_usage"] == 1
+    assert counts["translate_log"] == 1
+
+
+def test_scan_reports_registry_not_loaded_without_raising(env):
+    from kg.orphan_scan import scan
+
+    assert scan(data_dir=env.data_dir)["user_registry_loaded"] is True
+    _break_missing(env)
+    report = scan(data_dir=env.data_dir)
+    assert report["user_registry_loaded"] is False

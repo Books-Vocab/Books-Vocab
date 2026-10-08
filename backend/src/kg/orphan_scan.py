@@ -19,6 +19,11 @@ Fix policy:
   - Orphan card → set ``is_deleted = 1`` (soft delete, recoverable).
   - Orphan graph link → strip entry from JSON via atomic write.
   - Orphan translate_log / judge_log / token_usage rows → hard DELETE.
+  - Fail closed: ``fix()`` (dry-run included) aborts with
+    :class:`UserRegistryUnavailable` when ``users.json`` is missing, unreadable,
+    malformed, not an object, or yields zero users while any log table still
+    has rows — otherwise every row would look like a ghost and be deleted.
+    ``scan()`` stays tolerant and flags ``user_registry_loaded: False``.
 """
 
 from __future__ import annotations
@@ -44,17 +49,52 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _load_user_ids(data_dir: Path) -> set[str]:
-    """Read users.json and return the set of real user ids (skip ``_meta``)."""
+class UserRegistryUnavailable(RuntimeError):
+    """``users.json`` could not be trusted as the source of live user ids."""
+
+
+def _load_user_ids(data_dir: Path, *, strict: bool = False) -> set[str]:
+    """Read users.json and return the set of real user ids (skip ``_meta``).
+
+    Non-strict (scan / admin endpoint): any failure warns and yields an empty
+    set. ``strict=True`` (destructive paths) raises
+    :class:`UserRegistryUnavailable` instead.
+    """
+    return _read_user_registry(data_dir, strict=strict)[0]
+
+
+def _read_user_registry(data_dir: Path, *, strict: bool = False) -> tuple[set[str], bool]:
+    """Return ``(user_ids, loaded_ok)``; see :func:`_load_user_ids`."""
     users_file = data_dir / "users.json"
-    if not users_file.exists():
-        return set()
     try:
         payload = json.loads(users_file.read_text())
-    except (OSError, json.JSONDecodeError):
-        logger.warning("Could not parse %s", users_file)
-        return set()
-    return {k for k in payload.keys() if isinstance(k, str) and not k.startswith("_")}
+        if not isinstance(payload, dict):
+            raise ValueError("users.json top level is not an object")
+    except (OSError, ValueError) as exc:  # JSONDecodeError is a ValueError
+        if strict:
+            raise UserRegistryUnavailable(f"cannot load user registry {users_file}: {exc}") from exc
+        logger.warning("Could not load %s: %s", users_file, exc)
+        return set(), False
+    return {k for k in payload if isinstance(k, str) and not k.startswith("_")}, True
+
+
+def _user_log_tables_have_rows(data_dir: Path) -> bool:
+    """True if any user-keyed log table (translate_log/judge_log/token_usage) has rows."""
+    for db, table in (
+        ("translate_log.db", "translate_log"),
+        ("judge_log.db", "judge_log"),
+        ("token_usage.db", "token_usage"),
+    ):
+        db_path = data_dir / db
+        if not db_path.exists():
+            continue
+        with sqlite3.connect(str(db_path)) as conn:
+            try:
+                if conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():
+                    return True
+            except sqlite3.OperationalError:
+                continue
+    return False
 
 
 def _iter_user_dirs(data_dir: Path, known_users: set[str]) -> list[tuple[str, Path]]:
@@ -326,10 +366,11 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
           "judge_log_orphan_card":      {"count": N, "items": [...]},
           "token_usage_orphan_user":    {"count": N, "items": [...]},
           "total": int,
+          "user_registry_loaded": bool,  # False → user-keyed results untrustworthy
         }
     """
     data_dir = Path(data_dir)
-    user_ids = _load_user_ids(data_dir)
+    user_ids, registry_loaded = _read_user_registry(data_dir)
     user_dirs = _iter_user_dirs(data_dir, user_ids)
 
     # cards/graph pass builds ``user_live_cards`` once; the judge_log pass
@@ -355,7 +396,8 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
         "judge_log_orphan_card": {"count": len(judge_orphan), "items": judge_orphan},
         "token_usage_orphan_user": {"count": len(token_orphan), "items": token_orphan},
     }
-    report["total"] = sum(report[k]["count"] for k in report if k != "total")
+    report["total"] = sum(v["count"] for v in report.values())
+    report["user_registry_loaded"] = registry_loaded
     return report
 
 
@@ -428,6 +470,14 @@ def fix(
     if not confirm:
         raise ValueError("orphan_scan.fix(): refusing to run without explicit confirm=True")
 
+    # Fail closed BEFORE scan so even a dry-run never reports a bogus
+    # "everything is a ghost" plan.
+    user_ids = _load_user_ids(data_dir, strict=True)
+    if not user_ids and _user_log_tables_have_rows(data_dir):
+        raise UserRegistryUnavailable(
+            f"user registry in {data_dir / 'users.json'} is empty but log tables have rows; refusing to treat all as orphans"
+        )
+
     report = scan(data_dir=data_dir)
     summary: dict[str, Any] = {
         "dry_run": dry_run,
@@ -457,8 +507,6 @@ def fix(
     # --- mutate ---
     # Lazy CardStore import keeps the CLI usable without the full app context.
     from .cards import CardStore
-
-    _load_user_ids(data_dir)
 
     # 1. soft-delete orphan cards via CardStore.delete — shares the API's
     # in-process write lock and uses the canonical soft-delete code path.
@@ -613,7 +661,11 @@ def main(argv: list[str] | None = None) -> int:
         dry_run = args.dry_run or not args.confirm
         if not args.confirm:
             print("WARN: --fix without --confirm — running in dry-run mode. Re-run with --confirm to actually mutate.")
-        summary = fix(data_dir=data_dir, confirm=True, dry_run=dry_run)
+        try:
+            summary = fix(data_dir=data_dir, confirm=True, dry_run=dry_run)
+        except (UserRegistryUnavailable, OrphanFixAborted) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         print(json.dumps(summary, indent=2, ensure_ascii=False))
         return 0
 
