@@ -100,6 +100,9 @@ def test_native_enqueue_uses_expected_head_and_accepts_main_advancing() -> None:
         call for call in runner.calls if "enqueuePullRequest" in " ".join(call)
     )
     assert f"expectedHeadOid={HEAD}" in mutation
+    assert mutation[mutation.index(f"expectedHeadOid={HEAD}") - 1] == "-f"
+    assert mutation[mutation.index(f"pullRequestId={PR_ID}") - 1] == "-f"
+    assert "-F" not in [item for call in runner.calls for item in call]
     assert all(call[:3] != ("gh", "pr", "merge") for call in runner.calls)
 
 
@@ -156,9 +159,9 @@ def test_native_queue_configuration_absence_is_false() -> None:
 
 def test_native_queue_configuration_rejects_malformed_repository_name() -> None:
     with pytest.raises(AdapterPayloadError, match="owner/name"):
-        GitHubQueueGraphQLAdapter(repo=Path("/repo"), runner=StaticRunner([])).is_configured(
-            repository_name="owner/repo/extra", branch="main"
-        )
+        GitHubQueueGraphQLAdapter(
+            repo=Path("/repo"), runner=StaticRunner([])
+        ).is_configured(repository_name="owner/repo/extra", branch="main")
 
 
 def test_native_enqueue_dequeues_if_target_changes_during_mutation() -> None:
@@ -214,3 +217,15 @@ def test_native_enqueue_never_dequeues_a_replacement_entry() -> None:
         )
 
     assert not any("dequeuePullRequest" in " ".join(call) for call in runner.calls)
+
+
+def test_native_queue_sends_string_variables_verbatim_as_raw_fields() -> None:
+    runner = StaticRunner([_state()])
+    adapter = GitHubQueueGraphQLAdapter(repo=Path("/repo"), runner=runner)
+
+    adapter._graphql("query", ("owner", "null"), ("name", "@x"), ("n", "2026"))
+
+    argv = runner.calls[0]
+    for field in ("owner=null", "name=@x", "n=2026"):
+        assert argv[argv.index(field) - 1] == "-f"
+    assert "-F" not in argv

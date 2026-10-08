@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from pathlib import Path
@@ -1885,3 +1886,55 @@ def test_github_adapter_reports_required_workflow_rerun_failure() -> None:
             base_sha="a" * 40,
             head_sha=head_sha,
         )
+
+
+_HOSTILE_VALUES = ("null", "true", "2026", "@x")
+
+
+def _gh_fields(argv: tuple[str, ...]) -> list[tuple[str, str]]:
+    """(flag, "name=value") pairs for every -f/-F field of a gh api argv."""
+    return [
+        (flag, argv[index + 1])
+        for index, flag in enumerate(argv)
+        if flag in {"-f", "-F"}
+    ]
+
+
+def test_branch_history_sends_branch_names_as_raw_string_fields() -> None:
+    empty = {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
+    page = {"data": {"repository": {f"branch{i}": empty for i in range(4)}}}
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
+            CommandResult(("gh",), 0, json.dumps(page), ""),
+        ]
+    )
+
+    GitHubCliAdapter(runner=runner).list_pull_requests_for_branches(_HOSTILE_VALUES)
+
+    fields = _gh_fields(runner.calls[1])
+    assert ("-f", "owner=owner") in fields and ("-f", "name=repo") in fields
+    for index, value in enumerate(_HOSTILE_VALUES):
+        assert ("-f", f"branch{index}={value}") in fields
+    assert not [flag for flag, _ in fields if flag == "-F"]
+
+
+def test_adapters_use_typed_field_only_for_the_int_number_variable() -> None:
+    """`-F` coerces null/true/digits/@file; only a genuine Int may use it."""
+    adapters = OPS / "delivery_control" / "adapters"
+    typed: list[tuple[str, int]] = []
+    for path in sorted(adapters.glob("*.py")):
+        if path.name == "github_client.py":  # classifies both flags, sends none
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        typed.extend(
+            (path.name, node.lineno)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and node.value == "-F"
+        )
+    assert [name for name, _ in typed] == ["github_issue_commands.py"]
+    source = (adapters / "github_issue_commands.py").read_text(encoding="utf-8")
+    assert (
+        'for variable, int_value in int_variables:\n            argv.extend(("-F"'
+        in source
+    )

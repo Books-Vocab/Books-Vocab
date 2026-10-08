@@ -265,14 +265,14 @@ class GitHubQueries:
                 "graphql",
                 "-f",
                 f"query={_pull_request_history_query(ordered_branches)}",
-                "-F",
+                "-f",
                 f"owner={owner}",
-                "-F",
+                "-f",
                 f"name={name}",
                 *[
                     argument
                     for index, branch in enumerate(ordered_branches)
-                    for argument in ("-F", f"branch{index}={branch}")
+                    for argument in ("-f", f"branch{index}={branch}")
                 ],
             )
         )
@@ -340,9 +340,9 @@ class GitHubQueries:
                     "--slurp",
                     "-f",
                     f"query={OPEN_PR_FILES_QUERY}",
-                    "-F",
+                    "-f",
                     f"owner={owner}",
-                    "-F",
+                    "-f",
                     f"name={name}",
                 )
             )
