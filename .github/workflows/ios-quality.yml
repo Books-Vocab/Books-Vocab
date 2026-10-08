@@ -50,9 +50,14 @@ on:
 permissions:
   contents: read
 
+# Only pull_request runs cancel a superseded run. Push-to-main and manual runs
+# share one group but must run to completion: with cancel-in-progress false
+# GitHub keeps one running plus one pending run (a newer pending replaces an
+# older pending), so merges landing every few minutes never cancel the
+# post-merge run and the latest main commit is always validated.
 concurrency:
   group: ios-quality-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   IOS_SIMULATOR_NAME: iPhone 17 Pro Max
