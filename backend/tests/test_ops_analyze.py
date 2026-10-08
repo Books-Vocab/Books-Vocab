@@ -153,13 +153,13 @@ class TestActiveLinksAndDefaultNotebook:
         assert "已刪除但連結仍 active" in out
         assert "1 條連結指向已刪除卡片" in out
 
-    def test_l6_no_missing_embedding_for_default_notebook(self, tmp_path):
+    def test_l6_no_missing_embedding_for_any_notebook(self, tmp_path):
         _setup_multi_notebook(tmp_path)
         out = _run(str(tmp_path), "user1", "6").stdout
         assert "缺 embedding" not in out
         assert "已刪除卡片仍佔 embedding" not in out
 
-    def test_l6_missing_embedding_counts_default_only(self, tmp_path):
+    def test_l6_missing_embedding_counts_default_notebook(self, tmp_path):
         import json
 
         udir = _setup_multi_notebook(tmp_path)
@@ -182,11 +182,11 @@ class TestActiveLinksAndDefaultNotebook:
         # active d1-d2 與 legacy(無 status) d2-d1 仍算 1 組重複
         assert "1 條重複連結" in out
 
-    def test_l5_coverage_scoped_to_default_notebook(self, tmp_path):
+    def test_l5_coverage_per_notebook(self, tmp_path):
         _setup_multi_notebook(tmp_path)
         out = _run(str(tmp_path), "user1", "5").stdout
         assert "2/2 active cards (100%)" in out
-        assert "default notebook" in out
+        assert "[default notebook]" in out
 
     def test_l1_link_count_is_active_only(self, tmp_path):
         _setup_multi_notebook(tmp_path)
@@ -221,3 +221,17 @@ class TestActiveLinksAndDefaultNotebook:
         r = _run(str(tmp_path), "user1", "5")
         assert r.returncode == 0, r.stderr
         assert "2/2 active cards (100%)" in r.stdout
+
+    def test_l5_reports_each_notebook_coverage(self, tmp_path):
+        _setup_multi_notebook(tmp_path)
+        out = _run(str(tmp_path), "user1", "5").stdout
+        assert "[work notebook]" in out
+        assert "1/1 active cards (100%)" in out
+
+    def test_l6_missing_embedding_in_second_notebook(self, tmp_path):
+        import json
+
+        udir = _setup_multi_notebook(tmp_path)
+        (udir / "card_ids_work.json").write_text(json.dumps([]))
+        out = _run(str(tmp_path), "user1", "6").stdout
+        assert "1 張 active 卡片缺 embedding (work notebook)" in out

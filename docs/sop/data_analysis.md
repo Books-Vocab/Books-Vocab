@@ -37,12 +37,12 @@ verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 
 | level | 問題 | 必須觀察 |
 |---|---|---|
-| 1 | 現在是否異常 | 24h cost／quota、呼叫數、active/deleted cards、active links |
+| 1 | 現在是否異常 | 24h cost／quota、呼叫數、active/deleted cards；連結分列 `active links`／`deprecated links`／`hidden links` 三行（只有 `status=="active"` 算 active，無 status 視為 active） |
 | 2 | 額度為何消耗 | 72h call type／provider、input/output、cost、judge share、粗略 rejection signal |
-| 3 | 圖譜是否碎片化 | active nodes、linked／isolated、edges、density、degree、connected components |
-| 4 | 連結品質如何 | confidence、kind、hub／degree concentration 與異常 link |
-| 5 | embedding／threshold 是否合理 | embedding coverage、相似度分布、threshold sweep、candidate/top-k 壓力 |
-| 6 | 是否有資料完整性問題 | dangling link、missing/deleted embedding、duplicate／self link、schema／artifact mismatch |
+| 3 | 圖譜是否碎片化（只計 active links） | active nodes、linked／isolated、edges、density、degree、connected components |
+| 4 | 連結品質如何（只計 active links） | confidence、kind、hub／degree concentration 與異常 link |
+| 5 | embedding／threshold 是否合理 | 逐 notebook 的 embedding coverage（分母＝該 notebook 的 active cards）、相似度分布、threshold sweep、candidate/top-k 壓力 |
+| 6 | 是否有資料完整性問題 | dangling link、missing/deleted embedding（逐 notebook 與其 `card_ids_<nb>.json` 比對）、duplicate／self link（僅計 active links）、schema／artifact mismatch |
 
 先跑 level 1；只有 level 1 指向異常，或使用者明確要求，才逐層深入。不要一開始傾倒完整資料庫或把所有指標都列進報告。
 
