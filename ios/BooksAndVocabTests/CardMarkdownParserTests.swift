@@ -94,6 +94,23 @@ import Testing
         #expect(tags(CardMarkdownInlineParser.parseInlines(input)) == expected)
     }
 
+    // Underscore emphasis follows the CommonMark intraword rule: an opener must sit at a
+    // boundary (start / whitespace / punctuation) and a closer must be followed by one;
+    // otherwise the underscores stay literal (snake_case identifiers, etc.).
+    @Test(arguments: [
+        ("snake_case vs my_var", ["text:snake_case vs my_var"]),
+        ("_emph_", ["em:emph"]),
+        ("a _emph_ b", ["text:a ", "em:emph", "text: b"]),
+        ("foo_bar_", ["text:foo_bar_"]),
+        ("_foo_bar", ["text:_foo_bar"]),
+        ("_foo_bar_", ["em:foo_bar"]),
+        ("(_x_)", ["text:(", "em:x", "text:)"]),
+        ("_ x_", ["text:_ x_"]),
+    ])
+    func parseInlines_underscoreIntraword(input: String, expected: [String]) async throws {
+        #expect(tags(CardMarkdownInlineParser.parseInlines(input)) == expected)
+    }
+
     // "====": dropFirst(2)="==" finds closing "==" immediately; value = raw[2..<2]
     // = "" which is `.isEmpty`, so nothing is appended and index jumps to EOF.
     // "``": value between the two backticks is "" → dropped.
