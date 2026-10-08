@@ -213,6 +213,16 @@ extension ReaderTranslationHandler {
         guard let last = lastLookup else { return }
         switch last.kind {
         case .word:
+            // 解釋失敗（翻譯已成功）→ 只重跑解釋，保持大卡展開；不重走整個查詞流程。
+            if explanationErrorMessage != nil, translationErrorMessage == nil,
+               authManager.isLoggedIn, let selection = wordSelection {
+                withAnimation(AppMotion.panelState) {
+                    isExpanded = true
+                    isPanelLarge = true
+                }
+                loadExplanation(for: selection)
+                return
+            }
             guard let ctx = vocabularyContext else { return }
             handleWordSelected(word: last.text, context: last.context, vocabularyContext: ctx)
         case .phrase:
@@ -233,6 +243,10 @@ extension ReaderTranslationHandler {
         guard authManager.isLoggedIn, isExpanded, !isLoadingExplanation,
               let selection = wordSelection else { return }
 
+        loadExplanation(for: selection)
+    }
+
+    private func loadExplanation(for selection: WordSelection) {
         explanationText = nil
         isLoadingExplanation = true
         translationStatus = nil
