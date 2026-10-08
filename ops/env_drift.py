@@ -9,11 +9,18 @@ dispatch or embedding a second Python program in it.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
+
+UNSAFE_FLAGS = (
+    "APP_STORE_ALLOW_UNSIGNED_SYNC",
+    "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS",
+)
 
 HOST_SPECIFIC = {
     "APP_STORE_ROOT_CA_PATH": ("certs", "{container_root}/certs"),
@@ -30,6 +37,50 @@ def parse_env_text(text: str) -> dict[str, str]:
         key, value = line.split("=", 1)
         result[key] = value
     return result
+
+
+def env_flag_truthy(value: str) -> bool:
+    """Whether the backend would read this raw .env value as ON.
+
+    Mirrors backend/src/kg/settings.py `_env_truthy` (pinned by
+    ops/tests/test_env_check.py), after the quote and inline-comment stripping
+    that docker compose applies before the container sees the value.
+    """
+    value = re.split(r"\s#", value.strip(), maxsplit=1)[0].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1]
+    return value.strip().lower() in {"1", "true", "yes"}
+
+
+def check_env_text(
+    text: str, required: Iterable[str], flags: Iterable[str] = UNSAFE_FLAGS
+) -> tuple[list[str], list[str]]:
+    """Return (missing required keys, unsafe-enabled flags) for a .env body."""
+    env = parse_env_text(text)
+    missing = [key for key in required if not env.get(key, "").strip()]
+    unsafe = [key for key in flags if env_flag_truthy(env.get(key, ""))]
+    return missing, unsafe
+
+
+def env_check_main(required: list[str]) -> int:
+    """`env-check KEY...`: .env text on stdin; prints per-key verdicts."""
+    text = sys.stdin.read()
+    missing, unsafe = check_env_text(text, required)
+    for key in required:
+        print(f"✗ {key} (缺少)" if key in missing else f"✓ {key}")
+    for key in UNSAFE_FLAGS:
+        print(f"✗ {key} (production 不可啟用)" if key in unsafe else f"✓ {key}")
+    if missing:
+        print(
+            f"✗ 缺少必要環境變數：{' '.join(missing)}，請手動 SSH 更新 .env 後重試",
+            file=sys.stderr,
+        )
+    if unsafe:
+        print(
+            f"✗ 偵測到不安全的 App Store fallback 開關：{' '.join(unsafe)}，production 請移除或設為 false",
+            file=sys.stderr,
+        )
+    return 1 if missing or unsafe else 0
 
 
 def _read_local(path: Path) -> dict[str, str]:
@@ -87,6 +138,8 @@ def compare_envs(
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) >= 2 and argv[1] == "env-check":
+        return env_check_main(argv[2:])
     if len(argv) != 6:
         print(
             "usage: env_drift.py LOCAL_ENV REMOTE_ENV LOCAL_DIR CONTAINER_ROOT SERVER",
