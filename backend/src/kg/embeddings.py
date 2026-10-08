@@ -126,8 +126,8 @@ class EmbeddingStore:
         # disk refresh so a stale-view reload cannot drop the new vector.
         self._dirty_rows: dict[str, np.ndarray] = {}
         self._lock = threading.RLock()
-        self._load()
-        self._disk_sig: tuple | None = self._disk_signature()
+        self._disk_sig: tuple | None = None
+        self._initial_load()
 
     # ------------------------------------------------------------------
     # Meta sidecar (model/dim guard)
@@ -201,8 +201,32 @@ class EmbeddingStore:
                         e,
                     )
 
+    def _initial_load(self) -> None:
+        """First load, serialised with writers when files already exist.
+
+        Without the file lock, a writer's two ``replace()`` calls (npy, then
+        ids) can land between this instance's ``np.load`` and ``ids`` read; the
+        torn pair looks like row/id desync and a perfectly healthy store is
+        quarantined as corrupt. The disk signature is taken under the same lock
+        so it describes exactly what was loaded. With no files yet there is
+        nothing to tear and no reason to create the lock file (or its
+        directory): the signature is taken *before* the load so a file that
+        appears meanwhile only ever triggers a refresh, never hides one.
+        """
+        if self.embeddings_path.exists() or self.ids_path.exists():
+            with path_write_lock(self.embeddings_path):
+                self._load()
+                self._disk_sig = self._disk_signature()
+            return
+        self._disk_sig = self._disk_signature()
+        self._load()
+
     def _load(self) -> None:
         """Load vectors + ids from disk, gated by sidecar match.
+
+        Never leaves a half-built view: the in-memory state is replaced in one
+        step (``_adopt`` / ``_reset_empty``), so lock-free ``has`` / ``count``
+        readers never observe an empty store while a refresh is reading disk.
 
         Cases:
         * No .npy / no ids → fresh empty store (no sidecar written yet).
@@ -219,6 +243,7 @@ class EmbeddingStore:
           interrupted save wedges it). Pipeline backfill re-embeds next run.
         """
         if not (self.embeddings_path.exists() and self.ids_path.exists()):
+            self._reset_empty()
             return
 
         meta = self._read_meta()
@@ -250,6 +275,7 @@ class EmbeddingStore:
             self.dim,
         )
         self._quarantine_stale(str(stale_model), int(stale_dim) if isinstance(stale_dim, int) else 0)
+        self._reset_empty()
         # Sidecar must reflect active config now.
         self._write_meta()
 
@@ -299,12 +325,35 @@ class EmbeddingStore:
         if reason is not None:
             return self._degrade_corrupt(reason)
 
-        self._embeddings = vectors
-        self._ids = ids
-        self._id_set = set(self._ids)
-        self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
-        self._invalidate_norms()
+        self._adopt(vectors, ids)
         return True
+
+    def _adopt(self, vectors: np.ndarray, ids: list[str]) -> None:
+        """Replace the in-memory view with freshly loaded ``vectors`` / ``ids``.
+
+        Everything is built locally first (pending ``update()`` vectors are
+        re-applied for ids still present, so a stale-view reload cannot drop
+        them) and then assigned back-to-back with no IO in between.
+        """
+        id_set = set(ids)
+        id_pos = {cid: i for i, cid in enumerate(ids)}
+        for cid, vec in self._dirty_rows.items():
+            idx = id_pos.get(cid)
+            if idx is not None:
+                vectors[idx] = vec
+        self._ids = ids
+        self._id_set = id_set
+        self._id_pos = id_pos
+        self._embeddings = vectors
+        self._invalidate_norms()
+
+    def _reset_empty(self) -> None:
+        """Swap in a clean empty view (no files / quarantined files)."""
+        self._ids = []
+        self._id_set = set()
+        self._id_pos = {}
+        self._embeddings = None
+        self._invalidate_norms()
 
     def _degrade_corrupt(self, reason: str, *, detail: str | None = None) -> bool:
         """Shared degrade path for any recoverable on-disk corruption: log a
@@ -324,12 +373,8 @@ class EmbeddingStore:
             f"; {detail}" if detail else "",
         )
         self._quarantine_corrupt(reason)
-        # Drop any half-loaded state; come up as a clean empty store.
-        self._embeddings = None
-        self._ids = []
-        self._id_set = set()
-        self._id_pos = {}
-        self._invalidate_norms()
+        # Come up as a clean empty store.
+        self._reset_empty()
         return False
 
     def _shape_dim_violation(self, vectors: np.ndarray) -> str | None:
@@ -407,17 +452,9 @@ class EmbeddingStore:
         """
         if self._disk_signature() == self._disk_sig:
             return False
-        self._embeddings = None
-        self._ids = []
-        self._id_set = set()
-        self._id_pos = {}
-        self._invalidate_norms()
+        # No clearing first: ``_load`` swaps the new view in one step, so the
+        # lock-free ``has`` / ``count`` never see an empty store mid-read.
         self._load()
-        for cid, vec in self._dirty_rows.items():
-            idx = self._id_pos.get(cid)
-            if idx is not None and self._embeddings is not None:
-                self._embeddings[idx] = vec
-        self._invalidate_norms()
         self._disk_sig = self._disk_signature()
         return True
 

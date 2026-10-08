@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -381,3 +382,79 @@ def test_chunked_add_batch_keeps_other_instance_rows_and_skips_its_ids(tmp_path:
     assert llm.inputs.count("3") == 0, "c3 landed via the other instance but was embedded again"
     _assert_aligned(store, expected)
     _assert_disk_matches(tmp_path, expected)
+
+
+class _ParkedNpLoad:
+    """``np.load`` stand-in: the thread named ``thread_name`` parks *after* the
+    read (the slow part for a big matrix) until ``release`` is set."""
+
+    def __init__(self, thread_name: str) -> None:
+        self.thread_name = thread_name
+        self.real = np.load
+        self.parked = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, *args, **kwargs):
+        out = self.real(*args, **kwargs)
+        if threading.current_thread().name == self.thread_name:
+            self.parked.set()
+            assert self.release.wait(timeout=10), "test never released the parked np.load"
+        return out
+
+
+def test_initial_load_is_serialised_with_a_concurrent_writer(tmp_path: Path, monkeypatch):
+    """A cache-miss instance reading the files while another instance's add
+    swaps them must not see the torn npy/ids pair, quarantine a healthy store
+    as corrupt, and then lose it on the next write."""
+    emb_path, ids_path = _paths(tmp_path)
+    llm = _CountingLLM()
+    a = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+    a.add_batch([(f"seed{i}", str(i + 1)) for i in range(5)])
+    parked = _ParkedNpLoad("init-b")
+    monkeypatch.setattr(np, "load", parked)
+    built: dict[str, EmbeddingStore] = {}
+
+    def build_b() -> None:
+        built["b"] = EmbeddingStore(emb_path, ids_path, llm, model="m", dim=_DIM)
+
+    tb = threading.Thread(target=build_b, name="init-b")
+    tb.start()
+    assert parked.parked.wait(timeout=5), "second instance never reached np.load"
+    ta = threading.Thread(target=lambda: a.add("late", "6"), name="writer-a")
+    ta.start()
+    time.sleep(0.3)  # the writer must be queued behind the loader's file lock
+    parked.release.set()
+    tb.join(timeout=10)
+    ta.join(timeout=10)
+    assert not tb.is_alive() and not ta.is_alive()
+
+    assert not list(tmp_path.glob("*.corrupt_*")), "healthy store quarantined by a torn read"
+    b = built["b"]
+    assert b.count() == 5
+    a.add("more", "7")
+    b.refresh_if_stale()
+    expected = {f"seed{i}" for i in range(5)} | {"late", "more"}
+    _assert_aligned(b, expected)
+    _assert_disk_matches(tmp_path, expected)
+
+
+def test_refresh_never_exposes_an_empty_view_to_lock_free_readers(tmp_path: Path, monkeypatch):
+    """has()/count() are lock-free; while a refresh is still reading the new
+    files they must keep answering from the old view, not from a cleared one."""
+    a, b, _ = _two_stores(tmp_path)
+    a.add_batch([("s1", "1"), ("s2", "2")])
+    b.refresh_if_stale()
+    a.add("s3", "3")  # b is stale again
+    parked = _ParkedNpLoad("refresher")
+    monkeypatch.setattr(np, "load", parked)
+    t = threading.Thread(target=b.refresh_if_stale, name="refresher")
+    t.start()
+    assert parked.parked.wait(timeout=5), "refresh never reached np.load"
+    try:
+        assert b.has("s1") and b.has("s2"), "has() went False while a refresh was loading"
+        assert b.count() == 2, "count() dropped while a refresh was loading"
+    finally:
+        parked.release.set()
+        t.join(timeout=10)
+    assert not t.is_alive()
+    assert b.count() == 3 and b.has("s3")
