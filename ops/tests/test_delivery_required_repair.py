@@ -304,6 +304,10 @@ def test_pr_gate_manual_dispatch_is_exact_sha_only() -> None:
     assert "HEAD^" not in workflow
     assert "EVENT_SHA: ${{ github.sha }}" in workflow
     assert 'if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]' in workflow
-    assert 'git diff --check "$BASE_SHA" "$HEAD_SHA"' in workflow
+    # The whitespace check starts at the merge base: BASE_SHA is main's tip when
+    # the run started, so a direct two-point diff would also contain the reverse
+    # of every main commit merged after the PR forked.
+    assert 'git diff --check "$(git merge-base "$BASE_SHA" "$HEAD_SHA")" "$HEAD_SHA"' in workflow
+    assert 'git diff --check "$BASE_SHA" "$HEAD_SHA"' not in workflow
     assert workflow.count("ref: ${{ env.HEAD_SHA }}") == 3
     assert workflow.count("Verify exact head checkout") == 3
