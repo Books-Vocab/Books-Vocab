@@ -266,11 +266,20 @@ struct ExploreFixtureContractTests {
                 range: noResultsStart.upperBound..<source.endIndex
             ))
             let noResultsState = source[noResultsStart.lowerBound..<errorStateStart.lowerBound]
+            // 部分快取 + 同步失敗是持續狀態且需要使用者重試，所以是畫面內面板（AppStateMessageCard
+            // + 具名重試鈕）而非 pill 或 AppBanner（#2047 phase A，docs/sop/ui-design.md「暫時性提示」）。
             #expect(noResultsState.contains("if syncFailed"))
-            #expect(noResultsState.contains("syncFailureBanner"))
-            #expect(source.contains("private var syncFailureBanner: some View"))
-            #expect(source.contains("onRetry: { Task { await refreshCatalog() } }"))
-            #expect(source.contains("explore.partialState"))
+            #expect(noResultsState.contains("syncFailurePanel"))
+            let panelStart = try #require(source.range(of: "private var syncFailurePanel: some View"))
+            let panelEnd = try #require(source.range(
+                of: ".accessibilityIdentifier(\"explore.partialState\")",
+                range: panelStart.upperBound..<source.endIndex
+            ))
+            let syncFailurePanel = source[panelStart.lowerBound..<panelEnd.upperBound]
+            #expect(syncFailurePanel.contains("AppStateMessageCard"))
+            #expect(syncFailurePanel.contains("Task { await refreshCatalog() }"))
+            #expect(syncFailurePanel.contains("explore.partialState.retry"))
+            #expect(!source.contains("syncFailureBanner"))
 
             #expect(
                 ExplorePhase.resolve(
