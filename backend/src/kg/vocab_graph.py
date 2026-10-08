@@ -44,14 +44,14 @@ def embed_and_link_new_cards(
         return
 
     # add_batch chunks to the provider's request limit and persists per chunk
-    # (#2264), so the has() filter below keeps partial progress. Cards are
-    # already durable here, so a provider failure (incl. the bounded client timeout) degrades exactly like
-    # the pipeline embed step: warn and let the next pipeline run backfill.
+    # (#2264). On failure fall through (no return) so the has() filter below
+    # still queues the chunks that were saved. Cards are already durable here,
+    # so a provider failure (incl. the bounded client timeout) degrades exactly
+    # like the pipeline embed step: warn and let the next pipeline run backfill.
     try:
         embeddings.add_batch(batch_items)
     except (OpenAIError, OSError, ValueError) as exc:
         logger.warning("Batch embedding failed: %s", exc)
-        return
 
     # Mark successfully embedded cards for pending judge
     embedded_ids = [card.id for card in batch_cards if embeddings.has(card.id)]

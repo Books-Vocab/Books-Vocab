@@ -565,3 +565,30 @@ def test_vocab_embed_and_link_150_cards_makes_two_calls(tmp_path: Path):
     assert client.calls == [100, 50]
     assert store.count() == 150
     assert graph.pending == ids
+
+
+def test_vocab_embed_and_link_partial_failure_queues_persisted_chunk(tmp_path: Path):
+    from kg.vocab_graph import embed_and_link_new_cards
+
+    ids = _chunk_ids(_chunk_items(150))
+    cards_by_id = {cid: SimpleNamespace(id=cid, embed_text=lambda k=int(cid[1:]): f"text:{k}") for cid in ids}
+    cards = SimpleNamespace(get=cards_by_id.get)
+    client = _CappedEmbedClient(fail_on_call=2)
+    store = _chunk_store(tmp_path).bind(client)
+    graph = _RecordingGraph()
+    entries = [SimpleNamespace(word=f"w{i}") for i in range(150)]
+    card_ids = {f"w{i}": ids[i] for i in range(150)}
+
+    embed_and_link_new_cards(
+        cards=cards,
+        embeddings=store,
+        graph=graph,
+        card_ids=card_ids,
+        entries=entries,
+        logger=logging.getLogger("test.2264"),
+    )
+
+    assert client.calls == [100, 50]
+    assert store.count() == 100
+    # The persisted first chunk is queued for judge; the failed chunk is not.
+    assert graph.pending == ids[:100]
