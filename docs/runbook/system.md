@@ -9,6 +9,7 @@ scope:
   - ops/worktree_registry.py
   - ops/worktree_orchestrate.py
   - ops/devops_kg_safe.sh
+  - ops/env_drift.py
   - ops/release.sh
 verified_against: 5b5ac2fa158ec2f9508c0befa835720009a60fe5
 -->
@@ -228,3 +229,16 @@ typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `orig
 ## Production boundary
 
 API、host、資料庫、CloudKit、App Store、TestFlight 與 rollback 依各自 SOP；所有生產寫入都經 `ops/devops_kg_safe.sh`、`ops/release.sh` 或被明確列出的領域入口。GitHub merge 不是 production approval。
+
+### 部署前 env-check 的 backend 啟動規則
+
+`./ops/devops_kg_safe.sh env-check`（`ops/env_drift.py env-check`）在 key 存在與 unsafe 旗標之外，直接呼叫 backend 自己的啟動驗證器判定遠端 `.env`（值先依 Compose env_file 規則解碼，在隔離的 `os.environ` 內執行，不受操作者 shell 影響）。不通過的 `.env` 會讓容器啟動即崩潰，所以任一規則 FAIL 即非零退出，deploy 與 `release_train` 的 env gate 都會擋下。
+
+| 規則 | 來源（單一真相） | FAIL 條件 |
+|---|---|---|
+| `jwt-present` | `kg.settings.load_settings` | `JWT_SECRET` 未設或為空 |
+| `jwt-not-placeholder` | `kg.settings._JWT_SECRET_PLACEHOLDERS` | strip／小寫後等於 `your-secret-key-change-in-production`、`changeme`、`change-me`、`secret` |
+| `jwt-min-length` | `kg.settings._JWT_SECRET_MIN_LENGTH` | 長度 < 32 |
+| `llm-routing` | `kg.llm.providers.validate_provider_routing` | 任一已路由 provider（`LLM_PROVIDER_*`，含隱含的 embed／default 路由）的 `*_API_KEY` 為空，或 provider 名稱未知、embed 路由到不支援 embeddings 的 provider |
+
+輸出為逐規則 `✓／✗ [rule]`，並以 `· KEY 長度 N` 列出各 provider key 長度；只印名稱與長度，不印任何 secret 值。`jwt-backend-agreement` 是漂移守衛：env-check 的逐項 JWT 判定與 backend `load_settings()` 結論不一致時 FAIL，不會默默放行。無法解析的 `JWT_SECRET`、`LLM_PROVIDER_*` 或 provider key 值一律 fail closed。規則改在 backend；契約測試是 `ops/tests/test_env_check_backend_rules.py`（`./ops/test_ops.sh devops`）。
