@@ -620,6 +620,145 @@ echo "$typed_out" | grep -q 'use typed command: caddy-status --json' \
   || fail_t "raw caddy status was not redirected"
 rm -f "$STUB_BASE"
 
+# ── 13. users 隱私契約（#2098）：只准出 count + uid provider last_login ───────
+section "users privacy (count + uid/provider/last_login only)"
+# KG_SSH_CMD stub 在本機直接執行收到的 remote 命令（最後一個 argv），所以 cmd_users 的
+# 過濾邏輯真的被跑到——stub 若只回顯命令，斷言的是字串而不是輸出，證明不了任何事。
+USERS_FIX="$(mktemp -d)"
+USERS_STUB="$USERS_FIX/ssh_stub.sh"
+mkdir -p "$USERS_FIX/data/users/google_alice" "$USERS_FIX/data/users/apple_bob"
+cat > "$USERS_FIX/data/users.json" <<'JSONEOF'
+{
+  "google_alice": {"email": "alice@example.com", "provider": "google", "last_login": "2026-10-01T08:00:00Z",
+                   "subscription": {"tier": "pro", "receipt": "RCPT-SECRET"},
+                   "linked_ids": ["apple_alias"], "config": {"api_key": "TOKEN-SECRET"}},
+  "apple_bob": {"provider": "apple", "last_login": "2026-09-30T01:02:03Z"},
+  "apple_alias": {"_linked_to": "google_alice", "provider": "apple", "last_login": "2026-09-01T00:00:00Z"},
+  "_email_index": {"alice@example.com": "google_alice"},
+  "_revoked_before": {"google_alice": "2026-01-01T00:00:00Z"},
+  "_terminated": ["gone_user"]
+}
+JSONEOF
+cat > "$USERS_STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+exec bash -c "${@: -1}"
+STUBEOF
+chmod +x "$USERS_STUB"
+users_leaks() {
+  grep -Eq 'alice@example\.com|subscription|linked_ids|_email_index|_revoked_before|_terminated|TOKEN-SECRET|RCPT-SECRET|api_key|apple_alias|gone_user' <<< "$1"
+}
+users_rc=0
+users_out=$(KG_SSH_CMD="$USERS_STUB" KG_REMOTE_DATA_DIR="$USERS_FIX/data" bash "$SAFE_KG" users 2>&1) || users_rc=$?
+[[ "$users_rc" == 0 ]] && ok "users exits 0 against fixture" || fail_t "users exits $users_rc against fixture"
+grep -Eq '^users: 2$' <<< "$users_out" \
+  && ok "users prints the real-user count (aliases and metadata excluded)" \
+  || fail_t "users count line missing or wrong (want 'users: 2')"
+grep -Eq '^google_alice google 2026-10-01T08:00:00Z$' <<< "$users_out" \
+  && grep -Eq '^apple_bob apple 2026-09-30T01:02:03Z$' <<< "$users_out" \
+  && ok "users prints one 'uid provider last_login' line per real user" \
+  || fail_t "users uid/provider/last_login lines missing"
+users_leaks "$users_out" \
+  && fail_t "users output leaks email/subscription/linked_ids/_email_index/tokens/alias" \
+  || ok "users output carries no email/subscription/linked_ids/_email_index/tokens/alias records"
+# 預設值是 `~/kg-data`：printf %q 在 bash 3.2 保留 `~`、在 bash 5 轉成 `\~`，兩條路都
+# 必須落到同一個 home（HOME 指向 fixture，證明展開真的發生而不是讀到字面 `~` 目錄）。
+users_out=$(HOME="$USERS_FIX" KG_SSH_CMD="$USERS_STUB" KG_REMOTE_DATA_DIR='~/data' bash "$SAFE_KG" users 2>&1) || true
+grep -Eq '^users: 2$' <<< "$users_out" \
+  && ok "users expands a ~-relative data dir (default shape ~/kg-data)" \
+  || fail_t "users did not expand ~ in KG_REMOTE_DATA_DIR"
+# 正控：同一個 leak 偵測器必須對舊行為（raw cat）報警，否則上面那條的沉默沒有證據力。
+users_leaks "$(cat "$USERS_FIX/data/users.json")" \
+  && ok "positive control: leak detector flags the old raw users.json dump" \
+  || fail_t "positive control failed: leak detector is blind to a raw dump"
+# 無 raw-dump 路徑：多餘參數一律 exit 64 + usage，且不得到達 remote（base 換成會留痕的 stub）。
+USERS_TRACE="$USERS_FIX/base_called"
+USERS_BASE="$USERS_FIX/base.sh"
+printf '#!/usr/bin/env bash\ntouch "%s"\n' "$USERS_TRACE" > "$USERS_BASE"; chmod +x "$USERS_BASE"
+users_rc=0
+users_out=$(KG_DEVOPS_BASE="$USERS_BASE" bash "$SAFE_KG" users extra 2>&1) || users_rc=$?
+[[ "$users_rc" == 64 ]] && grep -q 'usage: .* users' <<< "$users_out" && [[ ! -e "$USERS_TRACE" ]] \
+  && ok "users with extra args exits 64 with usage and never reaches the base" \
+  || fail_t "users with extra args: rc=$users_rc trace=$([[ -e "$USERS_TRACE" ]] && echo hit || echo none)"
+rm -rf "$USERS_FIX"
+
+# ── 14. 敏感檔讀取 deny-list（#2134）：run / container-run / migrate-run / container-script ──
+section "sensitive file reads blocked (users.json / .env / ~/.secrets / private keys)"
+# 同一支 stub 兼任 ssh/scp transport（KG_SSH_CMD／KG_SCP_CMD，走真 base devops.sh）與
+# base（KG_DEVOPS_BASE）：只留痕、不執行。被擋的命令 trace 必須不存在；放行的命令 trace
+# 必須真的出現——後者是前者的正控，否則「沒留痕」可能只是 stub 壞了。migrate-run 的真
+# base 會先跑 cmd_backup（rsync 直連 $SERVER，不經 KG_SSH_CMD），所以它一律走 base stub；
+# KG_SERVER 指向 .invalid 是第二道保險：任何繞過 stub 的路徑只會 DNS 失敗，不會碰到 felix。
+SENS_FIX="$(mktemp -d)"
+SENS_TRACE="$SENS_FIX/trace.log"
+SENS_STUB="$SENS_FIX/stub.sh"
+cat > "$SENS_STUB" <<STUBEOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$SENS_TRACE"
+[[ "\$*" == *"docker inspect"* ]] && echo true
+exit 0
+STUBEOF
+chmod +x "$SENS_STUB"
+printf 'print("ok")\n' > "$SENS_FIX/benign.py"
+printf 'print(open("/app/data/Users.JSON").read())\n' > "$SENS_FIX/dump_users.py"
+# sens_call <transport|base> <sub> [args...] → sens_rc／sens_out；每次呼叫前清掉 trace。
+sens_call() {
+  local mode="$1"; shift
+  local -a seam=(KG_SSH_CMD="$SENS_STUB" KG_SCP_CMD="$SENS_STUB")
+  [[ "$mode" == base ]] && seam=(KG_DEVOPS_BASE="$SENS_STUB")
+  rm -f "$SENS_TRACE"
+  sens_rc=0
+  sens_out=$(env "${seam[@]}" KG_SERVER=kg-test@invalid.invalid bash "$SAFE_KG" "$@" 2>&1) || sens_rc=$?
+}
+sens_expect_blocked() {  # <label> <mode> <sub> [args...]
+  local label="$1"; shift
+  sens_call "$@"
+  if [[ "$sens_rc" != 0 ]] && grep -q 'blocked sensitive file read' <<< "$sens_out" && [[ ! -e "$SENS_TRACE" ]]; then
+    ok "blocks sensitive read: $label"
+  else
+    fail_t "SENSITIVE READ NOT BLOCKED: $label (rc=$sens_rc trace=$([[ -e "$SENS_TRACE" ]] && echo hit || echo none))"
+  fi
+}
+sens_expect_allowed() {  # <label> <needle> <mode> <sub> [args...]
+  local label="$1" needle="$2"; shift 2
+  sens_call "$@"
+  if [[ "$sens_rc" == 0 ]] && [[ -e "$SENS_TRACE" ]] && grep -qF -- "$needle" "$SENS_TRACE"; then
+    ok "allows and reaches remote: $label"
+  else
+    fail_t "FALSE POSITIVE or not forwarded: $label (rc=$sens_rc out=$(tr '\n' ' ' <<< "$sens_out"))"
+  fi
+}
+sens_expect_blocked "run cat users.json" transport run "cat ~/kg-data/users.json"
+sens_expect_blocked "quoted upper-case USERS.JSON after cd" transport run 'cd ~/kg-data && CAT "USERS.JSON"'
+sens_expect_blocked "backslash-split users\\.json" transport run 'cat ~/kg-data/users\.json'
+sens_expect_blocked "container-run users.json" transport container-run "cat /app/data/users.json"
+sens_expect_blocked "migrate-run python read of users.json" base migrate-run \
+  "python3 -c \"print(open('/app/data/users.json').read())\""
+sens_expect_blocked "run .env" transport run "cat ~/kg-prod/backend/.env"
+sens_expect_blocked "container-run grep .env" transport container-run "grep JWT_SECRET /app/.env"
+sens_expect_blocked "operator ~/.secrets dir" transport run "cat ~/.secrets/sentry.env"
+sens_expect_blocked "App Store .p8 key" transport run "cat ~/kg-prod/backend/certs/AuthKey_ABC123.p8"
+sens_expect_blocked "pem key material" transport container-run "cat /app/certs/server.pem"
+sens_expect_blocked "ssh private key" transport run "cat ~/.ssh/id_ed25519"
+sens_expect_blocked "container-script content reads users.json" transport \
+  container-script "$SENS_FIX/dump_users.py"
+sens_expect_blocked "container-script arg names users.json" transport \
+  container-script "$SENS_FIX/benign.py" /app/data/users.json
+# 誤殺防護：一般唯讀 debug 必須照常抵達 remote。
+sens_expect_allowed "list user dirs (no users.json)" "ls -la ~/kg-data/users" transport run "ls -la ~/kg-data/users"
+sens_expect_allowed "os.environ is not a .env file" "os.environ" transport run \
+  "python3 -c 'import os; print(len(os.environ))'"
+sens_expect_allowed "ssh public key" "id_ed25519.pub" transport run "cat ~/.ssh/id_ed25519.pub"
+sens_expect_allowed "docker logs window" "docker logs knowledge-graph-api --since 10m" transport run \
+  "docker logs knowledge-graph-api --since 10m"
+sens_expect_allowed "container-run listing" "docker exec knowledge-graph-api ls /app/data/users" transport \
+  container-run "ls /app/data/users"
+sens_expect_allowed "migrate-run benign" "migrate-run python3 /app/migrate.py" base migrate-run "python3 /app/migrate.py"
+sens_expect_allowed "container-script benign script" "python3 /tmp/benign.py" transport \
+  container-script "$SENS_FIX/benign.py" --dry-run
+sens_expect_allowed "documented podcast_backfill_disk container-script" "python3 /tmp/podcast_backfill_disk.py --check" \
+  transport container-script "$WORKSPACE/ops/podcast_backfill_disk.py" --check
+rm -rf "$SENS_FIX"
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

@@ -41,13 +41,31 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 上述字串 guard 只涵蓋 `run` / `container-run` / `migrate-run`。`ops-cli`、`ops-edit`、
 `ops-edit-batch`、`container-script` 是 argv／script pass-through surface，不套用
 `is_blocked_run`；`ops-cli` 是查詢入口，`ops-edit`／`ops-edit-batch` 依各自工具的 dry-run、
-`--commit`、備份與 verify 契約，`container-script` 則只接受 `.py`／`.sh` 腳本。不能把
-這些 surface 誤讀成已由這個 shell guard 保護。
+`--commit`、備份與 verify 契約，`container-script` 則只接受 `.py`／`.sh` 腳本（另套用下節的
+敏感檔讀取 deny-list）。不能把這些 surface 誤讀成已由這個 shell guard 保護。
 
 **邊界聲明（重要）**：此 guard 是「常見誤觸防護網」，**非完備沙箱**。黑名單無法窮舉所有等價毀滅指令。
 以下已知**未涵蓋**、仍依賴人工 review，切勿倚賴 wrapper 攔截：`mv <受保護路徑>`（移走掛載等同銷毀）、
 `cp /dev/null <db>` / `shred` 等覆寫、`rsync -a --delete`、`docker rm -fv <container>`（刪匿名 volume）、
 `git clean -xfd`、以及任何透過未展開 shell 變數（`rm -rf $DATA_DIR`）指向受保護路徑者（wrapper 在 SSH 前比對字面，無法得知變數值）。
+
+## Sensitive File Reads
+`users.json`（`_email_index`、email、subscription、linked_ids）、`.env`、`~/.secrets/` 與私鑰材料
+（`*.pem`、`*.p8`、`*.p12`、ssh `id_rsa`／`id_ecdsa`／`id_ed25519`，`.pub` 除外）不得進入 agent 的
+transcript 或 log。
+
+- 用戶清單只走 typed `users`：遠端 python 先縮減，只輸出用戶目錄數、真實用戶數（排除 `_` metadata
+  與 `_linked_to` alias）與每人一行 `uid provider last_login`。safe wrapper 對 `users` 的任何多餘
+  參數 exit 64，沒有整檔 dump 路徑。
+- `ops/devops_kg_safe.sh` 的 `is_sensitive_read`（#2134，deny-list）比對 `run`／`container-run`／
+  `migrate-run` 的命令字串，以及 `container-script` 的參數與本地腳本內容；比對前 lowercase、去引號／
+  反引號／反斜線。命中即 exit 1 並印 `blocked sensitive file read`，命令不送到 remote。攔截變體與
+  誤殺防護（`os.environ`、`id_*.pub`、一般 `ls`／`docker logs`、文件化的 `container-script`）由
+  `ops/test_devops.sh` 的 sensitive file reads 段守住。
+- **邊界聲明**：這是誤觸防護，**不是安全邊界**。glob（`cat ~/kg-data/u*`）、字串組裝
+  （`python3 -c`、base64）、未展開變數與容器內的 `os.environ` 都能繞過；`run` 仍是 owner 等級的
+  逃生口。agent 不得透過任何 remote 執行入口讀取上述檔案或其等價內容，需要用戶資訊時用 typed
+  command，其餘交 owner。
 
 ## Required Preflight
 1. Confirm standby production checkout (`~/kg-prod/backend`, or `KG_REMOTE_DIR`); `~/knowledge_graph_api` is historical Lightsail rollback only.

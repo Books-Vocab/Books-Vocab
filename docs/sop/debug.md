@@ -191,6 +191,8 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 ./ops/devops_kg_safe.sh user-info <user_id>
 ```
 
+`users` 只印用戶目錄數、真實用戶數與每人一行 `uid provider last_login`，不含 email、訂閱或 linked IDs；不要改用 `run` 讀 `users.json`、`.env` 或金鑰，safe wrapper 會擋（範圍與限制見 [`safety.md`](../policy/safety.md#sensitive-file-reads)）。
+
 刪除帳號、刪除用戶資料或保留帳號清空資料都不是一般 debug 命令；safe wrapper 預設阻擋。這類不可逆操作必須走對應批准／backup／rollback SOP，由 production authority 執行，不在本文件提供可複製的 destructive command。
 
 ---

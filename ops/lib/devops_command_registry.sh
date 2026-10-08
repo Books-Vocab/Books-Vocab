@@ -36,7 +36,7 @@ DEVOPS_COMMAND_HELP=(
   'status|Docker / CF Tunnel / 磁碟 / 用戶數概覽'
   'logs [n]|最新 n 行日誌（預設 50）'
   'backup|備份 data/ 到本地 backups/'
-  'users|列出所有遠端用戶 + users.json'
+  'users|用戶數 + 每人一行 uid provider last_login（不含 email／訂閱）'
   'user-info <id>|查看特定用戶單字統計'
   'delete-user <id> [--yes]|刪除用戶資料（需明示確認）'
   'run "<cmd>"|在遠端 host 執行任意指令'
