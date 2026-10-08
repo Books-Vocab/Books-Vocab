@@ -250,7 +250,12 @@ def evaluate_disk(guard: dict[str, Any] | None) -> Finding:
     if not guard:
         return Finding("disk", "ok", "no disk guard state on this machine")
     verdict = str(guard.get("verdict"))
-    level = {"ok": "ok", "warning": "warn", "block": "block"}.get(verdict, "warn")
+    level = {
+        "ok": "ok",
+        "warning": "warn",
+        "block": "block",
+        "critical": "block",
+    }.get(verdict, "warn")
     return Finding("disk", level, f"disk guard {verdict}: {guard.get('reason')}")
 
 
