@@ -27,9 +27,7 @@ extension ReadiumNavigatorView.Coordinator {
     private func emitMarkVocabWordsJS(_ words: [String]) {
         guard let navigator = self.navigator else { return }
 
-        let escaped = words.map { Self.jsEscaped($0) }
-        let wordsJSON = escaped.map { "\"\($0)\"" }.joined(separator: ",")
-        let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
+        let js = ReaderJSEval.markVocabWordsScript(words)
 
         Task { ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markVocabWords") }
         PerfLog.reader.mark("markVocabWords", "\(words.count)")
@@ -38,8 +36,7 @@ extension ReadiumNavigatorView.Coordinator {
 
     private func invokeSingleWordBridge(_ word: String, jsFunction: String, label: StaticString, logMessage: String) {
         guard let navigator else { return }
-        let escaped = Self.jsEscaped(word)
-        let js = "if(window.\(jsFunction)) window.\(jsFunction)(\"\(escaped)\");"
+        let js = ReaderJSEval.singleWordScript(function: jsFunction, word: word)
         Task { @MainActor in
             ReaderJSEval.log(await navigator.evaluateJavaScript(js), label)
             AppLog.reader.debug("\(logMessage)")
@@ -91,13 +88,6 @@ extension ReadiumNavigatorView.Coordinator {
             ReaderJSEval.log(await navigator.evaluateJavaScript(js), "clearActiveHighlight")
             navigator.clearSelection()
         }
-    }
-
-    /// Escapes a string for safe embedding inside a double-quoted JS string literal:
-    /// backslashes first, then double quotes.
-    private static func jsEscaped(_ s: String) -> String {
-        s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 #endif
