@@ -62,9 +62,14 @@ struct ReviewCardFieldOrderingTests {
     }
 
     @Test func every_field_has_a_localizable_label_key() {
+        let languages = AppLanguage.allCases.filter { $0.localizationCode != nil }
         for field in ReviewCardField.canonicalOrder {
             #expect(!field.titleKey.isEmpty)
-            #expect(field.titleKey != L10n.string(field.titleKey) || !field.titleKey.isEmpty)
+            for language in languages {
+                let value = L10n.string(field.titleKey, language: language)
+                #expect(value != field.titleKey, "missing \(field.titleKey) in \(language.rawValue)")
+                #expect(!value.isEmpty, "empty \(field.titleKey) in \(language.rawValue)")
+            }
         }
         #expect(Set(ReviewCardField.canonicalOrder.map(\.titleKey)).count == ReviewCardField.allCases.count)
     }
