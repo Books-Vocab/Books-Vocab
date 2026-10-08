@@ -4,7 +4,7 @@ authority: SoT
 update_trigger: code-change
 scope:
   - backend/src/kg/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 9d1fc2de80eb235fa74410b319324e3085cc07b2
 -->
 # Card 欄位格式規範
 
@@ -39,11 +39,11 @@ Card 只有一種產品語意：加入詞庫後即是一般可複習卡片，走
 | 0 | NFC 相容映射（`precomposedStringWithCompatibilityMapping`，**NFKC** 語意：展開 ligature／全形） | **僅 iOS** |
 | 1 | 去頭尾空白 | **兩端** |
 | 2 | **去尾標點** `.,;:!?`（只削尾，保留詞內 `don't` / `well-known`） | **兩端** |
-| 3 | 單一 token 句首字母小寫，除非全大寫縮寫或含空白片語 | **僅 backend** |
+| 3 | 單一 token 首字母小寫，僅當其餘字母皆已小寫（如 `However`→`however`）；全大寫縮寫（`NASA`／`I`）、混合大小寫（`PhD`／`YouTube`／`McCarthy`）、含空白片語保留原樣 | **僅 backend** |
 
 - 兩端實作：iOS `ReaderTranslationHandler.normalizeWord`（`ios/BooksAndVocab/Views/Reader/ReaderTranslationHandler+Persistence.swift`）／ backend `_clean_content`（`backend/src/kg/vocab_shared.py`）。
-- **步驟 0（NFC）只在 iOS。** backend `_clean_content` **不做任何 normalize**（只 `.strip().rstrip(".,;:!?")` + 句首小寫）。backend 的 Unicode 正規化在獨立的 **dedup-key** 函式 `_normalize_word`（`normalize_nfc_lower`，`text_utils.py`），且是 **NFC**（不展開相容字元）≠ iOS 的 **NFKC**——故兩端 normalize 語意本就不同，不可宣稱 lock-step；共有的只有「去頭尾空白＋去尾標點」這兩步。
-- iOS **不**做步驟 3（句首小寫）——本地顯示維持自然大小寫，小寫是 backend dedup 的職責。
+- **步驟 0（NFC）只在 iOS。** backend `_clean_content` **不做任何 normalize**（只 `.strip().rstrip(".,;:!?")` + 步驟 3 的首字母小寫）。backend 的 Unicode 正規化在獨立的 **dedup-key** 函式 `_normalize_word`（`normalize_nfc_lower`，`text_utils.py`），且是 **NFC**（不展開相容字元）≠ iOS 的 **NFKC**——故兩端 normalize 語意本就不同，不可宣稱 lock-step；共有的只有「去頭尾空白＋去尾標點」這兩步。
+- iOS **不**做步驟 3（首字母小寫）——本地顯示維持自然大小寫，小寫是 backend dedup 的職責。步驟 3 只決定儲存的 `content` 大小寫；dedup key `_normalize_word(_clean_content(w))` 會再全小寫，故 `PhD` 與 `phd` 仍命中同一張卡。
 - 為何 iOS 需削尾標點：podcast 字幕（UITextView）與 PDF（PDFKit）選取會帶尾標點；EPUB（Readium JS）選取已自行切除。前移到 capture 讓翻譯卡片／詞庫預覽當下即乾淨，不靠 backend 單點兜底。
 - 契約測試（同一組 fixture 字串）：iOS `normalizeWord_stripsTrailingSentencePunctuation`／backend `tests/test_capture_normalize_contract.py`。改任一端規則必同步另一端與本表。
 - **capture normalize ≠ match normalize**：高亮配對另有更寬鬆規則（小寫＋去頭尾全部標點＋折疊彎撇號），即時套用於頁面與詞庫兩側，見 `PodcastVocabHighlightResolver` 與 EPUB `__markVocabWords`；故 capture 形式改變不影響畫底線配對。

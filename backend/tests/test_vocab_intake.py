@@ -371,6 +371,14 @@ class TestAddVocabEntries:
         # Trailing "." stripped, leading "H" lowercased.
         assert store.add_calls[0]["content"] == "hello"
 
+    def test_clean_content_preserves_mixed_case_word(self):
+        store = _IntakeCardsStore()
+        add_vocab_entries(
+            [VocabEntry(word="PhD", translation="博士", context="")],
+            **self._kwargs(cards=store),
+        )
+        assert store.add_calls[0]["content"] == "PhD"
+
     def test_pending_judge_only_for_successfully_embedded(self):
         store = _IntakeCardsStore()
         embeddings = _IntakeEmbeddings()
