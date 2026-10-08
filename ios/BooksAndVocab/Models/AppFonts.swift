@@ -210,11 +210,6 @@ enum AppFonts {
         mono(size: size)
     }
 
-    /// Reader 進度條等寬細字 — 11pt ElmsSans mono
-    static func monoProgress() -> Font {
-        mono(size: TypeScale.caption2)
-    }
-
     // MARK: - Tracking Tokens (letter-spacing)
     // 在 SwiftUI 用 `.tracking(AppFonts.Tracking.tight)` 套用
     // 數值單位 pt（絕對 letter-spacing）
