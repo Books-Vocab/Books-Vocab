@@ -7,7 +7,7 @@
 #
 # 全唯讀（macOS-native 探針，prod = standby/felix = macOS+OrbStack+CF Tunnel）：
 #   df / vm_stat+sysctl(記憶體/swap) / docker inspect / docker stats /
-#   launchctl service state/pid（pgrep fallback）/ docker logs grep / du。
+#   launchctl service state/pid（pgrep fallback）/ docker logs ERROR/CRITICAL 等級記錄計數 / du。
 # 不改機器狀態（但仍經 safe wrapper 的 preflight）。
 # 設計定案：macOS-native，不做 dual-OS 偵測（Lightsail 已 terminate）。若日後
 #   再遷 Linux host 須補回 free/systemctl 分支或加 OS 偵測。
@@ -225,7 +225,10 @@ if [ -n "$S" ]; then NOW=$(date +%s); SP=${S%.*}; ST=$(TZ=UTC date -j -f "%Y-%m-
 docker stats --no-stream --format "cpu_pct	{{.CPUPerc}}\nmem_pct	{{.MemPerc}}" "$C" 2>/dev/null | tr -d "%" || true
 # 對外入口 = Cloudflare Tunnel 連接器（macOS 無 Caddy/systemctl）。
 printf "ingress\t%s\n" "$(pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 && echo active || echo inactive)"
-printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -ciE "error|exception|traceback|critical" || true)"
+# log_errors_1h 只數 ERROR/CRITICAL **等級**記錄（JSON "level" 欄位，或 bare 格式行首 ERROR:/CRITICAL ），
+# 不 grep 訊息文字：WARNING 的 NotFoundError→404、QuotaExceededError→429、/error 路徑與多行
+# traceback 都不是錯誤記錄（#2317）。grep -c 無匹配會印 0 但 exit 1，故保留 || true。
+printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -cE "\"level\":\"(ERROR|CRITICAL)\"|^(ERROR|CRITICAL)[: ]" || true)"
 printf "data_dir_mb\t%s\n" "$(du -sm "$D" 2>/dev/null | cut -f1 || echo 0)"
 # 部署漂移組（IMP-0022）。全用雙引號：本段是單引號字串，出現單引號會提前結束它，
 # 故不得改用 awk（awk 程式需要單引號）。各自帶 || 保底，printf 恆回 0，不觸 set -e。
@@ -357,7 +360,7 @@ add http_probe "HTTPS 端點" "$HTTP_CODE" "$hst" "$HTTP_CODE"
 
 # 近期錯誤
 errs="$(getm log_errors_1h)"
-add log_errors_1h "近1h log 錯誤行" "${errs:-?}" "$(th_high "${errs:-}" $ERR_WARN $ERR_CRIT)" "$errs"
+add log_errors_1h "近1h log ERROR/CRITICAL 記錄" "${errs:-?}" "$(th_high "${errs:-}" $ERR_WARN $ERR_CRIT)" "$errs"
 
 # 憑證
 add cert_days_left "TLS 憑證剩餘" "${CERT_DAYS:-?} 天" "$(th_low "${CERT_DAYS:-}" $CERT_WARN $CERT_CRIT)" "$CERT_DAYS"
