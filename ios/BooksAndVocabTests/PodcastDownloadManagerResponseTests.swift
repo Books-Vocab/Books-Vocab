@@ -95,8 +95,9 @@ struct PodcastDownloadManagerResponseTests {
     func rejectionMatrix(_ responseCase: ResponseCase) throws {
         var headers: [String: String] = [:]
         if let contentType = responseCase.contentType { headers["Content-Type"] = contentType }
+        let audioURL = try #require(URL(string: "https://podcast.test/api/podcasts/s/1/audio"))
         let response = try #require(HTTPURLResponse(
-            url: try #require(URL(string: "https://podcast.test/api/podcasts/s/1/audio")),
+            url: audioURL,
             statusCode: responseCase.status,
             httpVersion: "HTTP/1.1",
             headerFields: headers
