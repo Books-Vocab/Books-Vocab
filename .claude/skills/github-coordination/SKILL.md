@@ -1,6 +1,6 @@
 ---
 name: github-coordination
-description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project、PR 收斂與 merge 前條件，不接管實作 worktree。"
+description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue（label 與公開認領）、PR 收斂與 merge 前條件，不接管實作 worktree。"
 ---
 
 # GitHub coordination workflow
@@ -13,7 +13,7 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 ./ops/agent_onboard.py --identity '<CM|IM>' --intent '<delivery|release>' --entry '<coordination|merge|issue-planning|direct-assignment>' --evidence '<JSON object with the entry-specific external evidence>' --json
 ```
 
-依輸出讀 project overview、canonical identity boundary、GitHub Issue／Project／PR 與 required checks。不要因協調任務而建立本地 backlog、Issue mirror、merge queue 或替 Worker 修改 caller worktree。
+依輸出讀 project overview、canonical identity boundary、GitHub Issue／PR 與 required checks。不要因協調任務而建立本地 backlog、Issue mirror、merge queue 或替 Worker 修改 caller worktree。
 
 ## Boundary
 
@@ -29,7 +29,7 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 - 每個 open Issue 恰有一個狀態 label（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個 `P0`–`P3`。派工只取 `ready-for-solver`：先高優先級，同級依「解除阻擋者、範圍小、較舊」，跳過 Scope 與現有認領重疊者。
 - 認領只由 IM 寫，且必須公開：Issue 留言帶 `kg.issue.claim.v1` 標記（`claim`／`renew`／`release`，TTL 預設 6 小時）加 `in-progress`；不使用 assignee。過期只會被標 `claim-stale`，是否釋放由 IM 決定。CM 與一般寫作者只讀認領，不代發。
 - 公開看板是 label 為 `work-board` 的單一自我更新 Issue（機讀區塊 `kg.issue.board.v1`）；它是 Issue 事實的投影，兩者不一致以 Issue 與留言為準。
-- 發布 PR 時內文 `## Issues` 區段逐一列 `Closes #N`（完全解決，合併自動關閉）與 `Refs #N`（部分，Issue 回 `ready-for-solver`）。補關 Issue 必須留言附 commit 證據。
+- 目標：PR 內文 `## Issues` 區段逐一列 `Closes #N`（完全解決，合併自動關閉）與 `Refs #N`（部分，Issue 回 `ready-for-solver`）。**但 W4（`publish --closes`／`--refs`、`pr_contract` 渲染）未落地前，`delivery.py` 發布的 PR 內文是 receipt 純函數，手加的 `## Issues` 會被 publish／repair 覆寫甚至擋下 required-repair**：不手改 canonical body，改以 `Resolved by <PR/commit>` 留言關閉並附 commit 證據；模板的 `## Issues` 只適用手寫 PR。`claim-issue`／`issue_sync` 同樣未落地，認領依協議手動留言＋label。
 
 ## Delivery control commands
 
