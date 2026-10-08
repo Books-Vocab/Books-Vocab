@@ -17,7 +17,7 @@ here so the router stays a thin adapter:
 * **materialization barrier + compensating rollback**: cards.db / notebooks.db
   have no cross-file transaction, so the notebook is staged HIDDEN and revealed
   only after the idempotency log commits. Any pre-commit failure compensates
-  (hard-deletes the partial notebook + cards) and re-raises. The copy_log is the
+  (tombstones the partial cards, hard-deletes the notebook row) and re-raises. The copy_log is the
   point of no return: written BEFORE reveal, so a crash in the reveal window
   self-heals — the retry finds the log and _replay reveals the still-hidden
   notebook, never minting a duplicate.
@@ -138,7 +138,7 @@ def _remap_graph_links(
         (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(remapped, ensure_ascii=False), encoding="utf-8")
 
 
-def _compensate(
+def compensate_staged_copy(
     card_store: CardStore,
     notebook_store: NotebookStore,
     user_dir: Path,
@@ -146,9 +146,12 @@ def _compensate(
 ) -> None:
     """Best-effort teardown of a partially-materialized copy. Runs on any failure
     before the copy_log is committed; swallows secondary errors so the original
-    fault propagates."""
+    fault propagates. Cards are TOMBSTONED (soft-deleted, ``updated_at`` bumped),
+    not erased: a client may already have pulled them, and only a tombstone
+    propagates the deletion on incremental sync. The notebook row and graph file
+    are removed outright."""
     try:
-        card_store.hard_delete_by_notebook(notebook_id)
+        card_store.soft_delete_by_notebook(notebook_id)
     except Exception:  # noqa: BLE001 — compensation must not mask the root fault
         _LOGGER.warning("copy compensation: card cleanup failed for %s", notebook_id, exc_info=True)
     try:
@@ -321,7 +324,7 @@ def _copy_locked(
     except Exception:
         # Everything above is pre-commit: no copy_log points at this notebook yet,
         # so compensation can safely erase the whole partial copy.
-        _compensate(card_store, notebook_store, user_dir, nb.id)
+        compensate_staged_copy(card_store, notebook_store, user_dir, nb.id)
         raise
 
     # ── point of no return ─────────────────────────────────────────
@@ -339,10 +342,10 @@ def _copy_locked(
         # fault (e.g. OperationalError: database is locked) escapes. The staged
         # notebook + cards were written before this log row, so compensate before
         # re-raising — otherwise they leak as invisible orphan rows forever.
-        _compensate(card_store, notebook_store, user_dir, nb.id)
+        compensate_staged_copy(card_store, notebook_store, user_dir, nb.id)
         raise
     if not recorded:
-        _compensate(card_store, notebook_store, user_dir, nb.id)
+        compensate_staged_copy(card_store, notebook_store, user_dir, nb.id)
         winner = shared_store.get_copy_log(copier_id, idempotency_key)
         if winner is not None:
             return _replay(shared_store, notebook_store, card_store, winner, deck.id)

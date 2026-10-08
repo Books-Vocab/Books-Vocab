@@ -289,3 +289,21 @@ def test_lifespan_rejects_missing_gemini_key_for_default_routing(tmp_path, monke
     _clear_llm_env(monkeypatch)
     monkeypatch.delenv("GEMINI_API_KEY")
     _assert_fails_before_worker_lock(tmp_path, RuntimeError, "GEMINI_API_KEY")
+
+
+def test_lifespan_reaps_staged_copies_after_worker_lock(tmp_path):
+    events: list[object] = []
+
+    def _reap_staged(data_root) -> int:
+        events.append(("reap_staged", data_root))
+        return 1
+
+    deps = replace(_dependencies(tmp_path, events), reap_stale_staged_copies_fn=_reap_staged)
+    app = FastAPI(lifespan=build_app_lifespan_from_dependencies(dependencies=deps))
+
+    with TestClient(app):
+        pass
+
+    names = [e[0] if isinstance(e, tuple) else e for e in events]
+    assert names.index("assert_single_worker") < names.index("reap_staged") < names.index("bind_runtime_data_root")
+    assert ("reap_staged", tmp_path) in events

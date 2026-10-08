@@ -182,28 +182,6 @@ class CardMutationMixin:
             session.refresh(card)
         return card, True
 
-    def hard_delete_by_notebook(self, notebook_id: str) -> int:
-        """Physically delete every card in a notebook. Compensation-only (a
-        failed copy must leave no partial rows); ordinary deletes are soft.
-        Returns the number of rows removed."""
-        if not notebook_id:
-            return 0
-        with Session(self.engine) as session:
-            card_ids = [
-                row[0]
-                for row in session.connection()
-                .exec_driver_sql("SELECT id FROM card WHERE notebook_id = ?", (notebook_id,))
-                .fetchall()
-            ]
-            if not card_ids:
-                return 0
-            placeholders = ", ".join("?" for _ in card_ids)
-            params = tuple(card_ids)
-            session.connection().exec_driver_sql(f"DELETE FROM card WHERE id IN ({placeholders})", params)
-            count = len(card_ids)
-            session.commit()
-            return count
-
     def deduplicate(self, notebook_id: str | None = None) -> int:
         """Remove duplicate active cards (same content, case-insensitive).
 
