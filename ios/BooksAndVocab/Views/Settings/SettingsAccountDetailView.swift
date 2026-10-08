@@ -257,7 +257,7 @@ struct SettingsAccountDetailView: View {
                 .padding(.top, appSkin.spacing.rowMicroGap)
 
             AppKeyValueRow(icon: "square.stack.3d.up", label: L10n.string("本機單字"), style: .settings(appSkin)) {
-                let cardCountText = snapshot.localCardCount.map { L10n.format("%@ 張", "\($0)") }
+                let cardCountText = snapshot.localCardCount.map { L10n.format("card_count_plural", Int64($0)) }
                     ?? L10n.string("無法讀取")
                 Text(cardCountText)
                     .font(appSkin.typography.caption)
