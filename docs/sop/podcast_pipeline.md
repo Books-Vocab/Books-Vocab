@@ -382,7 +382,7 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 
 ### audioFormat 解析(S3 模式 mp3/m4a)
 
-backend `_audio_filename`(podcast.py)S3 模式**讀 series `metadata.json` 的 `audioFormat`** 決定 `audio.{m4a,mp3}` key;欄位缺失則 probe bucket(head_object m4a→mp3),per-(bucket,series) 快取。upload.sh 與 backfill 都會寫 `audioFormat`。**歷史 bug**:舊碼 S3 模式硬回 `audio.m4a`,legacy mp3 series 的 audio 端點 404(bucket 一直空才沒爆),修於 `f4f6b013`/`beaa33c4`。
+backend `_audio_filename`(podcast.py)S3 模式**讀 series `metadata.json` 的 `audioFormat`** 決定 `audio.{m4a,mp3}` key;欄位缺失則 probe bucket(head_object m4a→mp3),per-(bucket,series) 快取(LRU 上限 256 筆,只快取 metadata 或成功 head_object 確認的格式;兩個 probe 皆 404 回 404,不猜 m4a、不快取;非 404 故障回 502)。upload.sh 與 backfill 都會寫 `audioFormat`。**歷史 bug**:舊碼 S3 模式硬回 `audio.m4a`,legacy mp3 series 的 audio 端點 404(bucket 一直空才沒爆),修於 `f4f6b013`/`beaa33c4`。
 
 ### served-disk → S3 回填 + drift reconcile(`ops/podcast_backfill_disk.py`)
 
