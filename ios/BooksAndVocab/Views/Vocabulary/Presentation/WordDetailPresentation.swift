@@ -40,7 +40,7 @@ enum WordDetailPresentation {
             ),
             .init(
                 icon: "link",
-                text: L10n.format("%@ 個連結", "\(card.totalLinkCount)")
+                text: L10n.format("vocab_graph_link_count_plural", Int64(card.totalLinkCount))
             ),
             syncMetadataItem(for: card.syncStatus)
         ]
