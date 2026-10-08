@@ -27,9 +27,10 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue（label �
 規則正本是 `docs/reference/issue_management.md`；此處只列協調時的動作。
 
 - 每個 open Issue 恰有一個狀態 label（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個 `P0`–`P3`。派工只取 `ready-for-solver`：先高優先級，同級依「解除阻擋者、範圍小、較舊」，跳過 Scope 與現有認領重疊者。
-- 認領只由 IM 寫，且必須公開：Issue 留言帶 `kg.issue.claim.v1` 標記（`claim`／`renew`／`release`，TTL 預設 6 小時）加 `in-progress`；不使用 assignee。過期只會被標 `claim-stale`，是否釋放由 IM 決定。CM 與一般寫作者只讀認領，不代發。
+- 認領只由 IM 寫，且必須公開：Issue 留言帶 `kg.issue.claim.v1` 標記（`claim`／`renew`／`release`，TTL 預設 6 小時）加 `in-progress`；不使用 assignee。過期只會被標 `claim-stale`，認領仍有效且排他（計入衝突與 `busy_scope`），直到 IM 明確 `release`（`reason=stale-cleared`）；lane 仍在做則 `renew`。CM 與一般寫作者只讀認領，不代發。
 - 公開看板是 label 為 `work-board` 的單一自我更新 Issue（機讀區塊 `kg.issue.board.v1`）；它是 Issue 事實的投影，兩者不一致以 Issue 與留言為準。
-- 目標：PR 內文 `## Issues` 區段逐一列 `Closes #N`（完全解決，合併自動關閉）與 `Refs #N`（部分，Issue 回 `ready-for-solver`）。**但 W4（`publish --closes`／`--refs`、`pr_contract` 渲染）未落地前，`delivery.py` 發布的 PR 內文是 receipt 純函數，手加的 `## Issues` 會被 publish／repair 覆寫甚至擋下 required-repair**：不手改 canonical body，改以 `Resolved by <PR/commit>` 留言關閉並附 commit 證據；模板的 `## Issues` 只適用手寫 PR。`claim-issue`／`issue_sync` 同樣未落地，認領依協議手動留言＋label。
+- PR 內文 `## Issues` 區段逐一列 `Closes #N`（完全解決，合併自動關閉）與 `Refs #N`（部分，Issue 回 `ready-for-solver`）；由 `delivery.py publish --closes N`／`--refs M` 寫入（registry `external_ids` 指向 Issue 者預設為 `Closes`），republish／repair／hold／queue 皆沿用，不手改 body。手寫（非 `delivery.py` 發布）PR 才用模板的 `## Issues`。
+- `claim-issue`／`issue_sync` 尚未落地：認領依協議手動留言＋label；狀態 label 轉換由 IM 手動執行並讀回——PR 開啟 → `in-review`；關閉未合併 → 回 `in-progress`（lane 不再做則 `release` 回 `ready-for-solver`）；只 `Refs` 合併 → `release`（`pr-published`）並回 `ready-for-solver`，不留在 `in-review`。
 
 ## Delivery control commands
 

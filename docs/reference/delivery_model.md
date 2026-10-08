@@ -162,7 +162,7 @@ Issue 層的規則正本是 [`issue_management.md`](issue_management.md)；本�
 
 - **認領必須公開，且只有 IM 寫**：認領是 Issue 上帶 `kg.issue.claim.v1` 機讀標記的留言加 `in-progress` 狀態 label；不使用 assignee。本機 registry 仍是執行層真相（worktree 所有權、Scope overlap、hand-back），但只存在 registry 的認領不算已認領。Worker／Issue Solver 沒有 GitHub 寫入權，不發認領、不改 label。
 - **狀態 label**：open Issue 恰有一個狀態（`needs-triage`、`needs-info`、`blocked`、`ready-for-solver`、`in-progress`、`in-review`）與一個優先級（`P0`–`P3`）。認領、釋放、`delivery:candidate` 准入仍只屬 IM／CM。
-- **PR 連結**：PR 內文用 `Closes #N` 表示完全解決（合併即自動關閉）、`Refs #N` 表示只解決一部分（Issue 回到 `ready-for-solver`）；整合 PR 逐一列出每個 Issue。手動補關 Issue 必須留言附 commit 證據，`close-terminal-issues` 只作安全網。**落地狀態**：`delivery.py` 發布的 PR 內文是 receipt 的純函數，`## Issues` 要等 W4（`publish --closes`／`--refs` 與 `pr_contract` 渲染）落地才具持久性；此前手加的 `Closes #N` 會被 publish／repair 覆寫，改以 `Resolved by <PR/commit>` 留言關閉，且不手改 canonical body（細節見 `issue_management.md`「PR 與 Issue 連結」）。認領指令（`claim-issue` 等）與 `issue_sync` 同樣尚未落地，此前以手動留言＋label 依協議執行。
+- **PR 連結**：PR 內文用 `Closes #N` 表示完全解決（合併即自動關閉）、`Refs #N` 表示只解決一部分（Issue 回到 `ready-for-solver`）；整合 PR 逐一列出每個 Issue。手動補關 Issue 必須留言附 commit 證據，`close-terminal-issues` 只作安全網。`delivery.py publish --closes N`／`--refs M` 把 `## Issues` 寫進 canonical body，republish、repair、hold 變更與 queue 都沿用，不手改 body（細節見 `issue_management.md`「PR 與 Issue 連結」）。認領指令（`claim-issue` 等）與 `issue_sync` 尚未落地，此前認領與狀態 label 轉換由 IM 依協議手動留言＋label 執行。
 
 只整理既有 Issue、尚未要求 admission 或實作時，依 [`docs/runbook/system.md` 的 Backlog grooming](../runbook/system.md#backlog-grooming) 限定範圍。
 
