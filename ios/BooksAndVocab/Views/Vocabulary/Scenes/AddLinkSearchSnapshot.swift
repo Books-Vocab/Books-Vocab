@@ -6,9 +6,10 @@ struct AddLinkSearchSnapshot {
     /// The query with surrounding whitespace removed.
     let trimmedQuery: String
     let candidates: [VocabularyEntry]
-    /// Exact-word state of the query; only meaningful (and only computed) when
-    /// there are no candidates, which is when the sheet shows it.
-    let missingTargetState: AddLinkLocalTargetState?
+    /// Exact-word state of the query (missing / already linked / archived…),
+    /// nil for an empty query. Computed even while partial matches are listed:
+    /// the "create" entry must stay reachable next to them (`run` beside `running`).
+    let exactTargetState: AddLinkLocalTargetState?
 
     var isEmptyQuery: Bool { trimmedQuery.isEmpty }
 
@@ -27,7 +28,7 @@ struct AddLinkSearchSnapshot {
             sourceEntry: sourceEntry,
             allEntries: allEntries
         )
-        let missingTargetState: AddLinkLocalTargetState? = trimmed.isEmpty || !candidates.isEmpty
+        let exactTargetState: AddLinkLocalTargetState? = trimmed.isEmpty
             ? nil
             : AddLinkCreationCoordinator.localTargetState(
                 query: query,
@@ -37,7 +38,7 @@ struct AddLinkSearchSnapshot {
         return AddLinkSearchSnapshot(
             trimmedQuery: trimmed,
             candidates: candidates,
-            missingTargetState: missingTargetState
+            exactTargetState: exactTargetState
         )
     }
 }

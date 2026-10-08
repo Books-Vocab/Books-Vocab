@@ -14,10 +14,12 @@ final class ScriptedCreationService: AddLinkOperationServing, VocabularySyncServ
     private var _startKeys: [String] = []
     private var _fetchedOperationIds: [String] = []
     private var _pullCount = 0
+    private var _pipelineNotebookIds: [String] = []
 
     var onStart: @Sendable (Int, String) async throws -> KGAddLinkOperationStatus
     var onFetch: @Sendable (Int, String) async throws -> KGAddLinkOperationStatus
     var onPull: @Sendable () async throws -> KGPullOutcome = { KGPullOutcome(pipelinePending: false, inserted: 1) }
+    var onTriggerPipeline: @Sendable () async throws -> Void = {}
 
     init(
         onStart: @escaping @Sendable (Int, String) async throws -> KGAddLinkOperationStatus,
@@ -30,6 +32,7 @@ final class ScriptedCreationService: AddLinkOperationServing, VocabularySyncServ
     var startKeys: [String] { lock.withLock { _startKeys } }
     var fetchedOperationIds: [String] { lock.withLock { _fetchedOperationIds } }
     var pullCount: Int { lock.withLock { _pullCount } }
+    var pipelineNotebookIds: [String] { lock.withLock { _pipelineNotebookIds } }
 
     func startAddLinkOperation(
         request: KGAddLinkOperationRequest,
@@ -63,7 +66,10 @@ final class ScriptedCreationService: AddLinkOperationServing, VocabularySyncServ
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse {
         fatalError("not used")
     }
-    func triggerPipeline(notebookId: String) async throws {}
+    func triggerPipeline(notebookId: String) async throws {
+        lock.withLock { _pipelineNotebookIds.append(notebookId) }
+        try await onTriggerPipeline()
+    }
     func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse {
         fatalError("not used")
     }
@@ -103,7 +109,8 @@ enum CreationFixtures {
         _ operationId: String = "op-1",
         _ status: String,
         sequence: Int = 0,
-        errorCode: String? = nil
+        errorCode: String? = nil,
+        warnings: [String] = []
     ) -> KGAddLinkOperationStatus {
         KGAddLinkOperationStatus(
             operationId: operationId,
@@ -113,7 +120,7 @@ enum CreationFixtures {
             steps: [],
             targetCardId: nil,
             linkId: nil,
-            warnings: [],
+            warnings: warnings,
             errorCode: errorCode
         )
     }

@@ -1335,3 +1335,22 @@
 
 "todayReview.card.temporaryDetail.show" = "Show details for this card";
 "todayReview.card.temporaryDetail.restore" = "Back to compact";
+
+"addLink.error.quotaExhausted" = "Today's AI quota is used up. Try again tomorrow.";
+"addLink.error.sourceUnavailable" = "The source card is no longer available (deleted, archived, or moved).";
+"addLink.error.targetArchived" = "This word is archived. Unarchive it first, then link it.";
+"addLink.error.targetIsSource" = "A card can't be linked to itself.";
+"addLink.error.serviceUnavailable" = "A service needed for this step is unavailable. Please retry.";
+"addLink.error.interrupted" = "The server restarted before this finished. Please retry.";
+"addLink.error.timedOut" = "This is taking too long. Please retry.";
+"addLink.error.operationNotFound" = "The server no longer has this request. Please retry.";
+"addLink.error.sourceNotSynced" = "The source card hasn't synced yet, so it can't be linked.";
+"addLink.error.invalidResponse" = "The server returned an unexpected response. Please retry.";
+"addLink.error.refreshFailed" = "The link may already exist, but refreshing failed. Please retry.";
+"addLink.creation.warning.summary" = "Created, but part of it didn't finish.";
+"addLink.creation.warning.enrichment" = "The explanation hasn't been generated yet.";
+"addLink.creation.warning.linkProjection" = "The link will appear after the next sync.";
+"addLink.creation.warning.localSync" = "This device hasn't finished syncing the new card.";
+"addLink.creation.backToSearch" = "Back to search";
+"addLink.target.linkable" = "Already in this notebook. Pick it from the list to link it.";
+"addLink.target.alreadyLinked" = "Already linked.";

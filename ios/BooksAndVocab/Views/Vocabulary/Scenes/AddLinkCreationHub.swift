@@ -7,8 +7,9 @@ import SwiftData
 /// The sheet only *starts* a creation; the hub keeps the coordinator alive after
 /// the sheet closes, mirrors every job into a durable record (so an app kill
 /// can be resumed) and into `PendingLinkProjection` (so the source card shows a
-/// "creating" link immediately). A job leaves the hub only when it succeeds,
-/// the user dismisses a failure, or its source card no longer exists.
+/// "creating" link immediately). A job leaves the hub only when it fully
+/// succeeds, the user dismisses a failure or a partial (warning) result, or its
+/// source card no longer exists.
 @Observable @MainActor
 final class AddLinkCreationHub: AddLinkCreationObserving {
     static let shared = AddLinkCreationHub()
@@ -65,15 +66,20 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
             upsert(from: state, coordinator: coordinator, recordState: .creating)
         case .failed:
             upsert(from: state, coordinator: coordinator, recordState: .failed)
-        case .succeeded, .succeededWithWarnings:
+        case .succeededWithWarnings:
+            // The link exists, but part of it did not complete: keep it on the
+            // source card (with retry) until the user retries or dismisses it.
+            upsert(from: state, coordinator: coordinator, recordState: .warning)
+        case .succeeded:
             guard owns(coordinator, jobKey: state.jobKey) else { return }
             remove(jobKey: state.jobKey)
-        case .cancelled:
+        case .cancelled, .idle:
             // A restart cancels first; only the coordinator that owns the job may
             // retire it, otherwise a stale sheet could erase a live retry.
+            // `.idle` is the user acknowledging a warning or a failure.
             guard owns(coordinator, jobKey: state.jobKey) else { return }
             remove(jobKey: state.jobKey)
-        case .blocked, .idle:
+        case .blocked:
             break
         }
     }
@@ -85,26 +91,40 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
 
     // MARK: - User actions on a pending item
 
-    /// Retries a failed job with the key policy of `AddLinkCreationRetryPlan`.
+    /// Retries a failed job with the key policy of `AddLinkCreationRetryPlan`,
+    /// or re-runs the unfinished parts of a warning job (no new POST).
     @discardableResult
     func retry(jobKey: String) -> Bool {
-        guard let job = jobs[jobKey], job.record.state == .failed,
-              let context = job.context else { return false }
-        let coordinator = makeCoordinator()
-        let plan = job.record.retryPlan
-        coordinator.relaunch(
-            word: job.record.word,
-            sourceEntry: context.sourceEntry,
-            services: context.services,
-            plan: plan,
-            idempotencyKey: job.record.idempotencyKey
-        )
-        return true
+        guard let job = jobs[jobKey] else { return false }
+        switch job.record.state {
+        case .creating:
+            return false
+        case .failed:
+            guard job.record.failure?.isRetryable != false, let context = job.context else { return false }
+            let coordinator = makeCoordinator()
+            coordinator.relaunch(
+                word: job.record.word,
+                sourceEntry: context.sourceEntry,
+                services: context.services,
+                plan: job.record.retryPlan,
+                idempotencyKey: job.record.idempotencyKey
+            )
+            return true
+        case .warning:
+            if let live = job.coordinator, live.phase == .succeededWithWarnings {
+                live.retryWarnings()
+                return true
+            }
+            guard let context = job.context else { return false }
+            makeCoordinator().relaunchWarningRetry(record: job.record, context: context)
+            return true
+        }
     }
 
-    /// The user gives up on a failed job; it must never disappear on its own.
+    /// The user gives up on a failed job or accepts a partial one; neither may
+    /// disappear on its own.
     func dismiss(jobKey: String) {
-        guard let job = jobs[jobKey], job.record.state == .failed else { return }
+        guard let job = jobs[jobKey], job.record.state != .creating else { return }
         remove(jobKey: jobKey)
     }
 
@@ -112,8 +132,8 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
 
     /// Re-attaches every durable job that has no live coordinator. A job that
     /// was still creating is relaunched (resume polling by operation id, or
-    /// resend with the same key when the POST never answered); a failed one only
-    /// regains the context its retry button needs. Jobs whose source card is
+    /// resend with the same key when the POST never answered); a failed or
+    /// warning one only regains the context its retry button needs. Jobs whose source card is
     /// gone (account switch, deletion) are dropped.
     func resume(services: AddLinkCreationServices) {
         let context = services.container.mainContext
@@ -158,8 +178,10 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
             operationId: state.operationId,
             operationTerminal: state.operationTerminal,
             state: recordState,
-            message: recordState == .failed ? state.message : nil,
-            createdAt: existing?.record.createdAt ?? Date()
+            message: recordState == .creating ? nil : state.message,
+            createdAt: existing?.record.createdAt ?? Date(),
+            failureReason: recordState == .failed ? state.failureReason : nil,
+            warnings: recordState == .warning ? state.warnings.map(\.rawValue) : nil
         )
         let visibleChange = existing?.record.state != recordState
             || existing?.record.word != record.word
@@ -192,7 +214,12 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
     private func publishProjection() {
         var links: [String: [KGCardLinkSummary]] = [:]
         for job in jobs.values.sorted(by: { $0.record.createdAt < $1.record.createdAt }) {
-            let state: KGCardLinkSummary.CreationState = job.record.state == .failed ? .failed : .creating
+            let state: KGCardLinkSummary.CreationState
+            switch job.record.state {
+            case .creating: state = .creating
+            case .failed: state = .failed
+            case .warning: state = .warning
+            }
             links[job.record.sourceCardID, default: []].append(
                 .pendingCreation(jobKey: job.record.jobKey, word: job.record.word, state: state)
             )

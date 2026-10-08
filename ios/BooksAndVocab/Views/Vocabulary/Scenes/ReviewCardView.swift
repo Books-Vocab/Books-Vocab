@@ -932,6 +932,10 @@ struct ReviewCardView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(appSkin.typography.iconTiny)
                         .foregroundStyle(appSkin.palette.destructive)
+                case .warning:
+                    Image(systemName: "exclamationmark.circle")
+                        .font(appSkin.typography.iconTiny)
+                        .foregroundStyle(appSkin.palette.warning)
                 }
             }
         }

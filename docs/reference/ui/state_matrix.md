@@ -162,6 +162,14 @@ Scope: `ios/BooksAndVocab`
 | 連結目標在 session 開始後才建立 | 點連結 →「查看詳情」，`linkedEntryLookup` 查無 | 改查 live store；仍查無才 `toast.error`（`找不到符合的單字`），不再靜默無反應 | 已覆蓋 |
 | 連結建立中（關閉 sheet 後） | `AddLinkCreationHub` 有該 source 卡的 running job | 來源卡連結區立即出現 `todayReview.card.link.pending.<word>`（單字 + 迷你進度 +「正在建立…」，accessibilityValue=`creating`）；點入開 `todayReview.card.link.pending.detail`（單字、狀態文字、逐步進度；`...pending.status` value=`creating`）；完成後 pending 項消失、sheet 自動關閉、該處出現一般連結 | 已覆蓋（UITest 僅覆蓋失敗路徑；creating→完成見 `AddLinkCreationHubTests`） |
 | 連結建立失敗（關閉 sheet 後） | job `failed`（terminal 失敗或輪詢斷線） | 項目改顯示警示圖示（value=`failed`），**不會自行消失**；詳情顯示失敗文案＋`...pending.retry`（terminal 失敗換新 idempotency key；輪詢斷線續輪詢同一 operation；POST 未回應沿用同 key）＋`...pending.dismiss`（唯一移除途徑） | 已覆蓋 |
+| 新增連結：完全成功 | operation `succeeded` 且本地 pull 成功 | sheet 自動關閉（`onLinked`）；來源卡出現一般連結 | 已覆蓋（單元 `AddLinkCreationFailureTests`） |
+| 新增連結：部分完成（sheet 開著） | `succeeded_with_warnings`（`enrichment_failed`／`link_projection_pending`）或本地 pull 失敗 | **不自動關閉**：`addLink.creation.warning` 顯示「已建立，但有一部分沒完成」，逐項 `addLink.creation.warning.item.<code>`；`addLink.creation.retry` 只重跑未完成部分（缺解釋→重排 pipeline，再 pull，不再 POST）；`addLink.creation.warning.done` 才關閉 | 已覆蓋（單元；UITest 為原始碼契約，live warning 情境未覆蓋） |
+| 新增連結：部分完成（sheet 已關） | 同上，但 sheet 先被關閉 | 來源卡項目顯示警示（value=`warning`），不會自行消失；詳情列出未完成部分＋`...pending.retry`＋`...pending.dismiss`（完成） | 已覆蓋（單元） |
+| 新增連結：失敗分類 | operation `failed`／`interrupted`、client 逾時、輪詢 404、斷線 | `addLink.error.reason` value＝原因碼；文案依 `AddLinkCreationFailure`（額度、來源不可用、目標已封存、不能連到自己、服務不可用、伺服器中斷、逾時、請求已不存在、網路、登入）；不可重試者（封存／自己／來源不可用／額度／登入）不顯示重試；`addLink.creation.backToSearch` 回搜尋並移除該失敗 job | 已覆蓋（單元＋UITest 斷線路徑） |
+| 新增連結：輪詢逾時 | 一次嘗試（含 POST）超過 90 秒仍非終態 | 停止輪詢，失敗 `timed_out`（可重試，重試換新 key） | 已覆蓋（單元，fake clock） |
+| 新增連結：既有字連結中 | 點候選列 | 該列 `addLink.row.linking.<cardId>` 進度、所有列與建立鈕鎖定；再次點擊不重送 | 已覆蓋（單元） |
+| 新增連結：既有字連結失敗 | `AddLinkActionError` | banner `addLink.error.reason`（value＝原因碼）依錯誤顯示不同文案；可重試者 banner 帶重試 | 已覆蓋（單元） |
+| 新增連結：建立入口 | 有輸入且本地無此字（含 `apple.` 等尾端標點正規化） | 部分符合候選之下仍有 `addLink.create`；精確符合已連結顯示「已連結」 | 已覆蓋（單元） |
 | 建立中 app 被殺 | 下次進入複習，`resume` 發現 durable record | hub init 即還原 pending 項（projection 載入）；`resume` 依 operationId 續輪詢並完成本地 pull，或以同 key 重送未回應的 POST；source 卡已不存在則丟棄 | 已覆蓋（單元） |
 | 開啟新增連結 sheet | sheet 出現 | `addLink.searchField` 立即取得鍵盤 focus，可直接打字 | 已覆蓋（`AddLinkSheetUXUITests`） |
 | 建立進度步驟標籤 | `AddLinkCreationCoordinator` running | 六步依序為 `addLink.step.resolveTarget／translate／createCard／enrich／createLink／localProjection`，描述該步實際動作 | 已覆蓋（`AddLinkStepCopyTests`） |

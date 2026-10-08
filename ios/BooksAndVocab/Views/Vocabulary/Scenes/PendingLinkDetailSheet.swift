@@ -4,7 +4,8 @@ import SwiftUI
 /// background. It shows whatever the job knows so far (the word, the current
 /// pipeline step) and fills in as the operation progresses; it dismisses itself
 /// when the job completes and the item becomes a normal link. A failed job
-/// keeps its retry and remove actions here.
+/// keeps its retry (when retryable) and remove actions here; a partial
+/// (warning) result lists what did not complete, with retry and done.
 struct PendingLinkDetailSheet: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -16,7 +17,17 @@ struct PendingLinkDetailSheet: View {
     private var jobKey: String? { link.pendingCreationJobKey }
     private var job: AddLinkCreationHub.Job? { jobKey.flatMap { hub.job(forJobKey: $0) } }
     private var isFailed: Bool { job?.record.state == .failed }
+    private var isWarning: Bool { job?.record.state == .warning }
     private var isGone: Bool { job == nil }
+    private var isRetryingWarnings: Bool { job?.coordinator?.isRetryingWarnings == true }
+    /// A failure the user must fix first (archived target, quota…) offers no retry.
+    private var canRetry: Bool {
+        if isWarning { return !isRetryingWarnings }
+        return isFailed && job?.record.failure?.isRetryable != false
+    }
+    private var warnings: [AddLinkCreationWarning] {
+        AddLinkCreationWarning.parse(job?.record.warnings ?? [])
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
@@ -37,29 +48,32 @@ struct PendingLinkDetailSheet: View {
 
             statusBlock
 
-            if let coordinator = job?.coordinator, !isFailed {
+            if let coordinator = job?.coordinator, !isFailed, !isWarning || isRetryingWarnings {
                 SettingsSyncProgressPanel(steps: coordinator.steps, fraction: coordinator.fraction)
             }
 
             Spacer()
 
-            if isFailed, let jobKey {
+            if isFailed || isWarning, let jobKey {
                 VStack(spacing: appSkin.spacing.inlineGap) {
-                    Button {
-                        hub.retry(jobKey: jobKey)
-                    } label: {
-                        Text(L10n.string("重試")).frame(maxWidth: .infinity)
+                    if canRetry || isRetryingWarnings {
+                        Button {
+                            hub.retry(jobKey: jobKey)
+                        } label: {
+                            Text(L10n.string("重試")).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.ghost(appSkin.palette.primaryText))
+                        .disabled(!canRetry)
+                        .accessibilityIdentifier("todayReview.card.link.pending.retry")
                     }
-                    .buttonStyle(.ghost(appSkin.palette.primaryText))
-                    .accessibilityIdentifier("todayReview.card.link.pending.retry")
 
                     Button {
                         hub.dismiss(jobKey: jobKey)
                         dismiss()
                     } label: {
-                        Text(L10n.string("移除")).frame(maxWidth: .infinity)
+                        Text(isWarning ? L10n.string("完成") : L10n.string("移除")).frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.ghost(appSkin.palette.destructive))
+                    .buttonStyle(.ghost(isWarning ? appSkin.palette.primaryText : appSkin.palette.destructive))
                     .accessibilityIdentifier("todayReview.card.link.pending.dismiss")
                 }
             }
@@ -77,7 +91,23 @@ struct PendingLinkDetailSheet: View {
 
     @ViewBuilder
     private var statusBlock: some View {
-        if isFailed {
+        if isWarning {
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(L10n.string("addLink.creation.warning.summary"))
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(warnings, id: \.self) { warning in
+                    Text(warning.message)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("todayReview.card.link.pending.status")
+            .accessibilityValue("warning")
+        } else if isFailed {
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(L10n.string("todayReview.link.pending.failed"))
                     .font(appSkin.typography.body)

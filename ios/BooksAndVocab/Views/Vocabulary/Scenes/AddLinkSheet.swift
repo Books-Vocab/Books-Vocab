@@ -46,6 +46,12 @@ struct AddLinkSheet: View {
         )
     }
 
+    private var showsCreationProgress: Bool {
+        creationCoordinator.phase == .running
+            || creationCoordinator.phase == .failed
+            || creationCoordinator.phase == .succeededWithWarnings
+    }
+
     var body: some View {
         // One candidate computation per render; every reader below gets this value.
         let snapshot = AddLinkSearchSnapshot.make(
@@ -82,20 +88,25 @@ struct AddLinkSheet: View {
                         .accessibilityIdentifier("addLink.notebookScope")
                 }
 
-                if coordinator.actionPhase == .failed {
+                if coordinator.actionPhase == .failed, !showsCreationProgress {
+                    let actionError = coordinator.actionError ?? .existingLinkFailed
                     AppBanner(
-                        message: L10n.string("addLink.error.linkFailed"),
-                        systemImage: "exclamationmark.triangle"
+                        message: actionError.message,
+                        systemImage: "exclamationmark.triangle",
+                        onRetry: coordinator.canRetryLastAction ? { coordinator.retryLastAction() } : nil
                     )
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("addLink.error.reason")
+                    .accessibilityValue(actionError.reason)
                 }
 
-                if creationCoordinator.phase == .running
-                    || creationCoordinator.phase == .failed
-                    || creationCoordinator.phase == .succeededWithWarnings {
+                if showsCreationProgress {
                     AddLinkCreationProgressView(
                         coordinator: creationCoordinator,
-                        onRetry: startCreation,
-                        attempt: creationAttempt
+                        onRetry: retryCreation,
+                        attempt: creationAttempt,
+                        onDone: finishWithWarnings,
+                        onBackToSearch: { creationCoordinator.acknowledge() }
                     )
                         .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                         .frame(maxHeight: .infinity, alignment: .top)
@@ -132,8 +143,9 @@ struct AddLinkSheet: View {
             }
         }
         .onChange(of: creationCoordinator.phase) { _, phase in
-            guard phase == .succeeded || phase == .succeededWithWarnings,
-                  !didCompleteCreation else { return }
+            // Only a full success closes on its own. A warning keeps the sheet
+            // open (retry / done) so a partial result is never swallowed.
+            guard phase == .succeeded, !didCompleteCreation else { return }
             didCompleteCreation = true
             onLinked()
             dismiss()
@@ -153,28 +165,38 @@ struct AddLinkSheet: View {
                 Text(L10n.string("輸入單字名稱來建立連結"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
                     .accessibilityIdentifier("addLink.local.empty")
-            } else if let missingTargetState = snapshot.missingTargetState {
-                missingTargetSection(missingTargetState)
             } else {
                 ForEach(snapshot.candidates) { entry in
                     let projection = AddLinkCoordinator.dictionaryDetailProjection(
                         for: entry,
                         recoveringProviderError: recoveredProviderErrors.contains(entry.id)
                     )
+                    let isLinkingRow = entry.kgCardId != nil
+                        && coordinator.linkingTargetCardID == entry.kgCardId
                     VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
                         Button { selectEntry(entry, in: snapshot) } label: {
-                            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                                Text(entry.word)
-                                    .font(appSkin.typography.rowWord)
-                                    .foregroundStyle(appSkin.palette.primaryText)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                Text(entry.translation)
-                                    .font(appSkin.typography.caption)
-                                    .foregroundStyle(appSkin.palette.tertiaryText)
-                                    .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: appSkin.spacing.inlineGap) {
+                                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                                    Text(entry.word)
+                                        .font(appSkin.typography.rowWord)
+                                        .foregroundStyle(appSkin.palette.primaryText)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    Text(entry.translation)
+                                        .font(appSkin.typography.caption)
+                                        .foregroundStyle(appSkin.palette.tertiaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                if isLinkingRow {
+                                    Spacer(minLength: AppSpacing.s2)
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .accessibilityIdentifier("addLink.row.linking.\(entry.kgCardId ?? "")")
+                                }
                             }
                         }
+                        // One link at a time: every row is locked while one is in flight.
+                        .disabled(coordinator.linkingTargetCardID != nil)
                         .accessibilityIdentifier(AddLinkCoordinator.detailIdentifier(for: entry))
                         .accessibilityValue(
                             AddLinkCoordinator.lookupEvidence(
@@ -186,6 +208,11 @@ struct AddLinkSheet: View {
                         dictionaryDetail(projection, for: entry)
                     }
                     .listRowBackground(Color.clear)
+                }
+                // Create stays reachable next to partial matches (`run` while
+                // `running` is listed); otherwise it explains the exact match.
+                if let targetState = snapshot.exactTargetState {
+                    missingTargetSection(targetState, hasCandidates: !snapshot.candidates.isEmpty)
                 }
             }
         }
@@ -307,7 +334,10 @@ struct AddLinkSheet: View {
     }
 
     @ViewBuilder
-    private func missingTargetSection(_ targetState: AddLinkLocalTargetState) -> some View {
+    private func missingTargetSection(
+        _ targetState: AddLinkLocalTargetState,
+        hasCandidates: Bool
+    ) -> some View {
         switch targetState {
         case .missing:
             if kgService is any AddLinkOperationServing {
@@ -327,8 +357,9 @@ struct AddLinkSheet: View {
                     }
                 }
                 .accessibilityIdentifier("addLink.create")
+                .disabled(coordinator.linkingTargetCardID != nil)
                 .listRowBackground(Color.clear)
-            } else {
+            } else if !hasCandidates {
                 Text(L10n.string("沒有結果"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }
@@ -336,13 +367,21 @@ struct AddLinkSheet: View {
             Text(L10n.string("此單字尚未同步，無法建立連結"))
                 .foregroundStyle(appSkin.palette.tertiaryText)
         case .archived:
-            Text(L10n.string("封存"))
+            Text(AddLinkCreationFailure(reason: "target_archived").message)
                 .foregroundStyle(appSkin.palette.tertiaryText)
         case .active:
-            Text(L10n.string("已建立"))
+            // The exact match is a candidate row above; only explain when the
+            // list could not show it.
+            if !hasCandidates {
+                Text(L10n.string("addLink.target.linkable"))
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+            }
+        case .linked:
+            Text(L10n.string("addLink.target.alreadyLinked"))
                 .foregroundStyle(appSkin.palette.tertiaryText)
+                .accessibilityIdentifier("addLink.target.linked")
         case .source:
-            Text(L10n.string("新增連結失敗"))
+            Text(AddLinkCreationFailure(reason: "target_is_source").message)
                 .foregroundStyle(appSkin.palette.tertiaryText)
         }
     }
@@ -354,6 +393,25 @@ struct AddLinkSheet: View {
             sourceEntry: sourceEntry,
             using: kgService
         )
+    }
+
+    /// A warning retry re-runs only the unfinished parts (the link exists); a
+    /// failure retry starts a new attempt under the key policy.
+    private func retryCreation() {
+        if creationCoordinator.phase == .succeededWithWarnings {
+            creationCoordinator.retryWarnings()
+        } else {
+            startCreation()
+        }
+    }
+
+    /// The user accepts a partial result: retire the job and close.
+    private func finishWithWarnings() {
+        guard !didCompleteCreation else { return }
+        didCompleteCreation = true
+        creationCoordinator.acknowledge()
+        onLinked()
+        dismiss()
     }
 
     private func startCreation() {

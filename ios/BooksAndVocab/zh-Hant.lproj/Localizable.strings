@@ -1324,3 +1324,22 @@
 
 "todayReview.card.temporaryDetail.show" = "暫時顯示詳細內容";
 "todayReview.card.temporaryDetail.restore" = "恢復精簡";
+
+"addLink.error.quotaExhausted" = "今天的 AI 額度已用完，請明天再試。";
+"addLink.error.sourceUnavailable" = "來源卡片已無法使用（已刪除、封存或移動）。";
+"addLink.error.targetArchived" = "這個單字已封存，請先取消封存再連結。";
+"addLink.error.targetIsSource" = "卡片不能連結到自己。";
+"addLink.error.serviceUnavailable" = "這一步需要的服務暫時無法使用，請重試。";
+"addLink.error.interrupted" = "伺服器在完成前重新啟動了，請重試。";
+"addLink.error.timedOut" = "處理時間過長，請重試。";
+"addLink.error.operationNotFound" = "伺服器已找不到這個請求，請重試。";
+"addLink.error.sourceNotSynced" = "來源卡片尚未同步，無法建立連結。";
+"addLink.error.invalidResponse" = "伺服器回應異常，請重試。";
+"addLink.error.refreshFailed" = "連結可能已建立，但重新整理失敗，請重試。";
+"addLink.creation.warning.summary" = "已建立，但有一部分沒完成。";
+"addLink.creation.warning.enrichment" = "補充解釋尚未生成。";
+"addLink.creation.warning.linkProjection" = "連結會在下次同步後出現。";
+"addLink.creation.warning.localSync" = "這台裝置尚未完成新卡片的同步。";
+"addLink.creation.backToSearch" = "返回搜尋";
+"addLink.target.linkable" = "這本單字本已有此單字，從上方列表選取即可連結。";
+"addLink.target.alreadyLinked" = "已連結。";

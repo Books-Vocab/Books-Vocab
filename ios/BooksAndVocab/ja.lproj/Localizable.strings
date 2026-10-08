@@ -1316,3 +1316,22 @@
 
 "todayReview.card.temporaryDetail.show" = "このカードの詳細を一時的に表示";
 "todayReview.card.temporaryDetail.restore" = "コンパクト表示に戻す";
+
+"addLink.error.quotaExhausted" = "本日のAIクォータを使い切りました。明日もう一度お試しください。";
+"addLink.error.sourceUnavailable" = "元のカードは利用できなくなりました（削除・アーカイブ・移動済み）。";
+"addLink.error.targetArchived" = "この単語はアーカイブされています。アーカイブを解除してからリンクしてください。";
+"addLink.error.targetIsSource" = "カードを自分自身にリンクすることはできません。";
+"addLink.error.serviceUnavailable" = "この手順に必要なサービスを利用できません。再試行してください。";
+"addLink.error.interrupted" = "完了前にサーバーが再起動しました。再試行してください。";
+"addLink.error.timedOut" = "時間がかかりすぎています。再試行してください。";
+"addLink.error.operationNotFound" = "サーバーにこのリクエストが見つかりません。再試行してください。";
+"addLink.error.sourceNotSynced" = "元のカードがまだ同期されていないため、リンクできません。";
+"addLink.error.invalidResponse" = "サーバーから予期しない応答がありました。再試行してください。";
+"addLink.error.refreshFailed" = "リンクは作成済みかもしれませんが、更新に失敗しました。再試行してください。";
+"addLink.creation.warning.summary" = "作成しましたが、一部が完了していません。";
+"addLink.creation.warning.enrichment" = "解説はまだ生成されていません。";
+"addLink.creation.warning.linkProjection" = "リンクは次回の同期後に表示されます。";
+"addLink.creation.warning.localSync" = "この端末では新しいカードの同期が完了していません。";
+"addLink.creation.backToSearch" = "検索に戻る";
+"addLink.target.linkable" = "この単語帳にすでにあります。リストから選んでリンクしてください。";
+"addLink.target.alreadyLinked" = "すでにリンク済みです。";

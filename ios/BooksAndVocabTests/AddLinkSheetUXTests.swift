@@ -98,11 +98,12 @@ struct AddLinkSearchSnapshotTests {
 
         #expect(snapshot.candidates.map(\.id) == legacy.map(\.id))
         #expect(snapshot.trimmedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines))
-        if snapshot.isEmptyQuery || !legacy.isEmpty {
-            #expect(snapshot.missingTargetState == nil)
+        if snapshot.isEmptyQuery {
+            #expect(snapshot.exactTargetState == nil)
         } else {
+            // Computed even beside partial matches: "create" stays reachable (#2030).
             #expect(
-                snapshot.missingTargetState
+                snapshot.exactTargetState
                     == AddLinkCreationCoordinator.localTargetState(query: query, sourceEntry: source, allEntries: all)
             )
         }

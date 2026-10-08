@@ -9,6 +9,8 @@ struct PendingLinkCreationRecord: Codable, Equatable, Identifiable {
     enum State: String, Codable {
         case creating
         case failed
+        /// Created and linked, but part of it did not complete (see `warnings`).
+        case warning
     }
 
     var jobKey: String
@@ -23,8 +25,19 @@ struct PendingLinkCreationRecord: Codable, Equatable, Identifiable {
     var state: State
     var message: String?
     var createdAt: Date
+    /// `AddLinkCreationFailure.reason` of a `.failed` job. Optional so records
+    /// written before it existed still decode.
+    var failureReason: String? = nil
+    /// `AddLinkCreationWarning` raw values of a `.warning` job (raw strings so an
+    /// unknown future code never makes the whole list undecodable).
+    var warnings: [String]? = nil
 
     var id: String { jobKey }
+
+    var failure: AddLinkCreationFailure? {
+        guard state == .failed, let failureReason else { return nil }
+        return AddLinkCreationFailure(reason: failureReason)
+    }
 
     var retryPlan: AddLinkCreationRetryPlan {
         AddLinkCreationRetryPlan.make(
@@ -120,6 +133,7 @@ extension KGCardLinkSummary {
     enum CreationState: String {
         case creating
         case failed
+        case warning
     }
 
     static let pendingCreationIDPrefix = "pending-create:"

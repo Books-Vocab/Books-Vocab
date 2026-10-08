@@ -19,19 +19,28 @@ enum AddLinkLocalTargetState: Equatable {
     case pending
     case failed
     case archived
+    /// Exists in the notebook and can be linked from the candidate list.
     case active
+    /// Exists and the source card already links to it.
+    case linked
     case source
 }
 
 /// Injectable time and identity sources for the creation flow.
 ///
 /// Production uses `.live`; tests inject a recording sleeper (no real 500 ms
-/// waits) and a deterministic key factory so idempotency-key policy is
-/// observable.
+/// waits), a fake monotonic clock (so the 90 s polling timeout runs instantly)
+/// and a deterministic key factory so idempotency-key policy is observable.
 struct AddLinkCreationEnvironment: Sendable {
     var pollIntervalNanoseconds: UInt64 = 500_000_000
     var sleep: @Sendable (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     var makeIdempotencyKey: @Sendable () -> String = { UUID().uuidString.lowercased() }
+    /// Total client budget for one attempt (POST + polling). The backend marks
+    /// orphaned operations `interrupted` on restart, but an operation can still
+    /// hang without one; the client must never poll forever.
+    var pollTimeoutNanoseconds: UInt64 = 90_000_000_000
+    /// Monotonic nanoseconds.
+    var now: @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
 
     static let live = AddLinkCreationEnvironment()
 }
@@ -85,6 +94,8 @@ struct AddLinkCreationJobState: Equatable {
     var operationTerminal: Bool
     var phase: AddLinkCreationPhase
     var message: String?
+    var failureReason: String?
+    var warnings: [AddLinkCreationWarning]
 }
 
 @MainActor
@@ -109,6 +120,13 @@ final class AddLinkCreationCoordinator {
     private(set) var fraction: Double = 0
     private(set) var operationId: String?
     private(set) var message: String?
+    /// Classified cause of the current `.failed` phase.
+    private(set) var failure: AddLinkCreationFailure?
+    /// What did not complete in the current `.succeededWithWarnings` phase.
+    private(set) var warnings: [AddLinkCreationWarning] = []
+    /// True while `retryWarnings()` re-runs the missing parts; the phase stays
+    /// `.succeededWithWarnings` so the durable job never looks "creating" again.
+    private(set) var isRetryingWarnings = false
     private(set) var idempotencyKey: String = ""
     private(set) var operationTerminal = false
     private(set) var context: AddLinkCreationContext?
@@ -140,13 +158,32 @@ final class AddLinkCreationCoordinator {
             operationId: operationId,
             operationTerminal: operationTerminal,
             phase: phase,
-            message: message
+            message: message,
+            failureReason: failure?.reason,
+            warnings: warnings
         )
     }
 
     /// Stable identity of "this source card gains a link to this word".
     nonisolated static func jobKey(sourceCardID: String, word: String) -> String {
         "\(sourceCardID)|\(normalizeWord(word))"
+    }
+
+    /// Mirrors the backend's target resolution: `_clean_content` (trim, drop
+    /// trailing `.,;:!?`) followed by `find_by_content`'s NFC + lowercase key.
+    /// Diacritics stay significant, exactly as on the server.
+    nonisolated static func canonicalWord(_ word: String) -> String {
+        var cleaned = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = cleaned.last, ".,;:!?".contains(last) {
+            cleaned.removeLast()
+        }
+        return cleaned.precomposedStringWithCanonicalMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    nonisolated static func normalizeWord(_ word: String) -> String {
+        canonicalWord(word)
     }
 
     nonisolated static func localTargetState(
@@ -168,12 +205,21 @@ final class AddLinkCreationCoordinator {
         if target.isArchived { return .archived }
         if target.isFailedAdd || target.syncState == .failed { return .failed }
         if target.isPendingAdd || target.kgCardId == nil { return .pending }
+        let linkedIDs = Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
+        if let targetCardID = target.kgCardId, linkedIDs.contains(targetCardID) { return .linked }
         return .active
     }
 
-    nonisolated static func normalizeWord(_ word: String) -> String {
-        word.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    /// The "create and link" entry is offered for any typed word the notebook
+    /// does not have yet, even while partial-match candidates are listed
+    /// (typing `run` must still be able to create `run` next to `running`).
+    nonisolated static func showsCreateEntry(
+        query: String,
+        sourceEntry: VocabularyEntry,
+        allEntries: [VocabularyEntry]
+    ) -> Bool {
+        guard !normalizeWord(query).isEmpty else { return false }
+        return localTargetState(query: query, sourceEntry: sourceEntry, allEntries: allEntries) == .missing
     }
 
     func start(
@@ -201,13 +247,16 @@ final class AddLinkCreationCoordinator {
             block(message: L10n.string("此單字尚未同步，無法建立連結"))
             return
         case .archived:
-            block(message: L10n.string("封存"))
+            block(message: AddLinkCreationFailure(reason: "target_archived").message)
             return
         case .active:
-            block(message: L10n.string("已建立"))
+            block(message: L10n.string("addLink.target.linkable"))
+            return
+        case .linked:
+            block(message: L10n.string("addLink.target.alreadyLinked"))
             return
         case .source:
-            block(message: L10n.string("新增連結失敗"))
+            block(message: AddLinkCreationFailure(reason: "target_is_source").message)
             return
         }
 
@@ -244,16 +293,103 @@ final class AddLinkCreationCoordinator {
         )
     }
 
+    /// Re-runs only what a succeeded-with-warnings creation left undone: the
+    /// link already exists on the server, so nothing is POSTed again. A missing
+    /// explanation re-queues the notebook pipeline; then the canonical pull runs.
+    func retryWarnings() {
+        guard phase == .succeededWithWarnings, !isRetryingWarnings, let context else { return }
+        generation += 1
+        let currentGeneration = generation
+        let pending = warnings
+        pollingTask?.cancel()
+        isRetryingWarnings = true
+        publish()
+
+        pollingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var remaining = pending.filter { $0 == .enrichmentIncomplete }
+            if !remaining.isEmpty {
+                do {
+                    try await context.services.syncService.triggerPipeline(
+                        notebookId: context.sourceEntry.notebookId
+                    )
+                    remaining.removeAll()
+                } catch {
+                    // Still missing; the pull below runs anyway.
+                }
+            }
+            guard self.isCurrent(currentGeneration) else { return }
+            await self.projectLocally(
+                remoteWarnings: remaining,
+                serverReportedWarnings: false,
+                syncService: context.services.syncService,
+                container: context.services.container,
+                notebookId: context.sourceEntry.notebookId,
+                generation: currentGeneration
+            )
+            if self.generation == currentGeneration {
+                self.isRetryingWarnings = false
+                self.pollingTask = nil
+            }
+        }
+    }
+
+    /// `retryWarnings()` for a warning job restored from disk (no live
+    /// coordinator survived the relaunch).
+    func relaunchWarningRetry(record: PendingLinkCreationRecord, context restored: AddLinkCreationContext) {
+        cancel()
+        guard let sourceCardID = restored.sourceEntry.kgCardId, !sourceCardID.isEmpty else {
+            block(message: L10n.string("此單字尚未同步，無法建立連結"))
+            return
+        }
+        jobKey = Self.jobKey(sourceCardID: sourceCardID, word: record.word)
+        targetWord = record.word
+        context = restored
+        idempotencyKey = record.idempotencyKey
+        operationId = record.operationId
+        operationTerminal = record.operationTerminal
+        lastSequence = -1
+        steps = Self.initialSteps().map { step in
+            var step = step
+            if step.id != "local_projection" { step.status = .done }
+            return step
+        }
+        fraction = 0
+        recomputeFraction()
+        failure = nil
+        warnings = AddLinkCreationWarning.parse(record.warnings ?? [])
+        phase = .succeededWithWarnings
+        message = L10n.string("addLink.creation.warning.summary")
+        retryWarnings()
+    }
+
+    /// The user is done with a finished or failed attempt ("done" on a warning,
+    /// "back to search" on a failure). Returns to `.idle`; the hub retires the
+    /// job because this is an explicit user decision, never an automatic one.
+    func acknowledge() {
+        guard phase != .running else { return }
+        generation += 1
+        pollingTask?.cancel()
+        pollingTask = nil
+        isRetryingWarnings = false
+        failure = nil
+        warnings = []
+        transition(.idle, message: nil)
+    }
+
     func cancel() {
         generation += 1
         pollingTask?.cancel()
         pollingTask = nil
+        isRetryingWarnings = false
         if phase == .running {
             transition(.cancelled, message: nil)
         }
     }
 
     private func block(message: String) {
+        failure = nil
+        warnings = []
         transition(.blocked, message: message)
     }
 
@@ -298,6 +434,8 @@ final class AddLinkCreationCoordinator {
         steps = Self.initialSteps()
         fraction = 0
         operationTerminal = false
+        failure = nil
+        warnings = []
 
         let sendPlan: SendPlan
         switch plan {
@@ -353,6 +491,9 @@ final class AddLinkCreationCoordinator {
         generation: Int
     ) async {
         let operationService = services.operationService
+        // One budget per attempt, POST included: an operation the server never
+        // finishes (no restart to mark it `interrupted`) must not be polled forever.
+        let deadline = environment.now() &+ environment.pollTimeoutNanoseconds
         do {
             let first: KGAddLinkOperationStatus
             switch sendPlan {
@@ -374,6 +515,16 @@ final class AddLinkCreationCoordinator {
             while !current.isTerminal {
                 try await environment.sleep(environment.pollIntervalNanoseconds)
                 try Task.checkCancellation()
+                guard isCurrent(generation) else { return }
+                if environment.now() >= deadline {
+                    // Abandon the stuck operation: the retry must re-create, not resume.
+                    operationTerminal = true
+                    finishFailure(
+                        AddLinkCreationFailure(reason: AddLinkCreationFailure.timedOutReason),
+                        generation: generation
+                    )
+                    return
+                }
                 current = try await operationService.fetchAddLinkOperation(operationId: first.operationId)
                 guard isCurrent(generation) else { return }
                 apply(current, generation: generation)
@@ -383,21 +534,37 @@ final class AddLinkCreationCoordinator {
             switch current.status {
             case "succeeded", "succeeded_with_warnings":
                 await projectLocally(
-                    status: current, syncService: services.syncService, container: services.container,
-                    notebookId: notebookId, generation: generation
+                    remoteWarnings: AddLinkCreationWarning.parse(current.warnings),
+                    serverReportedWarnings: current.completedWithWarnings,
+                    syncService: services.syncService,
+                    container: services.container,
+                    notebookId: notebookId,
+                    generation: generation
                 )
             case "failed", "interrupted":
                 operationTerminal = true
-                finishBackendFailure(current, generation: generation)
+                let reason = current.errorCode ?? (current.status == "interrupted" ? "interrupted" : nil)
+                finishFailure(AddLinkCreationFailure(reason: reason), generation: generation)
             default:
                 operationTerminal = true
-                fail(generation: generation, message: L10n.string("建立失敗"))
+                finishFailure(AddLinkCreationFailure(reason: nil), generation: generation)
             }
         } catch is CancellationError {
             guard self.generation == generation else { return }
             transition(.cancelled, message: nil)
         } catch {
-            fail(generation: generation, message: Self.userMessage(for: error))
+            guard isCurrent(generation) else { return }
+            var failure = AddLinkCreationFailure(error: error)
+            if failure.kind == .operationNotFound {
+                if operationId == nil {
+                    // A 404 on the POST is not "the operation vanished".
+                    failure = AddLinkCreationFailure(reason: nil)
+                } else {
+                    // The server forgot the operation; only a new one can proceed.
+                    operationTerminal = true
+                }
+            }
+            fail(generation: generation, failure: failure)
         }
     }
 
@@ -413,8 +580,12 @@ final class AddLinkCreationCoordinator {
         observer?.creationDidChange(self)
     }
 
+    /// Pulls the canonical server state into SwiftData and settles the phase.
+    /// `remoteWarnings` are the parts the server could not complete; a failed
+    /// pull adds `.localSyncIncomplete`. Any warning keeps the sheet open.
     private func projectLocally(
-        status: KGAddLinkOperationStatus,
+        remoteWarnings: [AddLinkCreationWarning],
+        serverReportedWarnings: Bool,
         syncService: any VocabularySyncServing,
         container: ModelContainer,
         notebookId: String,
@@ -428,6 +599,7 @@ final class AddLinkCreationCoordinator {
             step.detail = L10n.string("同步中…")
         }
 
+        var outcomeWarnings = remoteWarnings
         do {
             let outcome = try await syncService.pullCardsToLocal(
                 container: container,
@@ -453,24 +625,28 @@ final class AddLinkCreationCoordinator {
                     ? L10n.format("同步 %@ 筆", String(outcome.changedEntryCount))
                     : L10n.string("已是最新")
             }
-            recomputeFraction(forceTerminal: true)
-            transition(
-                status.completedWithWarnings ? .succeededWithWarnings : .succeeded,
-                message: status.completedWithWarnings
-                    ? L10n.string("部分項目未成功同步，可直接再次重試。")
-                    : L10n.string("同步完成")
-            )
+            // A successful pull carries any lagging link projection with it.
+            outcomeWarnings.removeAll { $0 == .linkProjectionPending }
         } catch is CancellationError {
             guard self.generation == generation else { return }
             transition(.cancelled, message: nil)
+            return
         } catch {
             guard isCurrent(generation) else { return }
             mutateStep("local_projection") { step in
                 step.status = .error
                 step.detail = L10n.string("同步失敗")
             }
-            recomputeFraction(forceTerminal: true)
-            transition(.succeededWithWarnings, message: L10n.string("部分項目未成功同步，可直接再次重試。"))
+            outcomeWarnings.append(.localSyncIncomplete)
+        }
+        recomputeFraction(forceTerminal: true)
+        failure = nil
+        warnings = AddLinkCreationWarning.allCases.filter(outcomeWarnings.contains)
+        isRetryingWarnings = false
+        if warnings.isEmpty && !serverReportedWarnings {
+            transition(.succeeded, message: L10n.string("同步完成"))
+        } else {
+            transition(.succeededWithWarnings, message: L10n.string("addLink.creation.warning.summary"))
         }
     }
 
@@ -489,19 +665,21 @@ final class AddLinkCreationCoordinator {
         recomputeFraction()
     }
 
-    private func finishBackendFailure(_ status: KGAddLinkOperationStatus, generation: Int) {
+    private func finishFailure(_ failure: AddLinkCreationFailure, generation: Int) {
         guard isCurrent(generation) else { return }
         mutateStep("local_projection") { step in
             step.status = .skipped
             step.detail = L10n.string("已略過")
         }
-        fail(generation: generation, message: Self.userMessage(for: status.errorCode))
+        fail(generation: generation, failure: failure)
         recomputeFraction(forceTerminal: true)
     }
 
-    private func fail(generation: Int, message: String) {
+    private func fail(generation: Int, failure: AddLinkCreationFailure) {
         guard isCurrent(generation) else { return }
-        transition(.failed, message: message)
+        self.failure = failure
+        warnings = []
+        transition(.failed, message: failure.message)
     }
 
     private func mutateStep(_ id: String, _ mutation: (inout PipelineStep) -> Void) {
@@ -552,7 +730,7 @@ final class AddLinkCreationCoordinator {
         case "retry": return .retry
         case "done": return .done
         case "skipped": return .skipped
-        case "warning", "error": return .error
+        case "warning", "error", "interrupted": return .error
         default: return .waiting
         }
     }
@@ -566,32 +744,13 @@ final class AddLinkCreationCoordinator {
         case "progress": return L10n.format("同步 %@ 筆", String(step.current))
         case "target_missing": return L10n.string("待同步")
         case "client_projection": return L10n.string("同步中…")
+        case "interrupted", "cancelled": return L10n.string("addLink.error.interrupted")
         default:
             switch step.status {
             case "error", "warning": return L10n.string("建立失敗")
             case "skipped": return L10n.string("已略過")
             default: return ""
             }
-        }
-    }
-
-    private static func userMessage(for error: Error) -> String {
-        if let kgError = error as? KGError {
-            switch kgError {
-            case .notAuthenticated, .unauthorized: return L10n.string("您的登入已過期，請重新登入")
-            case .offline, .networkError: return L10n.string("請確認網路連線後重試")
-            default: return L10n.string("addLink.error.linkFailed")
-            }
-        }
-        return L10n.string("addLink.error.linkFailed")
-    }
-
-    private static func userMessage(for errorCode: String?) -> String {
-        switch errorCode {
-        case "quota_exhausted": return L10n.string("每日 AI 額度")
-        case "translation_failed": return L10n.string("翻譯暫時失敗")
-        case "enrichment_failed": return L10n.string("部分同步完成")
-        default: return L10n.string("addLink.error.linkFailed")
         }
     }
 

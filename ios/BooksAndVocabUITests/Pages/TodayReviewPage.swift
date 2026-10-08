@@ -372,6 +372,24 @@ struct TodayReviewPage {
 
     var pendingLinkDismissButton: XCUIElement { queryElement("todayReview.card.link.pending.dismiss") }
 
+    // MARK: Add Link sheet terminal states (#2030)
+
+    /// Raw failure reason (`target_archived`, `interrupted`, `timed_out`…) as its value.
+    var addLinkErrorReason: XCUIElement { queryElement("addLink.error.reason") }
+
+    var addLinkCreationRetryButton: XCUIElement { queryElement("addLink.creation.retry") }
+
+    /// Warning state only: accepts the partial result and closes the sheet.
+    var addLinkWarningDoneButton: XCUIElement { queryElement("addLink.creation.warning.done") }
+
+    /// Failed state only: returns to the search list.
+    var addLinkBackToSearchButton: XCUIElement { queryElement("addLink.creation.backToSearch") }
+
+    /// Spinner on the candidate row being linked.
+    func addLinkLinkingRow(cardID: String) -> XCUIElement {
+        queryElement("addLink.row.linking.\(cardID)")
+    }
+
     func link(id: String) -> XCUIElement {
         // Materialization dismisses the sheet and rebuilds the card cache in
         // the same main-actor turn. Keep this query pure so the assertion can
