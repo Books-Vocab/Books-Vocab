@@ -152,6 +152,9 @@ def _resolve_with_neighbours(
     deleted neighbour that can't be resolved is simply skipped rather than
     dropping the whole link silently.
     """
+    seed = getattr(graph, "seed", None)
+    if callable(seed):
+        seed(cards)
     by_id: dict[str, Any] = {c.id: c for c in cards}
     neighbour_ids: set[str] = set()
     for card in cards:
@@ -164,6 +167,8 @@ def _resolve_with_neighbours(
     if neighbour_ids:
         neighbours = cards_store.get_batch(neighbour_ids)
         by_id |= neighbours
+        if callable(seed):
+            seed(neighbours.values())
     return by_id
 
 

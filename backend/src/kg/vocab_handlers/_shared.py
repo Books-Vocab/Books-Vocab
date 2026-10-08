@@ -42,13 +42,21 @@ class _CardNotebookGraph:
         self._user_dir = user_dir
         self._graph_store_factory = graph_store_factory
         self._graphs: dict[str, Any] = {}
+        self._card_notebooks: dict[str, str] = {}
+
+    def seed(self, cards: Any) -> None:
+        """Pre-resolve card -> notebook for an already-loaded page (avoids per-card lookups)."""
+        for card in cards:
+            self._card_notebooks[card.id] = getattr(card, "notebook_id", "default") or "default"
 
     def get_links_for(self, card_id: str) -> object:
-        card = self._cards.get(card_id)
-        if card is None:
-            return ()
-
-        notebook_id = getattr(card, "notebook_id", "default") or "default"
+        notebook_id = self._card_notebooks.get(card_id)
+        if notebook_id is None:
+            card = self._cards.get(card_id)
+            if card is None:
+                return ()
+            notebook_id = getattr(card, "notebook_id", "default") or "default"
+            self._card_notebooks[card_id] = notebook_id
         graph = self._graphs.get(notebook_id)
         if graph is None:
             graph = self._graph_store_factory(self._user_dir, notebook_id=notebook_id)
