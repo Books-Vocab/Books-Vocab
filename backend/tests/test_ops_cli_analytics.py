@@ -562,6 +562,50 @@ class TestLlmErrors:
         d = json.loads(r.stdout)
         assert d["total"] == 1
 
+    def _seed_two_users(self, tmp_path):
+        now = _now_iso()
+        _create_llm_errors_db(tmp_path, [
+            ("abc123full", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+            ("abc123full", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+            ("abc123full", "embed", "gemini", "m", "APITimeoutError", None, "to", now),
+            ("zzz999full", "judge", "gemini", "m", "InternalServerError", 500, "boom", now),
+        ])
+        (tmp_path / "users" / "abc123full").mkdir(parents=True)
+        (tmp_path / "users" / "zzz999full").mkdir(parents=True)
+
+    def test_partial_uid_resolved(self, tmp_path):
+        import json
+        self._seed_two_users(tmp_path)
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "abc", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["uid"] == "abc123full"
+        assert d["total"] == 3
+        assert d["by_class"] == {"RateLimitError": 2, "APITimeoutError": 1}
+
+    def test_partial_uid_text_header(self, tmp_path):
+        self._seed_two_users(tmp_path)
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "abc")
+        assert r.returncode == 0, r.stderr
+        assert "LLM Errors (真火) — last 7d, uid=abc123full" in r.stdout
+
+    def test_ambiguous_uid_errors(self, tmp_path):
+        self._seed_two_users(tmp_path)
+        (tmp_path / "users" / "abc456full").mkdir()
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "abc")
+        assert r.returncode == 1
+        assert "abc123full" in r.stderr and "abc456full" in r.stderr
+        assert "Total: 0" not in r.stdout
+
+    def test_uid_all_has_no_uid_key(self, tmp_path):
+        import json
+        self._seed_two_users(tmp_path)
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert "uid" not in d
+        assert d["total"] == 4
+
     def test_text_render(self, tmp_path):
         now = _now_iso()
         _create_llm_errors_db(tmp_path, [

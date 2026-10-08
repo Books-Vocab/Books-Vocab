@@ -232,6 +232,8 @@ def cmd_llm_errors(args: argparse.Namespace) -> None:
     days = [(today - timedelta(days=window - 1 - i)).isoformat() for i in range(window)]
     cutoff = days[0]
 
+    uid = None if args.uid == "all" else resolve_uid(args.uid, dd)
+
     db_path = dd / "llm_errors.db"
     by_day: dict[str, int] = {}
     by_class: dict[str, int] = {}
@@ -245,9 +247,9 @@ def cmd_llm_errors(args: argparse.Namespace) -> None:
         try:
             uid_where = ""
             params: list = [cutoff]
-            if args.uid != "all":
+            if uid is not None:
                 uid_where = " AND user_id = ?"
-                params.append(args.uid)
+                params.append(uid)
             for d, c in conn.execute(f"SELECT substr(created_at,1,10) AS d, COUNT(*) FROM llm_errors WHERE created_at >= ?{uid_where} GROUP BY d", tuple(params)):
                 if d:
                     by_day[d] = int(c or 0)
@@ -288,11 +290,13 @@ def cmd_llm_errors(args: argparse.Namespace) -> None:
         "by_status": by_status,
         "recent": recent,
     }
+    if uid is not None:
+        result["uid"] = uid
     if args.json:
         emit_json(result)
         return
 
-    print(f"LLM Errors (真火) — last {window}d")
+    print(f"LLM Errors (真火) — last {window}d" + (f", uid={uid}" if uid else ""))
     print(f"Total: {total}")
     print()
     max_val = max(per_day) if per_day else 0
