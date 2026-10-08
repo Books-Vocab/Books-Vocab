@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from llm_eval.gold_queue import SUPPORTED_PROMPTS, build_gold_review_queue
@@ -20,19 +21,29 @@ def main(argv: list[str] | None = None) -> int:
     add_allow_unignored_flag(parser)
     parser.add_argument("--limit", type=_positive_int, default=50)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite an existing --output (destroys any human review edits in it)",
+    )
     try:
         args = parser.parse_args(argv)
         refuse_committable_outputs(parser, [args.output], allow=args.allow_unignored)
     except SystemExit as exc:
         return int(exc.code)
 
-    rows = build_gold_review_queue(
-        args.candidates,
-        args.output,
-        prompt_name=args.prompt,
-        limit=args.limit,
-        seed=args.seed,
-    )
+    try:
+        rows = build_gold_review_queue(
+            args.candidates,
+            args.output,
+            prompt_name=args.prompt,
+            limit=args.limit,
+            seed=args.seed,
+            overwrite=args.force,
+        )
+    except FileExistsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     print(
         json.dumps(
             {
