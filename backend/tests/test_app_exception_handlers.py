@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import replace
 
@@ -13,6 +14,7 @@ from kg.app_exception_handlers import (
     AppExceptionHandlers,
     _redact_validation_body,
     _redact_validation_payload,
+    _sanitize_non_finite,
     install_app_exception_handlers,
     install_app_exception_handlers_from_dependencies,
 )
@@ -121,10 +123,63 @@ def test_app_exception_handler_dependencies_are_replaceable_named_contract():
 
 
 def test_validation_redaction_helpers_preserve_legacy_contract():
-    assert _redact_validation_payload(
-        [{"loc": ["body", "accessToken"], "input": "secret-access-token"}]
-    ) == [{"loc": ["body", "accessToken"], "input": "[REDACTED]"}]
+    assert _redact_validation_payload([{"loc": ["body", "accessToken"], "input": "secret-access-token"}]) == [
+        {"loc": ["body", "accessToken"], "input": "[REDACTED]"}
+    ]
 
-    assert _redact_validation_body(
-        "apiKey=secret-api-key&client-secret=secret-client&safe=visible"
-    ) == "[non-json body omitted: secret-like field present]"
+    assert (
+        _redact_validation_body("apiKey=secret-api-key&client-secret=secret-client&safe=visible")
+        == "[non-json body omitted: secret-like field present]"
+    )
+
+
+class _NonFinitePayload(BaseModel):
+    count: int = 0
+    name: str = ""
+    ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+def _reject_constant(name: str):
+    raise AssertionError(f"non-strict JSON constant {name}")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("NaN", "NaN"), ("Infinity", "Infinity"), ("-Infinity", "-Infinity"), ("1e309", "Infinity")],
+)
+@pytest.mark.parametrize("field", ["count", "name", "ratio"])
+def test_validation_handler_returns_strict_json_422_for_non_finite_input(field, raw, expected):
+    app = FastAPI()
+    install_app_exception_handlers(app, logger=logging.getLogger("kg.api"))
+
+    @app.post("/payload")
+    def post_payload(payload: _NonFinitePayload):
+        return payload
+
+    client = TestClient(app, raise_server_exceptions=False)
+    try:
+        response = client.post(
+            "/payload",
+            content=f'{{"{field}": {raw}}}',
+            headers={"content-type": "application/json"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 422, response.text
+    body = json.loads(response.text, parse_constant=_reject_constant)
+    assert body["detail"][0]["input"] == expected
+
+
+def test_sanitize_non_finite_recurses_through_dict_list_and_tuple():
+    value = {
+        "a": float("nan"),
+        "b": [float("inf"), {"c": float("-inf")}, 1.5],
+        "d": (float("nan"), "x"),
+    }
+
+    assert _sanitize_non_finite(value) == {
+        "a": "NaN",
+        "b": ["Infinity", {"c": "-Infinity"}, 1.5],
+        "d": ("NaN", "x"),
+    }

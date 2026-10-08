@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from collections.abc import Awaitable
 from dataclasses import dataclass
@@ -18,8 +19,7 @@ _logger = logging.getLogger(__name__)
 
 
 class AppExceptionHandler(Protocol):
-    def __call__(self, request: Request, exc: Exception) -> Awaitable[JSONResponse]:
-        ...
+    def __call__(self, request: Request, exc: Exception) -> Awaitable[JSONResponse]: ...
 
 
 _VALIDATION_SECRET_KEYS = {
@@ -47,7 +47,7 @@ _VALIDATION_SECRET_KEYS = {
 }
 _VALIDATION_SECRET_RE = re.compile(
     r'(?P<prefix>["\']?(?:access[_-]?token|accessToken|admin[_-]?session|adminSession|api[_-]?key|apiKey|'
-    r'authorization|bearer|client[_-]?secret|clientSecret|code|cookie|id[_-]?token|idToken|password|'
+    r"authorization|bearer|client[_-]?secret|clientSecret|code|cookie|id[_-]?token|idToken|password|"
     r'refresh[_-]?token|refreshToken|signed[_-]?payload|signedPayload|secret|token)["\']?\s*[:=]\s*["\']?)'
     r"(?P<value>[^\"'\s,;}&]+)",
     re.IGNORECASE,
@@ -96,6 +96,21 @@ def _redact_validation_payload(value: Any) -> Any:
     return value
 
 
+def _sanitize_non_finite(value: Any) -> Any:
+    """Map non-finite floats to strings so the 422 body is strict-JSON safe."""
+    if isinstance(value, float) and not math.isfinite(value):
+        if math.isnan(value):
+            return "NaN"
+        return "Infinity" if value > 0 else "-Infinity"
+    if isinstance(value, dict):
+        return {key: _sanitize_non_finite(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_non_finite(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_non_finite(item) for item in value)
+    return value
+
+
 def _redact_validation_body(body: str | None) -> str | None:
     if body is None:
         return None
@@ -124,7 +139,7 @@ def install_app_exception_handlers_from_dependencies(
             body = body.decode("utf-8", errors="replace")
         except Exception:
             logger.warning("Validation handler cannot read request body", exc_info=True)
-        errors = _redact_validation_payload(jsonable_encoder(exc.errors()))
+        errors = _redact_validation_payload(_sanitize_non_finite(jsonable_encoder(exc.errors())))
         logger.warning(
             "Validation error [%s %s] body=%s errors=%s",
             request.method,
