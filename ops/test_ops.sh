@@ -239,8 +239,7 @@ run_one() {
     python-entrypoints)
       ./ops/tests/test_python_entrypoints.sh &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_venv_health.py \
-        ops/tests/test_python_scan.py
+        ops/tests/test_venv_health.py
       ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;

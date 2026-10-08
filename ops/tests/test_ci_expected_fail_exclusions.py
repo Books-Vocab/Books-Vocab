@@ -151,11 +151,9 @@ def test_the_red_message_frames_the_result_as_a_hypothesis(tmp_path: Path) -> No
     assert "假設不是判決" in result.stderr
 
 
-def test_workflow_and_linux_repro_both_run_the_expected_fail_script() -> None:
+def test_workflow_runs_the_expected_fail_script() -> None:
     workflow = (ROOT / ".github/workflows/ops-suite.yml").read_text()
-    repro = (ROOT / "ops/ci_linux_repro.sh").read_text()
     assert "ops/ci_expected_fail_exclusions.sh" in workflow
-    assert "ops/ci_expected_fail_exclusions.sh" in repro
 
 
 def test_coverage_gate_registers_the_expected_fail_test() -> None:

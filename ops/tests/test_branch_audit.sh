@@ -200,10 +200,14 @@ else
   fail_t "json schema invalid"
 fi
 
-section "Delete merged dry-run"
-PATH="$TMP/bin:$PATH" KG_BRANCH_AUDIT_ROOT="$TMP/work" "$AUDIT" --no-fetch --base origin/main --delete-merged --dry-run >"$TMP/delete.txt" 2>&1 || true
-grep -q '\[branch\]\[delete\]\[dry-run\] would run: git push origin --delete safe-delete' "$TMP/delete.txt" \
-  && ok "delete merged is dry-run by default" || fail_t "delete dry-run missing"
+section "Audit never deletes remote branches"
+set +e
+PATH="$TMP/bin:$PATH" KG_BRANCH_AUDIT_ROOT="$TMP/work" "$AUDIT" --no-fetch --base origin/main --delete-merged --yes >"$TMP/delete.txt" 2>&1
+delete_rc=$?
+set -e
+[[ "$delete_rc" -eq 64 ]] && ok "--delete-merged is a usage error" || fail_t "--delete-merged expected rc=64, got $delete_rc"
+git -C "$TMP/origin.git" show-ref --verify --quiet refs/heads/safe-delete \
+  && ok "merged remote branch is left in place" || fail_t "merged remote branch was deleted from origin"
 
 echo ""
 echo "══════════════════════════════"

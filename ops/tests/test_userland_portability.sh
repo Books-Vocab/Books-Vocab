@@ -185,8 +185,7 @@ fi
 # 模式不是散文:下面用「本章實際貢獻幾條斷言」把它釘成數字,②降級成③會讓數字對不上而轉紅,
 # 不是只在 stderr 留一行字。
 # 任何模式都不取代 CI：`ios-cache-evict` / `ios-test-discovery` 已由本批進
-# test_ops_ci_coverage.sh 的 LINUX_GROUPS，linux runner 會原生跑；本機重現用
-# ops/ci_linux_repro.sh。
+# test_ops_ci_coverage.sh 的 LINUX_GROUPS，linux runner 會原生跑。
 section "ios_cache_evict passes under a GNU userland"
 gnu_mode=""; pass_before_c="$pass"; fail_before_c="$fail"
 # 自動搜尋兩個 Homebrew prefix：Apple Silicon 是 /opt/homebrew，Intel 是 /usr/local。
