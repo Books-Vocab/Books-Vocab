@@ -74,15 +74,15 @@ enum StatsPresentation {
             let reviewedAt: Date
         }
 
-        let entries: [Entry]
-        let reviews: [Review]
+        let entries: Set<Entry>
+        let reviews: Set<Review>
         let forecastDays: Int
         let now: Date
         let timeZoneIdentifier: String
     }
 
     static func projectionKey(for inputs: Inputs) -> ProjectionKey {
-        let entryKeys = inputs.entries.map {
+        let entryKeys = Set(inputs.entries.map {
             ProjectionKey.Entry(
                 id: $0.id,
                 notebookId: $0.notebookId,
@@ -91,25 +91,15 @@ enum StatsPresentation {
                 isArchived: $0.isArchived,
                 nextReviewAt: $0.nextReviewAt
             )
-        }
-        .sorted { lhs, rhs in
-            if lhs.id != rhs.id { return lhs.id.uuidString < rhs.id.uuidString }
-            if lhs.notebookId != rhs.notebookId { return lhs.notebookId < rhs.notebookId }
-            return lhs.nextReviewAt < rhs.nextReviewAt
-        }
+        })
 
-        let reviewKeys = inputs.reviewRecords.map {
+        let reviewKeys = Set(inputs.reviewRecords.map {
             ProjectionKey.Review(
                 id: $0.id,
                 notebookId: $0.notebookId,
                 reviewedAt: $0.reviewedAt
             )
-        }
-        .sorted { lhs, rhs in
-            if lhs.id != rhs.id { return lhs.id.uuidString < rhs.id.uuidString }
-            if lhs.notebookId != rhs.notebookId { return lhs.notebookId < rhs.notebookId }
-            return lhs.reviewedAt < rhs.reviewedAt
-        }
+        })
 
         return ProjectionKey(
             entries: entryKeys,
