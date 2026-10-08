@@ -10,10 +10,6 @@ enum LayoutMode: Equatable {
     case compact
     case regular
 
-    /// Notebook grid card 鎖定 aspect ratio — 整卡（含 cover + metadata）3:4 直式。
-    /// 修掉左右兩本 metadata 高度不齊撐高破節奏的 bug。
-    static let notebookCardAspectRatio: CGFloat = 3.0 / 4.0
-
     init(horizontalSizeClass: UserInterfaceSizeClass?) {
         self = (horizontalSizeClass == .compact) ? .compact : .regular
     }
@@ -44,14 +40,6 @@ enum LayoutMode: Equatable {
         switch self {
         case .compact: return GridItem(.adaptive(minimum: 150, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
         case .regular: return GridItem(.adaptive(minimum: 180, maximum: 240), spacing: AppShellMetrics.sectionSpacing)
-        }
-    }
-
-    /// 單字本書架 grid item
-    var notebookGridItem: GridItem {
-        switch self {
-        case .compact: return GridItem(.adaptive(minimum: 160, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
-        case .regular: return GridItem(.adaptive(minimum: 200, maximum: 260), spacing: AppShellMetrics.sectionSpacing)
         }
     }
 
