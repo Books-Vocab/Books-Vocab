@@ -18,6 +18,20 @@ struct NotebookAppearance {
     let originalCoverImagePath: String?
 }
 
+/// 封面選擇器（色票／圖樣）的觸控與無障礙契約。視覺尺寸由各選項自己決定，
+/// 這裡只保證可點區域達 HIG 下限，並集中「選中」語意讓測試可釘。
+enum NotebookEditPickerMetrics {
+    /// HIG 觸控下限；沿用 chrome 既有常數，不另開第二個 44。
+    static let hitTarget = AppFloatingChromeMetrics.hitTarget
+    /// 色票圓點的視覺直徑（命中區由 `hitTarget` 另外撐開）。
+    static let swatchDiameter: CGFloat = 32
+
+    /// 選項在 a11y 樹的附加 trait。`Button` 已自帶 isButton，這裡只補選中狀態。
+    static func accessibilityTraits(isSelected: Bool) -> AccessibilityTraits {
+        isSelected ? .isSelected : []
+    }
+}
+
 struct NotebookEditSheet: View {
     @ObserveInjection private var inject
     enum Mode {
@@ -79,23 +93,39 @@ struct NotebookEditSheet: View {
                 }
 
                 Section(NotebookEditCopy.colorSectionTitle) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 36))], spacing: AppSpacing.chipPaddingHorizontal) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: NotebookEditPickerMetrics.hitTarget), spacing: 0)],
+                        spacing: 0
+                    ) {
                         ForEach(NotebookPalette.colors, id: \.hex) { item in
-                            Circle()
-                                .fill(Color(hex: item.hex) ?? skin.palette.accent) // token-allow: notebook palette data color
-                                .frame(width: 32, height: 32)
-                                .overlay {
-                                    if selectedColor == item.hex {
-                                        Image(systemName: "checkmark")
-                                            .font(skin.typography.caption)
-                                            .foregroundStyle(.white)
+                            let isSelected = selectedColor == item.hex
+                            Button {
+                                selectedColor = item.hex
+                            } label: {
+                                Circle()
+                                    .fill(Color(hex: item.hex) ?? skin.palette.accent) // token-allow: notebook palette data color
+                                    .frame(
+                                        width: NotebookEditPickerMetrics.swatchDiameter,
+                                        height: NotebookEditPickerMetrics.swatchDiameter
+                                    )
+                                    .overlay {
+                                        if isSelected {
+                                            Image(systemName: "checkmark")
+                                                .font(skin.typography.caption)
+                                                .foregroundStyle(.white)
+                                        }
                                     }
-                                }
-                                .onTapGesture { selectedColor = item.hex }
-                                .accessibilityLabel(item.name)
+                                    .frame(
+                                        minWidth: NotebookEditPickerMetrics.hitTarget,
+                                        minHeight: NotebookEditPickerMetrics.hitTarget
+                                    )
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.name)
+                            .accessibilityAddTraits(NotebookEditPickerMetrics.accessibilityTraits(isSelected: isSelected))
                         }
                     }
-                    .padding(.vertical, AppSpacing.s1)
                 }
 
                 Section(NotebookEditCopy.patternSectionTitle) {
@@ -180,26 +210,34 @@ struct NotebookEditSheet: View {
     private func patternOption(_ patternId: String?, label: String) -> some View {
         let isSelected = selectedPattern == patternId
         let color = NotebookPalette.color(for: selectedColor)
-        VStack(spacing: AppSpacing.s1) {
-            ZStack {
-                AppRoundedRect(roundness: AppRoundness.control)
-                    .fill(patternId == nil ? skin.palette.mutedFill : color)
-                    .frame(width: 48, height: 36)
-                if let pid = patternId, let p = NotebookCoverPattern(rawValue: pid) {
-                    p.patternOverlay(size: CGSize(width: 48, height: 36))
-                        .clipShape(AppRoundedRect(roundness: AppRoundness.control))
+        Button {
+            selectedPattern = patternId
+        } label: {
+            VStack(spacing: AppSpacing.s1) {
+                ZStack {
+                    AppRoundedRect(roundness: AppRoundness.control)
+                        .fill(patternId == nil ? skin.palette.mutedFill : color)
+                        .frame(width: 48, height: 36)
+                    if let pid = patternId, let p = NotebookCoverPattern(rawValue: pid) {
+                        p.patternOverlay(size: CGSize(width: 48, height: 36))
+                            .clipShape(AppRoundedRect(roundness: AppRoundness.control))
+                    }
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.white)
+                            .font(skin.typography.iconSmall)
+                    }
                 }
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.white)
-                        .font(skin.typography.iconSmall)
-                }
+                Text(label)
+                    .font(skin.typography.monoLabel)
+                    .foregroundStyle(skin.palette.secondaryText)
             }
-            Text(label)
-                .font(skin.typography.monoLabel)
-                .foregroundStyle(skin.palette.secondaryText)
+            .frame(minWidth: NotebookEditPickerMetrics.hitTarget, minHeight: NotebookEditPickerMetrics.hitTarget)
+            .contentShape(Rectangle())
         }
-        .onTapGesture { selectedPattern = patternId }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(NotebookEditPickerMetrics.accessibilityTraits(isSelected: isSelected))
     }
 
     private var isCreating: Bool {

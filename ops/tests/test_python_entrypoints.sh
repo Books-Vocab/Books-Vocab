@@ -19,12 +19,12 @@ fail_t() { echo "  ✗ $*" >&2; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; }
 
 section "Syntax"
-for f in "$ROOT/ops/ui_token_lint.sh" "$ROOT/ops/injection_lint.sh" "$ROOT/ops/i18n_lint.sh" "$ROOT/ops/plain_deadzone_lint.sh"; do
+for f in "$ROOT/ops/ui_token_lint.sh" "$ROOT/ops/injection_lint.sh" "$ROOT/ops/i18n_lint.sh" "$ROOT/ops/plain_deadzone_lint.sh" "$ROOT/ops/tap_a11y_lint.sh"; do
   bash -n "$f" && ok "$(basename "$f") syntax" || fail_t "$(basename "$f") syntax"
 done
 
 section "Local Python wrappers use uv"
-for f in "$ROOT/ops/ui_token_lint.sh" "$ROOT/ops/injection_lint.sh" "$ROOT/ops/plain_deadzone_lint.sh"; do
+for f in "$ROOT/ops/ui_token_lint.sh" "$ROOT/ops/injection_lint.sh" "$ROOT/ops/plain_deadzone_lint.sh" "$ROOT/ops/tap_a11y_lint.sh"; do
   name="$(basename "$f")"
   if rg -n 'exec python3|python3[[:space:]]+ops/' "$f" >/dev/null; then
     fail_t "$name still invokes bare python3"
@@ -211,6 +211,8 @@ section "Smoke"
   && ok "injection_lint --help" || fail_t "injection_lint --help"
 "$ROOT/ops/plain_deadzone_lint.sh" --help >/dev/null \
   && ok "plain_deadzone_lint --help" || fail_t "plain_deadzone_lint --help"
+"$ROOT/ops/tap_a11y_lint.sh" --help >/dev/null \
+  && ok "tap_a11y_lint --help" || fail_t "tap_a11y_lint --help"
 "$ROOT/ops/i18n_lint.sh" --report >/dev/null \
   && ok "i18n_lint --report" || fail_t "i18n_lint --report"
 

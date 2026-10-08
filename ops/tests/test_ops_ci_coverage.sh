@@ -12,7 +12,7 @@ cd "$ROOT"
 
 LINUX_GROUPS=(
   backup-verify devops deploy-smoke infra-health disk-guard reconcile sentry-release branch-audit
-  exit-code-contract worktree delivery-control capability-matrix context-routing doctor ui-token plain-deadzone
+  exit-code-contract worktree delivery-control capability-matrix context-routing doctor ui-token plain-deadzone tap-a11y
   ui-deadcode ui-graph log-assert python-entrypoints
   lint-baselines injection-lint ui-fixture-lint ops-ci-coverage
   ui-quality-plane ui-quality-gate review-card-golden docs-lint gen-ios-baseline

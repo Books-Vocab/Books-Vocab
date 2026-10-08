@@ -1294,3 +1294,4 @@
 "notebookSettings.syncFailedDetail" = "설정 동기화 실패: %@";
 "notebookSettings.serverUnsupported" = "서버가 아직 단어장 설정을 지원하지 않습니다";
 "notebookSettings.retry" = "재시도";
+"kgVocab.row.selectMultipleAction" = "여러 개 선택";

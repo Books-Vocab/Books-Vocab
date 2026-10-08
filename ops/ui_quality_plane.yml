@@ -74,6 +74,24 @@ mechanisms:
       - docs/sop/ui_flow_evidence.md
     regression: plain-deadzone
 
+  - id: static.tap_a11y
+    layer: static-code
+    entrypoint: ops/tap_a11y_lint.sh
+    gate: manual
+    run:
+      - --baseline-check
+    triggers:
+      - "ios/BooksAndVocab/*.swift"
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: >
+      --baseline-check exit code against ops/tap_a11y_baseline.txt (review-mode
+      UI only, epic #2036). A non-test `.onTapGesture` must be followed in its
+      modifier chain by .accessibilityAddTraits(.isButton) / .accessibilityAction
+      / .accessibilityHidden(true), or carry `// a11y-allow: <reason>`.
+    docs:
+      - docs/sop/ui-design.md
+    regression: tap-a11y
+
   - id: static.i18n
     layer: static-code
     entrypoint: ops/i18n_lint.sh

@@ -1,0 +1,5 @@
+# tap_a11y_lint baseline — generated 2026-10-08
+# Line-number-free finding keys: <relpath>::tap-a11y::<normalized-call-text>.
+# Regenerate after a sanctioned sweep:  bash ops/tap_a11y_lint.sh --baseline
+# Zero tolerance: every .onTapGesture must use Button / declare a trait or action /
+# be accessibilityHidden / carry // a11y-allow: <reason> — do not add keys here.

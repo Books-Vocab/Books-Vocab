@@ -39,6 +39,7 @@ struct VocabularyListPresenter<Content: View>: View {
         .animation(AppMotion.standardSpring, value: showsSearchField)
         .vocabCanvasBackground()
         .scrollDismissesKeyboard(.interactively)
+        // a11y-allow: 整頁背景的收鍵盤點擊，無語意動作；AT 走鍵盤自帶收合與 scrollDismissesKeyboard。
         .onTapGesture {
             dismissKeyboard()
         }

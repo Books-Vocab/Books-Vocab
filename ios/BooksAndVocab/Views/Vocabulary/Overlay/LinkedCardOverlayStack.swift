@@ -22,6 +22,8 @@ struct LinkedCardOverlayStack: View {
                         .onTapGesture {
                             _ = stack.popLast()
                         }
+                        // 純裝飾的點擊關閉區；每層卡片的 VocabOverlayHeader 有明確 close 按鈕。
+                        .accessibilityHidden(true)
 
                     ForEach(Array(stack.enumerated()), id: \.element.id) { index, entry in
                         linkedCardLayer(entry: entry, index: index)

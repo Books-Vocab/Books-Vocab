@@ -110,10 +110,14 @@ struct SyncPresenter: View {
             LazyVStack(spacing: 0) {
                 ForEach(Array(state.pendingRows.enumerated()), id: \.element.id) { index, item in
                     HStack(alignment: .top, spacing: AppSpacing.s3) {
-                        WordRow(viewData: item.row)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .onTapGesture { onPendingRowTapped?(item.id) }
+                        Button {
+                            onPendingRowTapped?(item.id)
+                        } label: {
+                            WordRow(viewData: item.row)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
 
                         VocabAccessoryIconButton(
                             systemImage: item.actionSystemImage,

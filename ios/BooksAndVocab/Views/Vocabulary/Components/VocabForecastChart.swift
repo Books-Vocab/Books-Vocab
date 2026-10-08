@@ -107,6 +107,7 @@ struct VocabForecastChart: View {
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
         .accessibilityValue("\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))")
+        // a11y-allow: 點擊只浮出視覺 tooltip，同一份數量已由上方 accessibilityValue 提供給 AT。
         .onTapGesture {
             dismissTask?.cancel()
             withAnimation(AppMotion.feedbackPulse) { tappedIndex = index }
