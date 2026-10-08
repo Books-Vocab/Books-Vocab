@@ -248,6 +248,67 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   if grep -Eq '^    continue-on-error:' <<<"$merge_group_required_block"; then
     fail "merge-group required job sets job-level continue-on-error"
   fi
+  # A job-level `if:` that evaluates false skips the whole job, and a skipped
+  # required check is reported as passing to the merge queue. Only the two
+  # backend steps may be conditional, never the gate itself.
+  if grep -Eq "^    [\"']?if[\"']?[[:space:]]*:" <<<"$merge_group_required_block"; then
+    fail "merge-group required job sets a job-level if: and can be skipped (a skipped required check counts as passing)"
+  fi
+  # The router is only a gate if its verdict reaches the backend steps: the
+  # output must be appended to $GITHUB_OUTPUT on the router command line itself,
+  # and the BASE/HEAD env must carry the merge-group SHAs it classifies.
+  scope_router_lines="$(grep -Fc 'ci_scope_router.sh --base' <<<"$scope_router_step" || true)"
+  [[ "$scope_router_lines" == 1 ]] \
+    || fail "merge-group scope router step must invoke ci_scope_router.sh on exactly one line, found ${scope_router_lines}"
+  grep -Eq 'ci_scope_router\.sh --base .*--format github-output[[:space:]]*>>[[:space:]]*"\$GITHUB_OUTPUT"[[:space:]]*$' <<<"$scope_router_step" \
+    || fail "merge-group scope router output is not appended to \"\$GITHUB_OUTPUT\" on the ci_scope_router.sh line, so backend steps never see it"
+  grep -Fqx '          BASE_SHA: ${{ github.event.merge_group.base_sha }}' <<<"$scope_router_step" \
+    || fail "merge-group scope router BASE_SHA is not the merge-group base SHA"
+  grep -Fqx '          HEAD_SHA: ${{ github.event.merge_group.head_sha }}' <<<"$scope_router_step" \
+    || fail "merge-group scope router HEAD_SHA is not the merge-group head SHA"
+  # Positive control: execute the router step's own script against a fixture
+  # repo and require the verdict to reach $GITHUB_OUTPUT, so cutting the
+  # router -> backend-pytest link fails here and not only in a queue run.
+  scope_script="$(ruby -e 'require "yaml"
+    step = YAML.load_file(ARGV[0])["jobs"]["required"]["steps"].find { |s| s["id"] == ARGV[1] }
+    puts step["run"] if step' "$MERGE_GROUP_REQUIRED" "$scope_step_id")"
+  if [[ -z "$scope_script" ]]; then
+    fail "merge-group scope router step has no run script"
+  else
+    scope_tmp="$(mktemp -d)"
+    scope_repo="$scope_tmp/repo"
+    sfx() { git -C "$scope_repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+    run_scope() { # base_sha head_sha -> GITHUB_OUTPUT content; status = script status
+      : >"$scope_tmp/out"
+      (cd "$scope_repo" && GITHUB_OUTPUT="$scope_tmp/out" BASE_SHA="$1" HEAD_SHA="$2" \
+        bash -c "$scope_script") >/dev/null 2>&1 || return 1
+      cat "$scope_tmp/out"
+    }
+    git init -q -b main "$scope_repo"
+    mkdir -p "$scope_repo/ops"
+    cp ops/ci_scope_router.sh "$scope_repo/ops/ci_scope_router.sh"
+    sfx add ops/ci_scope_router.sh
+    sfx commit -q -m base
+    s_base="$(sfx rev-parse HEAD)"
+    mkdir -p "$scope_repo/backend/app"
+    : >"$scope_repo/backend/app/changed.py"
+    sfx add backend
+    sfx commit -q -m backend-change
+    s_backend="$(sfx rev-parse HEAD)"
+    sfx checkout -q -b docs-only "$s_base"
+    mkdir -p "$scope_repo/docs"
+    : >"$scope_repo/docs/only.md"
+    sfx add docs
+    sfx commit -q -m docs-only
+    s_docs_only="$(sfx rev-parse HEAD)"
+    out="$(run_scope "$s_base" "$s_backend" || true)"
+    grep -Fxq 'backend=true' <<<"$out" \
+      || fail "scope router step, backend change: backend=true did not reach \$GITHUB_OUTPUT, got '$out'"
+    out="$(run_scope "$s_base" "$s_docs_only" || true)"
+    grep -Fxq 'backend=false' <<<"$out" \
+      || fail "scope router step, docs-only change: backend=false did not reach \$GITHUB_OUTPUT, got '$out'"
+    rm -rf "$scope_tmp"
+  fi
   backend_pytest_step="$(merge_group_step_containing 'uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json')"
   [[ -n "$backend_pytest_step" ]] \
     || fail "merge-group required gate does not run the backend pytest suite"
@@ -255,6 +316,13 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   grep -Eq "^        if: steps\.${scope_step_id}\.outputs\.backend == 'true'\$" <<<"$backend_pytest_step" \
     || fail "merge-group backend pytest step is not guarded by the router backend output"
   merge_group_assert_unmasked_step "backend pytest" "$backend_pytest_step" yes
+  # Exact command line: appended or injected selection flags (-k, --deselect,
+  # --ignore, -m, --co, ...) or PYTEST_ADDOPTS can run zero tests and still pass.
+  grep -Fqx '          uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json' <<<"$backend_pytest_step" \
+    || fail "merge-group backend pytest command line is not exactly 'uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json'; extra flags can silently narrow the suite"
+  if grep -Fq 'PYTEST_ADDOPTS' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group required workflow sets PYTEST_ADDOPTS, which can silently narrow the backend suite"
+  fi
   ffmpeg_step="$(merge_group_step_containing 'install -y --no-install-recommends ffmpeg')"
   [[ -n "$ffmpeg_step" ]] \
     || fail "merge-group required gate has no ffmpeg install step"
