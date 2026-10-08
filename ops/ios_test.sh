@@ -951,8 +951,8 @@ write_early_failure_verdict() {
   else
     early_tree_dirty=true
   fi
-  printf 'RESULT=inconclusive EXIT=%s reason=%s caller=%s elapsed=0s $(kg_ios_verdict_identity_kv)\n' \
-    "$exit_code" "$reason" "$CALLER" >"$VERDICT_FILE"
+  printf 'RESULT=inconclusive EXIT=%s reason=%s caller=%s elapsed=0s %s\n' \
+    "$exit_code" "$reason" "$CALLER" "$(kg_ios_verdict_identity_kv)" >"$VERDICT_FILE"
   jq -nc \
     --arg schema "kg.ios.run-verdict.v1" \
     --arg kind "test" \
