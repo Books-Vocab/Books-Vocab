@@ -51,7 +51,7 @@ class TestEmbeddingStoreCache:
         import kg.service_factories as sf
 
         clear_store_cache()
-        key = f"embedding:{tmp_path}:default"
+        key = f"embedding:{tmp_path}:default:test-model:8"
         started = threading.Event()
         release = threading.Event()
         late_store = MagicMock(name="late_store")
@@ -89,6 +89,34 @@ class TestEmbeddingStoreCache:
         finally:
             release.set()
             thread.join(timeout=5)
+            clear_store_cache()
+
+    def test_evict_notebook_removes_all_model_dim_variants_only(self, tmp_path: Path):
+        """Eviction drops every model/dim entry for the notebook; neighbours stay."""
+        import kg.service_factories as sf
+
+        clear_store_cache()
+        user_a, user_b = tmp_path / "a", tmp_path / "b"
+        user_a.mkdir()
+        user_b.mkdir()
+        try:
+            create_embedding_store(user_a, llm=None, notebook_id="X", model="m1", dim=8)
+            create_embedding_store(user_a, llm=None, notebook_id="X", model="m2", dim=16)
+            create_embedding_store(user_a, llm=None, notebook_id="Xa", model="m1", dim=8)
+            create_embedding_store(user_b, llm=None, notebook_id="X", model="m1", dim=8)
+            with sf._STORE_CACHE_LOCK:
+                assert len(sf._STORE_CACHE) == 4
+            closed: list[object] = []
+            with patch.object(sf, "_close_store", closed.append):
+                evict_notebook_cache(user_a, "X")
+            with sf._STORE_CACHE_LOCK:
+                after = set(sf._STORE_CACHE)
+            assert after == {
+                f"embedding:{user_a}:Xa:m1:8",
+                f"embedding:{user_b}:X:m1:8",
+            }
+            assert len(closed) == 2
+        finally:
             clear_store_cache()
 
     def test_same_user_dir_notebook_returns_same_instance(self, tmp_path: Path):
