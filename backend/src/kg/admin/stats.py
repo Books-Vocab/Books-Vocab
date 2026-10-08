@@ -21,18 +21,15 @@ logger = logging.getLogger("kg.admin_handlers")
 
 
 class MemLogGetter(Protocol):
-    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
-        ...
+    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]: ...
 
 
 class CardStore(Protocol):
-    def count(self) -> int:
-        ...
+    def count(self) -> int: ...
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, data_dir: Path) -> CardStore:
-        ...
+    def __call__(self, data_dir: Path) -> CardStore: ...
 
 
 def admin_stats_response(
@@ -49,11 +46,7 @@ def admin_stats_response(
 
     users_data = load_users()
     token_stats = get_all_stats()
-    is_pro_by_user = {
-        uid: _is_pro({"record": info})
-        for uid, info in users_data.items()
-        if is_real_user(uid, info)
-    }
+    is_pro_by_user = {uid: _is_pro({"record": info}) for uid, info in users_data.items() if is_real_user(uid, info)}
     quota_usage = get_all_quota_usage(is_pro_by_user=is_pro_by_user)
 
     result = []
@@ -106,6 +99,7 @@ def admin_stats_response(
 
     try:
         from ..judge_log import get_acceptance_stats
+
         judge_stats = get_acceptance_stats()
     except Exception:
         logger.warning("Failed to load judge acceptance stats", exc_info=True)

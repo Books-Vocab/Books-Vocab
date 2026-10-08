@@ -1,4 +1,5 @@
 """Unit tests for admin host statistics."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -96,9 +97,7 @@ def test_est_cost_null_provider_uses_routed(tt_db, monkeypatch):
 def test_no_usage_quota_fallback_uses_tier_limit(tt_db, monkeypatch):
     monkeypatch.setattr(quota_service, "PRO_DAILY_LIMIT_USD", 7.0)
     monkeypatch.setattr(quota_service, "FREE_DAILY_LIMIT_USD", 0.11)
-    monkeypatch.setattr(
-        "kg.deps_quota._is_pro", lambda ctx: ctx["record"].get("pro", False)
-    )
+    monkeypatch.setattr("kg.deps_quota._is_pro", lambda ctx: ctx["record"].get("pro", False))
     users = {"free": {"email": "f@x"}, "pro": {"email": "p@x", "pro": True}}
     out = _stats(tt_db, users)
     by_id = {u["user_id"]: u for u in out["users"]}
