@@ -63,6 +63,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `ReadiumNavigatorCoordinator+Planner.swift` | `struct BridgePlanner`，指令排程。換綁定單字本時以 **set-diff 權威重畫** highlight（比對舊/新命中集合 add/remove 底線指令），取代舊的 count-gating |
 | `ReadiumNavigatorCoordinator+Messages.swift` | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 高亮 extension |
+| `ReaderFontFaceCSSCache.swift` | 行程級 `@font-face` CSS 快取（16 TTF → base64，~4.5 MB）：`prewarm()` 由 `BookshelfView.onAppear`／`ReaderView.init` 在 detached `.utility` 建置；navigator `setupUserScripts`（主執行緒）只讀 `css()` 快取，冷路徑 fallback 為 single-flight 同步建置並 log（#2052） |
 | `ReadiumNavigatorSupport.swift` | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
 | `ReaderPublicationLoader.swift` | MainActor-isolated publication/iCloud loader；injected load clock 只控制 iCloud polling，不改變 Readium location 的 production progress source |
 | `ReaderProgressSaver.swift` | Locator/date debounce persistence；只接受 finite、`0...1` progression，unknown/restore failure 不覆蓋既有 `Book.progression` |

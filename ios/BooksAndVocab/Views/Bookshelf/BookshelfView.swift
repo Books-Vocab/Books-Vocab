@@ -182,6 +182,8 @@ struct BookshelfView: View {
             .settingsSheet(isPresented: $coordinator.showSettings)
             .loginGateSheet($loginGate)
             .onAppear {
+                // 預熱 Reader 字體 @font-face CSS（背景 .utility、idempotent；#2052）。
+                ReaderFontFaceCSSCache.shared.prewarm()
                 // probe rig：見 AppRuntimeOptions.shouldOpenSettingsOnLaunch。
                 if AppRuntimeOptions.shouldOpenSettingsOnLaunch() {
                     coordinator.showSettings = true
