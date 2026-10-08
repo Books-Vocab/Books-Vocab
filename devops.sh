@@ -532,16 +532,29 @@ cmd_logs() {
 cleanup_old_backups() {
   local backup_dir="$BACKUP_DIR"
   local keep=10
-  local count
-  count=$(ls -1d "$backup_dir"/data_* 2>/dev/null | wc -l)
+  local count dir f
+  # 一份備份 = data_<date>/ 目錄 + 同名 .tar.gz + .tar.gz.sha256；
+  # 只以目錄計數，否則 tarball／sha256 會讓 keep 實際只剩約 3 份快照。
+  count=$(ls -1d "$backup_dir"/data_*/ 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -gt "$keep" ]; then
     local to_delete=$(( count - keep ))
     echo "清理舊備份：刪除最舊的 $to_delete 份..."
-    ls -1d "$backup_dir"/data_* | head -n "$to_delete" | while read -r dir; do
+    ls -1d "$backup_dir"/data_*/ | head -n "$to_delete" | while read -r dir; do
+      dir="${dir%/}"
       echo "  刪除: $(basename "$dir")"
-      rm -rf "$dir"
+      rm -rf "$dir" "$dir.tar.gz" "$dir.tar.gz.sha256"
     done
   fi
+  # 孤兒：沒有對應 data_<date>/ 目錄的 tarball／sha256（舊版安裝遺留）
+  for f in "$backup_dir"/data_*.tar.gz "$backup_dir"/data_*.tar.gz.sha256; do
+    [ -e "$f" ] || continue
+    dir="${f%.sha256}"
+    dir="${dir%.tar.gz}"
+    if [ ! -d "$dir" ]; then
+      echo "  刪除孤兒: $(basename "$f")"
+      rm -f "$f"
+    fi
+  done
 }
 
 # rsync flavor 分流：macOS 內建 /usr/bin/rsync 是 openrsync（--version 首行
