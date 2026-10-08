@@ -71,7 +71,9 @@ class FakeWorld:
         self.trunk_moves_to: str | None = state.get("trunk_moves_to")
         self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
         self.format_rc = state.get("format_rc", 0)
-        self.unformatted = state.get("unformatted", ["ops/a.py"])
+        # ruff format rewrites the files (the worktree turns dirty) when True.
+        self.format_changes = state.get("format_changes", False)
+        self.format_pending = False
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
         self.stderr_for: dict[str, str] = state.get("stderr_for", {})
         self.lock_busy: dict[str, int] = dict(state.get("lock_busy", {}))
@@ -147,7 +149,8 @@ class FakeWorld:
             if sub[:2] == ["rev-parse", "--abbrev-ref"]:
                 return ok(self.branch)
             if sub[0] == "status":
-                return ok(" M file\n" if self.dirty else "")
+                dirty = self.dirty or self.format_pending
+                return ok(" M file\n" if dirty else "")
             if sub[0] == "fetch":
                 return ok()
             if sub[0] == "rev-list":
@@ -168,6 +171,11 @@ class FakeWorld:
                 return ok("".join(f"{name}\n" for name in self.changed_py))
             if sub[0] == "diff":
                 return ok(self.diff)
+            if sub[0] == "add":
+                return ok()
+            if sub[0] == "commit":
+                self.format_pending = False
+                return ok("[branch abc1234] style: ruff format (pre-publish)\n")
             if sub[:2] == ["merge-base", "--is-ancestor"]:
                 return deliver.Proc(0 if self.old_is_ancestor else 1, "", "")
             if sub[0] == "merge-base":
@@ -192,8 +200,10 @@ class FakeWorld:
                 self.remote_heads.pop(sub[-1], None)
                 return ok()
         if head == "uv":
-            listed = "".join(f"Would reformat: {n}\n" for n in self.unformatted)
-            return deliver.Proc(self.format_rc, listed if self.format_rc else "", "")
+            if self.format_rc:
+                return deliver.Proc(self.format_rc, "", "error: Failed to parse a.py")
+            self.format_pending = self.format_changes
+            return ok("1 file reformatted\n" if self.format_changes else "")
         if head == "gh":
             if cmd[1:3] == ["repo", "view"]:
                 return ok("o/r")
@@ -1492,7 +1502,11 @@ def _format_calls(world: FakeWorld) -> list[list[str]]:
     return [c for c in world.calls if c[0] == "uv"]
 
 
-def test_the_format_gate_runs_the_pr_gate_pinned_ruff_on_changed_python() -> None:
+def _commits(world: FakeWorld) -> list[list[str]]:
+    return [c for c in world.calls if c[:2] == ["git", "commit"]]
+
+
+def test_the_format_step_runs_the_pr_gate_pinned_ruff_on_changed_python() -> None:
     world = FakeWorld()
     assert ship(world, "--check", "unit=good")[0] == 0
     (call,) = _format_calls(world)
@@ -1502,7 +1516,9 @@ def test_the_format_gate_runs_the_pr_gate_pinned_ruff_on_changed_python() -> Non
     assert call[call.index("--with") + 1] == "ruff==0.16.3"
     assert call[call.index("--python") + 1] == "3.13"
     assert "--no-project" in call and "format" in call
-    assert call[call.index("--check") :] == ["--check", "ops/a.py", "ops/b.py"]
+    assert call[call.index("format") :] == ["format", "ops/a.py", "ops/b.py"]
+    assert "--check" not in call  # it rewrites; it does not merely report
+    assert world.cwds[world.calls.index(call)] == world.work.resolve()
 
 
 def test_the_pin_is_read_from_the_workflow_not_restated() -> None:
@@ -1512,35 +1528,87 @@ def test_the_pin_is_read_from_the_workflow_not_restated() -> None:
     assert "ruff==9.9.9" in bumped and "3.14" in bumped
 
 
-def test_a_long_format_failure_names_every_file() -> None:
-    names = [f"ops/module_{i:03d}.py" for i in range(60)]
-    world = FakeWorld(format_rc=1, unformatted=names)
-    code, result = ship(world, "--check", "unit=good")
-    assert code == 1
-    assert all(f"Would reformat: {n}" in result["error"] for n in names)
-
-
 def test_an_unreadable_pin_fails_closed() -> None:
     with pytest.raises(deliver.DeliverError, match="cannot read the pinned ruff"):
         deliver.ruff_format_command("run: ruff format --check x")
 
 
-def test_unformatted_python_stops_before_checks_and_names_the_fix() -> None:
-    world = FakeWorld(format_rc=1)
+def test_already_formatted_python_makes_no_commit() -> None:
+    world = FakeWorld()
+    assert ship(world, "--check", "unit=good")[0] == 0
+    assert _commits(world) == []
+
+
+def test_unformatted_python_is_committed_before_checks_and_the_claim() -> None:
+    world = FakeWorld(format_changes=True)
     code, result = ship(world, "--check", "unit=good")
-    assert code == 1
-    error = result["error"]
-    assert "pinned ruff" in error and "Would reformat: ops/a.py" in error
-    assert "ruff==0.16.3 ruff format ops/a.py ops/b.py" in error
-    assert not [c for c in world.calls if c[0] == "bash"]  # no check ran
-    assert world.names() == []  # nothing claimed, nothing handed back
-    assert not [c for c in world.calls if c[:2] == ["git", "commit"]]  # never rewrites
+    assert code == 0
+    (commit,) = _commits(world)
+    message = commit[commit.index("-m") + 1]
+    assert message.splitlines()[0] == "style: ruff format (pre-publish)"
+    assert "\nCo-Authored-By: " in message and "<noreply@anthropic.com>" in message
+    add = [c for c in world.calls if c[:2] == ["git", "add"]]
+    assert add == [["git", "add", "--", "ops/a.py", "ops/b.py"]]
+    at = {id(c): i for i, c in enumerate(world.calls)}
+    first_check = next(c for c in world.calls if c[0] == "bash")
+    adopt = next(c for c in world.calls if c[0].endswith("worktree_orchestrate.py"))
+    assert at[id(_format_calls(world)[0])] < at[id(add[0])] < at[id(commit)]
+    assert at[id(commit)] < at[id(first_check)] < at[id(adopt)]
+    assert any("format" in line for line in result["log"])
 
 
-def test_a_branch_without_python_changes_skips_the_format_gate() -> None:
+def test_the_format_commit_is_scoped_to_the_changed_files() -> None:
+    world = FakeWorld(format_changes=True, changed_py=["ops/a.py"])
+    assert ship(world, "--check", "unit=good")[0] == 0
+    assert ["git", "add", "--", "ops/a.py"] in world.calls
+    assert not [c for c in world.calls if c[:3] == ["git", "add", "-A"]]
+
+
+def test_a_branch_without_python_changes_does_not_run_ruff_or_commit() -> None:
     world = FakeWorld(changed_py=[])
     assert ship(world, "--check", "unit=good")[0] == 0
     assert _format_calls(world) == []
+    assert _commits(world) == []
+
+
+def test_a_ruff_failure_stops_the_run_and_names_the_error() -> None:
+    world = FakeWorld(format_rc=2)
+    code, result = ship(world, "--check", "unit=good")
+    assert code == 1
+    assert "ruff format failed" in result["error"]
+    assert "Failed to parse a.py" in result["error"]
+    assert _commits(world) == []
+    assert not [c for c in world.calls if c[0] == "bash"]  # no check ran
+    assert world.names() == []  # nothing claimed, nothing handed back
+
+
+def test_a_dirty_worktree_is_refused_before_ruff_runs() -> None:
+    world = FakeWorld(dirty=True)
+    code, result = ship(world, "--check", "unit=good")
+    assert code == 1 and "uncommitted changes" in result["error"]
+    assert _format_calls(world) == [] and _commits(world) == []
+
+
+def test_the_format_step_itself_refuses_a_dirty_worktree() -> None:
+    # preflight also refuses, but the step must not trust its caller: ruff would
+    # otherwise fold the author's uncommitted edits into the format commit.
+    world = FakeWorld(dirty=True)
+    args = deliver.build_parser().parse_args(["--worktree", str(world.work)])
+    step = deliver.Delivery(args, world, world.sleep, lambda: world.now)
+    with pytest.raises(deliver.DeliverError, match="uncommitted changes"):
+        step.format_changed_python()
+    assert _format_calls(world) == [] and _commits(world) == []
+    assert not [c for c in world.calls if c[:2] == ["git", "add"]]
+
+
+def test_a_resumed_published_lane_is_not_reformatted() -> None:
+    world = FakeWorld(
+        record={"status": "published", "branch": "feat/thing"},
+        prs=[{"number": 5, "state": "OPEN", "url": "u"}],
+        format_changes=True,
+    )
+    assert ship(world)[0] == 0
+    assert _format_calls(world) == [] and _commits(world) == []
 
 
 # ---- redeliver: replace a published PR with a fixed lane ------------------
