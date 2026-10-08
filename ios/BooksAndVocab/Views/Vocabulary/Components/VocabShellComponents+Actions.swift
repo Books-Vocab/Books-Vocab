@@ -59,22 +59,31 @@ struct VocabSliderRow: View {
     var labelWidth: CGFloat = 64
     var valueWidth: CGFloat = 42
 
+    private var localizedLabel: String { label.localized }
+
     var body: some View {
         HStack(spacing: appSkin.spacing.inlineGap) {
-            Text(label.localized)
+            Text(localizedLabel)
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.primaryText)
-                .frame(width: labelWidth, alignment: .leading)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .frame(minWidth: labelWidth, alignment: .leading)
+                .accessibilityHidden(true)
 
             Slider(value: $value, in: range)
+                .accessibilityLabel(localizedLabel)
+                .accessibilityValue(Text(String(format: format, value)))
 
             Text(String(format: format, value))
                 .font(appSkin.typography.monoLabel)
                 .monospacedDigit()
                 .foregroundStyle(appSkin.palette.secondaryText)
-                .frame(width: valueWidth, alignment: .trailing)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: valueWidth, alignment: .trailing)
+                .accessibilityHidden(true)
         }
-        .frame(height: appSkin.metrics.tabSelectorHeight)
+        .frame(minHeight: appSkin.metrics.tabSelectorHeight)
         .enableInjection()
     }
 }
