@@ -164,6 +164,8 @@ class KGSettings:
 
 
 def _env_truthy(name: str) -> bool:
+    # ops/env_drift.py `env_flag_truthy` must stay a superset of this (env-check);
+    # ops/tests/test_env_check.py pins the parity.
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
 
 
@@ -273,6 +275,12 @@ def load_settings() -> KGSettings:
             "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS is ON — signature verification disabled. DO NOT use in production."
         )
 
+    app_store_allow_unsigned_sync = _env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC")
+    if app_store_allow_unsigned_sync:
+        _logger.warning(
+            "APP_STORE_ALLOW_UNSIGNED_SYNC is ON — signature verification disabled. DO NOT use in production."
+        )
+
     rate_limit_settings = load_rate_limit_settings()
 
     return KGSettings(
@@ -289,7 +297,7 @@ def load_settings() -> KGSettings:
         ),
         apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser"),
         apple_service_id=os.getenv("APPLE_SERVICE_ID", "com.Max0228.BooksAndVocab.web"),
-        app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
+        app_store_allow_unsigned_sync=app_store_allow_unsigned_sync,
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,
         admin_token=os.getenv("ADMIN_TOKEN", ""),
         admin_password=os.getenv("ADMIN_PASSWORD", ""),
