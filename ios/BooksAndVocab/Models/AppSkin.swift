@@ -51,11 +51,6 @@ enum AppSkinColors {
     // ── 例句高光（紙感螢光筆）──
     static let highlightMarkLight = Color(red: 0.90, green: 0.84, blue: 0.57)
     static let highlightMarkDark  = Color(red: 0.73, green: 0.66, blue: 0.33)
-
-    // ── Reader 主題色票（固定，不隨系統深淺色）──
-    static let readerThemeLightSwatch = Color(red: 0.95, green: 0.945, blue: 0.935)
-    static let readerThemeSepiaSwatch = Color(red: 0.82, green: 0.73, blue: 0.58)
-    static let readerThemeDarkSwatch  = Color(red: 0.18, green: 0.18, blue: 0.18)
 }
 
 struct AppSkin {
@@ -77,9 +72,6 @@ struct AppSkin {
         let overdue: Color
         let highlightMark: Color
         let link: Color
-        let readerThemeLightSwatch: Color
-        let readerThemeSepiaSwatch: Color
-        let readerThemeDarkSwatch: Color
 
         // ── passthrough forwarder（唯一真相 = base）──
         var pageBackground: Color { base.pageBackground }
@@ -321,10 +313,7 @@ extension AppSkin {
                 retry: isDark ? AppSkinColors.retryDark : AppSkinColors.retryLight,
                 overdue: isDark ? AppSkinColors.overdueDark : AppSkinColors.overdueLight,
                 highlightMark: isDark ? AppSkinColors.highlightMarkDark : AppSkinColors.highlightMarkLight,
-                link: isDark ? AppSkinColors.linkDark : AppSkinColors.linkLight,
-                readerThemeLightSwatch: AppSkinColors.readerThemeLightSwatch,
-                readerThemeSepiaSwatch: AppSkinColors.readerThemeSepiaSwatch,
-                readerThemeDarkSwatch: AppSkinColors.readerThemeDarkSwatch
+                link: isDark ? AppSkinColors.linkDark : AppSkinColors.linkLight
             ),
             typography: baseTypography,
             roundness: baseRoundness,
@@ -339,18 +328,3 @@ extension AppSkin {
     /// 由 themed(.light) 組裝 — 與正式 light skin 單一真相，消除硬編碼複本漂移。
     static let previewNeutral = AppSkin.themed(.light)
 }
-
-#if os(iOS)
-extension AppSkin {
-    func readerThemeSwatchColor(_ theme: ReaderTheme) -> Color {
-        switch theme {
-        case .light:
-            return palette.readerThemeLightSwatch
-        case .sepia:
-            return palette.readerThemeSepiaSwatch
-        case .dark:
-            return palette.readerThemeDarkSwatch
-        }
-    }
-}
-#endif

@@ -174,12 +174,6 @@ enum SharedDeckFormat {
         value.formatted(.number.precision(.fractionLength(1)))
     }
 
-    /// 「更新於 …」相對時間；nil → nil（呼叫端略過）。
-    static func relativeUpdatedAt(_ date: Date?) -> String? {
-        guard let date else { return nil }
-        return LocaleAwareFormatter.shared.relativeString(for: date, style: .abbreviated)
-    }
-
     /// 分類 display name：已知 enum → L10n key，未知 → 原樣（render-safety，server 可能加新分類）。
     static func categoryDisplayName(_ category: String) -> String {
         switch category {

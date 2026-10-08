@@ -170,10 +170,6 @@ enum CardRichTextRenderer {
         return cache
     }()
 
-    static func clearTruncationCache() {
-        truncationCache.removeAllObjects()
-    }
-
     private static func cachedTruncate(_ raw: String, radius: Int, targetWord: String?) -> String {
         // 組合單一 NSString key：用 \u{1F} (Unit Separator) 當分隔符，避免 raw 內容衝突
         let keyString = "\(raw)\u{1F}\(radius)\u{1F}\(targetWord ?? "")" as NSString
