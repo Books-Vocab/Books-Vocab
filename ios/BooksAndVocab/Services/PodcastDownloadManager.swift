@@ -355,6 +355,7 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
         taskToRemoteId.removeValue(forKey: taskId)
         remoteIdToTask.removeValue(forKey: remoteId)
         progress.removeValue(forKey: remoteId)
+        lastProgressUpdate.removeValue(forKey: remoteId)
     }
 }
 #endif
