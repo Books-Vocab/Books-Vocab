@@ -9,7 +9,7 @@ be verified by their own acceptance commands.
 
 Nothing here writes to the repository, the registry or GitHub.  Issue acceptance
 commands are *reported* by default; ``--run-acceptance`` executes them, and only
-for issues authored by the repository owner (issue text is data, anyone can file
+for issues authored by the repository owner or a member (issue text is data, anyone can file
 one), one at a time, with a timeout.
 
 Exit code: 0 all ok, 1 warnings, 2 at least one blocker.
@@ -305,13 +305,18 @@ def evaluate_delivery(data: dict[str, Any] | None, now: datetime) -> Finding:
     return Finding("delivery", level, text, problems)
 
 
+ACCEPTANCE_TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER"})
+
+
 def parse_acceptance(body: str | None) -> list[str]:
-    """Shell commands in fenced blocks under the issue's ``## Acceptance`` heading."""
+    """Shell commands in fenced blocks under the issue's ``## Acceptance`` (or ``### Acceptance criteria``) heading."""
 
     if not body:
         return []
     section = re.search(
-        r"^##\s+Acceptance\s*$(.*?)(?=^##\s|\Z)", body, re.MULTILINE | re.DOTALL
+        r"^#{2,3}\s+Acceptance\b[^\n]*$(.*?)(?=^#{2,3}\s|\Z)",
+        body,
+        re.MULTILINE | re.DOTALL,
     )
     if not section:
         return []
@@ -325,12 +330,13 @@ def parse_acceptance(body: str | None) -> list[str]:
 
 
 def runnable_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Only owner-authored issues may have their acceptance text executed."""
+    """Only owner/member-authored issues may have their acceptance text executed."""
 
     return [
         i
         for i in issues
-        if i.get("authorAssociation") == "OWNER" and parse_acceptance(i.get("body"))
+        if i.get("authorAssociation") in ACCEPTANCE_TRUSTED_ASSOCIATIONS
+        and parse_acceptance(i.get("body"))
     ]
 
 
@@ -561,22 +567,41 @@ def collect_disk() -> dict[str, Any] | None:
         return None
 
 
+class IssueFetchError(RuntimeError):
+    """gh could not list issues; carries gh's stderr so the report can say why."""
+
+
 def collect_issues(repo: Path) -> list[dict[str, Any]]:
+    # The REST issues endpoint, not `gh issue list --json`: it has no result cap
+    # once paginated and no GraphQL field that can fail the whole request.
     done = _run(
         [
             "gh",
-            "issue",
-            "list",
-            "--state",
-            "open",
-            "--limit",
-            "200",
-            "--json",
-            "number,title,body,authorAssociation,labels",
+            "api",
+            "--paginate",
+            "repos/{owner}/{repo}/issues?state=open&per_page=100",
         ],
         repo,
+        timeout=120,
     )
-    issues = json.loads(done.stdout) if done.returncode == 0 and done.stdout else []
+    if done.returncode != 0:
+        raise IssueFetchError(
+            done.stderr.strip() or f"gh api exited {done.returncode} with no stderr"
+        )
+    # --paginate prints one JSON array per page, back to back.
+    decoder, text, pos, entries = json.JSONDecoder(), done.stdout, 0, []
+    try:
+        while text[pos:].strip():
+            pos += len(text[pos:]) - len(text[pos:].lstrip())
+            page, pos = decoder.raw_decode(text, pos)
+            entries.extend(page)
+    except ValueError as exc:
+        raise IssueFetchError(f"unparseable gh api output: {exc}") from exc
+    issues = [
+        {**entry, "authorAssociation": entry.get("author_association")}
+        for entry in entries
+        if "pull_request" not in entry
+    ]
     return exclude_health_report(issues)
 
 
@@ -611,7 +636,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run-acceptance",
         action="store_true",
-        help="execute the acceptance commands of owner-authored open issues on this checkout",
+        help="execute the acceptance commands of owner/member-authored open issues on this checkout",
     )
     return parser
 
@@ -621,9 +646,13 @@ def main(argv: list[str] | None = None) -> int:
     repo = args.repo.resolve()
     now = datetime.now(timezone.utc)
     git = None if args.ci and not args.run_acceptance else collect_git(repo)
-    issues = collect_issues(repo)
+    issues_error = None
+    try:
+        issues = collect_issues(repo)
+    except IssueFetchError as exc:
+        issues, issues_error = [], str(exc)
     results = None
-    if args.run_acceptance:
+    if args.run_acceptance and issues_error is None:
         if git["branch"] != "main" or git["dirty"] or git["local"] != git["origin"]:
             print(
                 "doctor: --run-acceptance needs a clean main == origin/main checkout",
@@ -631,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         print(
-            "doctor: running acceptance commands of owner-authored issues",
+            "doctor: running acceptance commands of owner/member-authored issues",
             file=sys.stderr,
         )
         results = run_acceptance(issues, cwd=repo)
@@ -645,7 +674,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     complexity_finding = evaluate_complexity(*collect_complexity(repo))
     delivery = evaluate_delivery(collect_delivery(repo), now)
-    issues_finding = evaluate_issues(issues, results)
+    issues_finding = (
+        Finding("issues", "warn", "could not list open issues via gh", [issues_error])
+        if issues_error is not None
+        else evaluate_issues(issues, results)
+    )
     if args.ci:
         findings = [*ci, gap, sentry, delivery, complexity_finding, issues_finding]
     else:
