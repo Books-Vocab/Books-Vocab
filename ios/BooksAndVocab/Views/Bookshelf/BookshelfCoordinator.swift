@@ -284,6 +284,10 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                         AppLog.book.info("Book saved: \(book.title)")
                         succeeded += 1
                     } else {
+                        // Save failed: unstage the Book and drop the imported file so a
+                        // later successful save can't resurrect a "failed" import.
+                        modelContext.delete(book)
+                        try? LocalBookFileManager().deleteBookFile(named: draft.fileName)
                         failures.append((url.lastPathComponent, .unknown(underlying: "儲存失敗".localized)))
                     }
                 } catch is CancellationError {
