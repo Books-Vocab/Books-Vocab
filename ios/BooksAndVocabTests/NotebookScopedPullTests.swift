@@ -13,7 +13,10 @@
 //  write `incrementalBoundary` (nor the payload-version marker that gates the
 //  next full re-sync), and it must merge with `isIncremental: true` so orphan
 //  cleanup never runs. `KeyRecordingDefaults` turns "never reads" into an
-//  observation rather than an inference from final values.
+//  observation rather than an inference from final values. It only bites
+//  because `pullCardsToLocal(defaults:)` hands the same object to the scoped
+//  path (which must leave it untouched); a scoped path that never received
+//  it would leave `.standard` as the only place a regression could show.
 //
 //  Harness (`PagedVocabTransport`, `VocabPullHarness`, …) lives in
 //  VocabPullPaginationTests.swift.

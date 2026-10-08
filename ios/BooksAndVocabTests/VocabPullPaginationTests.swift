@@ -175,6 +175,54 @@ struct VocabPullPaginationTests {
         #expect(defaults.object(forKey: boundaryKey) == nil)
     }
 
+    /// A server that mints a fresh cursor on every page never repeats one, so
+    /// the repeat guard cannot stop it. The page cap must: stop requesting at
+    /// `maxVocabPages` and commit nothing.
+    @Test func endlessFreshCursors_failAtThePageCap_andCommitNothing() async throws {
+        let container = try VocabPullHarness.makeContainer()
+        try VocabPullHarness.seedSynced(container, word: "w1", cardId: "c1")
+        let defaults = VocabPullHarness.makeDefaults()
+        let cap = KGService.maxVocabPages
+        let transport = PagedVocabTransport(pages: (1...(cap + 1)).map { index in
+            VocabPullPage(cards: [vocabCardJSON(id: "p\(index)", content: "p\(index)")], nextCursor: "cursor-\(index)")
+        })
+        let service = VocabPullHarness.makeService(transport: transport)
+
+        await #expect(throws: KGError.self) {
+            try await service.pullCardsToLocal(
+                container: container, progress: nil, notebookId: nil, reporter: nil, defaults: defaults
+            )
+        }
+
+        #expect(transport.vocabRequests.count == cap, "the cap must stop the drain before page \(cap + 1)")
+        #expect(try VocabPullHarness.words(in: container) == ["w1"],
+                "a capped drain merged or reaped cards")
+        #expect(defaults.object(forKey: boundaryKey) == nil)
+        #expect(defaults.object(forKey: payloadVersionKey) == nil)
+    }
+
+    /// Exactly `maxVocabPages` pages is legal: the cap rejects the 201st
+    /// request, not a drain that ends on page 200.
+    @Test func drainEndingOnTheLastAllowedPage_succeeds() async throws {
+        let container = try VocabPullHarness.makeContainer()
+        let defaults = VocabPullHarness.makeDefaults()
+        let cap = KGService.maxVocabPages
+        let transport = PagedVocabTransport(pages: (1...cap).map { index in
+            VocabPullPage(
+                cards: [vocabCardJSON(id: "p\(index)", content: "p\(index)")],
+                nextCursor: index < cap ? "cursor-\(index)" : nil
+            )
+        })
+        let service = VocabPullHarness.makeService(transport: transport)
+
+        _ = try await service.pullCardsToLocal(
+            container: container, progress: nil, notebookId: nil, reporter: nil, defaults: defaults
+        )
+
+        #expect(transport.vocabRequests.count == cap)
+        #expect(try VocabPullHarness.words(in: container).count == cap)
+    }
+
     // MARK: - Explore copy pull
 
     /// The post-copy notebook fetch reads the same paged endpoint; a copied

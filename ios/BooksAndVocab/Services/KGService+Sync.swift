@@ -165,7 +165,7 @@ extension KGService {
                 if let notebookId {
                     return try await self.performNotebookScopedPull(
                         container: container, progress: progress,
-                        notebookId: notebookId, reporter: reporter
+                        notebookId: notebookId, reporter: reporter, defaults: defaults
                     )
                 }
                 return try await self.performPullCardsToLocal(
@@ -186,11 +186,17 @@ extension KGService {
     /// notebooks' newer server changes unreachable. The payload version stays
     /// too — marking it current here would cancel the full re-sync a pending
     /// upgrade owes every notebook.
+    ///
+    /// `defaults` is deliberately never read or written. It is threaded through
+    /// only so a test's key-recording spy is the object this path would touch:
+    /// without it, a regression that reaches for the cursor keys would hit
+    /// `.standard` and the spy would stay silent.
     private func performNotebookScopedPull(
         container: ModelContainer,
         progress: ((String, Int, Int) -> Void)?,
         notebookId: String,
-        reporter: SyncProgressReporting?
+        reporter: SyncProgressReporting?,
+        defaults: UserDefaults
     ) async throws -> KGPullOutcome {
         progress?(L10n.string("正在下載單字..."), 0, 0)
         let pages = try await fetchAllVocabPages(query: [URLQueryItem(name: "notebook_id", value: notebookId)])
@@ -306,6 +312,9 @@ extension KGService {
         var pipelinePending = false
     }
 
+    /// Upper bound on pages one drain may follow (see `fetchAllVocabPages`).
+    static let maxVocabPages = 200
+
     /// Read `GET /api/vocab` to the end by following `X-Next-Cursor`.
     ///
     /// The server returns at most `limit` (default 5,000) rows per page,
@@ -314,7 +323,10 @@ extension KGService {
     /// the request scope (`notebook_id` + `since`), so every page re-sends
     /// `query` verbatim plus the cursor.
     ///
-    /// Throws on any failed, undecodable, or non-advancing page. A caller must
+    /// Throws on any failed, undecodable, or non-advancing page, and when the
+    /// drain would need more than `maxVocabPages` pages (a server that keeps
+    /// minting fresh cursors must not hang the sync or grow memory without
+    /// bound; 200 pages x 5,000 rows is far beyond any real library). A caller must
     /// commit nothing it derives from completeness — orphan cleanup, the
     /// incremental boundary — unless this returns: a truncated read is
     /// indistinguishable from "the server no longer has these cards".
@@ -342,6 +354,9 @@ extension KGService {
             cursor = httpResponse.value(forHTTPHeaderField: "X-Next-Cursor").flatMap { $0.isEmpty ? nil : $0 }
             if let cursor, !seenCursors.insert(cursor).inserted {
                 throw KGError.serverError("GET api/vocab returned a non-advancing cursor")
+            }
+            if cursor != nil, seenCursors.count >= Self.maxVocabPages {
+                throw KGError.serverError("GET api/vocab exceeded \(Self.maxVocabPages) pages")
             }
         } while cursor != nil
         if !seenCursors.isEmpty {
