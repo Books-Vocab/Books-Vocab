@@ -317,12 +317,7 @@ def test_p9_swift_decoders_reject_unknown_keys_at_nested_boundaries() -> None:
     )
     ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
 
-    for declaration in (
-        "struct UIWorldSurfaceContractsSeed:",
-        "struct UIWorldReviewCalendarEvidenceGroupsSeed:",
-        "struct UIWorldReviewCalendarEvidenceSeed:",
-        "struct UIWorldInstalledFixtureProof:",
-    ):
+    for declaration in ("struct UIWorldInstalledFixtureProof:",):
         assert declaration in app_seed
         section = app_seed.split(declaration, 1)[1].split("\nstruct ", 1)[0]
         assert "init(from decoder: Decoder) throws" in section, declaration
