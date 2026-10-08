@@ -34,9 +34,8 @@ import logging
 import os
 import sqlite3
 import sys
-import threading
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from ._fsutil import fsync_dir as _fsync_dir
 from .sentry_init import init_sentry
@@ -416,31 +415,28 @@ class OrphanFixAborted(RuntimeError):
     """
 
 
-class _LogModule(Protocol):
-    """Sibling log module contract: ``token_tracker`` / ``judge_log`` /
-    ``translate_log`` / ``pipeline_log`` all expose a process-wide lock and a
-    singleton-connection accessor."""
+def _delete_rows(db_path: Path, sql: str, params: list[tuple[Any, ...]]) -> None:
+    """Run a parameterised DELETE against ``db_path`` (the DB ``scan()`` read).
 
-    _lock: threading.Lock
-
-    def _get_conn(self) -> sqlite3.Connection: ...
-
-
-def _delete_rows_by_user(module: _LogModule, table: str, user_ids: list[str]) -> None:
-    """Hard-DELETE all rows in ``table`` belonging to the given ghost users.
-
-    Uses the module singleton connection (``module._lock`` / ``module._get_conn``)
-    so any other live readers see the change. No-op when ``user_ids`` is empty.
+    Opens its own connection so ``fix(data_dir=X)`` mutates exactly ``X``'s log
+    DBs and never the process-wide module singletons. No-op when ``params`` is
+    empty or the DB file / table is missing.
     """
-    if not user_ids:
+    if not params or not db_path.exists():
         return
-    with module._lock:
-        conn = module._get_conn()
-        conn.executemany(
-            f"DELETE FROM {table} WHERE user_id = ?",
-            [(uid,) for uid in user_ids],
-        )
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executemany(sql, params)
         conn.commit()
+    except sqlite3.OperationalError as exc:
+        logger.warning("orphan delete skipped for %s: %s", db_path, exc)
+    finally:
+        conn.close()
+
+
+def _delete_rows_by_user(db_path: Path, table: str, user_ids: list[str]) -> None:
+    """Hard-DELETE all rows in ``table`` of ``db_path`` belonging to ghost users."""
+    _delete_rows(db_path, f"DELETE FROM {table} WHERE user_id = ?", [(uid,) for uid in user_ids])
 
 
 def fix(
@@ -563,33 +559,19 @@ def fix(
         kept = [lk for lk in links if lk.get("id") not in bad_link_ids]
         _atomic_write_json(graph_path, kept)
 
-    # 3. delete translate_log rows for ghost users
-    from . import translate_log as tl
-
+    # 3-5. delete log rows directly in data_dir's DBs (not the module singletons)
     _delete_rows_by_user(
-        tl,
+        data_dir / "translate_log.db",
         "translate_log",
         [it["user_id"] for it in report["translate_log_orphan_user"]["items"]],
     )
-
-    # 4. delete judge_log rows (keyed by row id, not user — kept inline)
-    judge_ids = [it["id"] for it in report["judge_log_orphan_card"]["items"]]
-    if judge_ids:
-        from . import judge_log as jl
-
-        with jl._lock:
-            conn = jl._get_conn()
-            conn.executemany(
-                "DELETE FROM judge_log WHERE id = ?",
-                [(rid,) for rid in judge_ids],
-            )
-            conn.commit()
-
-    # 5. delete token_usage rows
-    from . import token_tracker as tt
-
+    _delete_rows(
+        data_dir / "judge_log.db",
+        "DELETE FROM judge_log WHERE id = ?",
+        [(it["id"],) for it in report["judge_log_orphan_card"]["items"]],
+    )
     _delete_rows_by_user(
-        tt,
+        data_dir / "token_usage.db",
         "token_usage",
         [it["user_id"] for it in report["token_usage_orphan_user"]["items"]],
     )

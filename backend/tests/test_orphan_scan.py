@@ -731,3 +731,68 @@ def test_scan_reports_registry_not_loaded_without_raising(env):
     _break_missing(env)
     report = scan(data_dir=env.data_dir)
     assert report["user_registry_loaded"] is False
+
+
+def _sha256_files(data_dir: Path) -> dict[str, str]:
+    import hashlib
+
+    return {
+        name: hashlib.sha256((data_dir / name).read_bytes()).hexdigest()
+        for name in ("translate_log.db", "judge_log.db", "token_usage.db")
+    }
+
+
+def test_fix_targets_data_dir_not_module_singletons(env, tmp_path):
+    """#2308: fix(data_dir=X) must mutate X's log DBs, never the singletons' DBs."""
+    import shutil
+
+    import kg.judge_log as jl
+    import kg.token_tracker as tt
+    import kg.translate_log as tl
+
+    # Sentinel = env.data_dir (what KG_DATA_DIR / singletons point at).
+    _seed_log_rows(env)  # live-user rows + one orphan judge row (to_id ghost)
+    tl.record(
+        user_id="ghost_user",
+        operation="translate_quick",
+        word="g",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
+    )
+    tt.record("ghost_user", "translate_quick", 1, 1)
+    jl._reset()
+    tl._reset()
+    if tt._conn is not None:
+        tt._conn.close()
+        tt._conn = None
+    sentinel = env.data_dir
+
+    # Target dir: independent copy of the same layout.
+    target = tmp_path / "target_root"
+    target.mkdir()
+    shutil.copy(sentinel / "users.json", target / "users.json")
+    shutil.copytree(sentinel / "users", target / "users")
+    for name in ("translate_log.db", "judge_log.db", "token_usage.db"):
+        shutil.copy(sentinel / name, target / name)
+
+    sentinel_hashes = _sha256_files(sentinel)
+    before = _log_row_counts(target)
+    assert before["judge_log"] == 1  # orphan judge row present in target
+
+    from kg.orphan_scan import fix, scan
+
+    assert scan(data_dir=target)["judge_log_orphan_card"]["count"] == 1
+    fix(data_dir=target, confirm=True, dry_run=False)
+
+    assert _sha256_files(sentinel) == sentinel_hashes
+    assert _log_row_counts(target)["judge_log"] == 0
+    # non-orphan live-user rows are kept in the target
+    after = _log_row_counts(target)
+    assert after["translate_log"] == before["translate_log"] - 1
+    assert after["token_usage"] == before["token_usage"] - 1
+    assert after["translate_log"] == 1 and after["token_usage"] == 1
+    assert scan(data_dir=target)["total"] == 0
