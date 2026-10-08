@@ -148,7 +148,7 @@ class NotebookCreateRequest(BaseModel):
 class NotebookUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
-    sort_order: int | None = None
+    sort_order: int | None = Field(default=None, ge=-(2**31), le=2**31 - 1)
     cover_pattern: str | None = Field(default=None, max_length=30)
 
     _validate_name = field_validator("name")(staticmethod(_validate_non_blank_name))
