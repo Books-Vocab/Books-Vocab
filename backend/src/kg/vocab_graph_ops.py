@@ -221,7 +221,15 @@ def delete_graph_link(
     graph: Any,
     cards_store: Any,
 ) -> None:
-    """Hard-delete a link and block the pair from being re-created."""
+    """Hard-delete a link and block the pair from being re-created.
+
+    Only ``active``/``hidden`` links are user-deletable. A ``deprecated`` link
+    (endpoint archived/deleted) must survive so ``restore_links_for`` can bring
+    it back on un-archive; deleting it would drop the row and block the pair.
+    """
+    lk = _get_link_or_404(link_id, graph)
+    if lk.status not in ("active", "hidden"):
+        raise NotFoundError("Link", link_id)
     try:
         from_id, to_id = graph.hard_delete_link(link_id, source="manual")
     except KeyError as exc:
