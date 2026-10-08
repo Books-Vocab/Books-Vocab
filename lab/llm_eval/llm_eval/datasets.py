@@ -29,9 +29,13 @@ def load_dataset(name: str) -> list[dict[str, Any]]:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError(f"{path}:{lineno}: malformed JSONL line: {exc}") from exc
+                raise ValueError(
+                    f"{path}:{lineno}: malformed JSONL line: {exc}"
+                ) from exc
             if not isinstance(row, dict):
-                raise ValueError(f"{path}:{lineno}: expected a JSON object, got {type(row).__name__}")
+                raise ValueError(
+                    f"{path}:{lineno}: expected a JSON object, got {type(row).__name__}"
+                )
             samples.append(row)
     return samples
 
@@ -40,8 +44,4 @@ def list_datasets() -> list[str]:
     """List available dataset names."""
     if not _DATASET_DIR.exists():
         return []
-    return [
-        p.stem
-        for p in _DATASET_DIR.iterdir()
-        if p.suffix == ".jsonl"
-    ]
+    return [p.stem for p in _DATASET_DIR.iterdir() if p.suffix == ".jsonl"]

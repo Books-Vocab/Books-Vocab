@@ -56,7 +56,9 @@ class _PromptLoader(BaseLoader):
     def __init__(self, base: Path) -> None:
         self.base = base
 
-    def get_source(self, environment: Environment, template: str) -> tuple[str, str, None]:  # type: ignore[override]
+    def get_source(
+        self, environment: Environment, template: str
+    ) -> tuple[str, str, None]:  # type: ignore[override]
         path = self.base / template
         if not path.exists():
             raise TemplateNotFound(template)
@@ -113,7 +115,9 @@ class PromptRegistry:
             raise KeyError(f"Version {version!r} not found for prompt {name!r}")
         return meta
 
-    def render(self, name: str, version: str | None = None, **kwargs: Any) -> RenderedPrompt:
+    def render(
+        self, name: str, version: str | None = None, **kwargs: Any
+    ) -> RenderedPrompt:
         """Render a prompt template with given variables."""
         meta = self.get_meta(name, version)
         tpl = self._jinja.get_template(meta.file)
@@ -130,7 +134,9 @@ class PromptRegistry:
         )
 
 
-def _parse_prompt_md(raw: str, schema: dict[str, Any]) -> tuple[str | None, str, dict[str, str] | None]:
+def _parse_prompt_md(
+    raw: str, schema: dict[str, Any]
+) -> tuple[str | None, str, dict[str, str] | None]:
     """Parse a rendered prompt markdown into system/user/response_format.
 
     Convention:
@@ -139,8 +145,16 @@ def _parse_prompt_md(raw: str, schema: dict[str, Any]) -> tuple[str | None, str,
     - If schema contains `response_format: json_object`, set response_format accordingly.
     """
     raw = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL).strip()
-    system_match = re.search(r"^##\s*System\s*\n(.*?)(?=\n##\s|\Z)", raw, re.DOTALL | re.MULTILINE | re.IGNORECASE)
-    user_match = re.search(r"^##\s*User\s*\n(.*?)(?=\n##\s|\Z)", raw, re.DOTALL | re.MULTILINE | re.IGNORECASE)
+    system_match = re.search(
+        r"^##\s*System\s*\n(.*?)(?=\n##\s|\Z)",
+        raw,
+        re.DOTALL | re.MULTILINE | re.IGNORECASE,
+    )
+    user_match = re.search(
+        r"^##\s*User\s*\n(.*?)(?=\n##\s|\Z)",
+        raw,
+        re.DOTALL | re.MULTILINE | re.IGNORECASE,
+    )
 
     system = system_match.group(1).strip() if system_match else None
     if user_match:

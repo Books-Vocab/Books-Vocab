@@ -46,8 +46,7 @@ def test_render_missing_prompt(tmp_prompts_dir):
 def test_render_with_system_section(tmp_prompts_dir):
     tpl = tmp_prompts_dir / "test_v1.md"
     tpl.write_text(
-        "## System\nYou are a test assistant.\n\n"
-        "## User\nTest: {{ word }}\n",
+        "## System\nYou are a test assistant.\n\n## User\nTest: {{ word }}\n",
         encoding="utf-8",
     )
     registry = PromptRegistry(prompts_dir=tmp_prompts_dir)
@@ -59,7 +58,9 @@ def test_render_with_system_section(tmp_prompts_dir):
 def test_version_natural_sort_and_latest(tmp_path):
     prompts_dir = tmp_path / "prompts"
     prompts_dir.mkdir()
-    versions = "".join(f"      - id: {v}\n        file: {v}.md\n" for v in ("v2", "v10", "v9"))
+    versions = "".join(
+        f"      - id: {v}\n        file: {v}.md\n" for v in ("v2", "v10", "v9")
+    )
     (prompts_dir / "manifest.yaml").write_text(
         "prompts:\n  - name: p\n    versions:\n" + versions, encoding="utf-8"
     )
