@@ -34,7 +34,9 @@ def _parse_utc_timestamp(raw: object, *, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ReviewClockPlanError(f"{label} is not a valid ISO-8601 timestamp: {raw!r}") from exc
+        raise ReviewClockPlanError(
+            f"{label} is not a valid ISO-8601 timestamp: {raw!r}"
+        ) from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC).replace(microsecond=0)
@@ -131,7 +133,9 @@ def append_review_calendar_boundary_event(
     active_plan = plan if plan is not None else load_history_plan()
     boundary = review_calendar_boundary_event(active_plan)
     normalized = [dict(event) for event in events]
-    if any(is_review_calendar_boundary_event(event, active_plan) for event in normalized):
+    if any(
+        is_review_calendar_boundary_event(event, active_plan) for event in normalized
+    ):
         return normalized
     normalized.append(boundary)
     return normalized
@@ -182,16 +186,24 @@ def canonicalize_review_history(
     try:
         time_zone = ZoneInfo(str(active_plan["review_clock_time_zone"]))
     except (KeyError, ZoneInfoNotFoundError) as exc:
-        raise ReviewClockPlanError("history plan review_clock_time_zone is invalid") from exc
+        raise ReviewClockPlanError(
+            "history plan review_clock_time_zone is invalid"
+        ) from exc
 
     normalized: list[dict[str, Any]] = []
     for index, event in enumerate(events):
         if not isinstance(event, Mapping):
-            raise ReviewClockPlanError(f"review history event[{index}] must be an object")
-        instant = _parse_utc_timestamp(event.get("reviewedAt"), label=f"review history event[{index}].reviewedAt")
+            raise ReviewClockPlanError(
+                f"review history event[{index}] must be an object"
+            )
+        instant = _parse_utc_timestamp(
+            event.get("reviewedAt"), label=f"review history event[{index}].reviewedAt"
+        )
         if is_review_calendar_boundary_event(event, active_plan):
             item = dict(event)
-            item["reviewedAt"] = review_calendar_boundary_event(active_plan)["reviewedAt"]
+            item["reviewedAt"] = review_calendar_boundary_event(active_plan)[
+                "reviewedAt"
+            ]
             normalized.append(item)
             continue
         local_day = instant.astimezone(time_zone).date()
@@ -230,7 +242,9 @@ def validate_review_history_hours(
     active_plan = plan if plan is not None else load_history_plan()
     hour_lo, hour_hi = _event_window(active_plan)
     for index, event in enumerate(events):
-        instant = _parse_utc_timestamp(event.get("reviewedAt"), label=f"{label}[{index}].reviewedAt")
+        instant = _parse_utc_timestamp(
+            event.get("reviewedAt"), label=f"{label}[{index}].reviewedAt"
+        )
         if is_review_calendar_boundary_event(event, active_plan):
             continue
         if not hour_lo <= instant.hour <= hour_hi:
@@ -248,9 +262,13 @@ def production_utc_offset_hours(plan: Mapping[str, Any]) -> int:
         instant = datetime.combine(anchor, datetime.min.time(), tzinfo=time_zone)
         offset = instant.utcoffset()
     except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError) as exc:
-        raise ReviewClockPlanError(f"history plan production timezone is invalid: {exc}") from exc
+        raise ReviewClockPlanError(
+            f"history plan production timezone is invalid: {exc}"
+        ) from exc
     if offset is None or offset.total_seconds() % 3600 != 0:
-        raise ReviewClockPlanError("history plan production timezone offset must be a whole hour")
+        raise ReviewClockPlanError(
+            "history plan production timezone offset must be a whole hour"
+        )
     return int(offset.total_seconds() // 3600)
 
 
@@ -258,11 +276,15 @@ def validate_render_geometry(plan: Mapping[str, Any]) -> None:
     """Ensure history rendering uses the same timezone/anchor geometry as iOS."""
     offsets = plan.get("render_utc_offset_hours")
     if not isinstance(offsets, list) or not offsets:
-        raise ReviewClockPlanError("history plan render_utc_offset_hours must be a non-empty list")
+        raise ReviewClockPlanError(
+            "history plan render_utc_offset_hours must be a non-empty list"
+        )
     try:
         normalized = [int(value) for value in offsets]
     except (TypeError, ValueError) as exc:
-        raise ReviewClockPlanError(f"history plan render_utc_offset_hours are invalid: {exc}") from exc
+        raise ReviewClockPlanError(
+            f"history plan render_utc_offset_hours are invalid: {exc}"
+        ) from exc
     expected = production_utc_offset_hours(plan)
     if normalized != [expected]:
         raise ReviewClockPlanError(
@@ -275,7 +297,9 @@ def load_history_plan(path: Path = HISTORY_PLAN_PATH) -> dict[str, Any]:
     try:
         plan = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ReviewClockPlanError(f"history plan is not readable JSON: {path}") from exc
+        raise ReviewClockPlanError(
+            f"history plan is not readable JSON: {path}"
+        ) from exc
     if not isinstance(plan, dict) or plan.get("schema") != PLAN_SCHEMA:
         raise ReviewClockPlanError(
             f"history plan schema must be {PLAN_SCHEMA!r}: {path}"
@@ -301,13 +325,19 @@ def freeze_from_plan(plan: Mapping[str, Any]) -> datetime:
         anchor = date.fromisoformat(str(plan["anchor_day"]))
         offsets = plan["render_utc_offset_hours"]
     except (KeyError, TypeError, ValueError) as exc:
-        raise ReviewClockPlanError(f"history plan anchor/offsets are invalid: {exc}") from exc
+        raise ReviewClockPlanError(
+            f"history plan anchor/offsets are invalid: {exc}"
+        ) from exc
     if not isinstance(offsets, list) or not offsets:
-        raise ReviewClockPlanError("history plan render_utc_offset_hours must be a non-empty list")
+        raise ReviewClockPlanError(
+            "history plan render_utc_offset_hours must be a non-empty list"
+        )
     try:
         max_offset = max(int(value) for value in offsets)
     except (TypeError, ValueError) as exc:
-        raise ReviewClockPlanError(f"history plan render_utc_offset_hours are invalid: {exc}") from exc
+        raise ReviewClockPlanError(
+            f"history plan render_utc_offset_hours are invalid: {exc}"
+        ) from exc
     return (
         datetime(anchor.year, anchor.month, anchor.day, tzinfo=UTC)
         + timedelta(hours=24 - max_offset)
@@ -334,37 +364,4 @@ def clock_from_plan(plan: Mapping[str, Any] | None = None) -> dict[str, Any]:
         "anchorDay": anchor.isoformat(),
         "timeZone": time_zone_identifier,
         "source": HISTORY_PLAN_SOURCE,
-    }
-
-
-def legacy_clock_from_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
-    """Explicit legacy-only clock projection for callers outside generic emit.
-
-    This path is retained only as a named compatibility contract. Generic
-    emitter and canonical marketing artifacts must use :func:`clock_from_plan`.
-    """
-    latest: datetime | None = None
-    for card in spec.get("cards", []):
-        review = card.get("review") or {}
-        raw = review.get("last_reviewed_at")
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        normalized = raw.strip().replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(normalized)
-        except ValueError as exc:
-            raise ReviewClockPlanError(f"spec last_reviewed_at is invalid: {raw!r}") from exc
-        parsed = parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
-        latest = parsed if latest is None else max(latest, parsed)
-    if latest is None:
-        raise ReviewClockPlanError(
-            "spec review clock requires at least one last_reviewed_at; null/fallback is forbidden"
-        )
-    frozen = datetime.combine(latest.date(), datetime.max.time().replace(microsecond=0), tzinfo=UTC)
-    return {
-        "now": frozen.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "frozenEpoch": int(frozen.timestamp()),
-        "anchorDay": latest.date().isoformat(),
-        "timeZone": "UTC",
-        "source": LEGACY_SPEC_HISTORY_SOURCE,
     }

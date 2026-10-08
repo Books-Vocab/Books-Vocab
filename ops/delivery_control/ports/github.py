@@ -6,7 +6,6 @@ from typing import Protocol, runtime_checkable
 from ..domain.candidate_issues import CandidateIssueInventory, CandidateSpec
 from ..domain.demand_issues import (
     DemandIssue,
-    DemandIssueInventory,
     IssueIntakeReceipt,
     IssueIntakeRequest,
 )
@@ -45,22 +44,6 @@ class GitHubQueryPort(Protocol):
     def merge_queue_entry_snapshot(
         self, pull_request_id: str
     ) -> MergeQueueEntrySnapshot | None: ...
-
-
-@runtime_checkable
-class GitHubBranchHistoryBatchPort(Protocol):
-    """Optional one-snapshot capability for branch lifecycle audits."""
-
-    def list_pull_requests_for_branches(
-        self, branches: tuple[str, ...]
-    ) -> PullRequestInventory: ...
-
-
-@runtime_checkable
-class RawIssueQueryPort(Protocol):
-    """Optional additive capability for complete raw Issue inventory."""
-
-    def list_open_issues(self) -> DemandIssueInventory: ...
 
 
 @runtime_checkable

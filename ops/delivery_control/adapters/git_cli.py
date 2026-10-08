@@ -8,7 +8,6 @@ from ..domain.branch_content import BranchContentEvidence
 from ..domain.branch_refs import BranchInventory
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
-    FileChange,
     MainLandingSnapshot,
     PhysicalWorktree,
     WorktreeSnapshot,
@@ -21,7 +20,6 @@ from ..domain.unreachable_commits import (
 from ..ports.process import CommandRunnerPort
 from .git_client import GitCliClient
 from .git_commands import GitCommands
-from .git_parsing import parse_changed_files
 from .git_queries import GitQueries
 from .subprocess_runner import SubprocessCommandRunner
 
@@ -47,10 +45,6 @@ class GitCliAdapter:
 
     def _git(self, *args: str, cwd: Path | None = None) -> str:
         return self._client.run(*args, cwd=cwd)
-
-    @staticmethod
-    def _parse_changed_files(payload: str) -> tuple[FileChange, ...]:
-        return parse_changed_files(payload)
 
     def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
         return self._queries.canonical_checkout()

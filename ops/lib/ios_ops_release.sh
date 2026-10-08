@@ -17,20 +17,10 @@ EXIT_BLOCK=2
 EXIT_WARN=3
 EXIT_USAGE=64
 
-emit_readiness() {
-  local key="$1" status="$2" detail="$3"
-  echo "[ios][readiness] $key status=$status $detail"
-}
-
 emit_readiness_json() {
   local out="$1" key="$2" status="$3" detail="$4"
   jq -nc --arg key "$key" --arg status "$status" --arg detail "$detail" \
     '{key:$key,status:$status,detail:$detail}' >>"$out"
-}
-
-emit_workflow_step() {
-  local num="$1" key="$2" status="$3" command="$4" note="$5"
-  echo "[ios][workflow] step=$num key=$key status=$status command=\"$command\" note=\"$note\""
 }
 
 emit_workflow_step_json() {
@@ -406,11 +396,6 @@ doctor_readiness() {
   else
     "$emitter" "$out" "sentry" "warn" "verdict=$sentry_verdict source_exists=$sentry_source_exists can_import_guard=$sentry_can_import dsn_key_reference=$sentry_dsn_reference package_present=$(jq -r '.wiring.packagePresent' <<<"$sentry_json") target_linked=$(jq -r '.wiring.targetLinked' <<<"$sentry_json") build_can_import=$(jq -r '.readiness.build_can_import' <<<"$sentry_json")"
   fi
-}
-
-emit_readiness_text_adapter() {
-  local _out="$1" key="$2" status="$3" detail="$4"
-  emit_readiness "$key" "$status" "$detail"
 }
 
 doctor_summary_json_from_file() {

@@ -569,10 +569,6 @@ def normalize_role_identity(
     return canonical, kind, "none"
 
 
-def canonical_identity(role: str, work_mode: str | None = None) -> str:
-    return normalize_role_identity(role, work_mode)[0]
-
-
 def resolve_route(
     manifest: dict[str, Any],
     role: str = "manager",

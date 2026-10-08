@@ -36,7 +36,7 @@ from lib.app_review_evaluators import (
     merge_result,
     thaw,
 )
-from lib.canonical_json import canonical_json_bytes, canonical_json_sha256
+from lib.canonical_json import canonical_json_bytes
 from lib.exit_codes import EXIT_TOOL_ERROR, EXIT_USAGE
 
 SPEC_SCHEMA = "kg.app_review.gate.v1"
@@ -126,10 +126,6 @@ def _sha(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _json_sha(value: Any) -> str:
-    return canonical_json_sha256(value)
-
-
 def _git_blob_sha256(
     root: Path, commit: str, rel_path: str
 ) -> tuple[str | None, str | None]:
@@ -154,14 +150,20 @@ def _git_blob_sha256(
         )
 
     try:
-        if run("rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode != 0:
+        if (
+            run("rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode
+            != 0
+        ):
             return None, f"source.commit is unreachable from {root}: {commit}"
         entry = run("ls-tree", "--full-tree", commit, "--", rel_path)
         if entry.returncode != 0 or not entry.stdout.strip():
             return None, f"{rel_path} does not exist at {commit}"
         mode, kind, _rest = entry.stdout.split(maxsplit=2)
         if kind != "blob" or mode not in _REGULAR_FILE_MODES:
-            return None, f"{rel_path} at {commit} is not a regular file: mode={mode} kind={kind}"
+            return (
+                None,
+                f"{rel_path} at {commit} is not a regular file: mode={mode} kind={kind}",
+            )
         blob = run("cat-file", "blob", f"{commit}:{rel_path}", text=False)
         if blob.returncode != 0:
             return None, f"{rel_path} cannot be read at {commit}"
@@ -181,7 +183,9 @@ def _read_json(path: Path, *, label: str) -> tuple[dict[str, Any], bytes]:
     return value, payload
 
 
-def _require_exact_keys(value: Any, expected: set[str], *, label: str) -> dict[str, Any]:
+def _require_exact_keys(
+    value: Any, expected: set[str], *, label: str
+) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != expected:
         actual = sorted(value) if isinstance(value, dict) else type(value).__name__
         raise GateError(
@@ -216,32 +220,19 @@ def _parse_time(value: Any, *, label: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _fresh(
-    value: Any,
-    *,
-    observed_at: datetime,
-    max_age_hours: Any,
-    label: str,
-) -> tuple[bool, str | None]:
-    try:
-        timestamp = _parse_time(value, label=label)
-    except GateError as exc:
-        return False, str(exc)
-    if not isinstance(max_age_hours, (int, float)) or max_age_hours <= 0:
-        return False, f"{label} maxAgeHours must be positive"
-    age_hours = (observed_at - timestamp).total_seconds() / 3600
-    if age_hours < 0:
-        return False, f"{label} is in the future"
-    if age_hours > float(max_age_hours):
-        return False, f"{label} is stale by {age_hours:.2f} hours"
-    return True, None
-
-
 def load_spec(path: Path) -> dict[str, Any]:
     spec, _ = _read_json(path, label="gate spec")
     if spec.get("schema") != SPEC_SCHEMA:
         raise GateError(f"gate spec schema must be {SPEC_SCHEMA}")
-    if set(spec) != {"schema", "target", "artifacts", "claims", "requiredLiveURLs", "freshness", "producers"}:
+    if set(spec) != {
+        "schema",
+        "target",
+        "artifacts",
+        "claims",
+        "requiredLiveURLs",
+        "freshness",
+        "producers",
+    }:
         raise GateError("gate spec top-level keys do not match the closed contract")
     target = spec.get("target")
     if not isinstance(target, dict) or set(target) != _TARGET_KEYS:
@@ -280,7 +271,10 @@ def load_spec(path: Path) -> dict[str, Any]:
         if not isinstance(item.get("id"), str) or not _SAFE_ID_RE.fullmatch(item["id"]):
             raise GateError("gate journey id is unsafe")
         _relative_path(Path("."), item.get("path"), label=f"journey {item.get('id')}")
-        if not isinstance(item.get("maxAgeHours"), (int, float)) or item["maxAgeHours"] <= 0:
+        if (
+            not isinstance(item.get("maxAgeHours"), (int, float))
+            or item["maxAgeHours"] <= 0
+        ):
             raise GateError(f"journey {item['id']} maxAgeHours must be positive")
         journey_ids.append(item["id"])
     if len(set(journey_ids)) != len(journey_ids):
@@ -290,7 +284,10 @@ def load_spec(path: Path) -> dict[str, Any]:
         if not isinstance(item, dict) or set(item) != {"path", "maxAgeHours"}:
             raise GateError(f"gate {key} ref keys do not match the closed contract")
         _relative_path(Path("."), item["path"], label=key)
-        if not isinstance(item["maxAgeHours"], (int, float)) or item["maxAgeHours"] <= 0:
+        if (
+            not isinstance(item["maxAgeHours"], (int, float))
+            or item["maxAgeHours"] <= 0
+        ):
             raise GateError(f"gate {key} maxAgeHours must be positive")
     attestations = artifacts.get("attestations")
     if not isinstance(attestations, dict) or set(attestations) != {"human", "agent"}:
@@ -311,8 +308,14 @@ def load_spec(path: Path) -> dict[str, Any]:
     if not isinstance(producers, dict) or set(producers) != required_producer_ids:
         raise GateError("gate producers must exactly cover every required artifact")
     for producer_id, producer in producers.items():
-        if not isinstance(producer, dict) or set(producer) != {"type", "authority", "command"}:
-            raise GateError(f"producer {producer_id} keys do not match the closed contract")
+        if not isinstance(producer, dict) or set(producer) != {
+            "type",
+            "authority",
+            "command",
+        }:
+            raise GateError(
+                f"producer {producer_id} keys do not match the closed contract"
+            )
         if producer.get("type") not in _PRODUCER_TYPES:
             raise GateError(f"producer {producer_id} type is invalid")
         for field in ("authority", "command"):
@@ -355,7 +358,9 @@ def load_spec(path: Path) -> dict[str, Any]:
         if claim.get("entitlement") not in {"none", "free", "pro"}:
             raise GateError(f"claim {claim_id} entitlement is invalid")
         linked = claim.get("journeyIDs")
-        if not isinstance(linked, list) or any(item not in journey_ids for item in linked):
+        if not isinstance(linked, list) or any(
+            item not in journey_ids for item in linked
+        ):
             raise GateError(f"claim {claim_id} references unknown journeys")
         kinds = claim.get("acceptedEvidenceKinds")
         if (
@@ -366,7 +371,9 @@ def load_spec(path: Path) -> dict[str, Any]:
         ):
             raise GateError(f"claim {claim_id} acceptedEvidenceKinds is invalid")
         if claim["entitlement"] == "pro" and "release-equivalent-simulator" in kinds:
-            raise GateError(f"claim {claim_id} Pro evidence cannot accept fixture simulator")
+            raise GateError(
+                f"claim {claim_id} Pro evidence cannot accept fixture simulator"
+            )
         claim_ids.append(claim_id)
     if len(set(claim_ids)) != len(claim_ids):
         raise GateError("gate claim ids must be unique")
@@ -380,7 +387,9 @@ def load_spec(path: Path) -> dict[str, Any]:
             raise GateError("requiredLiveURL keys do not match the closed contract")
         if not isinstance(item.get("id"), str) or not _SAFE_ID_RE.fullmatch(item["id"]):
             raise GateError("requiredLiveURL id is unsafe")
-        if not isinstance(item.get("url"), str) or not item["url"].startswith("https://"):
+        if not isinstance(item.get("url"), str) or not item["url"].startswith(
+            "https://"
+        ):
             raise GateError(f"requiredLiveURL {item.get('id')} must use HTTPS")
         if not isinstance(item.get("claimIDs"), list) or any(
             claim_id not in claim_ids for claim_id in item["claimIDs"]
@@ -395,39 +404,16 @@ def load_spec(path: Path) -> dict[str, Any]:
         "attestationMaxAgeHours",
     }:
         raise GateError("gate freshness keys do not match the closed contract")
-    if any(not isinstance(value, (int, float)) or value <= 0 for value in freshness.values()):
+    if any(
+        not isinstance(value, (int, float)) or value <= 0
+        for value in freshness.values()
+    ):
         raise GateError("gate freshness values must be positive")
     return spec
 
 
 def _block(blocks: list[dict[str, Any]], code: str, expected: Any, actual: Any) -> None:
     blocks.append({"code": code, "expected": expected, "actual": actual})
-
-
-def _exact_keys(
-    value: Any,
-    expected: set[str],
-    *,
-    code: str,
-    blocks: list[dict[str, Any]],
-) -> bool:
-    actual = set(value) if isinstance(value, dict) else set()
-    if not isinstance(value, dict) or actual != expected:
-        _block(blocks, code, sorted(expected), sorted(actual))
-        return False
-    return True
-
-
-def _target_matches(target: dict[str, Any], actual: dict[str, Any], *, prefix: str, blocks: list[dict[str, Any]]) -> None:
-    mapping = {
-        "bundleID": "bundleId",
-        "marketingVersion": "marketingVersion",
-        "buildNumber": "buildNumber",
-        "sourceCommit": "sourceCommit",
-    }
-    for expected_key, actual_key in mapping.items():
-        if actual.get(actual_key) != target[expected_key]:
-            _block(blocks, f"{prefix}.target.{expected_key}", target[expected_key], actual.get(actual_key))
 
 
 def _map_file(files: dict[str, bytes], rel: str, payload: bytes) -> None:
@@ -442,7 +428,9 @@ def _load_live_bundle(
     *,
     files: dict[str, bytes],
 ) -> tuple[dict[str, Any], str]:
-    manifest, manifest_bytes = _read_json(path / "manifest.json", label="live mirror closure")
+    manifest, manifest_bytes = _read_json(
+        path / "manifest.json", label="live mirror closure"
+    )
     if manifest.get("schema") != "kg.app_review.asc_mirror_bundle.v1":
         raise GateError("live mirror closure schema is invalid")
     entries = manifest.get("files")
@@ -495,22 +483,49 @@ def _load_live_bundle(
         label="live mirror desired",
     )
     _require_exact_keys(
-        desired.get("build"), {"marketingVersion", "buildNumber"}, label="live mirror desired build"
+        desired.get("build"),
+        {"marketingVersion", "buildNumber"},
+        label="live mirror desired build",
     )
     for index, item in enumerate(desired.get("outputs") or []):
         _require_exact_keys(
             item,
-            {"order", "shotID", "fileName", "sha256", "sourceMD5", "byteSize", "width", "height"},
+            {
+                "order",
+                "shotID",
+                "fileName",
+                "sha256",
+                "sourceMD5",
+                "byteSize",
+                "width",
+                "height",
+            },
             label=f"live mirror desired output {index}",
         )
     live = _require_exact_keys(
         audit.get("live"),
-        {"observedAt", "appID", "version", "build", "submission", "metadata", "reviewDetail", "screenshots"},
+        {
+            "observedAt",
+            "appID",
+            "version",
+            "build",
+            "submission",
+            "metadata",
+            "reviewDetail",
+            "screenshots",
+        },
         label="live mirror live",
     )
     _require_exact_keys(
         live.get("version"),
-        {"id", "versionString", "platform", "state", "selectedBuildRelationshipID", "includedBuildMatchCount"},
+        {
+            "id",
+            "versionString",
+            "platform",
+            "state",
+            "selectedBuildRelationshipID",
+            "includedBuildMatchCount",
+        },
         label="live mirror version",
     )
     _require_exact_keys(
@@ -524,14 +539,23 @@ def _load_live_bundle(
         label="live mirror submission",
     )
     _require_exact_keys(
-        submission.get("item"), {"id", "state", "versionID"}, label="live mirror submission item"
+        submission.get("item"),
+        {"id", "state", "versionID"},
+        label="live mirror submission item",
     )
     metadata = _require_exact_keys(
         live.get("metadata"), {"id", "locale", "fields"}, label="live mirror metadata"
     )
     _require_exact_keys(
         metadata.get("fields"),
-        {"description", "keywords", "marketingUrl", "promotionalText", "supportUrl", "whatsNew"},
+        {
+            "description",
+            "keywords",
+            "marketingUrl",
+            "promotionalText",
+            "supportUrl",
+            "whatsNew",
+        },
         label="live mirror metadata fields",
     )
     review = _require_exact_keys(
@@ -541,12 +565,22 @@ def _load_live_bundle(
     )
     screenshots = _require_exact_keys(
         live.get("screenshots"),
-        {"locale", "displayType", "setID", "matchingSetCount", "relationshipCount", "relationshipTotal", "items"},
+        {
+            "locale",
+            "displayType",
+            "setID",
+            "matchingSetCount",
+            "relationshipCount",
+            "relationshipTotal",
+            "items",
+        },
         label="live mirror screenshots",
     )
     review_fields = review.get("fields")
     if not isinstance(review_fields, dict) or set(review_fields) != _REVIEW_FIELDS:
-        raise GateError("live mirror review fields do not match the redacted closed contract")
+        raise GateError(
+            "live mirror review fields do not match the redacted closed contract"
+        )
     for field, value in review_fields.items():
         expected_keys = {"present", "fingerprint", "ref"}
         if field == "demoAccountName":
@@ -561,25 +595,48 @@ def _load_live_bundle(
         ):
             raise GateError(f"live mirror review field fingerprint is invalid: {field}")
         if not value["present"] and fingerprint is not None:
-            raise GateError(f"live mirror absent review field has a fingerprint: {field}")
+            raise GateError(
+                f"live mirror absent review field has a fingerprint: {field}"
+            )
         if field == "demoAccountName":
             identity = value.get("identitySHA256")
             if value["present"] and (
                 not isinstance(identity, str) or not _SHA_RE.fullmatch(identity)
             ):
-                raise GateError("live mirror demo account identity fingerprint is invalid")
+                raise GateError(
+                    "live mirror demo account identity fingerprint is invalid"
+                )
             if not value["present"] and identity is not None:
-                raise GateError("live mirror absent demo account has an identity fingerprint")
-        if not isinstance(value.get("ref"), str) or not value["ref"].startswith("asc://"):
+                raise GateError(
+                    "live mirror absent demo account has an identity fingerprint"
+                )
+        if not isinstance(value.get("ref"), str) or not value["ref"].startswith(
+            "asc://"
+        ):
             raise GateError(f"live mirror review field ref is invalid: {field}")
     for index, item in enumerate(screenshots.get("items") or []):
         _require_exact_keys(
             item,
-            {"order", "id", "fileName", "state", "width", "height", "sourceFileChecksum", "ref", "bundlePath", "liveBytes"},
+            {
+                "order",
+                "id",
+                "fileName",
+                "state",
+                "width",
+                "height",
+                "sourceFileChecksum",
+                "ref",
+                "bundlePath",
+                "liveBytes",
+            },
             label=f"live mirror screenshot {index}",
         )
         rel = item.get("bundlePath")
-        if not isinstance(rel, str) or rel not in expected_paths or not rel.startswith("live/images/"):
+        if (
+            not isinstance(rel, str)
+            or rel not in expected_paths
+            or not rel.startswith("live/images/")
+        ):
             raise GateError(f"live mirror screenshot bundle path is invalid: {rel}")
         payload = (path / rel).read_bytes()
         live_bytes = _require_exact_keys(
@@ -605,7 +662,9 @@ def _load_live_bundle(
     if (audit.get("verdict") or {}).get("mismatchCount") != len(mismatches):
         raise GateError("live mirror mismatchCount drift")
     verdict_status = (audit.get("verdict") or {}).get("status")
-    if verdict_status not in {"pass", "fail"} or (verdict_status == "pass") != (len(mismatches) == 0):
+    if verdict_status not in {"pass", "fail"} or (verdict_status == "pass") != (
+        len(mismatches) == 0
+    ):
         raise GateError("live mirror verdict/mismatches consistency drift")
     version = live["version"]
     build = live["build"]
@@ -634,11 +693,24 @@ def _load_live_bundle(
         raise GateError("live mirror metadata locale drift")
     metadata_fields = metadata["fields"]
     for field in ("description", "keywords", "promotionalText", "supportUrl"):
-        if not isinstance(metadata_fields.get(field), str) or not metadata_fields[field]:
+        if (
+            not isinstance(metadata_fields.get(field), str)
+            or not metadata_fields[field]
+        ):
             raise GateError(f"live mirror required metadata is unknown: {field}")
-    if not isinstance(review.get("id"), str) or not isinstance(review.get("demoAccountRequired"), bool):
-        raise GateError("live mirror review detail identity/demo requirement is unknown")
-    for field in ("contactFirstName", "contactLastName", "contactPhone", "contactEmail", "notes"):
+    if not isinstance(review.get("id"), str) or not isinstance(
+        review.get("demoAccountRequired"), bool
+    ):
+        raise GateError(
+            "live mirror review detail identity/demo requirement is unknown"
+        )
+    for field in (
+        "contactFirstName",
+        "contactLastName",
+        "contactPhone",
+        "contactEmail",
+        "notes",
+    ):
         if review_fields[field].get("present") is not True:
             raise GateError(f"live mirror required review field is missing: {field}")
     if review.get("demoAccountRequired") and any(
@@ -654,10 +726,14 @@ def _load_live_bundle(
         or screenshots.get("relationshipCount") != len(screenshot_items)
         or screenshots.get("relationshipTotal") != len(screenshot_items)
     ):
-        raise GateError("live mirror screenshot relationship/pagination closure is unknown")
+        raise GateError(
+            "live mirror screenshot relationship/pagination closure is unknown"
+        )
     if screenshots.get("locale") != desired.get("locale"):
         raise GateError("live mirror screenshot locale drift")
-    file_names = [item.get("fileName") for item in screenshot_items if isinstance(item, dict)]
+    file_names = [
+        item.get("fileName") for item in screenshot_items if isinstance(item, dict)
+    ]
     if len(set(file_names)) != len(screenshot_items):
         raise GateError("live mirror screenshot filenames are not unique")
     for index, item in enumerate(screenshot_items):
@@ -675,14 +751,19 @@ def _load_live_bundle(
             or (live_bytes.get("width"), live_bytes.get("height"))
             != (item.get("width"), item.get("height"))
         ):
-            raise GateError(f"live mirror screenshot required evidence is not ready: {index}")
+            raise GateError(
+                f"live mirror screenshot required evidence is not ready: {index}"
+            )
         if verdict_status == "pass":
-            desired_output = desired["outputs"][index] if index < len(desired["outputs"]) else {}
-            if (
-                item.get("fileName") != desired_output.get("fileName")
-                or item.get("sourceFileChecksum") != desired_output.get("sourceMD5")
-            ):
-                raise GateError(f"live mirror screenshot source checksum/order drift: {index}")
+            desired_output = (
+                desired["outputs"][index] if index < len(desired["outputs"]) else {}
+            )
+            if item.get("fileName") != desired_output.get("fileName") or item.get(
+                "sourceFileChecksum"
+            ) != desired_output.get("sourceMD5"):
+                raise GateError(
+                    f"live mirror screenshot source checksum/order drift: {index}"
+                )
     semantic_paths = {"audit.json", "desired/manifest.json"}
     desired_manifest_payload = (path / "desired" / "manifest.json").read_bytes()
     if _sha(desired_manifest_payload) != desired.get("manifestSHA256"):
@@ -734,26 +815,46 @@ def _load_desired_bundle(
     approved against. It intentionally has no capture profile, renderer,
     promotion manifest, rebuild recipe, or generator provenance contract.
     """
-    manifest, manifest_bytes = _read_json(path / "manifest.json", label="desired evidence")
+    manifest, manifest_bytes = _read_json(
+        path / "manifest.json", label="desired evidence"
+    )
     if manifest.get("schema") != "kg.app_review.manual_asc_bundle.v1":
         raise GateError("desired evidence schema is invalid")
     _require_exact_keys(
         manifest,
-        {"schema", "verdict", "build", "source", "dataset", "fixedClock", "locale", "displayType", "outputs"},
+        {
+            "schema",
+            "verdict",
+            "build",
+            "source",
+            "dataset",
+            "fixedClock",
+            "locale",
+            "displayType",
+            "outputs",
+        },
         label="desired manifest",
     )
-    verdict = _require_exact_keys(manifest.get("verdict"), {"status"}, label="desired verdict")
+    verdict = _require_exact_keys(
+        manifest.get("verdict"), {"status"}, label="desired verdict"
+    )
     if verdict.get("status") != "pass":
         raise GateError("desired evidence verdict is not pass")
     build = _require_exact_keys(
-        manifest.get("build"), {"marketingVersion", "buildNumber", "project"}, label="desired build"
+        manifest.get("build"),
+        {"marketingVersion", "buildNumber", "project"},
+        label="desired build",
     )
     project = _require_exact_keys(
         build.get("project"), {"path", "sha256"}, label="desired build.project"
     )
-    source = _require_exact_keys(manifest.get("source"), {"commit"}, label="desired source")
+    source = _require_exact_keys(
+        manifest.get("source"), {"commit"}, label="desired source"
+    )
     dataset = _require_exact_keys(
-        manifest.get("dataset"), {"schema", "id", "path", "sha256"}, label="desired dataset"
+        manifest.get("dataset"),
+        {"schema", "id", "path", "sha256"},
+        label="desired dataset",
     )
     if dataset.get("schema") != "kg.fixture.dataset.v2":
         raise GateError("desired dataset schema is invalid")
@@ -767,7 +868,9 @@ def _load_desired_bundle(
         workspace_root, str(source.get("commit") or ""), _PROJECT_SOURCE_PATH
     )
     if unresolved is not None:
-        raise GateError(f"desired build.project cannot be checked against source commit: {unresolved}")
+        raise GateError(
+            f"desired build.project cannot be checked against source commit: {unresolved}"
+        )
     if blob_sha != project.get("sha256"):
         raise GateError(
             "desired build.project sha256 does not match source commit blob: "
@@ -782,7 +885,11 @@ def _load_desired_bundle(
         rel = item.get("path")
         staged = _relative_path(path, rel, label=f"desired {label}")
         payload = staged.read_bytes() if staged.is_file() else b""
-        if not payload or not _SHA_RE.fullmatch(str(item.get("sha256") or "")) or _sha(payload) != item["sha256"]:
+        if (
+            not payload
+            or not _SHA_RE.fullmatch(str(item.get("sha256") or ""))
+            or _sha(payload) != item["sha256"]
+        ):
             raise GateError(f"desired {label} hash mismatch: {rel}")
         expected_paths.add(rel)
         _map_file(desired_files, f"inputs/desired/{rel}", payload)
@@ -793,7 +900,9 @@ def _load_desired_bundle(
     seen_ids: set[str] = set()
     for index, item in enumerate(outputs):
         _require_exact_keys(
-            item, {"id", "appearance", "file", "byteSize", "sha256"}, label=f"desired output {index}"
+            item,
+            {"id", "appearance", "file", "byteSize", "sha256"},
+            label=f"desired output {index}",
         )
         output_id = item.get("id")
         if not isinstance(output_id, str) or not output_id or output_id in seen_ids:
@@ -801,7 +910,11 @@ def _load_desired_bundle(
         seen_ids.add(output_id)
         staged = _relative_path(path, item.get("file"), label=f"desired output {index}")
         payload = staged.read_bytes() if staged.is_file() else b""
-        if not payload or len(payload) != item.get("byteSize") or _sha(payload) != item.get("sha256"):
+        if (
+            not payload
+            or len(payload) != item.get("byteSize")
+            or _sha(payload) != item.get("sha256")
+        ):
             raise GateError(f"desired output hash/size mismatch: {item.get('file')}")
         expected_paths.add(item["file"])
         _map_file(desired_files, f"inputs/desired/{item['file']}", payload)
@@ -819,7 +932,6 @@ def _load_desired_bundle(
     for rel, payload in desired_files.items():
         _map_file(files, rel, payload)
     return manifest, _sha(manifest_bytes)
-
 
 
 def _load_optional_json(
@@ -864,16 +976,25 @@ def _load_evidence_artifacts(
             continue
         payload = source.read_bytes() if source.is_file() else b""
         if not payload:
-            _block(blocks, f"{prefix}.artifact.{index}.missing", item.get("path"), "missing")
+            _block(
+                blocks,
+                f"{prefix}.artifact.{index}.missing",
+                item.get("path"),
+                "missing",
+            )
             valid = False
             continue
         actual = _sha(payload)
         if actual != item.get("sha256"):
-            _block(blocks, f"{prefix}.artifact.{index}.sha256", item.get("sha256"), actual)
+            _block(
+                blocks, f"{prefix}.artifact.{index}.sha256", item.get("sha256"), actual
+            )
             valid = False
             continue
         safe_prefix = re.sub(r"[^a-zA-Z0-9._-]", "_", prefix)
-        _map_file(files, f"inputs/evidence/{safe_prefix}/{index:02d}_{source.name}", payload)
+        _map_file(
+            files, f"inputs/evidence/{safe_prefix}/{index:02d}_{source.name}", payload
+        )
     return valid
 
 
@@ -882,7 +1003,9 @@ def _pre_root(files: dict[str, bytes]) -> str:
         {"path": rel, "byteSize": len(payload), "sha256": _sha(payload)}
         for rel, payload in sorted(files.items())
     ]
-    return _sha(_canonical({"schema": "kg.app_review.pre_attestation.v1", "files": inventory}))
+    return _sha(
+        _canonical({"schema": "kg.app_review.pre_attestation.v1", "files": inventory})
+    )
 
 
 def _render_html(document: dict[str, Any]) -> str:
@@ -901,7 +1024,7 @@ def _render_html(document: dict[str, Any]) -> str:
         for key, value in reviewer.get("reviewDetail", {}).get("fields", {}).items()
     )
     shots = "".join(
-        "<figure><img src=\"{}\" alt=\"{}\"><figcaption>#{} {}</figcaption></figure>".format(
+        '<figure><img src="{}" alt="{}"><figcaption>#{} {}</figcaption></figure>'.format(
             html.escape(str(item.get("bundlePath")), quote=True),
             html.escape(str(item.get("fileName")), quote=True),
             html.escape(str(item.get("order"))),
@@ -929,11 +1052,11 @@ def _render_html(document: dict[str, Any]) -> str:
 <html lang="en"><head><meta charset="utf-8"><title>App Review Gate</title>
 <style>body{{font:15px system-ui;margin:2rem;max-width:1200px}}.verdict{{font-size:2rem;font-weight:800}}table{{border-collapse:collapse;width:100%;margin:1rem 0}}th,td{{border:1px solid #ccc;padding:.5rem;text-align:left;vertical-align:top}}.shots{{display:flex;gap:1rem;overflow:auto;padding-bottom:.5rem}}figure{{margin:0;min-width:240px}}img{{width:240px;height:auto;border:1px solid #aaa}}code{{font-family:ui-monospace,monospace}}details{{margin:1.5rem 0}}summary{{cursor:pointer;font-size:1.25rem;font-weight:700}}</style></head>
 <body><h1>Apple reviewer mirror</h1><div class="verdict">{html.escape(verdict)}</div>
-<p>Target {html.escape(document['target']['marketingVersion'])} ({html.escape(document['target']['buildNumber'])}) · observation {html.escape(document['observationMode'])}</p>
+<p>Target {html.escape(document["target"]["marketingVersion"])} ({html.escape(document["target"]["buildNumber"])}) · observation {html.escape(document["observationMode"])}</p>
 <h2>Live ASC screenshot order and bytes</h2><div class="shots">{shots}</div>
 <h2>Live ASC metadata</h2><table>{metadata_rows}</table>
 <h2>Live review information (redacted)</h2><table>{review_rows}</table>
-<details><summary>Blocking reasons ({document['verdict']['blockCount']})</summary><ul>{blocks or '<li>none</li>'}</ul></details>
+<details><summary>Blocking reasons ({document["verdict"]["blockCount"]})</summary><ul>{blocks or "<li>none</li>"}</ul></details>
 <h2>Claim evidence</h2><table><tr><th>Claim</th><th>Surface</th><th>Feature</th><th>Entitlement</th><th>Evidence</th></tr>{claim_rows}</table>
 </body></html>"""
 
@@ -956,7 +1079,11 @@ def evaluate_gate(
     files: dict[str, bytes] = {}
     _map_file(files, "inputs/spec.json", spec_bytes)
     tools_root = Path(__file__).resolve().parent
-    for tool_name in ("app_review_gate.py", "asc_reviewer_mirror.py", "asc_text_bundle.py"):
+    for tool_name in (
+        "app_review_gate.py",
+        "asc_reviewer_mirror.py",
+        "asc_text_bundle.py",
+    ):
         _map_file(
             files,
             f"inputs/tools/{tool_name}",
@@ -968,7 +1095,9 @@ def evaluate_gate(
     desired: dict[str, Any] = {}
     desired_hash: str | None = None
     try:
-        desired_path = _relative_path(root, spec["artifacts"]["desiredBundle"], label="desiredBundle")
+        desired_path = _relative_path(
+            root, spec["artifacts"]["desiredBundle"], label="desiredBundle"
+        )
         desired, desired_hash = _load_desired_bundle(
             desired_path, workspace_root=root, files=files
         )
@@ -984,7 +1113,9 @@ def evaluate_gate(
     live: dict[str, Any] = {}
     live_root: str | None = None
     try:
-        live_path = _relative_path(root, spec["artifacts"]["liveMirrorBundle"], label="liveMirrorBundle")
+        live_path = _relative_path(
+            root, spec["artifacts"]["liveMirrorBundle"], label="liveMirrorBundle"
+        )
         live, live_root = _load_live_bundle(live_path, files=files)
     except (GateError, OSError) as exc:
         _block(blocks, "live-mirror.invalid", "exact hash-closed live mirror", str(exc))
@@ -1000,7 +1131,9 @@ def evaluate_gate(
         merge_result(blocks, {}, live_result)
         live_body = thaw(live_result.state.get("live_body", live_body))
 
-    evidence_by_claim: dict[str, list[str]] = {claim["id"]: [] for claim in spec["claims"]}
+    evidence_by_claim: dict[str, list[str]] = {
+        claim["id"]: [] for claim in spec["claims"]
+    }
     journey_evidence_by_id: dict[str, str] = {}
     journey_summaries: list[dict[str, Any]] = []
     for ref in spec["artifacts"]["journeys"]:
@@ -1151,14 +1284,19 @@ def evaluate_gate(
     claims_report = list(thaw(claims_result.summary).get("claims", []))
 
     metadata = (live_body.get("metadata") or {}).get("fields") or {}
-    raw_review = (live_body.get("reviewDetail") or {})
+    raw_review = live_body.get("reviewDetail") or {}
     safe_review_fields: dict[str, Any] = {}
     for field, value in (raw_review.get("fields") or {}).items():
         allowed_keys = {"present", "fingerprint", "ref"}
         if field == "demoAccountName":
             allowed_keys.add("identitySHA256")
         if not isinstance(value, dict) or not set(value).issubset(allowed_keys):
-            _block(blocks, f"live-mirror.review-detail.{field}.secret-shape", sorted(allowed_keys), sorted(value) if isinstance(value, dict) else type(value).__name__)
+            _block(
+                blocks,
+                f"live-mirror.review-detail.{field}.secret-shape",
+                sorted(allowed_keys),
+                sorted(value) if isinstance(value, dict) else type(value).__name__,
+            )
             continue
         safe_review_fields[field] = {
             key: value.get(key)
@@ -1166,8 +1304,14 @@ def evaluate_gate(
             if key in allowed_keys
         }
     screenshots = sorted(
-        [item for item in ((live_body.get("screenshots") or {}).get("items") or []) if isinstance(item, dict)],
-        key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 10**9,
+        [
+            item
+            for item in ((live_body.get("screenshots") or {}).get("items") or [])
+            if isinstance(item, dict)
+        ],
+        key=lambda item: (
+            item.get("order") if isinstance(item.get("order"), int) else 10**9
+        ),
     )
     reviewer_screenshots = [
         {
@@ -1185,7 +1329,10 @@ def evaluate_gate(
         "schema": REPORT_SCHEMA,
         "observationMode": observation_mode,
         "observedAt": observed_at,
-        "verdict": {"status": "pass" if not blocks else "block", "blockCount": len(blocks)},
+        "verdict": {
+            "status": "pass" if not blocks else "block",
+            "blockCount": len(blocks),
+        },
         "target": target,
         "roots": {
             "specSHA256": _sha(spec_bytes),
@@ -1217,7 +1364,11 @@ def write_bundle(result: GateResult, destination: Path) -> None:
     if destination.exists():
         raise GateError(f"reviewer bundle already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=str(destination.parent)))
+    staging = Path(
+        tempfile.mkdtemp(
+            prefix=f".{destination.name}.tmp-", dir=str(destination.parent)
+        )
+    )
     try:
         payloads = dict(result.files)
         payloads["report.json"] = _canonical(result.document)
@@ -1227,8 +1378,12 @@ def write_bundle(result: GateResult, destination: Path) -> None:
             target = staging / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
-            entries.append({"path": rel, "byteSize": len(payload), "sha256": _sha(payload)})
-        (staging / "manifest.json").write_bytes(_canonical({"schema": BUNDLE_SCHEMA, "files": entries}))
+            entries.append(
+                {"path": rel, "byteSize": len(payload), "sha256": _sha(payload)}
+            )
+        (staging / "manifest.json").write_bytes(
+            _canonical({"schema": BUNDLE_SCHEMA, "files": entries})
+        )
         os.replace(staging, destination)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
@@ -1237,18 +1392,24 @@ def write_bundle(result: GateResult, destination: Path) -> None:
 
 def verify_bundle(path: Path) -> dict[str, Any]:
     manifest, _ = _read_json(path / "manifest.json", label="reviewer bundle manifest")
-    if manifest.get("schema") != BUNDLE_SCHEMA or not isinstance(manifest.get("files"), list):
+    if manifest.get("schema") != BUNDLE_SCHEMA or not isinstance(
+        manifest.get("files"), list
+    ):
         raise GateError("reviewer bundle closure schema/files are invalid")
     expected: set[str] = set()
     for item in manifest["files"]:
         if not isinstance(item, dict) or set(item) != {"path", "byteSize", "sha256"}:
             raise GateError("reviewer bundle closure entry is invalid")
         if item.get("path") in expected:
-            raise GateError(f"reviewer bundle closure has duplicate path: {item.get('path')}")
+            raise GateError(
+                f"reviewer bundle closure has duplicate path: {item.get('path')}"
+            )
         source = _relative_path(path, item.get("path"), label="reviewer bundle file")
         payload = source.read_bytes() if source.is_file() else b""
         if len(payload) != item.get("byteSize") or _sha(payload) != item.get("sha256"):
-            raise GateError(f"reviewer bundle closure hash/size mismatch: {item.get('path')}")
+            raise GateError(
+                f"reviewer bundle closure hash/size mismatch: {item.get('path')}"
+            )
         expected.add(item["path"])
     actual = {
         item.relative_to(path).as_posix()
@@ -1281,14 +1442,24 @@ def verify_bundle(path: Path) -> dict[str, Any]:
 
 def parser() -> argparse.ArgumentParser:
     top = ContractArgumentParser(description=__doc__)
-    sub = top.add_subparsers(dest="command", required=True, parser_class=ContractArgumentParser)
+    sub = top.add_subparsers(
+        dest="command", required=True, parser_class=ContractArgumentParser
+    )
     for name in ("dry-run", "verify"):
-        command = sub.add_parser(name, help=f"{name} the closed-world reviewer evidence gate")
+        command = sub.add_parser(
+            name, help=f"{name} the closed-world reviewer evidence gate"
+        )
         if name == "verify":
-            command.add_argument("--bundle", type=Path, help="verify an existing reviewer bundle closure")
-        command.add_argument("--spec", type=Path, help=f"checked-in {SPEC_SCHEMA} submission spec")
+            command.add_argument(
+                "--bundle", type=Path, help="verify an existing reviewer bundle closure"
+            )
+        command.add_argument(
+            "--spec", type=Path, help=f"checked-in {SPEC_SCHEMA} submission spec"
+        )
         command.add_argument("--workspace-root", type=Path, default=Path("."))
-        command.add_argument("--observed-at", help="timezone-aware evaluation time (default current UTC)")
+        command.add_argument(
+            "--observed-at", help="timezone-aware evaluation time (default current UTC)"
+        )
         command.add_argument(
             "--observation-mode",
             choices=("offline", "online"),
@@ -1296,8 +1467,14 @@ def parser() -> argparse.ArgumentParser:
             help="offline always BLOCK; online requires freshly captured live evidence",
         )
         if name == "verify":
-            command.add_argument("--bundle-dir", type=Path, help="new local reviewer bundle destination")
-            command.add_argument("--commit", action="store_true", help="atomically write the local bundle; never writes ASC")
+            command.add_argument(
+                "--bundle-dir", type=Path, help="new local reviewer bundle destination"
+            )
+            command.add_argument(
+                "--commit",
+                action="store_true",
+                help="atomically write the local bundle; never writes ASC",
+            )
     return top
 
 
@@ -1306,7 +1483,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "verify" and args.bundle:
             if args.spec or args.commit or args.bundle_dir:
-                raise GateError("--bundle cannot be combined with --spec/--commit/--bundle-dir")
+                raise GateError(
+                    "--bundle cannot be combined with --spec/--commit/--bundle-dir"
+                )
             verification = verify_bundle(args.bundle)
             print(_canonical(verification).decode(), end="")
             return 0 if verification["submitReady"] else 2
@@ -1326,8 +1505,12 @@ def main(argv: list[str] | None = None) -> int:
             write_bundle(result, args.bundle_dir)
         output = dict(result.document)
         output["bundle"] = {
-            "status": "written" if args.command == "verify" and args.commit else "dry-run",
-            "path": str(args.bundle_dir) if args.command == "verify" and args.bundle_dir else None,
+            "status": "written"
+            if args.command == "verify" and args.commit
+            else "dry-run",
+            "path": str(args.bundle_dir)
+            if args.command == "verify" and args.bundle_dir
+            else None,
         }
         print(_canonical(output).decode(), end="")
         return 0 if result.document["verdict"]["status"] == "pass" else 2
@@ -1335,13 +1518,23 @@ def main(argv: list[str] | None = None) -> int:
         output = {
             "schema": REPORT_SCHEMA,
             "verdict": {"status": "block", "blockCount": 1},
-            "blocks": [{"code": "gate.error", "expected": "valid closed-world evidence", "actual": str(exc)}],
+            "blocks": [
+                {
+                    "code": "gate.error",
+                    "expected": "valid closed-world evidence",
+                    "actual": str(exc),
+                }
+            ],
         }
         print(_canonical(output).decode(), end="")
         # A malformed/unreadable evidence input is a tool error.  CLI-level
         # combinations remain usage errors; a valid evidence bundle that fails
         # evaluation returns 2 from the normal verdict path above.
-        return EXIT_USAGE if str(exc).startswith(("--", "dry-run never writes")) else EXIT_TOOL_ERROR
+        return (
+            EXIT_USAGE
+            if str(exc).startswith(("--", "dry-run never writes"))
+            else EXIT_TOOL_ERROR
+        )
 
 
 if __name__ == "__main__":

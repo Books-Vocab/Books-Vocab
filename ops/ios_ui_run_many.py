@@ -420,35 +420,6 @@ def _canonical_device(value: str) -> str:
     return value.upper()
 
 
-def _publish_bundle(bundle: Path, publish_root: Path, selector: str) -> Path:
-    publish_root.mkdir(parents=True, exist_ok=True)
-    # Preserve the helper run ID as the directory basename: matrix provenance
-    # intentionally binds evidenceRoot.name to verdict.runId.
-    destination = publish_root / bundle.name
-    if destination.exists():
-        raise RunManyError(
-            f"refusing to overwrite existing evidence bundle: {destination}"
-        )
-    shutil.copytree(bundle, destination)
-    source_prefix = str(bundle.resolve())
-    destination_prefix = str(destination.resolve())
-    # Retained bundles are portable report artifacts. Rewrite only textual
-    # metadata; binaries remain byte-for-byte copies. This keeps the helper's
-    # absolute provenance internally consistent after publication.
-    for path in destination.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in {".json", ".txt", ".html"}:
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        if source_prefix in text:
-            path.write_text(
-                text.replace(source_prefix, destination_prefix), encoding="utf-8"
-            )
-    return destination
-
-
 def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     """Preview/reclaim expired ephemeral visual runs, never retained reports."""
     staging_root = args.staging_root.resolve()

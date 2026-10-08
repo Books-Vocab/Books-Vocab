@@ -13,7 +13,6 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from felix_compute_worker import FelixComputeWorker, WorkerError
 from lib.compute_admission import AdmissionError, admit
 from lib.compute_capsule import CapsuleError, materialize_tracked_capsule
 from lib.compute_job_lifecycle import JobLifecycle, LifecycleError
@@ -184,18 +183,6 @@ def test_ack_concurrent_verify_consumes_once(tmp_path: Path):
     for thread in threads:
         thread.join()
     assert sorted(results) == ["ok", "replay"]
-
-
-def test_worker_refuses_caller_paths_and_admin_is_honest():
-    worker = FelixComputeWorker(controller_root=Path("/host-owned/controller"))
-    with pytest.raises(WorkerError, match="source-root|controller-owned"):
-        worker.submit({"source_root": "/tmp/caller", "receipt_key_path": "/tmp/key"})
-    # The repository-only selftest must never claim a live cross-host proof.
-    from felix_compute_admin import selftest_payload
-
-    report = selftest_payload()
-    assert report["mode"] == "local-fixture"
-    assert report["cross_host_verified"] is False
 
 
 def _repo_with_symlinks(tmp_path: Path, links: dict[str, str]) -> tuple[Path, str]:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import html
 
 
@@ -24,15 +23,12 @@ def status_badge(status: str | None) -> str:
     return f'<span class="badge {kind}">{esc(status or "unknown")}</span>'
 
 
-def artifact_link(href: str | None, label: str, *, missing_label: str | None = None) -> str:
+def artifact_link(
+    href: str | None, label: str, *, missing_label: str | None = None
+) -> str:
     if not href:
         return f'<span class="artifact missing">{esc(missing_label or label + " missing")}</span>'
     return f'<a class="artifact" href="{esc(href)}">{esc(label)}</a>'
-
-
-def dom_id(prefix: str, value: str | None) -> str:
-    digest = hashlib.sha1(str(value or "unknown").encode("utf-8")).hexdigest()[:10]
-    return f"{prefix}-{digest}"
 
 
 def shell_css() -> str:
@@ -435,50 +431,6 @@ def shell_css() -> str:
       .search { min-width: 0; width: 100%; }
       .card-grid, .media-grid { grid-template-columns: 1fr; }
     }
-    """
-
-
-def filter_script(*, total_runs: int, pending_flows: int) -> str:
-    return f"""
-    const search = document.getElementById('search');
-    const tabs = Array.from(document.querySelectorAll('.tab'));
-    const rows = Array.from(document.querySelectorAll('.flow-row'));
-    const sections = Array.from(document.querySelectorAll('.flow-section'));
-    const empty = document.getElementById('empty');
-    const visibleCount = document.getElementById('visible-count');
-    let activeFilter = 'all';
-
-    function matchesFilter(node) {{
-      if (activeFilter === 'all') return true;
-      if (activeFilter === 'ran') return node.dataset.ran === 'true';
-      return node.dataset.status === activeFilter;
-    }}
-
-    function applyFilters() {{
-      const q = search.value.trim().toLowerCase();
-      let shown = 0;
-      rows.forEach((row) => {{
-        const ok = matchesFilter(row) && (!q || row.dataset.text.toLowerCase().includes(q));
-        row.classList.toggle('hidden', !ok);
-        if (ok) shown += 1;
-      }});
-      sections.forEach((section) => {{
-        const ok = matchesFilter(section) && (!q || section.dataset.text.toLowerCase().includes(q));
-        section.classList.toggle('hidden', !ok);
-      }});
-      empty.classList.toggle('hidden', shown !== 0);
-      visibleCount.textContent = `${{shown}} flow · {esc(total_runs)} run · {esc(pending_flows)} pending`;
-    }}
-
-    tabs.forEach((tab) => {{
-      tab.addEventListener('click', () => {{
-        activeFilter = tab.dataset.filter;
-        tabs.forEach((item) => item.classList.toggle('active', item === tab));
-        applyFilters();
-      }});
-    }});
-    search.addEventListener('input', applyFilters);
-    applyFilters();
     """
 
 
