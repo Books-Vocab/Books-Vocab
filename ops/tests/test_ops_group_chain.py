@@ -36,7 +36,9 @@ run_one() {
     assert "beta" not in arms["alpha"]
 
 
-def test_absolute_calls_ignore_comments_strings_and_fixture_payloads(tmp_path: Path) -> None:
+def test_absolute_calls_ignore_comments_strings_and_fixture_payloads(
+    tmp_path: Path,
+) -> None:
     root = tmp_path
     dispatcher = root / "ops/test_ops.sh"
     script = root / "ops/demo.sh"
@@ -83,7 +85,14 @@ def test_current_ios_group_exposes_absolute_log_calls() -> None:
 def test_case_arms_covers_every_group_in_test_ops() -> None:
     arms = MODULE.case_arms()
 
-    assert {"ios-ops", "lldb-forensics", "ops-ci-coverage", "worktree", "asc", "release-surfaces"} <= set(arms)
+    assert {
+        "ios-ops",
+        "lldb-forensics",
+        "ops-ci-coverage",
+        "worktree",
+        "asc",
+        "release-surfaces",
+    } <= set(arms)
     assert "*" not in arms
 
 
@@ -180,7 +189,9 @@ def test_lldb_forensics_chain_has_no_absolute_path_invocation() -> None:
     assert MODULE.abs_calls("lldb-forensics") == []
 
 
-def test_abs_calls_in_file_ignores_shebang_comment_and_string_literals(tmp_path: Path) -> None:
+def test_abs_calls_in_file_ignores_shebang_comment_and_string_literals(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "fixture.sh"
     path.write_text(
         """#!/usr/bin/env bash
