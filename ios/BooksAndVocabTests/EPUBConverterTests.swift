@@ -207,18 +207,90 @@ struct EPUBConverterTests {
         #expect(ch.contains("中文段落與 emoji 😀"))
     }
 
-    @Test func txt_latin1_only_bytes_decode_via_fallback() throws {
-        // 0xE9 is `é` in Latin-1 but invalid as standalone UTF-8 — decodeText()
-        // must fall back to isoLatin1 rather than throwing encodingFailed.
-        var raw = Data("caf".utf8)
-        raw.append(0xE9) // é (Latin-1)
+    /// Legacy-encoding helpers: CFStringEncoding -> String.Encoding.
+    private static func cfEncoding(_ e: CFStringEncodings) -> String.Encoding {
+        String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(e.rawValue)))
+    }
+
+    private func convertTXTBytes(_ raw: Data) throws -> StoredZipReader {
         let src = try writeTempFile(raw, ext: "txt")
-        let out = try EPUBConverter().convertTXT(at: src, title: "Café")
-        let reader = try #require(StoredZipReader(try Data(contentsOf: out)))
+        defer { try? FileManager.default.removeItem(at: src) }
+        let out = try EPUBConverter().convertTXT(at: src, title: "Book")
+        defer { try? FileManager.default.removeItem(at: out) }
+        return try #require(StoredZipReader(try Data(contentsOf: out)))
+    }
+
+    @Test func txt_lone_latin1_byte_throws_encoding_failed() throws {
+        // 0xE9 at end of input is a truncated lead byte in GB18030 and Big5 and
+        // invalid UTF-8, so there is no Latin-1 fallback any more (#2429).
+        var raw = Data("caf".utf8)
+        raw.append(0xE9)
+        let src = try writeTempFile(raw, ext: "txt")
+        defer { try? FileManager.default.removeItem(at: src) }
+        #expect(throws: EPUBConverterError.self) {
+            try EPUBConverter().convertTXT(at: src, title: "Café")
+        }
+    }
+
+    @Test func txt_bytes_invalid_in_all_encodings_throw_encoding_failed() throws {
+        let src = try writeTempFile(Data([0xFF, 0xFF, 0xFF]), ext: "txt")
+        defer { try? FileManager.default.removeItem(at: src) }
+        do {
+            _ = try EPUBConverter().convertTXT(at: src, title: "Bad")
+            Issue.record("expected encodingFailed")
+        } catch let error as EPUBConverterError {
+            guard case .encodingFailed = error else {
+                Issue.record("expected encodingFailed, got \(error)")
+                return
+            }
+        }
+    }
+
+    @Test func txt_gb18030_bytes_decode_to_chinese() throws {
+        let text = "简体中文测试，这是一个段落。"
+        let raw = try #require(text.data(using: Self.cfEncoding(.GB_18030_2000)))
+        #expect(String(data: raw, encoding: .utf8) == nil, "fixture must not be valid UTF-8")
+        let ch = try #require(try convertTXTBytes(raw).text("OEBPS/ch001.xhtml"))
+        #expect(ch.contains(text))
+    }
+
+    @Test func txt_big5_bytes_decode_to_chinese() throws {
+        // Every Big5 byte pair is also a valid GB18030 pair, so Big5 text decodes
+        // "successfully" as GB18030 mojibake (kana/Greek/Cyrillic/PUA). The decoder
+        // must still recover the Big5 reading.
+        let text = "這是中文測試，繁體中文。"
+        let raw = try #require(text.data(using: Self.cfEncoding(.big5)))
+        #expect(String(data: raw, encoding: .utf8) == nil, "fixture must not be valid UTF-8")
+        let ch = try #require(try convertTXTBytes(raw).text("OEBPS/ch001.xhtml"))
+        #expect(ch.contains(text))
+    }
+
+    @Test func txt_utf8_bom_is_stripped() throws {
+        var raw = Data([0xEF, 0xBB, 0xBF])
+        raw.append(Data("Hello BOM".utf8))
+        let ch = try #require(try convertTXTBytes(raw).text("OEBPS/ch001.xhtml"))
+        #expect(ch.contains("<p>Hello BOM</p>"))
+        #expect(!ch.contains("\u{FEFF}"))
+    }
+
+    // MARK: - XML validity / line splitting
+
+    @Test func txt_strips_xml_invalid_characters_and_chapter_parses() throws {
+        let reader = try convertTXTAndParse("a\u{0}b\u{1B}c\u{FFFE}d\u{FFFF}e\tf", title: "T\u{0}itle")
         let ch = try #require(reader.text("OEBPS/ch001.xhtml"))
-        #expect(ch.contains("café"), "Latin-1 byte 0xE9 must decode to 'é' via the fallback path")
-        try? FileManager.default.removeItem(at: out)
-        try? FileManager.default.removeItem(at: src)
+        #expect(!ch.contains("\u{0}") && !ch.contains("\u{1B}"))
+        #expect(!ch.contains("\u{FFFE}") && !ch.contains("\u{FFFF}"))
+        #expect(ch.contains("abcde"))
+        let parser = XMLParser(data: Data(ch.utf8))
+        #expect(parser.parse(), "chapter XHTML must be well-formed XML: \(String(describing: parser.parserError))")
+        let opf = try #require(reader.text("OEBPS/content.opf"))
+        #expect(!opf.contains("\u{0}"))
+    }
+
+    @Test func txt_cr_and_crlf_split_into_four_paragraphs() throws {
+        let ch = try #require(try convertTXTAndParse("a\rb\r\nc\nd").text("OEBPS/ch001.xhtml"))
+        #expect(ch.components(separatedBy: "<p>").count - 1 == 4)
+        #expect(ch.contains("<p>a</p>") && ch.contains("<p>b</p>") && ch.contains("<p>c</p>") && ch.contains("<p>d</p>"))
     }
 
     // MARK: - Markdown conversion (MD)
