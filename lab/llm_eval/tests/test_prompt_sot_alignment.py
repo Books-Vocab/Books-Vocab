@@ -60,3 +60,27 @@ def test_judge_md_system_matches_source_of_truth(filename, constant, normalize):
         f"{filename} System block drifted from its source_of_truth constant. "
         "Re-copy the production prompt into the .md."
     )
+
+
+@pytest.mark.parametrize("prompt_name", ["judge_batch", "judge_selective"])
+def test_rendered_user_block_matches_production(prompt_name):
+    """make_render_fn must build the User message exactly as batch._call_batch."""
+    from kg.judge.prompts import BATCH_USER_TEMPLATE
+
+    from llm_eval import PromptRegistry, make_render_fn
+
+    candidates = [
+        ["id1", "alpha", "first"],
+        ["id2", "beta", "second"],
+        ["id3", "gamma", "third"],
+    ]
+    sample = {"target_word": "tw", "target_meaning": "tm", "candidates": candidates}
+    rendered = make_render_fn(PromptRegistry(_PROMPTS_DIR), prompt_name)(sample)
+    expected = BATCH_USER_TEMPLATE.format(
+        target_word="tw",
+        target_meaning="tm",
+        candidate_list="\n".join(
+            f"{i + 1}. {w} ({m})" for i, (_, w, m) in enumerate(candidates)
+        ),
+    )
+    assert rendered.user.strip() == expected.strip()
