@@ -5,7 +5,8 @@ peer whose own row never moves is skipped by incremental sync (#2496).
 
 ``test_vocab_archive_peer_updated_at.py`` covers the plain single/batch paths
 with an active link; this file covers what it does not: hidden-link peers,
-notebook scoping, the best-effort failure contract and the external delete route.
+notebook scoping, the best-effort failure contract, the external delete route and
+a cached ``GraphStore`` that is stale against a link another process just wrote.
 """
 
 from __future__ import annotations
@@ -18,7 +19,12 @@ import pytest
 
 from kg.cards import CardStore
 from kg.graph import GraphStore, LinkKind
-from kg.vocab_crud import archive_vocab_word, delete_vocab_word
+from kg.vocab_crud import (
+    archive_vocab_word,
+    batch_archive_vocab_words,
+    batch_delete_vocab_words,
+    delete_vocab_word,
+)
 
 
 @pytest.fixture()
@@ -117,6 +123,54 @@ def test_external_delete_touches_active_and_hidden_peers(env, external):
     touched = _touched(env, before)
     assert {"a", "c"} <= touched
     assert "d" not in touched
+
+
+@pytest.fixture()
+def foreign_link(env, tmp_path):
+    """A second process links ``d`` to ``b`` after ``env.graph`` (the cached store) loaded.
+
+    ``env.graph`` plays the long-lived API instance; ``ops`` loads fresh from disk
+    and persists a new link, exactly like ``ops-edit`` does (#2086). ``env.graph``
+    has not refreshed, so its in-memory indexes do not know ``d`` is a peer of ``b``.
+    """
+    ops = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+    link = ops.add_link(env.ids["d"], env.ids["b"], LinkKind.SHARES_USAGE, 0.9, "foreign")
+    assert env.graph.get_link(link.id) is None  # precondition: the cached store is stale
+    return link
+
+
+def test_stale_store_archive_touches_peer_linked_by_another_process(env, foreign_link):
+    before = _snapshot_then_wait(env)
+    archive_vocab_word("b", archived=True, cards_store=env.cards, graph=env.graph)
+    assert {"a", "c", "d"} <= _touched(env, before)
+
+
+def test_stale_store_delete_touches_peer_linked_by_another_process(env, foreign_link):
+    before = _snapshot_then_wait(env)
+    delete_vocab_word("b", cards_store=env.cards, graph=env.graph)
+    assert {"a", "c", "d"} <= _touched(env, before)
+
+
+def test_stale_store_batch_delete_touches_peer_linked_by_another_process(env, foreign_link):
+    before = _snapshot_then_wait(env)
+    batch_delete_vocab_words(["b"], cards_store=env.cards, graph=env.graph)
+    assert {"a", "c", "d"} <= _touched(env, before)
+
+
+def test_stale_store_batch_archive_touches_peer_linked_by_another_process(env, foreign_link):
+    before = _snapshot_then_wait(env)
+    batch_archive_vocab_words(["b"], archived=True, cards_store=env.cards, graph=env.graph)
+    assert {"a", "c", "d"} <= _touched(env, before)
+
+
+def test_stale_store_external_delete_touches_peer_linked_by_another_process(env, external, foreign_link):
+    before = _snapshot_then_wait(env)
+    external._delete_external_card({"id": "u", "dir": "unused"}, env.ids["b"], "default")
+    assert {"a", "c", "d"} <= _touched(env, before)
 
 
 def test_external_delete_restores_card_when_peer_read_fails(env, external, monkeypatch):

@@ -68,7 +68,15 @@ def _touch_both(cards_store: Any, from_id: str, to_id: str) -> None:
 
 
 def link_peer_ids(graph: Any, card_id: str) -> set[str]:
-    """Ids of cards joined to ``card_id`` by an active or hidden link."""
+    """Ids of cards joined to ``card_id`` by an active or hidden link.
+
+    Re-syncs the store first: ``get_links_for`` only reads the in-memory indexes,
+    while the ``cleanup_for_card`` that follows this snapshot refreshes before it
+    deprecates. A cached instance that missed another process's new link would
+    therefore deprecate a link whose peer was never snapshotted, leaving that peer
+    with a stale ``linksByKind`` until a full resync.
+    """
+    graph.refresh_if_stale()
     return {link.to_id if link.from_id == card_id else link.from_id for link in graph.get_links_for(card_id)}
 
 
