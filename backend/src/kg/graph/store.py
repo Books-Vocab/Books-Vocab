@@ -126,6 +126,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._links_snapshot_sequence = 0
         self._last_flushed_links_snapshot_sequence = 0
         self._blocked_snapshot_sequence = 0
+        self._last_flushed_blocked_snapshot_sequence = 0
         # Cross-process staleness (#2086, see graph.persistence): signature of
         # each file as of this instance's last read/write, the link ids on disk
         # at that point, and the changes made here that no flush has persisted
@@ -353,6 +354,10 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 self._known_blocked_pairs |= rejected_pairs
                 self._touch_blocked(rejected_pairs)
             if dirty:
+                # Rows dropped by migration (rejected / retired kinds) must count
+                # as ours so the migration flush removes them from disk instead
+                # of preserving them as another instance's rows.
+                self._known_link_ids |= self._synced_link_ids
                 self._touch_links(duplicate_ids)
                 self._save_links()
                 self._save_blocked()
