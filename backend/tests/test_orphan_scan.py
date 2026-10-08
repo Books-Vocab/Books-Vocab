@@ -780,6 +780,9 @@ def test_fix_targets_data_dir_not_module_singletons(env, tmp_path):
         shutil.copy(sentinel / name, target / name)
 
     sentinel_hashes = _sha256_files(sentinel)
+    # Row counts are the discriminating guard: WAL-mode DBs can lose rows while
+    # the main .db file stays byte-identical until checkpoint.
+    sentinel_counts = _log_row_counts(sentinel)
     before = _log_row_counts(target)
     assert before["judge_log"] == 1  # orphan judge row present in target
 
@@ -789,6 +792,7 @@ def test_fix_targets_data_dir_not_module_singletons(env, tmp_path):
     fix(data_dir=target, confirm=True, dry_run=False)
 
     assert _sha256_files(sentinel) == sentinel_hashes
+    assert _log_row_counts(sentinel) == sentinel_counts
     assert _log_row_counts(target)["judge_log"] == 0
     # non-orphan live-user rows are kept in the target
     after = _log_row_counts(target)
@@ -796,3 +800,41 @@ def test_fix_targets_data_dir_not_module_singletons(env, tmp_path):
     assert after["token_usage"] == before["token_usage"] - 1
     assert after["translate_log"] == 1 and after["token_usage"] == 1
     assert scan(data_dir=target)["total"] == 0
+    # deleted by specific user_id: ghost gone, live user's rows kept
+    for db, table in (("translate_log.db", "translate_log"), ("token_usage.db", "token_usage")):
+        with sqlite3.connect(str(target / db)) as conn:
+            uids = {r[0] for r in conn.execute(f"SELECT user_id FROM {table}")}
+        assert uids == {env.user_id}
+
+
+def test_fix_propagates_locked_database_instead_of_reporting_success(env, monkeypatch):
+    """A locked log DB must make fix() raise, not return a bogus success summary."""
+    import kg.translate_log as tl
+    from kg import orphan_scan
+
+    tl.record(
+        user_id="ghost_user",
+        operation="translate_quick",
+        word="g",
+        context="",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw="{}",
+        latency_ms=1,
+    )
+    tl._reset()
+    db = env.data_dir / "translate_log.db"
+
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(orphan_scan.sqlite3, "connect", lambda path, *a, **k: real_connect(path, timeout=0.05))
+    holder = real_connect(str(db), timeout=0.05, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            orphan_scan.fix(data_dir=env.data_dir, confirm=True, dry_run=False)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    with sqlite3.connect(str(db)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM translate_log WHERE user_id = 'ghost_user'").fetchone()[0] == 1

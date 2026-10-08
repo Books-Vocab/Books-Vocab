@@ -420,7 +420,9 @@ def _delete_rows(db_path: Path, sql: str, params: list[tuple[Any, ...]]) -> None
 
     Opens its own connection so ``fix(data_dir=X)`` mutates exactly ``X``'s log
     DBs and never the process-wide module singletons. No-op when ``params`` is
-    empty or the DB file / table is missing.
+    empty or the DB file / table is missing. Any other ``OperationalError``
+    (locked, readonly, I/O) propagates so ``fix()``/the CLI fail loudly instead
+    of reporting a deletion that never happened.
     """
     if not params or not db_path.exists():
         return
@@ -429,6 +431,8 @@ def _delete_rows(db_path: Path, sql: str, params: list[tuple[Any, ...]]) -> None
         conn.executemany(sql, params)
         conn.commit()
     except sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc):
+            raise
         logger.warning("orphan delete skipped for %s: %s", db_path, exc)
     finally:
         conn.close()
