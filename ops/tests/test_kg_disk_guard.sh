@@ -927,7 +927,7 @@ started=$SECONDS
 if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
   KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
-  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=2 \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=2 KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS=1 \
   KG_DISK_GUARD_UV_BIN="$fake_uv" FAKE_PID_FILE="$child_pid_file" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   "$SCRIPT" >/dev/null 2>&1; then
@@ -937,9 +937,15 @@ else
 fi
 elapsed=$((SECONDS - started))
 (( external_rc == 0 )) && ok "guard preserves command exit compatibility" || bad "guard command exit changed after external timeout"
-(( elapsed <= 4 )) && ok "external attribution is stopped within the hard budget" || bad "external attribution exceeded hard budget (${elapsed}s)"
+(( elapsed <= 5 )) && ok "external attribution is stopped within budget plus grace" || bad "external attribution exceeded hard budget (${elapsed}s)"
+# 75 means "disk_usage.py wrote a complete report"; a supervisor kill wrote none,
+# so it must carry its own rc or the consumer trusts a stale report (2026-10-08).
+grep -q '"lane_usage_rc":124' "$state" \
+  && ok "external timeout reaches guard state with a kill rc distinct from report-written" || bad "external timeout did not reach guard state as rc 124"
 grep -q '"lane_usage_rc":75' "$state" \
-  && ok "external timeout reaches guard state as a hard block" || bad "external timeout did not reach guard state"
+  && bad "supervisor kill is indistinguishable from a written report (rc 75)" || ok "supervisor kill is not reported as rc 75"
+grep -q '"lane_usage_verdict":"block"' "$state" \
+  && ok "external timeout still blocks the guard" || bad "external timeout did not block the guard"
 grep -q '"lane_usage_budget_seconds":2' "$state" \
   && ok "external timeout records its configured budget" || bad "external timeout budget missing"
 if [[ -s "$child_pid_file" ]]; then
@@ -952,6 +958,140 @@ if [[ -s "$child_pid_file" ]]; then
 else
   bad "external timeout fixture did not record its child"
 fi
+
+echo "── lane report budget: the outer kill outlives the inner deadline, so its partial report lands first ──"
+# Regression (2026-10-08): the supervisor killed at exactly the inner budget, so a
+# scan that needed the full 240s never got to write its partial report; the stale
+# one from hours earlier stayed in place and was read as current.  The stand-in
+# overruns its inner budget (1s) but finishes inside budget+grace (4s) and writes
+# the report the real inner deadline would write.
+root="$TMP/inner-first"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"
+mkdir -p "$root"
+cat >"$fake_uv" <<'EOF'
+#!/usr/bin/env bash
+set -u
+out=""
+while (($#)); do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+sleep 2
+cat > "$out" <<'JSON'
+{
+  "schema": "kg.disk.lane-usage.v1",
+  "exclusions": {"supervision_worktree_paths": ["/inner-first-marker"]},
+  "policy": {"blocking_reasons": ["measurement-time-budget-exceeded"]},
+  "verdict": "block"
+}
+JSON
+exit 75
+EOF
+chmod +x "$fake_uv"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=1 KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS=3 \
+  KG_DISK_GUARD_UV_BIN="$fake_uv" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"lane_usage_rc":75' "$state" \
+  && ok "a scan that overruns its inner budget but meets the grace keeps its own exit" || bad_state "inner-deadline scan was killed or lost its rc" "$state"
+grep -q 'inner-first-marker' "$state" \
+  && ok "the partial report written after the inner deadline is the one the guard reads" || bad_state "the guard never read the partial report" "$state"
+grep -q '"lane_usage_budget_seconds":1' "$state" \
+  && ok "the recorded budget stays the inner deadline, not budget plus grace" || bad_state "recorded budget drifted" "$state"
+
+echo "── lane report budget: a killed scan never launders the previous report into this tick ──"
+# The kill leaves the last report on disk.  Parsing it would stamp hours-old
+# exclusions and platform numbers into a state dated now.
+root="$TMP/stale-launder"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"
+mkdir -p "$root"
+cat >"$lane_state" <<'JSON'
+{
+  "schema": "kg.disk.lane-usage.v1",
+  "exclusions": {"supervision_worktree_paths": ["/stale-marker"]},
+  "accounting": {"shared_platform_storage": {
+    "xctest_devices": {"exists": true, "measurement_complete": true, "metadata_complete": true, "budget_exceeded": false, "device_count": 3, "allocated_bytes": 1024, "reclaim": {"status": "not-requested"}},
+    "simulator_runtimes": {"exists": false, "status": "absent"}}},
+  "verdict": "pass"
+}
+JSON
+old_stamp="$(( $(date +%s) - 4800 ))"
+touch -d "@$old_stamp" "$lane_state" 2>/dev/null || touch -t "$(date -r "$old_stamp" '+%Y%m%d%H%M.%S')" "$lane_state"
+printf '%s\n' '#!/usr/bin/env bash' 'sleep 4' > "$fake_uv"; chmod +x "$fake_uv"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=0 KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS=1 \
+  KG_DISK_GUARD_UV_BIN="$fake_uv" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q 'stale-marker' "$state" \
+  && bad_state "the previous report's exclusions leaked into a killed tick" "$state" || ok "a killed tick does not read the previous report's exclusions"
+grep -q '"xctest_devices_count":3' "$state" \
+  && bad_state "the previous report's platform numbers leaked into a killed tick" "$state" || ok "a killed tick does not read the previous report's platform numbers"
+grep -q '"xctest_devices_verdict":"unavailable"' "$state" \
+  && ok "a killed tick marks platform storage unavailable instead of stale-pass" || bad_state "killed tick platform verdict" "$state"
+grep -q '"lane_usage_rc":124' "$state" && ok "the killed tick still records rc 124" || bad_state "killed tick rc" "$state"
+
+echo "── shared XCTestDevices: a walk that only ran out of time is temporary, a real finding is not ──"
+fake_report_case() {  # $1=label $2=xctest_devices JSON object
+  local label="$1" xctest_json="$2"
+  root="$TMP/xctest-class-$label"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"
+  rm -rf "$root"; mkdir -p "$root"
+  printf '{\n  "schema": "kg.disk.lane-usage.v1",\n  "exclusions": {"supervision_worktree_paths": []},\n  "accounting": {"shared_platform_storage": {"xctest_devices": %s, "simulator_runtimes": {"exists": false, "status": "absent"}}},\n  "verdict": "pass"\n}\n' "$xctest_json" > "$root/report.json"
+  cat >"$fake_uv" <<'EOF'
+#!/usr/bin/env bash
+set -u
+out=""
+while (($#)); do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+cp "${FAKE_REPORT_FILE:?}" "$out"
+exit 0
+EOF
+  chmod +x "$fake_uv"
+  KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+    KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+    KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" FAKE_REPORT_FILE="$root/report.json" \
+    KG_DISK_GUARD_UV_BIN="$fake_uv" \
+    KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+    "$SCRIPT" >/dev/null 2>&1
+}
+fake_report_case time-limited '{"exists": true, "measurement_complete": false, "metadata_complete": true, "budget_exceeded": null, "measurement_errors": ["measurement-time-budget-exceeded", "physical:/x/f: measurement-time-budget-exceeded"], "physical_measurement_errors": ["/x/f: measurement-time-budget-exceeded"], "device_count": 1, "allocated_bytes": 1, "reclaim": {"status": "not-requested"}}'
+grep -q '"xctest_devices_verdict":"block"' "$state" && ok "an incomplete walk still blocks writers" || bad_state "time-limited walk lost its block" "$state"
+grep -q '"xctest_devices_manual_review":0' "$state" && ok "a walk that only ran out of time is not manual review" || bad_state "time-limited walk was escalated to manual review" "$state"
+grep -q '"reason":"xctest-devices-measurement-incomplete"' "$state" && grep -q '"action":"retry-next-tick"' "$state" \
+  && ok "a time-limited walk names itself and says the next tick retries" || bad_state "time-limited walk reason/action" "$state"
+fake_report_case budget-exceeded '{"exists": true, "measurement_complete": true, "metadata_complete": true, "budget_exceeded": true, "measurement_errors": [], "device_count": 1, "allocated_bytes": 1, "reclaim": {"status": "manual-review"}}'
+grep -q '"xctest_devices_manual_review":1' "$state" && ok "positive control: a real budget overrun is manual review" || bad_state "budget overrun lost manual review" "$state"
+fake_report_case unreadable '{"exists": true, "measurement_complete": false, "metadata_complete": true, "budget_exceeded": null, "measurement_errors": ["/x/dev: PermissionError"], "device_count": 1, "allocated_bytes": 1, "reclaim": {"status": "not-requested"}}'
+grep -q '"xctest_devices_manual_review":1' "$state" && ok "positive control: an unreadable path is manual review, not a timeout" || bad_state "unreadable path lost manual review" "$state"
+fake_report_case mixed '{"exists": true, "measurement_complete": false, "metadata_complete": true, "budget_exceeded": null, "measurement_errors": ["measurement-time-budget-exceeded", "/x/dev: PermissionError"], "device_count": 1, "allocated_bytes": 1, "reclaim": {"status": "not-requested"}}'
+grep -q '"xctest_devices_manual_review":1' "$state" && ok "a timeout mixed with a real error stays manual review" || bad_state "mixed errors lost manual review" "$state"
+
+echo "── lane report budget: a zero budget still has a bounded kill and the grace is documented ──"
+root="$TMP/zero-budget-kill"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"
+mkdir -p "$root"
+printf '%s\n' '#!/usr/bin/env bash' 'sleep 4' > "$fake_uv"; chmod +x "$fake_uv"
+started=$SECONDS
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=0 KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS=1 \
+  KG_DISK_GUARD_UV_BIN="$fake_uv" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+(( SECONDS - started <= 3 )) && ok "zero budget plus 1s grace kills a stuck scan quickly" || bad "zero budget kill took $((SECONDS - started))s"
+grep -q '"lane_usage_rc":124' "$state" && ok "zero-budget kill carries rc 124" || bad_state "zero-budget kill rc missing" "$state"
+grace_help="$("$SCRIPT" --help 2>&1)"
+grep -q 'KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS' <<<"$grace_help" \
+  && ok "--help documents the supervisor grace" || bad "--help omits the supervisor grace"
 
 echo "── shared XCTestDevices: over-budget platform storage is visible and untouched ──"
 root="$TMP/xctest-budget"; xctest="$root/XCTestDevices"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"

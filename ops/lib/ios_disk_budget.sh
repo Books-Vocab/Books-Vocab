@@ -12,6 +12,16 @@ KG_IOS_DISK_BUDGET_EXIT=75
 # ops/lib/exit_codes.py.
 KG_IOS_DISK_STRUCTURAL_EXIT=77
 KG_IOS_DISK_GUARD_STATE_DEFAULT="${HOME}/Library/Application Support/KG/disk_guard.json"
+# Set to 1 by kg_ios_disk_budget_guard_state when its block came from a lane-usage
+# report the cited tick did not write, so kg_ios_disk_budget_blocked_hint does not
+# send the caller to clean a cache that is not the problem.
+KG_IOS_DISK_GUARD_STALE_LANE_REPORT=0
+
+# kg_stat_mtime: one BSD/GNU-safe mtime reader (see lib/userland_compat.sh).
+if [[ "$(type -t kg_stat_mtime)" != function ]]; then
+  # shellcheck source=./userland_compat.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/userland_compat.sh"
+fi
 
 kg_ios_disk_budget_roots() {
   local project_root="${1:?project root is required}"
@@ -103,16 +113,46 @@ kg_ios_disk_lane_usage_state() {
   printf '%s' "${KG_IOS_DISK_LANE_USAGE_STATE:-$(dirname "$state")/lane_disk_usage.json}"
 }
 
-# Say WHICH worktrees and reasons made the shared guard block, so a blocked
-# agent does not read a lane-attribution verdict as a disk-space problem.
-kg_ios_disk_guard_diagnose() {
-  local operation="$1" state="$2" lane_state reasons unregistered dirty unknown
+# A lane-usage report decides a block only if the tick that published the guard
+# state also wrote it.  The tick writes the report seconds before the state's
+# "at", so a healthy pair differs by a few seconds; a report older than the slack
+# (default 120s, under the 300s tick interval so the previous tick's report never
+# passes) was not written by that tick: its scan was killed, or the tick that
+# should have rewritten it never finished.  Sets KG_IOS_DISK_LANE_REPORT_LAG to
+# the lag in seconds, or "missing"; returns 1 when the report is stale or missing.
+kg_ios_disk_lane_report_is_fresh() {
+  local state="${1:?guard state is required}" lane_state at epoch report_mtime slack
   lane_state="$(kg_ios_disk_lane_usage_state "$state")"
-  reasons="$(kg_ios_disk_json_array "$lane_state" blocking_reasons)"
-  unregistered="$(kg_ios_disk_json_array "$lane_state" unregistered_physical_worktrees)"
-  dirty="$(kg_ios_disk_json_array "$lane_state" blocking_dirty_physical_worktrees)"
-  unknown="$(kg_ios_disk_json_array "$lane_state" unknown_physical_worktrees)"
-  echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
+  KG_IOS_DISK_LANE_REPORT_LAG="missing"
+  [[ -f "$lane_state" ]] || return 1
+  slack="${KG_IOS_DISK_LANE_REPORT_SLACK_SECONDS:-120}"
+  [[ "$slack" =~ ^[0-9]+$ ]] || slack=120
+  at="$(kg_ios_disk_guard_json_string "$state" at)"
+  epoch="$(kg_ios_disk_guard_timestamp_epoch "$at" 2>/dev/null || true)"
+  [[ "$epoch" =~ ^[0-9]+$ ]] || epoch="$(kg_stat_mtime "$state" 2>/dev/null || true)"
+  report_mtime="$(kg_stat_mtime "$lane_state" 2>/dev/null || true)"
+  # No readable reference or mtime means freshness cannot be shown: not fresh.
+  [[ "$epoch" =~ ^[0-9]+$ && "$report_mtime" =~ ^[0-9]+$ ]] || return 1
+  KG_IOS_DISK_LANE_REPORT_LAG=$((epoch - report_mtime))
+  (( KG_IOS_DISK_LANE_REPORT_LAG <= slack ))
+}
+
+# Say WHICH worktrees and reasons made the shared guard block, so a blocked
+# agent does not read a lane-attribution verdict as a disk-space problem.  A
+# stale report's lists are history, not current fact, so they print as unknown.
+kg_ios_disk_guard_diagnose() {
+  local operation="$1" state="$2" lane_state reasons unregistered dirty unknown fresh="yes"
+  lane_state="$(kg_ios_disk_lane_usage_state "$state")"
+  if kg_ios_disk_lane_report_is_fresh "$state"; then
+    reasons="$(kg_ios_disk_json_array "$lane_state" blocking_reasons)"
+    unregistered="$(kg_ios_disk_json_array "$lane_state" unregistered_physical_worktrees)"
+    dirty="$(kg_ios_disk_json_array "$lane_state" blocking_dirty_physical_worktrees)"
+    unknown="$(kg_ios_disk_json_array "$lane_state" unknown_physical_worktrees)"
+  else
+    fresh="no"
+    reasons="unknown"; unregistered="unknown"; dirty="unknown"; unknown="unknown"
+  fi
+  echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) laneUsageFresh=$fresh laneUsageLagSeconds=$KG_IOS_DISK_LANE_REPORT_LAG blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
 }
 
 # A guard block that no amount of waiting or cache cleaning clears.  Two sources:
@@ -138,9 +178,12 @@ kg_ios_disk_guard_block_is_structural() {
     *) return 1 ;;
   esac
   # disk_usage.py exits 0 or 75 when it wrote a complete report; anything else
-  # (timeout, crash) leaves a possibly stale file, so it is never evidence.
+  # (timeout kill = 124, crash) leaves a possibly stale file, so it is never
+  # evidence.  Producers before 2026-10-08 also recorded a supervisor kill as 75,
+  # so the rc alone is not enough: the report must also postdate the tick.
   lane_rc="$(sed -nE 's/.*"lane_usage_rc"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$state" | head -1)"
   case "${lane_rc:-0}" in 0|75) ;; *) return 1 ;; esac
+  kg_ios_disk_lane_report_is_fresh "$state" || return 1
   lane_state="$(kg_ios_disk_lane_usage_state "$state")"
   reasons="$(kg_ios_disk_json_array "$lane_state" blocking_reasons)"
   while IFS= read -r item; do
@@ -192,6 +235,7 @@ kg_ios_disk_budget_guard_state() {
   local max_age="${KG_IOS_DISK_GUARD_MAX_AGE_SECONDS:-900}"
   local schema verdict xctest_verdict manual_review at epoch now age
 
+  KG_IOS_DISK_GUARD_STALE_LANE_REPORT=0
   [[ "$enforce" == "1" ]] || enforce=0
   if [[ ! -f "$state" ]]; then
     if (( enforce == 1 )); then
@@ -221,7 +265,13 @@ kg_ios_disk_budget_guard_state() {
       echo "[ios] BLOCKED (structural, exit $KG_IOS_DISK_STRUCTURAL_EXIT, retryable=no): XCTestDevices needs manual review; waiting will not clear it. Do not poll." >&2
       return "$KG_IOS_DISK_STRUCTURAL_EXIT"
     fi
-    echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-budget-exceeded state=$state" >&2
+    # A walk that only ran out of time is temporary and says so; the guard names
+    # it, everything else here is the budget overrun.
+    if [[ "$(kg_ios_disk_guard_json_string "$state" reason)" == xctest-devices-measurement-incomplete ]]; then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block exit=$KG_IOS_DISK_BUDGET_EXIT retryable=yes reason=xctest-devices-measurement-incomplete state=$state" >&2
+    else
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-budget-exceeded state=$state" >&2
+    fi
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
   if [[ "$verdict" == "block" || "$verdict" == "critical" ]]; then
@@ -240,6 +290,12 @@ kg_ios_disk_budget_guard_state() {
     if kg_ios_disk_guard_block_is_structural "$state"; then
       kg_ios_disk_guard_structural_notice "$operation" "$state"
       return "$KG_IOS_DISK_STRUCTURAL_EXIT"
+    fi
+    if [[ "$(kg_ios_disk_guard_json_string "$state" reason)" == lane-usage-report-* ]] \
+      && ! kg_ios_disk_lane_report_is_fresh "$state"; then
+      KG_IOS_DISK_GUARD_STALE_LANE_REPORT=1
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block exit=$KG_IOS_DISK_BUDGET_EXIT retryable=yes reason=lane-usage-report-stale laneUsageLagSeconds=$KG_IOS_DISK_LANE_REPORT_LAG" >&2
+      echo "[ios] BLOCKED (temporary, exit $KG_IOS_DISK_BUDGET_EXIT): the lane-usage report is stale (lag ${KG_IOS_DISK_LANE_REPORT_LAG}s behind the guard tick that cites it; the attribution scan did not finish), so the block above is unattributed, not a worktree finding. Cleaning cache will not clear it. Run './ops/ios_ops.sh guard --refresh' to re-scan, or retry after the next tick. A repeat means the scan overruns its budget (docs/reference/ios_deriveddata_policy.md)." >&2
     fi
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
@@ -330,6 +386,8 @@ kg_ios_disk_budget_blocked_hint() {
   local prefix="${1:?caller prefix is required}" rc="${2:-$KG_IOS_DISK_BUDGET_EXIT}"
   if (( rc == KG_IOS_DISK_STRUCTURAL_EXIT )); then
     echo "$prefix blocked by the shared disk guard (exit $rc, structural, retryable=no): see the guard reason and action above; do not poll" >&2
+  elif (( rc == KG_IOS_DISK_BUDGET_EXIT )) && [[ "${KG_IOS_DISK_GUARD_STALE_LANE_REPORT:-0}" == "1" ]]; then
+    echo "$prefix blocked by the shared disk guard (exit $rc, temporary): its lane-usage report is stale, not a cache problem; run './ops/ios_ops.sh guard --refresh' or retry after the next tick" >&2
   elif (( rc == KG_IOS_DISK_BUDGET_EXIT )); then
     echo "$prefix blocked by disk budget; clean rebuildable cache before retry" >&2
   else
