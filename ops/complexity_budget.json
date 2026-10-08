@@ -1,13 +1,13 @@
 {
   "schema": "kg.complexity-budget.v1",
-  "note": "ops ceiling reset to measured 198,421 + 3,000 slack on 2026-10-08 because main was over its ceiling and per-lane exact bumps race in the merge queue; ops/complexity.py ratchet reclaims the slack later.",
+  "note": "2026-10-09: ops ceiling raised by 1,079 for #2638 (wedged pr-gate run policy + its 470-line regression suite), after #2639 deleted 471 dead lines; ratchet reclaims slack later. Prior reset 2026-10-08: measured 198,421 + 3,000 slack.",
   "slack": {
     "ops": 2000,
     "docs": 1000,
     "workflows": 250
   },
   "ceilings": {
-    "ops": 201421,
+    "ops": 202500,
     "docs": 15633,
     "workflows": 1997
   }
