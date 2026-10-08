@@ -233,3 +233,32 @@ def test_exit_code_follows_the_worst_finding(
     )
     assert rt.main(["--json", "--skip-remote"]) == 2
     assert json.loads(capsys.readouterr().out)["worst"] == "block"
+
+
+# ---- doctor integration --------------------------------------------------------
+
+
+def test_build_findings_drives_the_real_doctor_release_gap_offline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No stub of doctor.collect_release_gap: its real signature must accept what
+    # release_train passes. --skip-remote must stay offline, so a network probe fails.
+    repo = OPS.parent
+    for ref in ("origin/prod", "origin/main"):
+        known = subprocess.run(
+            ["git", "rev-parse", "--verify", "-q", ref],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        )
+        if known.returncode:
+            pytest.skip(f"{ref} is required")
+
+    def no_network(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("--skip-remote must not touch the network")
+
+    monkeypatch.setattr(rt.doctor.urllib.request, "urlopen", no_network)
+    findings = rt.build_findings(repo, remote=False)
+    alignment = next(f for f in findings if f.section == "alignment")
+    assert alignment.level == "warn"
+    assert alignment.summary == "live version unavailable"

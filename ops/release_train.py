@@ -336,7 +336,11 @@ def build_findings(repo: Path, *, remote: bool, run: Runner = _run) -> list[Find
     if remote:
         verdict, loaded = collect_reconciler(run)
         findings.append(evaluate_reconciler(verdict, loaded))
-    live, _behind, _age = doctor.collect_release_gap(repo, datetime.now(timezone.utc))
+    # --skip-remote stays offline: no prod probe, so the live version is unavailable.
+    info = doctor.collect_prod_info() if remote else None
+    live, _behind, _age = doctor.collect_release_gap(
+        repo, datetime.now(timezone.utc), info
+    )
     prod_sha = git_out(repo, "rev-parse", "origin/prod", run=run)
     findings.append(
         evaluate_alignment(live, prod_sha, clone["version"] if clone else None)
