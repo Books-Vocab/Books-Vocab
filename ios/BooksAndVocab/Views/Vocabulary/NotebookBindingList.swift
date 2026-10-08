@@ -27,7 +27,8 @@ struct NotebookBindingList: View {
     }
 
     private func row(_ notebook: Notebook) -> some View {
-        Button {
+        let isSelected = selectedNotebookId == notebook.remoteId
+        return Button {
             onSelect(notebook)
         } label: {
             HStack(spacing: AppSpacing.s2) {
@@ -43,14 +44,16 @@ struct NotebookBindingList: View {
 
                 Spacer()
 
-                if selectedNotebookId == notebook.remoteId {
+                if isSelected {
                     Image(systemName: "checkmark")
                         .font(AppFonts.subhead(weight: .semibold))
                         .foregroundStyle(theme.palette.accent)
+                        .accessibilityHidden(true)
                 }
             }
             .contentShape(Rectangle())
         }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 #endif
