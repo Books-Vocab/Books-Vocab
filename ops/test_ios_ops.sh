@@ -1865,6 +1865,21 @@ if [[ -s "$lease_failure_tmp/verdict.json" ]] \
 else
   fail_t "ios_test did not publish the expected pool-exhaustion verdict"
 fi
+# The legacy one-line verdict must carry this run's own identity, the same pid
+# and cwd as the JSON verdict: a single-quoted printf format once wrote the
+# literal `$(kg_ios_verdict_identity_kv)` text instead (#2207).
+lease_legacy="$(cat "$lease_failure_tmp/verdict" 2>/dev/null || true)"
+lease_json_pid="$(jq -r '.invocation.pid // empty' "$lease_failure_tmp/verdict.json" 2>/dev/null || true)"
+lease_json_cwd="$(jq -r '.invocation.cwd // empty' "$lease_failure_tmp/verdict.json" 2>/dev/null || true)"
+lease_identity_re=" ts=[0-9]+ pid=${lease_json_pid} cwd=(.*)\$"
+lease_legacy_cwd=""
+if [[ "$lease_legacy" =~ $lease_identity_re ]]; then lease_legacy_cwd="${BASH_REMATCH[1]}"; fi
+if [[ "$lease_json_pid" =~ ^[0-9]+$ && -n "$lease_json_cwd" \
+      && "$lease_legacy" != *'$('* && "$lease_legacy_cwd" == "$lease_json_cwd" ]]; then
+  ok "ios_test early-failure legacy verdict expands this run's ts/pid/cwd identity"
+else
+  fail_t "ios_test early-failure legacy verdict lacks this run's identity (json pid=$lease_json_pid cwd=$lease_json_cwd): $lease_legacy"
+fi
 grep -q "pool is exhausted" "$lease_failure_err" \
   && ok "ios_test preserves the operator-facing pool exhaustion reason" \
   || fail_t "ios_test lost the operator-facing pool exhaustion reason"

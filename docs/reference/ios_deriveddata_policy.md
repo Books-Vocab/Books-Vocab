@@ -188,6 +188,10 @@ Claude Code harness（subagent `isolation: worktree` 的 `agent-<17 hex>`、Work
 同 root 下該 lock 的 pid 已死（前一個 session 的殘留）、pid 被無關程序重用（存活但 start 不符），或未上鎖（harness 已釋放）但目錄名符合上述
 harness 產生的形狀 → `ownership=stale-agent`（`agent_lock.state=dead-pid|reused-pid|unlocked`），只產生 `stale-agent-worktree` warning、列於
 `policy.stale_agent_worktrees`，lane 附 `cleanup_hint`（`git worktree [unlock … &&] remove …`）。
+start 的 `ps` 探測受報告期限（`--time-budget-seconds`）約束：每次探測以 min(5 秒, 剩餘時間) 封頂，同一份報告內同一 pid 只探一次；期限已過就不再探測、退回只看 pid，
+該 lane 的 `agent_lock` 附 `start_check=skipped-deadline`，表示這個 `state=live` 只證明 pid 存活、start 未比對（可能是被重用的 pid）。
+此欄位只以這個值、只隨 `state=live` 出現；缺席不代表 start 已驗證（lock 未記 start 或讀不到時同樣只看 pid，但不標記）。
+它只影響 ephemeral／stale 兩種 warning 的歸類（被重用的 pid 這次可能少一個 `cleanup_hint`），不改變任何 block 判定；下一次預算內完成探測的報告會重新歸類。
 它不擋：沒有活著的 writer、bytes 照樣計入 quota，擋下只會讓任一崩潰的 session 癱瘓所有 iOS lane。
 兩者都完整計入 per-lane／aggregate bytes 與 quota。lock 理由不符（他人持有、無理由、名稱指向別的目錄）、
 未上鎖且目錄名非 harness 形狀（例如手建的 `scratch`；dirty 時另觸發 dirty blocker）、
