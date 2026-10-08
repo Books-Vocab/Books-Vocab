@@ -57,7 +57,7 @@ KG_STATE_FILE="${KG_STATE_FILE:-$KG_RECON_REPO/backups/reconciler.state}"   # po
 KG_DEPLOY_LOG="${KG_DEPLOY_LOG:-$KG_RECON_REPO/backups/deploy.log}"
 KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
 KG_LOCAL_HEALTH_URL="${KG_LOCAL_HEALTH_URL:-http://localhost:8000/api/system/info}"
-KG_LOCK_DIR="${KG_LOCK_DIR:-/tmp/kg-deploy.lock}"          # 與 devops.sh acquire_deploy_lock 同一把鎖
+KG_LOCK_DIR="${KG_LOCK_DIR:-/tmp/kg-deploy.lock}"          # 鎖在 deploy host（felix）本機；devops.sh acquire_deploy_lock 經 SSH 在 felix 取同一把
 KG_GH_TOKEN_ENV="${KG_GH_TOKEN_ENV:-$HOME/.secrets/gh-token.env}"           # GH_TOKEN（私有 repo fetch）
 KG_SENTRY_RELEASE="${KG_SENTRY_RELEASE:-$KG_RECON_REPO/ops/sentry_release.sh}"  # Sentry release recorder
 KG_RECON_SENTRY_TIMEOUT="${KG_RECON_SENTRY_TIMEOUT:-45}"   # recorder 總時間上限（秒；持鎖中，故有界）
@@ -662,6 +662,12 @@ main() {
   #     serving 舊 image。用 live 容器自報 version 為準：不一致（或 VERSION 缺失/不可解析）且
   #     live 版可解析為 commit → 以 live 版覆蓋 DEPLOYED_SHA 並修正 VERSION 游標對齊現實，
   #     從實際狀態重新收斂（自癒 crash-window drift；亦救 VERSION 遺失但容器健在）。
+  #     2b 會寫 VERSION，而人工 deploy 持鎖期間 VERSION 先於容器更新（正是 2b 想「修」的假象），
+  #     故鎖被持有時整段略過並讓路（verdict=locked），不改 VERSION。
+  if [[ "$dry_run" != "1" && -d "$KG_LOCK_DIR" ]]; then
+    log "deploy 鎖 $KG_LOCK_DIR 已被持有（人工 deploy 進行中？）→ 跳過 VERSION 自癒，本輪讓路。"
+    emit_verdict "locked"; exit 0
+  fi
   if [[ "$dry_run" != "1" ]]; then
     local live_ver
     live_ver="$(reconcile_live_version)"

@@ -810,6 +810,31 @@ v="$(get_verdict "$out")"
 [[ ! -s "$COMPOSELOG" ]] && ok "locked: compose not called" || bad "locked: compose called"
 [[ -d "$LOCK" ]] && ok "locked: 未刪別人的鎖" || bad "locked: 誤刪他人鎖"
 
+section "lock 被持有 + live != VERSION → 2b 讓路（VERSION 不被改寫）（#2266）"
+new_scratch backend
+echo "$SHA_NEW" > "$VERSIONFILE"       # 與 live（SHA_OLD）不一致；無鎖時 2b 會改寫它
+mkdir -p "$LOCK"
+pre_ver="$(cat "$VERSIONFILE")"; pre_sum="$(cksum < "$VERSIONFILE")"
+MOCK_CURL="$(make_mock_curl "" "$SC" "$SERVEDFILE")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "locked" ]] && ok "locked-2b: verdict locked" || bad "locked-2b: expected locked, got '$v' (out=$out)"
+[[ "$rc" -eq 0 ]] && ok "locked-2b: exit 0" || bad "locked-2b: exit $rc"
+[[ "$(cat "$VERSIONFILE")" == "$pre_ver" && "$(cksum < "$VERSIONFILE")" == "$pre_sum" ]] \
+  && ok "locked-2b: VERSION byte-identical" || bad "locked-2b: VERSION 被改寫為 $(cat "$VERSIONFILE")"
+[[ ! -s "$COMPOSELOG" ]] && ok "locked-2b: compose not called" || bad "locked-2b: compose called"
+[[ -d "$LOCK" ]] && ok "locked-2b: 未刪別人的鎖" || bad "locked-2b: 誤刪他人鎖"
+
+section "鎖空閒時 2b 仍修正 stale VERSION，且 noop 不留鎖（#2266）"
+new_scratch none
+echo "$SHA_NEW" > "$VERSIONFILE"       # 宣稱 new，live=old；origin==old 時修正後同版 noop
+MOCK_CURL="$(make_mock_curl "" "$SC" "$SERVEDFILE")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "noop" ]] && ok "unlocked-2b: verdict noop" || bad "unlocked-2b: expected noop, got '$v' (out=$out)"
+[[ "$(cat "$VERSIONFILE")" == "$SHA_OLD" ]] && ok "unlocked-2b: VERSION 修正為 live==$SHA_OLD" || bad "unlocked-2b: VERSION=$(cat "$VERSIONFILE")"
+[[ ! -e "$LOCK" ]] && ok "unlocked-2b: noop 後鎖不殘留" || bad "unlocked-2b: 鎖殘留"
+
 section "VERSION 缺失 + 容器 down → graceful noop（block 修復，不崩）"
 new_scratch none
 rm -f "$VERSIONFILE"

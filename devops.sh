@@ -250,15 +250,16 @@ validate_uid() {
 }
 
 # Production 互斥鎖：deploy/restart/migrate 並發保護
-# Mac 預設無 flock(1)，改用 mkdir 原子鎖
+# Mac 預設無 flock(1)，改用 mkdir 原子鎖。鎖放在 deploy host（felix）上、經 SSH 取放，
+# 與 felix 上的 kg_reconcile.sh（本機 mkdir 同一路徑）才是同一把；DEPLOY_LOCK_DIR 是遠端路徑。
 DEPLOY_LOCK_DIR="${KG_DEPLOY_LOCK_DIR:-/tmp/kg-deploy.lock}"
 DEPLOY_LOCK_HELD=0
-release_deploy_lock() { rmdir "$DEPLOY_LOCK_DIR" 2>/dev/null || true; }
+release_deploy_lock() { run_remote "rmdir $DEPLOY_LOCK_DIR" 2>/dev/null || true; }
 acquire_deploy_lock() {
   # 同 process 內已持有則略過（cmd_deploy → cmd_migrate 遞迴呼叫場景）
   [[ "$DEPLOY_LOCK_HELD" == "1" ]] && return 0
-  if ! mkdir "$DEPLOY_LOCK_DIR" 2>/dev/null; then
-    err "另一個 deploy/restart/migrate 正在進行中（$DEPLOY_LOCK_DIR 已存在）。若確認無進行中操作，請手動 rmdir $DEPLOY_LOCK_DIR"
+  if ! run_remote "mkdir $DEPLOY_LOCK_DIR" 2>/dev/null; then
+    err "另一個 deploy/restart/migrate 正在進行中（deploy host 上 $DEPLOY_LOCK_DIR 已存在）。若確認無進行中操作，請在 deploy host 手動 rmdir $DEPLOY_LOCK_DIR"
   fi
   DEPLOY_LOCK_HELD=1
   kg_install_signal_traps release_deploy_lock devops
