@@ -790,6 +790,51 @@ sens_expect_allowed "logs default line count" "logs 80" base logs
 sens_expect_allowed "docker-logs numeric line count" "run docker logs knowledge-graph-api -n 7" base docker-logs 7
 rm -rf "$SENS_FIX"
 
+# ── 14. deploy 鎖在 deploy host（felix）上，不在本機（#2266）────────────────
+section "deploy lock lives on the deploy host (remote mkdir/rmdir via ssh)"
+LOCK_FIX="$(mktemp -d)"
+LOCK_STUB="$LOCK_FIX/ssh_stub.sh"
+LOCK_LOG="$LOCK_FIX/ssh.log"
+LOCK_LOCAL="$LOCK_FIX/local-lock-must-not-exist"
+cat > "$LOCK_STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+# 記下每次遠端指令（最後一個 argv）；STUB_LOCK_HELD=1 時 mkdir 失敗＝遠端鎖已存在。
+printf '%s\n' "${@: -1}" >> "$STUB_LOG"
+if [[ "${@: -1}" == mkdir\ * && "${STUB_LOCK_HELD:-0}" == "1" ]]; then exit 1; fi
+exit 0
+STUBEOF
+chmod +x "$LOCK_STUB"
+for lock_sub in deploy restart migrate; do
+  : > "$LOCK_LOG"
+  lock_rc=0
+  lock_out=$(STUB_LOG="$LOCK_LOG" STUB_LOCK_HELD=1 KG_SSH_CMD="$LOCK_STUB" KG_DEPLOY_LOCK_DIR="$LOCK_LOCAL" bash "$KG" "$lock_sub" 2>&1) || lock_rc=$?
+  if [[ "$lock_rc" != 0 ]] && grep -q '另一個 deploy/restart/migrate 正在進行中' <<< "$lock_out"; then
+    ok "$lock_sub dies with the lock-held message when the remote lock exists"
+  else
+    fail_t "$lock_sub did not die with lock-held message (rc=$lock_rc)"
+  fi
+  grep -q "^mkdir $LOCK_LOCAL\$" "$LOCK_LOG" \
+    && ok "$lock_sub attempted the lock through the remote transport" \
+    || fail_t "$lock_sub never ran a remote mkdir (lock is local?)"
+  [[ "$(wc -l < "$LOCK_LOG" | tr -d ' ')" == 1 ]] \
+    && ok "$lock_sub ran nothing else remotely (no compose / VERSION write)" \
+    || fail_t "$lock_sub ran remote commands past the held lock: $(tr '\n' '|' < "$LOCK_LOG")"
+  [[ ! -e "$LOCK_LOCAL" ]] && ok "$lock_sub left no local lock dir" || fail_t "$lock_sub created a LOCAL lock dir"
+done
+# acquire / release 都走遠端；HELD 重入不重複 mkdir。
+: > "$LOCK_LOG"
+lock_rc=0
+STUB_LOG="$LOCK_LOG" KG_SSH_CMD="$LOCK_STUB" KG_DEPLOY_LOCK_DIR="$LOCK_LOCAL" DEVOPS_SOURCE_ONLY=1 bash -c \
+  'source "$1"; acquire_deploy_lock; acquire_deploy_lock; release_deploy_lock' _ "$KG" >/dev/null 2>&1 || lock_rc=$?
+# （EXIT trap 會在 shell 結束時再放一次鎖，故 rmdir 次數不鎖定，只要求每筆都是遠端 rmdir。）
+[[ "$lock_rc" == 0 ]] && [[ "$(grep -c '^mkdir ' "$LOCK_LOG")" == 1 ]] \
+  && [[ "$(grep -c "^rmdir $LOCK_LOCAL\$" "$LOCK_LOG")" -ge 1 ]] \
+  && [[ "$(grep -vc -e '^mkdir ' -e '^rmdir ' "$LOCK_LOG" || true)" == 0 ]] \
+  && ok "acquire is re-entrant (one remote mkdir) and release runs remote rmdir" \
+  || fail_t "acquire/release remote sequence wrong (rc=$lock_rc): $(tr '\n' '|' < "$LOCK_LOG")"
+[[ ! -e "$LOCK_LOCAL" ]] && ok "acquire/release left no local lock dir" || fail_t "acquire created a LOCAL lock dir"
+rm -rf "$LOCK_FIX"
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
