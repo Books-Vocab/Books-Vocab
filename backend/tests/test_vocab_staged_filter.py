@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from kg.cards import CardStore
 from kg.notebook import NotebookStore
 from kg.vocab_handlers.crud import list_vocab_response
@@ -100,3 +102,91 @@ def test_materialize_reveals_cards(tmp_path):
     expected = ["live0", "live1", "s0", "s1", "s2"]
     assert sorted(full) == expected
     assert sorted(inc) == expected
+
+
+# ── reveal must reach incremental pullers (sync-hole regression) ─────
+
+
+def _copy_old(tmp_path, *, now, key="k1"):
+    """Run a real shared-deck copy whose cards are stamped at ``now`` (the copy
+    start), returning the stores plus the new notebook id."""
+    from kg.shared_decks.copy import copy_shared_deck
+    from kg.shared_decks.store import SharedDeckStore
+
+    user_dir = tmp_path / "users" / "u1"
+    user_dir.mkdir(parents=True)
+    shared = SharedDeckStore(tmp_path / "shared_decks.db")
+    shared.publish_official(
+        deck_id="deck_a",
+        title="Official Starter",
+        cards=[{"content": f"w{i}", "pos": "n.", "meaning": "m", "mode": "recognition"} for i in range(3)],
+        color="#112233",
+        cover_pattern="waves",
+        language_pair="en-zh",
+        category="language",
+        publisher_display_name="KG Team",
+    )
+    cards = CardStore(user_dir / "cards.db")
+    nbs = NotebookStore(user_dir / "notebooks.db")
+    outcome = copy_shared_deck(
+        shared_store=shared,
+        card_store=cards,
+        notebook_store=nbs,
+        user_dir=user_dir,
+        deck_id="deck_a",
+        copier_id="u1",
+        idempotency_key=key,
+        now=now,
+    )
+    return shared, cards, nbs, user_dir, outcome
+
+
+def test_reveal_delivers_cards_to_pull_started_during_copy(tmp_path):
+    """A device pulling incrementally while the copy runs gets boundary T_p later
+    than the cards' copy-start timestamps. Reveal must re-stamp the cards so the
+    next ``since=T_p`` pull returns them, not just the (bumped) notebook row."""
+    now = datetime.now(UTC) - timedelta(seconds=30)  # copy started 30s ago
+    _shared, cards, nbs, _dir, outcome = _copy_old(tmp_path, now=now)
+    assert nbs.get(outcome.notebook_id).is_staged is False
+    since = (now + timedelta(seconds=10)).isoformat()  # pull inside the window
+    got, _ = _list(tmp_path, cards, nbs, since=since)
+    assert sorted(got) == ["w0", "w1", "w2"]
+
+
+def test_replay_reveal_delivers_cards_to_late_incremental_pull(tmp_path, monkeypatch):
+    """Same guarantee on the crash-recovery path: _replay reveals the notebook."""
+    from kg.shared_decks.copy import copy_shared_deck
+
+    now = datetime.now(UTC) - timedelta(seconds=30)
+    real = NotebookStore.materialize
+    state = {"n": 0}
+
+    def flaky(self, nid):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise RuntimeError("injected crash before reveal")
+        return real(self, nid)
+
+    monkeypatch.setattr(NotebookStore, "materialize", flaky)
+    with pytest.raises(RuntimeError, match="injected"):
+        _copy_old(tmp_path, now=now)
+    user_dir = tmp_path / "users" / "u1"
+    from kg.shared_decks.store import SharedDeckStore
+
+    shared = SharedDeckStore(tmp_path / "shared_decks.db")
+    cards = CardStore(user_dir / "cards.db")
+    nbs = NotebookStore(user_dir / "notebooks.db")
+    outcome = copy_shared_deck(
+        shared_store=shared,
+        card_store=cards,
+        notebook_store=nbs,
+        user_dir=user_dir,
+        deck_id="deck_a",
+        copier_id="u1",
+        idempotency_key="k1",
+        now=now,
+    )
+    assert outcome.already_copied is True
+    since = (now + timedelta(seconds=10)).isoformat()
+    got, _ = _list(tmp_path, cards, nbs, since=since)
+    assert sorted(got) == ["w0", "w1", "w2"]

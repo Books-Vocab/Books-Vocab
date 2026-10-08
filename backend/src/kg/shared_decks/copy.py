@@ -164,6 +164,19 @@ def compensate_staged_copy(
         _LOGGER.warning("copy compensation: graph cleanup failed for %s", notebook_id, exc_info=True)
 
 
+def _reveal(card_store: CardStore, notebook_store: NotebookStore, notebook_id: str) -> None:
+    """Reveal a committed staged copy, then re-stamp its cards.
+
+    The cards were hidden from global pulls while staged, so an incremental
+    puller whose boundary fell inside the copy window already skipped them and
+    would never re-fetch (their ``updated_at`` predates its boundary). Re-stamping
+    AFTER the flip guarantees every such boundary is older than the new stamps.
+    Only runs when this call actually revealed the notebook (materialize is
+    reveal-once), so idempotent replays never bump a settled deck's cards."""
+    if notebook_store.materialize(notebook_id):
+        card_store.restamp_by_notebook(notebook_id, datetime.now(UTC))
+
+
 def _replay(
     shared_store: SharedDeckStore,
     notebook_store: NotebookStore,
@@ -177,7 +190,7 @@ def _replay(
     # Defensive re-materialize: if a prior copy crashed in the window between
     # record_copy (committed) and materialize, the notebook is still hidden. The
     # retry that lands here reveals it — self-healing, and a no-op once visible.
-    notebook_store.materialize(log.result_notebook_id)
+    _reveal(card_store, notebook_store, log.result_notebook_id)
     # The log marker makes this safe for both the original request and every
     # replay, including a crash after materialize but before finalization.
     shared_store.finalize_copy_download(log.copier_id, log.idempotency_key, deck_id)
@@ -356,7 +369,7 @@ def _copy_locked(
     # Post-commit finalizers — best-effort, never compensated (rolling back after
     # the idempotency log is committed would strand its pointer). A crash here is
     # recovered by the next retry via _replay.
-    notebook_store.materialize(nb.id)
+    _reveal(card_store, notebook_store, nb.id)
     shared_store.finalize_copy_download(copier_id, idempotency_key, deck.id)
     return CopyOutcome(
         notebook_id=nb.id,

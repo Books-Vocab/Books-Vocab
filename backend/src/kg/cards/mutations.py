@@ -257,6 +257,27 @@ class CardMutationMixin:
             session.commit()
             return len(cards)
 
+    def restamp_by_notebook(self, notebook_id: str, start: datetime) -> int:
+        """Re-stamp ``updated_at`` of a notebook's active cards to
+        ``start + i ms`` in their existing ``(updated_at, id)`` order. Used when
+        a staged copy is revealed: the cards were hidden from global pulls, so a
+        device whose incremental boundary fell inside the copy window would
+        otherwise never see them (their old timestamps predate its boundary).
+        Returns the number of cards re-stamped."""
+        if not notebook_id:
+            raise ValueError("notebook_id required")
+        with Session(self.engine) as session:
+            cards = session.exec(
+                select(Card)
+                .where(Card.notebook_id == notebook_id, Card.is_deleted.is_(False))
+                .order_by(Card.updated_at, Card.id)
+            ).all()
+            for i, card in enumerate(cards):
+                card.updated_at = start + timedelta(milliseconds=i)
+                session.add(card)
+            session.commit()
+            return len(cards)
+
     def delete(self, card_id: str) -> bool:
         """Soft deletes the card to support incremental sync."""
         with Session(self.engine) as session:
