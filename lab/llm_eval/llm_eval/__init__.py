@@ -70,33 +70,50 @@ def make_render_fn(
     Maps dataset sample fields to prompt template vars. Handles language
     name expansion (source_lang/target_lang → *_lang_name).
     """
+
     def _render(sample: dict) -> RenderedPrompt:
         vars: dict = {**sample, **extra_vars}
         vars.setdefault(
             "source_lang_name",
-            _LANG_NAMES.get(sample.get("source_lang", "en"), sample.get("source_lang", "English")),
+            _LANG_NAMES.get(
+                sample.get("source_lang", "en"), sample.get("source_lang", "English")
+            ),
         )
         vars.setdefault(
             "target_lang_name",
-            _LANG_NAMES.get(sample.get("target_lang", "zh-Hant"), sample.get("target_lang", "Traditional Chinese")),
+            _LANG_NAMES.get(
+                sample.get("target_lang", "zh-Hant"),
+                sample.get("target_lang", "Traditional Chinese"),
+            ),
         )
         candidates = sample.get("candidates")
-        if isinstance(candidates, list) and candidates and isinstance(candidates[0], list):
-            lines = [f"- {c[1]} ({c[2]})" for c in candidates if len(c) >= 3]
+        if (
+            isinstance(candidates, list)
+            and candidates
+            and isinstance(candidates[0], list)
+        ):
+            valid = [c for c in candidates if len(c) >= 3]
+            # Numbered "1. word (meaning)" mirrors kg.judge.batch._call_batch.
+            lines = [f"{i}. {c[1]} ({c[2]})" for i, c in enumerate(valid, start=1)]
             vars.setdefault("candidate_list", "\n".join(lines))
-            vars.setdefault("n", str(len(candidates)))
-            vars.setdefault("max_links", str(max(1, len(candidates) // 2)))
+            vars.setdefault("n", str(len(valid)))
+            vars.setdefault("max_links", str(max(1, len(valid) // 2)))
         # enrich-style prompts expect a JSON array of words with meaning/context;
         # build it from the per-sample fields so {{ words_json }} isn't empty.
         if "word" in sample:
-            vars.setdefault("words_json", json.dumps(
-                [{
-                    "word": sample.get("word", ""),
-                    "meaning": sample.get("meaning", ""),
-                    "context": sample.get("context", ""),
-                }],
-                ensure_ascii=False,
-            ))
+            vars.setdefault(
+                "words_json",
+                json.dumps(
+                    [
+                        {
+                            "word": sample.get("word", ""),
+                            "meaning": sample.get("meaning", ""),
+                            "context": sample.get("context", ""),
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+            )
         return registry.render(name, version, **vars)
 
     return _render
@@ -117,6 +134,7 @@ def compare_prompts(
 
     async def _run():
         from .runner import run_eval as _run_eval
+
         results = {}
         for prompt in [prompt_base] + prompt_variants:
             summaries = await _run_eval(prompt, samples, [model], config)
