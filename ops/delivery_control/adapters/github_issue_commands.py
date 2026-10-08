@@ -118,6 +118,7 @@ class GitHubIssueCommands:
         query: str,
         *,
         variables: tuple[tuple[str, str], ...] = (),
+        int_variables: tuple[tuple[str, int], ...] = (),
         list_variables: tuple[tuple[str, tuple[str, ...]], ...] = (),
     ) -> Mapping[str, Any]:
         owner, separator, name = self.query.repository_name().partition("/")
@@ -129,16 +130,19 @@ class GitHubIssueCommands:
             "graphql",
             "-f",
             f"query={query}",
-            "-F",
+            "-f",
             f"owner={owner}",
-            "-F",
+            "-f",
             f"name={name}",
         ]
+        # `-f` sends the raw string; `-F` would coerce null/true/digits/@file.
         for variable, value in variables:
-            argv.extend(("-F", f"{variable}={value}"))
+            argv.extend(("-f", f"{variable}={value}"))
+        for variable, int_value in int_variables:
+            argv.extend(("-F", f"{variable}={int_value}"))
         for variable, values in list_variables:
             for value in values:
-                argv.extend(("-F", f"{variable}[]={value}"))
+                argv.extend(("-f", f"{variable}[]={value}"))
         result = self.runner.run(tuple(argv), cwd=self.repo)
         if result.exit_code != 0:
             raise AdapterCommandError(result)
@@ -221,7 +225,7 @@ class GitHubIssueCommands:
     def _read_created_issue(self, number: int) -> DemandIssue:
         payload = self._graphql(
             _READ_ISSUE_QUERY,
-            variables=(("number", str(number)),),
+            int_variables=(("number", number),),
         )
         data = payload.get("data")
         repository = data.get("repository") if isinstance(data, Mapping) else None
@@ -426,7 +430,7 @@ class GitHubIssueCommands:
     def _read_issue_state(self, number: int) -> tuple[str, str | None, DemandIssue]:
         payload = self._graphql(
             _READ_ISSUE_STATE_QUERY,
-            variables=(("number", str(number)),),
+            int_variables=(("number", number),),
         )
         data = payload.get("data")
         repository = data.get("repository") if isinstance(data, Mapping) else None

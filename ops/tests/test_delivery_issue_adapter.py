@@ -91,11 +91,14 @@ def _issue(
 
 
 def _intake_payload(
-    *, labels: list[str] | None = None, body: str = "A bounded report"
+    *,
+    labels: list[str] | None = None,
+    body: str = "A bounded report",
+    title: str = "A bounded raw Issue",
 ) -> dict[str, object]:
     return {
         "schema": ISSUE_INTAKE_SCHEMA,
-        "title": "A bounded raw Issue",
+        "title": title,
         "body": body,
         "labels": labels or ["bug"],
         "source": "scout",
@@ -225,9 +228,11 @@ def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors
     query = graphql_calls[0][graphql_calls[0].index("-f") + 1]
     assert "labels(first: 100)" in query
     assert "pageInfo { hasNextPage }" in query
-    assert "-F" in runner.calls[1]
-    assert "cursor=null" in runner.calls[1]
-    assert "cursor=cursor-1" in runner.calls[3]
+    assert not any(item.startswith("cursor=") for item in runner.calls[1])
+    assert "-F" not in runner.calls[1]
+    third = runner.calls[3]
+    assert third[third.index("cursor=cursor-1") - 1] == "-f"
+    assert "-F" not in third
 
 
 def test_raw_issue_query_rejects_incomplete_label_inventory() -> None:
@@ -850,3 +855,40 @@ def test_issue_intake_inventory_then_candidate_admission_is_separate() -> None:
 
     assert admitted.candidate_spec == spec
     assert CANDIDATE_ISSUE_LABEL in admitted.labels
+
+
+@pytest.mark.parametrize("title", ["null", "true", "2026", "@x"])
+def test_issue_create_sends_strings_raw_and_only_number_typed(title: str) -> None:
+    request = IssueIntakeRequest.from_payload(_intake_payload(title=title))
+    body = request.render_body()
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_intake_repository()),
+            _repo_name(),
+            _result(
+                _intake_issue_graphql(
+                    body=body,
+                    client_mutation_id=request.client_mutation_id,
+                    mutation=True,
+                    title=title,
+                )
+            ),
+            _repo_name(),
+            _result(_intake_issue_graphql(body=body, title=title)),
+        ]
+    )
+
+    GitHubCliAdapter(runner=runner).create_issue(request=request)
+
+    calls = [call for call in runner.calls if call[:3] == ("gh", "api", "graphql")]
+    mutation = next(call for call in calls if any("createIssue" in a for a in call))
+    assert mutation[mutation.index(f"title={title}") - 1] == "-f"
+    for name in ("repositoryId", "body", "clientMutationId", "owner", "name"):
+        index = next(i for i, a in enumerate(mutation) if a.startswith(f"{name}="))
+        assert mutation[index - 1] == "-f"
+    label_index = next(i for i, a in enumerate(mutation) if a.startswith("labelIds[]="))
+    assert mutation[label_index - 1] == "-f"
+    assert "-F" not in mutation
+    readback = calls[-1]
+    assert readback[readback.index("number=91") - 1] == "-F"

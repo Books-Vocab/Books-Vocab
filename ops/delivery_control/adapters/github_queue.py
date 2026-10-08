@@ -122,7 +122,7 @@ class GitHubQueueGraphQLAdapter:
     def _graphql(self, query: str, *variables: tuple[str, str]) -> Mapping[str, Any]:
         argv = ["gh", "api", "graphql", "-f", f"query={query}"]
         for name, value in variables:
-            argv.extend(("-F", f"{name}={value}"))
+            argv.extend(("-f", f"{name}={value}"))
         command = tuple(argv)
         result = self.runner.run(command, cwd=self.repo)
         if result.exit_code != 0:
@@ -180,7 +180,7 @@ class GitHubQueueGraphQLAdapter:
     def _graphql_pages(self, query: str, *variables: tuple[str, str]) -> object:
         argv = ["gh", "api", "graphql", "--paginate", "--slurp", "-f", f"query={query}"]
         for name, value in variables:
-            argv.extend(("-F", f"{name}={value}"))
+            argv.extend(("-f", f"{name}={value}"))
         result = self.runner.run(tuple(argv), cwd=self.repo)
         if result.exit_code != 0:
             raise AdapterCommandError(result)

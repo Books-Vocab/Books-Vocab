@@ -64,13 +64,13 @@ class GitHubIssueQueries:
             "graphql",
             "-f",
             f"query={_OPEN_ISSUES_QUERY}",
-            "-F",
+            "-f",
             f"owner={owner}",
-            "-F",
+            "-f",
             f"name={name}",
-            "-F",
-            f"cursor={cursor if cursor is not None else 'null'}",
         ]
+        if cursor is not None:
+            argv.extend(("-f", f"cursor={cursor}"))
         result = self.runner.run(tuple(argv), cwd=self.repo)
         if result.exit_code != 0:
             raise AdapterCommandError(result)
