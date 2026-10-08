@@ -105,8 +105,10 @@ extension SubscriptionManager {
                 purchaseStatusMessage = L10n.string("購買結果未知，請稍後在設定頁重新整理。")
             }
         } catch {
-            purchaseStatusMessage = L10n.format("購買失敗：%@", error.localizedDescription)
-            lastError = error.localizedDescription
+            if !(error is CancellationError) {
+                purchaseStatusMessage = L10n.format("購買失敗：%@", error.localizedDescription)
+                lastError = error.localizedDescription
+            }
             // Filter StoreKit user-cancel and offline: those are recoverable / user-driven
             if !(error is CancellationError),
                !(error is StoreKitError) {
@@ -130,9 +132,9 @@ extension SubscriptionManager {
             }
             scheduleClearPurchaseMessage()
         } catch {
-            purchaseStatusMessage = L10n.format("恢復失敗：%@", error.localizedDescription)
-            lastError = error.localizedDescription
             if !(error is CancellationError) {
+                purchaseStatusMessage = L10n.format("恢復失敗：%@", error.localizedDescription)
+                lastError = error.localizedDescription
                 AppCrashReporting.record(error, context: "subscription.restore")
             }
         }

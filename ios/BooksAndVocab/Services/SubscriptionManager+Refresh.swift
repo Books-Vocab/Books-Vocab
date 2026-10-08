@@ -17,6 +17,7 @@ extension SubscriptionManager {
                 return
             }
         }
+        let previousRefreshTime = lastRefreshTime
         lastRefreshTime = Date()
 
         // 記住發起 refresh 時的 userId，用於 async 返回後的一致性檢查
@@ -53,6 +54,9 @@ extension SubscriptionManager {
             entitlements = remote
             lastError = nil
             scheduleExpiryRefresh(for: remote.pro)
+        } catch is CancellationError {
+            // 被取消（如 .task(id:) 重啟）不是失敗；還原冷卻時間避免擋住下一次 refresh
+            lastRefreshTime = previousRefreshTime
         } catch {
             lastError = error.localizedDescription
         }
