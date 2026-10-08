@@ -7,15 +7,12 @@ from kg.api_models import AdminUserEntitlementResponse
 
 
 def test_registered_routes_cover_core_api_surface():
-    routes = {
-        (route.path, tuple(sorted(route.methods)))
-        for route in api_mod.app.routes
-        if isinstance(route, APIRoute)
-    }
+    routes = {(route.path, tuple(sorted(route.methods))) for route in api_mod.app.routes if isinstance(route, APIRoute)}
 
     expected_routes = {
-        ("/privacy.html", ("GET",)),
-        ("/support.html", ("GET",)),
+        # 靜態公開頁刻意同時註冊 GET + HEAD(9586a5d97;行為見 test_static_pages.py)。
+        ("/privacy.html", ("GET", "HEAD")),
+        ("/support.html", ("GET", "HEAD")),
         ("/api/user/config", ("GET",)),
         ("/api/user/config", ("PUT",)),
         ("/api/user/entitlements", ("GET",)),
@@ -54,9 +51,7 @@ def test_registered_routes_cover_core_api_surface():
 
 def test_admin_entitlement_mutation_routes_keep_explicit_response_models():
     routes = {
-        (route.path, tuple(sorted(route.methods))): route
-        for route in api_mod.app.routes
-        if isinstance(route, APIRoute)
+        (route.path, tuple(sorted(route.methods))): route for route in api_mod.app.routes if isinstance(route, APIRoute)
     }
 
     expected = {

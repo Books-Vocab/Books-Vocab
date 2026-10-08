@@ -10,6 +10,7 @@ pipeline + auto-judge rejects(degree_cap 除外)」攤進各自的 SQL。本檔�
    這條才真正擋得住「常數本身語意錯」或「某面私改 query 形狀」——
    純字串相等/inspect 檢查(tautology)抓不到。
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -25,6 +26,19 @@ def test_sot_constants_exist():
         PIPELINE_FAILURE_STATUS,
         PIPELINE_FAILURE_WHERE,
     )
+
+
+def test_pipeline_failure_is_inside_terminal_denominator():
+    """失敗率 = FAILURE / TERMINAL:failed 必須落在終態分母內(不得被列為非終態)。"""
+    from kg.error_signals import (
+        PIPELINE_FAILURE_STATUS,
+        PIPELINE_NON_TERMINAL_STATUSES,
+        PIPELINE_TERMINAL_WHERE,
+    )
+
+    assert PIPELINE_FAILURE_STATUS not in PIPELINE_NON_TERMINAL_STATUSES
+    for status in PIPELINE_NON_TERMINAL_STATUSES:
+        assert f"'{status}'" in PIPELINE_TERMINAL_WHERE
 
 
 def test_judge_reject_predicate_references_degree_cap_sot():
@@ -68,7 +82,10 @@ def test_observability_uses_error_signal_sot():
 
     fail_src = inspect.getsource(ao._pipeline_failure_rate_24h)
     assert "es.PIPELINE_FAILURE_WHERE" in fail_src
-    assert "es.PIPELINE_FAILURE_STATUS" in fail_src
+    # 分母(終態)也走 SoT:不再枚舉成功值(舊的 `IN ('ok', ...)` 與 runner 實際寫的
+    # 'completed' / 'quota_exhausted' 脫鉤)。行為由 test_admin_observability 守。
+    assert "es.PIPELINE_TERMINAL_WHERE" in fail_src
+    assert "'ok'" not in fail_src
     assert "status='failed'" not in fail_src.replace(" ", "")
 
     # judge query 完全由 SoT 原子謂詞組出 SQL(positive 斷言即足以證明走 SoT;
@@ -123,9 +140,12 @@ def _make_pipeline_db(path: Path) -> Path:
             status TEXT NOT NULL DEFAULT 'running', steps TEXT NOT NULL DEFAULT '[]')"""
     )
     runs = [
-        ("r1", "failed"), ("r2", "failed"), ("r3", "failed"),  # 3 個業務失敗
-        ("r4", "ok"), ("r5", "ok"),                            # 成功,不算
-        ("r6", "running"),                                      # 進行中,不算
+        ("r1", "failed"),
+        ("r2", "failed"),
+        ("r3", "failed"),  # 3 個業務失敗
+        ("r4", "ok"),
+        ("r5", "ok"),  # 成功,不算
+        ("r6", "running"),  # 進行中,不算
     ]
     conn.executemany(
         "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger, "
@@ -152,11 +172,11 @@ def _make_judge_db(path: Path) -> Path:
     )
     # (accepted, reject_reason, source) — 期望入帳的只有 auto + accepted=0 + 非 degree_cap
     rows = [
-        (0, None, "auto"),            # ✓ 業務 reject
-        (0, "low_conf", "auto"),      # ✓ 業務 reject
-        (0, "degree_cap", "auto"),    # ✗ 容量保護,排除
-        (1, None, "auto"),            # ✗ accepted,非 reject
-        (0, None, "manual"),          # ✗ 人工,非 auto
+        (0, None, "auto"),  # ✓ 業務 reject
+        (0, "low_conf", "auto"),  # ✓ 業務 reject
+        (0, "degree_cap", "auto"),  # ✗ 容量保護,排除
+        (1, None, "auto"),  # ✗ accepted,非 reject
+        (0, None, "manual"),  # ✗ 人工,非 auto
     ]
     conn.executemany(
         "INSERT INTO judge_log (user_id, notebook_id, from_id, to_id, verdict, "
