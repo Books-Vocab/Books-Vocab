@@ -115,10 +115,8 @@ def create_manual_link(
             raise
         return existing
 
-    # Blocked pair → unblock first, then fall through to LLM evaluation
-    if graph.is_blocked(from_id, to_id):
-        graph.unblock_pair(from_id, to_id)
-
+    # Judge first: a failure here (quota, bad LLM payload) must leave a
+    # user-deleted (blocked) pair blocked so the auto pipeline cannot re-create it.
     judgement = judge.evaluate(
         card_a.content,
         card_a.meaning,
@@ -127,6 +125,10 @@ def create_manual_link(
         from_id=from_id,
         to_id=to_id,
     )
+
+    # Blocked pair → unblock only now (add_link treats a blocked pair as existing).
+    if graph.is_blocked(from_id, to_id):
+        graph.unblock_pair(from_id, to_id)
 
     link = graph.add_link(
         from_id,
@@ -148,6 +150,8 @@ def _reversible_link_toggle(
     link_id: str,
     graph: Any,
     cards_store: Any,
+    from_status: str,
+    to_status: str,
     apply: LinkMutation,
     revert: LinkMutation,
 ) -> None:
@@ -159,6 +163,11 @@ def _reversible_link_toggle(
     so graph and card state stay consistent before re-raising.
     """
     lk = _get_link_or_404(link_id, graph)
+    if lk.status == to_status:
+        return  # idempotent no-op: no mutation, no touch, no ledger event
+    if lk.status != from_status:
+        # deprecated (endpoint archived/deleted) or candidate: not toggleable
+        raise NotFoundError("Link", link_id)
     try:
         apply(link_id)
     except KeyError as exc:
@@ -181,6 +190,8 @@ def hide_graph_link(
         link_id=link_id,
         graph=graph,
         cards_store=cards_store,
+        from_status="active",
+        to_status="hidden",
         apply=lambda lid: graph.hide_link(lid, source="manual"),
         revert=lambda lid: graph.unhide_link(lid, source="manual"),
     )
@@ -197,6 +208,8 @@ def unhide_graph_link(
         link_id=link_id,
         graph=graph,
         cards_store=cards_store,
+        from_status="hidden",
+        to_status="active",
         apply=lambda lid: graph.unhide_link(lid, source="manual"),
         revert=lambda lid: graph.hide_link(lid, source="manual"),
     )

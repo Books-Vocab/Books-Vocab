@@ -241,3 +241,58 @@ class TestSuccessPathUnchanged:
         link = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert link is not None
         assert "a" in cards.touched and "b" in cards.touched
+
+
+class _RaisingJudge:
+    def evaluate(self, *args, **kwargs):
+        from kg.exceptions import QuotaExceededError
+
+        raise QuotaExceededError(60)
+
+
+class TestBlockedPairSurvivesJudgeFailure:
+    def test_judge_failure_keeps_pair_blocked(self, store):
+        from kg.exceptions import QuotaExceededError
+
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hard_delete_link(lk.id)
+        assert store.is_blocked("a", "b")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        with pytest.raises(QuotaExceededError):
+            create_manual_link(
+                from_id="a",
+                to_id="b",
+                cards_store=cards,
+                graph=store,
+                judge=_RaisingJudge(),
+                notebook_id="default",
+            )
+        assert store.is_blocked("a", "b")
+
+
+class TestToggleStatusGuard:
+    def test_toggle_on_deprecated_404_and_unchanged(self, store):
+        from kg.exceptions import NotFoundError
+
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.get_link(lk.id).status = "deprecated"
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        for fn in (unhide_graph_link, hide_graph_link):
+            with pytest.raises(NotFoundError):
+                fn(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "deprecated"
+        assert cards.touched == []
+
+    def test_hide_already_hidden_with_failing_touch_stays_hidden(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")], fail_ids={"b"})
+        hide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "hidden"
+        assert cards.touched == []
+
+    def test_unhide_active_is_noop(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")], fail_ids={"b"})
+        unhide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "active"
