@@ -24,6 +24,7 @@ Agentic visual review:
 Prints the output PNG path (Read it). With --json, prints machine-readable
 artifact metadata including selected items and an absolute image path.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,9 +70,19 @@ class SourceBundle:
         self.manifest_path = Path(manifest_path) if manifest_path else None
 
 
-def select_items(manifest, *, surface=None, lane=None, facet=None, feature=None,
-                 appearance="light", ids=None, contains=None, limit=None,
-                 device=None):
+def select_items(
+    manifest,
+    *,
+    surface=None,
+    lane=None,
+    facet=None,
+    feature=None,
+    appearance="light",
+    ids=None,
+    contains=None,
+    limit=None,
+    device=None,
+):
     """Filter manifest items to montage.
 
     Without `ids`: ordered by surface then canonical state rank (so a surface's
@@ -107,10 +118,19 @@ def select_items(manifest, *, surface=None, lane=None, facet=None, feature=None,
         if feature and it.get("feature") != feature:
             return False
         if contains:
-            haystack = " ".join(str(it.get(k, "")) for k in (
-                "assetID", "surface", "lane", "stateFacet", "stateLabel",
-                "feature", "appearance", "relPath",
-            )).lower()
+            haystack = " ".join(
+                str(it.get(k, ""))
+                for k in (
+                    "assetID",
+                    "surface",
+                    "lane",
+                    "stateFacet",
+                    "stateLabel",
+                    "feature",
+                    "appearance",
+                    "relPath",
+                )
+            ).lower()
             if contains.lower() not in haystack:
                 return False
         return True
@@ -120,8 +140,14 @@ def select_items(manifest, *, surface=None, lane=None, facet=None, feature=None,
         by_id = {it.get("assetID"): it for it in sel}
         sel = [by_id[i] for i in ids if i in by_id]
     else:
-        sel.sort(key=lambda it: (it.get("surface", ""), it.get("stateFacetRank", 0),
-                                 it.get("stateLabel", ""), it.get("appearance", "")))
+        sel.sort(
+            key=lambda it: (
+                it.get("surface", ""),
+                it.get("stateFacetRank", 0),
+                it.get("stateLabel", ""),
+                it.get("appearance", ""),
+            )
+        )
     if limit is not None:
         sel = sel[:limit]
     return sel
@@ -222,6 +248,7 @@ def resolve_crop_box(width, height, region):
 
 def _load_font(size):
     from PIL import ImageFont
+
     for path in (
         "/System/Library/Fonts/Helvetica.ttc",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -232,16 +259,6 @@ def _load_font(size):
         except OSError:
             continue
     return ImageFont.load_default()
-
-
-def read_png_size(path: Path) -> tuple[int, int]:
-    import struct
-
-    with path.open("rb") as handle:
-        header = handle.read(24)
-    if header[:8] != b"\x89PNG\r\n\x1a\n" or len(header) < 24:
-        return (0, 0)
-    return struct.unpack(">II", header[16:24])
 
 
 def read_png_metadata(path: Path) -> dict:
@@ -262,9 +279,20 @@ def read_png_metadata(path: Path) -> dict:
     }
 
 
-def render_contact_sheet(items, root, out_path, *, cols=3, cell_w=320,
-                         label_h=44, gap=16, pad=24, bg=(245, 244, 240),
-                         crop_region=None, cell_h=None):
+def render_contact_sheet(
+    items,
+    root,
+    out_path,
+    *,
+    cols=3,
+    cell_w=320,
+    label_h=44,
+    gap=16,
+    pad=24,
+    bg=(245, 244, 240),
+    crop_region=None,
+    cell_h=None,
+):
     """Decode each item's PNG, optionally crop to `crop_region` (zoom), resize to
     cell_w (true aspect), paste into a grid, draw a label strip
     (surface · state · facet · light/dark [· zoom]). One PNG out. When cell_w is
@@ -283,7 +311,8 @@ def render_contact_sheet(items, root, out_path, *, cols=3, cell_w=320,
 
     n = len(items)
     canvas_w, canvas_h, cols, rows, cells = plan_grid(
-        n, cols, cell_w, cell_h, label_h, gap, pad)
+        n, cols, cell_w, cell_h, label_h, gap, pad
+    )
     canvas = Image.new("RGB", (canvas_w, canvas_h), bg)
     draw = ImageDraw.Draw(canvas)
     font = _load_font(20)
@@ -293,7 +322,11 @@ def render_contact_sheet(items, root, out_path, *, cols=3, cell_w=320,
         img = Image.open(root / it["relPath"]).convert("RGBA")
         if crop_region:
             img = img.crop(resolve_crop_box(img.width, img.height, crop_region))
-        ratio = min(cell_w / img.width, cell_h / img.height) if img.width and img.height else 1
+        ratio = (
+            min(cell_w / img.width, cell_h / img.height)
+            if img.width and img.height
+            else 1
+        )
         thumb_w = max(1, round(img.width * ratio))
         thumb_h = max(1, round(img.height * ratio))
         thumb = img.resize((thumb_w, thumb_h), Image.LANCZOS)
@@ -309,15 +342,26 @@ def render_contact_sheet(items, root, out_path, *, cols=3, cell_w=320,
         meta = f"{it.get('stateFacet', 'state')} · {it.get('appearance', 'light')}"
         if crop_region:
             meta += f" · zoom:{crop_region}"
-        draw.text((x + 2, ty), _clip(title, cell_w, draw, font),
-                  fill=(40, 35, 30), font=font)
-        draw.text((x + 2, ty + 22), _clip(meta, cell_w, draw, sub),
-                  fill=(150, 140, 130), font=sub)
+        draw.text(
+            (x + 2, ty), _clip(title, cell_w, draw, font), fill=(40, 35, 30), font=font
+        )
+        draw.text(
+            (x + 2, ty + 22),
+            _clip(meta, cell_w, draw, sub),
+            fill=(150, 140, 130),
+            font=sub,
+        )
 
     out_path = Path(out_path)
     canvas.save(out_path)
-    return {"out": str(out_path), "count": n, "cols": cols, "rows": rows,
-            "width": canvas_w, "height": canvas_h}
+    return {
+        "out": str(out_path),
+        "count": n,
+        "cols": cols,
+        "rows": rows,
+        "width": canvas_w,
+        "height": canvas_h,
+    }
 
 
 def _clip(text, max_w, draw, font):
@@ -347,19 +391,25 @@ def build_ui_step_manifest(root: Path) -> dict:
         if rank == 1_000_000:
             rank = fallback_rank
         metadata = read_png_metadata(path)
-        items.append({
-            "assetID": path.stem,
-            "relPath": path.name,
-            "surface": "UITest Step",
-            "lane": "ui-test",
-            "stateFacet": "step",
-            "stateFacetRank": rank,
-            "stateLabel": label,
-            "feature": "UITest",
-            "appearance": "light",
-            **metadata,
-        })
-    return {"schema": "kg.visual-review.manifest.v1", "source": "uitest", "items": items}
+        items.append(
+            {
+                "assetID": path.stem,
+                "relPath": path.name,
+                "surface": "UITest Step",
+                "lane": "ui-test",
+                "stateFacet": "step",
+                "stateFacetRank": rank,
+                "stateLabel": label,
+                "feature": "UITest",
+                "appearance": "light",
+                **metadata,
+            }
+        )
+    return {
+        "schema": "kg.visual-review.manifest.v1",
+        "source": "uitest",
+        "items": items,
+    }
 
 
 def build_images_manifest(paths: list[Path], root: Path | None = None) -> SourceBundle:
@@ -378,24 +428,28 @@ def build_images_manifest(paths: list[Path], root: Path | None = None) -> Source
         label = path.stem
         metadata = read_png_metadata(path)
         asset_id = (
-            rel.with_suffix("").as_posix()
-            if stem_counts[path.stem] > 1
-            else path.stem
+            rel.with_suffix("").as_posix() if stem_counts[path.stem] > 1 else path.stem
         )
-        items.append({
-            "assetID": asset_id,
-            "relPath": rel.as_posix(),
-            "surface": path.parent.name or "Images",
-            "lane": "images",
-            "stateFacet": "image",
-            "stateFacetRank": rank,
-            "stateLabel": label,
-            "feature": "Images",
-            "appearance": "light",
-            **metadata,
-        })
+        items.append(
+            {
+                "assetID": asset_id,
+                "relPath": rel.as_posix(),
+                "surface": path.parent.name or "Images",
+                "lane": "images",
+                "stateFacet": "image",
+                "stateFacetRank": rank,
+                "stateLabel": label,
+                "feature": "Images",
+                "appearance": "light",
+                **metadata,
+            }
+        )
     return SourceBundle(
-        manifest={"schema": "kg.visual-review.manifest.v1", "source": "images", "items": items},
+        manifest={
+            "schema": "kg.visual-review.manifest.v1",
+            "source": "images",
+            "items": items,
+        },
         image_root=root,
         source_kind="images",
     )
@@ -408,7 +462,9 @@ def _resolve_source(root, source="auto"):
         raise SystemExit(f"unknown source: {source}")
 
     if source in {"auto", "uitest"} and root.is_dir():
-        pngs = sorted(p for p in root.glob("*.png") if p.name not in GENERATED_SHEET_NAMES)
+        pngs = sorted(
+            p for p in root.glob("*.png") if p.name not in GENERATED_SHEET_NAMES
+        )
         if pngs:
             return SourceBundle(
                 manifest=build_ui_step_manifest(root),
@@ -422,7 +478,9 @@ def _resolve_source(root, source="auto"):
         if root.is_file() and root.suffix.lower() == ".png":
             return build_images_manifest([root], root=root.parent)
         if root.is_dir():
-            pngs = sorted(p for p in root.rglob("*.png") if p.name not in GENERATED_SHEET_NAMES)
+            pngs = sorted(
+                p for p in root.rglob("*.png") if p.name not in GENERATED_SHEET_NAMES
+            )
             if pngs:
                 return build_images_manifest(pngs, root=root)
         if source == "images":
@@ -452,37 +510,72 @@ def write_selected_manifest(
     if provenance:
         payload["provenance"] = provenance
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     return payload
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Composite UI PNGs into one agent-friendly contact sheet.")
-    ap.add_argument("root", type=Path, help="UITest step directory, PNG file, or PNG directory")
-    ap.add_argument("--source", default="auto", choices=["auto", "uitest", "images"],
-                    help="input adapter (default: auto-detect)")
+    ap = argparse.ArgumentParser(
+        description="Composite UI PNGs into one agent-friendly contact sheet."
+    )
+    ap.add_argument(
+        "root", type=Path, help="UITest step directory, PNG file, or PNG directory"
+    )
+    ap.add_argument(
+        "--source",
+        default="auto",
+        choices=["auto", "uitest", "images"],
+        help="input adapter (default: auto-detect)",
+    )
     ap.add_argument("--surface")
     ap.add_argument("--lane")
     ap.add_argument("--facet")
     ap.add_argument("--feature")
-    ap.add_argument("--contains", help="substring filter across labels, ids, relPath, feature, surface")
-    ap.add_argument("--device", help='device dir name (e.g. "iPad Pro 11 landscape"); '
-                    'default = canonical device (manifest devices[0]); "all" disables the filter')
+    ap.add_argument(
+        "--contains",
+        help="substring filter across labels, ids, relPath, feature, surface",
+    )
+    ap.add_argument(
+        "--device",
+        help='device dir name (e.g. "iPad Pro 11 landscape"); '
+        'default = canonical device (manifest devices[0]); "all" disables the filter',
+    )
     ap.add_argument("--id", help="single shot by assetID (detail view)")
-    ap.add_argument("--ids", help="comma-separated assetIDs — free composition, kept in this order")
-    ap.add_argument("--take", help="compact selection: evenly:4 | first,last | 1,3,8 | every:2")
-    ap.add_argument("--zoom", metavar="REGION",
-                    help="crop+magnify: full|top|bottom|left|right|center | x,y,w,h fractions")
+    ap.add_argument(
+        "--ids", help="comma-separated assetIDs — free composition, kept in this order"
+    )
+    ap.add_argument(
+        "--take", help="compact selection: evenly:4 | first,last | 1,3,8 | every:2"
+    )
+    ap.add_argument(
+        "--zoom",
+        metavar="REGION",
+        help="crop+magnify: full|top|bottom|left|right|center | x,y,w,h fractions",
+    )
     ap.add_argument("--appearance", default=None, choices=["light", "dark", "both"])
     ap.add_argument("--limit", type=int)
     ap.add_argument("--cols", type=int, default=3)
-    ap.add_argument("--cell-width", type=int, default=None,
-                    help="px per cell (auto: 320 overview, 760 detail/zoom)")
-    ap.add_argument("--cell-height", type=int, default=None,
-                    help="fixed px cell height; image is aspect-fit letterboxed")
+    ap.add_argument(
+        "--cell-width",
+        type=int,
+        default=None,
+        help="px per cell (auto: 320 overview, 760 detail/zoom)",
+    )
+    ap.add_argument(
+        "--cell-height",
+        type=int,
+        default=None,
+        help="fixed px cell height; image is aspect-fit letterboxed",
+    )
     ap.add_argument("--out", type=Path)
-    ap.add_argument("--manifest-out", nargs="?", const="auto",
-                    help="write selected visual-review manifest JSON (path or 'auto')")
+    ap.add_argument(
+        "--manifest-out",
+        nargs="?",
+        const="auto",
+        help="write selected visual-review manifest JSON (path or 'auto')",
+    )
     ap.add_argument("--source-commit")
     ap.add_argument("--dataset-id")
     ap.add_argument("--dataset-sha256")
@@ -503,10 +596,18 @@ def main():
     detail = bool(ids) or bool(args.zoom)
     appearance = args.appearance or ("both" if detail else "light")
     cell_w = args.cell_width or (760 if detail else 320)
-    items = select_items(manifest, surface=args.surface, lane=args.lane,
-                         facet=args.facet, feature=args.feature,
-                         appearance=appearance, ids=ids, contains=args.contains,
-                         limit=args.limit, device=args.device)
+    items = select_items(
+        manifest,
+        surface=args.surface,
+        lane=args.lane,
+        facet=args.facet,
+        feature=args.feature,
+        appearance=appearance,
+        ids=ids,
+        contains=args.contains,
+        limit=args.limit,
+        device=args.device,
+    )
     items = apply_take(items, args.take)
     if not items:
         raise SystemExit("no items match the filter")
@@ -528,10 +629,19 @@ def main():
             source_kind=source.source_kind,
             manifest_path=source.manifest_path,
         )
-    out = args.out or Path(tempfile.gettempdir()) / f"{source.source_kind}_contact_sheet.png"
-    info = render_contact_sheet(items, img_root, out, cols=args.cols,
-                                cell_w=cell_w, crop_region=args.zoom,
-                                cell_h=args.cell_height)
+    out = (
+        args.out
+        or Path(tempfile.gettempdir()) / f"{source.source_kind}_contact_sheet.png"
+    )
+    info = render_contact_sheet(
+        items,
+        img_root,
+        out,
+        cols=args.cols,
+        cell_w=cell_w,
+        crop_region=args.zoom,
+        cell_h=args.cell_height,
+    )
     manifest_payload = None
     if args.manifest_out:
         manifest_path = (
@@ -560,8 +670,10 @@ def main():
         print(json.dumps(payload, ensure_ascii=False))
     else:
         print(info["out"])
-        print(f"{info['count']} shots · {info['cols']}x{info['rows']} grid · "
-              f"{info['width']}x{info['height']}px")
+        print(
+            f"{info['count']} shots · {info['cols']}x{info['rows']} grid · "
+            f"{info['width']}x{info['height']}px"
+        )
         if args.manifest_out:
             print(f"manifest={manifest_path}")
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -31,7 +30,6 @@ from delivery_control.domain.observations import (
     WorktreeSnapshot,
 )
 from delivery_control.domain.unreachable_commits import UnreachableCommitInventory
-from delivery_control.ports.clock import ClockPort
 from delivery_control.ports.git import GitCommandPort, GitQueryPort
 from delivery_control.ports.github import GitHubCommandPort, GitHubQueryPort
 from delivery_control.ports.process import CommandResult
@@ -46,10 +44,6 @@ from delivery_control.ports.runtime import AgentRuntimePort
 
 
 def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
-    class FakeClock:
-        def now(self) -> datetime:
-            return datetime(2026, 8, 21, tzinfo=UTC)
-
     class FakeGitQuery:
         def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
             return ()
@@ -282,7 +276,6 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def dispatch(self, thread_id: str, instruction: str) -> None:
             return None
 
-    assert isinstance(FakeClock(), ClockPort)
     assert isinstance(FakeGitQuery(), GitQueryPort)
     assert isinstance(FakeGitCommand(), GitCommandPort)
     assert isinstance(FakeGitHubQuery(), GitHubQueryPort)
