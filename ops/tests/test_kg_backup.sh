@@ -209,8 +209,14 @@ make_stub() {  # <name> <body>
 make_stub padwc "n=\$('$REAL_WC' \"\$@\" | tr -d ' '); printf '%*s\\n' 12 \"\$n\"" wc
 make_stub emptysha "cat >/dev/null" sha256sum
 make_stub badwc "cat >/dev/null; echo not-a-number" wc
-make_stub slowsha "sleep 1; exec '$REAL_SHA' \"\$@\"" sha256sum
-make_stub slowwc "sleep 1; exec '$REAL_WC' \"\$@\"" wc
+# Slow stubs drain ALL of stdin first and only then delay their output: a
+# consumer that sleeps before reading just back-pressures the FIFO writer, so the
+# script could not reach the .sha/.size read early and `wait` would go unproven.
+slow_stub() {  # <name> <real-cmd> <stub-cmd>
+  make_stub "$1" "f='$T/slurp.$1.'\$\$; cat >\"\$f\"; sleep 2; '$2' \"\$@\" <\"\$f\"; rc=\$?; rm -f \"\$f\"; exit \$rc" "$3"
+}
+slow_stub slowsha "$REAL_SHA" sha256sum
+slow_stub slowwc "$REAL_WC" wc
 no_exit0() { ! grep -Eq ' exit=0( |$)' "$LOG" 2>/dev/null; }
 record_valid() {
   [[ "$(last_log)" =~ exit=0\ bytes=[0-9]+\ sha256=[0-9a-f]{64}\ key= ]]
