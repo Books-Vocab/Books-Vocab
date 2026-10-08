@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ..api_models import EntitlementsResponse, SubscriptionStatusResponse
 from ..types import AdminGrantRecord, StoredUserRecord, SubscriptionRecord
@@ -12,6 +12,10 @@ from ..user_store import parse_datetime
 # Subscription statuses that still confer an entitlement (drive is_active /
 # default will_renew). Single source of truth shared by snapshots/notifications.
 ACTIVE_BEARING_STATUSES = frozenset({"active", "trial", "grace_period"})
+
+# Legacy grace_period rows predate ``grace_period_expires_at``; Apple's billing
+# grace period is at most 16 days past the paid-through ``expires_at``.
+GRACE_PERIOD_LEGACY_WINDOW = timedelta(days=16)
 
 
 def _allow_sandbox_purchase() -> bool:
@@ -55,6 +59,7 @@ def default_subscription_payload() -> SubscriptionRecord:
         "trial_days": 7,
         "will_renew": False,
         "expires_at": None,
+        "grace_period_expires_at": None,
         "source": "app_store",
         "last_synced_at": None,
     }
@@ -100,12 +105,19 @@ def subscription_is_active(subscription: SubscriptionRecord) -> bool:
     from ``status``. If the Apple EXPIRED notification never arrives it stays
     ``True`` forever, so we re-check ``expires_at`` here — mirroring
     ``admin_grant_is_active``. ``grace_period`` legitimately carries a past
-    ``expires_at`` (Apple's billing-retry window) and must remain entitled.
+    ``expires_at`` (Apple's billing-retry window) and stays entitled only until
+    ``grace_period_expires_at``. Legacy rows without it fall back to
+    ``expires_at`` + ``GRACE_PERIOD_LEGACY_WINDOW``; with neither, fail closed.
     """
     if subscription.get("is_active") is not True:
         return False
+    now = datetime.now(tz=UTC)
     if subscription.get("status") == "grace_period":
-        return True
+        grace_at = parse_datetime(subscription.get("grace_period_expires_at"))
+        if grace_at:
+            return grace_at > now
+        expires_at = parse_datetime(subscription.get("expires_at"))
+        return bool(expires_at) and now < expires_at + GRACE_PERIOD_LEGACY_WINDOW
     expires_at = parse_datetime(subscription.get("expires_at"))
     if expires_at and expires_at <= datetime.now(tz=UTC):
         return False

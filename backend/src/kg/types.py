@@ -27,6 +27,7 @@ class SubscriptionRecord(TypedDict, total=False):
     trial_days: int | None
     will_renew: bool
     expires_at: str | None
+    grace_period_expires_at: str | None
     source: str
     last_synced_at: str | None
     transaction_id: str | None

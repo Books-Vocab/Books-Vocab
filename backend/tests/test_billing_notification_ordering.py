@@ -19,6 +19,7 @@ from kg.billing.notifications import (
     decode_notification_payload,
     decode_signed_transaction_info,
     status_from_transaction_payload,
+    verified_transaction_snapshot,
 )
 from kg.billing.snapshots import write_subscription_snapshot
 from kg.billing_handlers import (
@@ -320,6 +321,18 @@ def test_verified_transaction_snapshot_carries_transaction_signed_date():
 
     assert signed.get("signed_date") == "2026-09-01T00:00:00+00:00"
     assert unsigned["signed_date"] is None
+
+
+def test_verified_transaction_snapshot_carries_grace_period_expires_at():
+    payload = {"productId": "pro_monthly", "transactionId": "t", "expiresDate": _NOT_EXPIRED_MS}
+    ms = _ms("2026-09-10T00:00:00+00:00")
+    with_grace = verified_transaction_snapshot(
+        payload, parse_datetime_fn=parse_datetime, renewal_payload={"gracePeriodExpiresDate": ms}
+    )
+    without = verified_transaction_snapshot(payload, parse_datetime_fn=parse_datetime, renewal_payload={})
+    assert with_grace["grace_period_expires_at"] == "2026-09-10T00:00:00+00:00"
+    assert without["grace_period_expires_at"] is None
+    assert verified_transaction_snapshot(payload, parse_datetime_fn=parse_datetime)["grace_period_expires_at"] is None
 
 
 def test_notification_envelope_signed_date_wins_over_transaction_signed_date():

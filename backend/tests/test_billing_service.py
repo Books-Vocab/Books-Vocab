@@ -18,6 +18,7 @@ from kg.billing import (
 
 # ── default factories ──────────────────────────────────────────────────────────
 
+
 def test_default_subscription_payload_schema():
     p = default_subscription_payload()
     assert p["is_active"] is False
@@ -46,6 +47,7 @@ def test_default_admin_grant_payload_schema():
 
 
 # ── admin_grant_is_active ──────────────────────────────────────────────────────
+
 
 def _future_iso():
     return (datetime.now(tz=UTC) + timedelta(days=30)).isoformat()
@@ -76,6 +78,7 @@ def test_admin_grant_is_active_no_record():
 
 
 # ── current_pro_entitlement_record ─────────────────────────────────────────────
+
 
 def test_entitlement_admin_grant_takes_priority():
     user = {
@@ -130,6 +133,53 @@ def test_entitlement_grace_period_past_expiry_stays_active():
     assert rec["is_active"] is True
 
 
+def _grace_user(**sub):
+    return {"subscription": {"is_active": True, "status": "grace_period", "product_id": "sub_pro", **sub}}
+
+
+def _days_iso(days: float) -> str:
+    return (datetime.now(tz=UTC) + timedelta(days=days)).isoformat()
+
+
+def test_entitlement_grace_future_deadline_active_despite_past_expiry():
+    user = _grace_user(expires_at=_days_iso(-30), grace_period_expires_at=_days_iso(2))
+    assert current_pro_entitlement_record(user)["is_active"] is True
+
+
+def test_entitlement_grace_past_deadline_inactive():
+    user = _grace_user(expires_at=_days_iso(-30), grace_period_expires_at=_days_iso(-1))
+    assert current_pro_entitlement_record(user)["is_active"] is False
+
+
+def test_entitlement_legacy_grace_row_uses_16_day_window():
+    assert current_pro_entitlement_record(_grace_user(expires_at=_days_iso(-1)))["is_active"] is True
+    assert current_pro_entitlement_record(_grace_user(expires_at=_days_iso(-20)))["is_active"] is False
+
+
+def test_entitlement_grace_without_any_deadline_fails_closed():
+    assert current_pro_entitlement_record(_grace_user())["is_active"] is False
+
+
+def test_write_snapshot_persists_and_clears_grace_period_expires_at():
+    users = {}
+    common = dict(
+        product_id="pro_monthly",
+        is_trial=False,
+        expires_at=_past_iso(),
+        will_renew=False,
+        environment="production",
+        transaction_id="t",
+        original_transaction_id="o",
+        price_display=None,
+        source="app_store",
+    )
+    grace = _days_iso(3)
+    rec = write_subscription_snapshot(users, "u1", status="grace_period", grace_period_expires_at=grace, **common)
+    assert rec["subscription"]["grace_period_expires_at"] == grace
+    rec = write_subscription_snapshot(users, "u1", status="active", **common)
+    assert rec["subscription"]["grace_period_expires_at"] is None
+
+
 def test_entitlement_future_expiry_subscription_is_active():
     user = {
         "subscription": {
@@ -172,30 +222,35 @@ def test_entitlement_non_boolean_subscription_activity_fails_closed(raw_is_activ
 
 # ── notification_status ────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("kind,sub,expected", [
-    ("SUBSCRIBED", "INITIAL_BUY", "trial"),
-    ("SUBSCRIBED", None, "active"),
-    ("DID_RENEW", None, "active"),
-    ("OFFER_REDEEMED", None, "active"),
-    ("DID_FAIL_TO_RENEW", None, "grace_period"),
-    ("GRACE_PERIOD_EXPIRED", None, "expired"),
-    ("EXPIRED", None, "expired"),
-    ("REVOKE", None, "expired"),
-    # REFUND must revoke the entitlement — Apple already gave the money back.
-    ("REFUND", None, "expired"),
-    # REFUND_DECLINED leaves the subscription untouched (no status change).
-    ("REFUND_DECLINED", None, None),
-    # Unknown / future notification types must fail-safe (no status change),
-    # never fail-open to "active".
-    ("UNKNOWN_TYPE", None, None),
-    (None, None, None),
-    ("", None, None),
-])
+
+@pytest.mark.parametrize(
+    "kind,sub,expected",
+    [
+        ("SUBSCRIBED", "INITIAL_BUY", "trial"),
+        ("SUBSCRIBED", None, "active"),
+        ("DID_RENEW", None, "active"),
+        ("OFFER_REDEEMED", None, "active"),
+        ("DID_FAIL_TO_RENEW", None, "grace_period"),
+        ("GRACE_PERIOD_EXPIRED", None, "expired"),
+        ("EXPIRED", None, "expired"),
+        ("REVOKE", None, "expired"),
+        # REFUND must revoke the entitlement — Apple already gave the money back.
+        ("REFUND", None, "expired"),
+        # REFUND_DECLINED leaves the subscription untouched (no status change).
+        ("REFUND_DECLINED", None, None),
+        # Unknown / future notification types must fail-safe (no status change),
+        # never fail-open to "active".
+        ("UNKNOWN_TYPE", None, None),
+        (None, None, None),
+        ("", None, None),
+    ],
+)
 def test_notification_status(kind, sub, expected):
     assert notification_status(kind, sub) == expected
 
 
 # ── status_from_transaction_payload ───────────────────────────────────────────
+
 
 def _parse_dt(raw):
     if raw is None:
@@ -224,8 +279,7 @@ def _past_iso_dt():
 def test_status_from_payload_grace_period():
     # expiresDate not set (None), gracePeriodExpiresDate in the future → grace_period
     future_ms = int(
-        (datetime.now(tz=UTC) + timedelta(days=5) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds()
-        * 1000
+        (datetime.now(tz=UTC) + timedelta(days=5) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000
     )
     payload = {"expiresDate": None}
     renewal = {"gracePeriodExpiresDate": future_ms, "autoRenewStatus": True}
@@ -234,8 +288,7 @@ def test_status_from_payload_grace_period():
 
 def test_status_from_payload_trial_offer_type():
     future_ms = int(
-        (datetime.now(tz=UTC) + timedelta(days=7) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds()
-        * 1000
+        (datetime.now(tz=UTC) + timedelta(days=7) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000
     )
     payload = {"expiresDate": future_ms, "offerType": 1}
     assert status_from_transaction_payload(payload, _parse_dt) == "trial"
@@ -243,14 +296,14 @@ def test_status_from_payload_trial_offer_type():
 
 def test_status_from_payload_active():
     future_ms = int(
-        (datetime.now(tz=UTC) + timedelta(days=30) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds()
-        * 1000
+        (datetime.now(tz=UTC) + timedelta(days=30) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000
     )
     payload = {"expiresDate": future_ms}
     assert status_from_transaction_payload(payload, _parse_dt) == "active"
 
 
 # ── normalize_ms_timestamp ─────────────────────────────────────────────────────
+
 
 def test_normalize_ms_timestamp_integer():
     result = normalize_ms_timestamp(1_700_000_000_000, _parse_dt)
@@ -275,31 +328,37 @@ def test_normalize_ms_timestamp_invalid_string():
 
 # ── bool_from_any ──────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("raw,expected", [
-    (True, True),
-    (False, False),
-    (1, True),
-    (0, False),
-    ("true", True),
-    ("True", True),
-    ("1", True),
-    ("yes", True),
-    ("YES", True),
-    ("false", False),
-    ("no", False),
-    ("", False),
-    (None, False),
-])
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (True, True),
+        (False, False),
+        (1, True),
+        (0, False),
+        ("true", True),
+        ("True", True),
+        ("1", True),
+        ("yes", True),
+        ("YES", True),
+        ("false", False),
+        ("no", False),
+        ("", False),
+        (None, False),
+    ],
+)
 def test_bool_from_any(raw, expected):
     assert bool_from_any(raw) == expected
 
 
 # ── write_subscription_snapshot ───────────────────────────────────────────────
 
+
 def test_write_subscription_snapshot_active_sets_is_active():
     users = {}
     record = write_subscription_snapshot(
-        users, "u1",
+        users,
+        "u1",
         product_id="pro_monthly",
         status="active",
         is_trial=False,
@@ -319,7 +378,8 @@ def test_write_subscription_snapshot_active_sets_is_active():
 def test_write_subscription_snapshot_trial_is_active():
     users = {}
     record = write_subscription_snapshot(
-        users, "u1",
+        users,
+        "u1",
         product_id="pro_monthly",
         status="trial",
         is_trial=True,
@@ -337,7 +397,8 @@ def test_write_subscription_snapshot_trial_is_active():
 def test_write_subscription_snapshot_grace_period_is_active():
     users = {}
     record = write_subscription_snapshot(
-        users, "u1",
+        users,
+        "u1",
         product_id="pro_monthly",
         status="grace_period",
         is_trial=False,
@@ -355,7 +416,8 @@ def test_write_subscription_snapshot_grace_period_is_active():
 def test_write_subscription_snapshot_expired_not_active():
     users = {}
     record = write_subscription_snapshot(
-        users, "u1",
+        users,
+        "u1",
         product_id="pro_monthly",
         status="expired",
         is_trial=False,
@@ -373,7 +435,8 @@ def test_write_subscription_snapshot_expired_not_active():
 def test_write_subscription_snapshot_preserves_existing_trial_days():
     users = {"u1": {"subscription": {"trial_days": 14}}}
     record = write_subscription_snapshot(
-        users, "u1",
+        users,
+        "u1",
         product_id="pro_monthly",
         status="active",
         is_trial=False,
