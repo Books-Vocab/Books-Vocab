@@ -421,6 +421,31 @@ def test_new_lane_runs_every_stage_in_order_and_stops_before_merge() -> None:
     assert world.names() == ["adopt", "hand-back", "receipt", "publish"]
 
 
+def _publish_call(world: FakeWorld) -> list[str]:
+    return next(
+        c for c in world.calls if c[0].endswith("delivery.py") and c[3] == "publish"
+    )
+
+
+def test_issue_flags_are_passed_through_to_publish() -> None:
+    world = FakeWorld()
+    code, _ = ship(
+        world, "--check", "unit=good", "--closes", "2029", "--closes", "2030"
+    )
+    assert code == 0
+    cmd = _publish_call(world)
+    assert cmd[cmd.index("--closes") :] == ["--closes", "2029", "--closes", "2030"]
+    assert "--refs" not in cmd
+
+
+def test_publish_args_are_unchanged_without_issue_flags() -> None:
+    world = FakeWorld()
+    code, _ = ship(world, "--check", "unit=good")
+    assert code == 0
+    cmd = _publish_call(world)
+    assert "--closes" not in cmd and "--refs" not in cmd
+
+
 def test_merge_flag_queues_waits_and_cleans_up_from_the_canonical_checkout() -> None:
     world = FakeWorld()
     code, result = ship(world, "--check", "unit=good", "--merge")

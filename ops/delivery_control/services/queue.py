@@ -12,7 +12,11 @@ from ..domain.states import HoldKind
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
-from .pr_contract import pull_request_holds, render_pull_request_body
+from .pr_contract import (
+    parse_body_issues,
+    pull_request_holds,
+    render_pull_request_body,
+)
 from .receipt_registry import exact_published_record
 
 
@@ -58,7 +62,11 @@ class QueueService:
         )
         pull_request = self.github_query.get_pull_request(pull_request_number)
         durable_holds = pull_request_holds(pull_request)
-        expected_body = render_pull_request_body(receipt, holds=durable_holds)
+        expected_body = render_pull_request_body(
+            receipt,
+            holds=durable_holds,
+            issues=parse_body_issues(pull_request.body),
+        )
         if pull_request.body != expected_body:
             raise PolicyViolation("PR body differs from typed handback")
         changed_paths = set(self.github_query.changed_paths(pull_request_number))

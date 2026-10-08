@@ -15,6 +15,8 @@ from delivery_control.domain.observations import PullRequestSnapshot
 from delivery_control.domain.states import HoldKind
 from delivery_control.services.holds import HoldService
 from delivery_control.services.pr_contract import (
+    IssueLinks,
+    parse_body_issues,
     pull_request_holds,
     render_pull_request_body,
 )
@@ -138,3 +140,18 @@ def test_hold_reconciliation_refuses_to_omit_a_durable_label() -> None:
             clear_all=False,
         )
     assert github.update_calls == 0
+
+
+def test_hold_reconciliation_preserves_the_issues_section() -> None:
+    issues = IssueLinks(closes=(2029, 2030), refs=(2026,))
+    base = _pull_request(holds=frozenset())
+    github = FakeGitHub(
+        replace(base, body=render_pull_request_body(_receipt(), issues=issues))
+    )
+
+    result = HoldService(query=github, command=github).reconcile(
+        number=1, holds=frozenset({HoldKind.P1}), clear_all=False
+    )
+
+    assert parse_body_issues(result.pull_request.body) == issues
+    assert pull_request_holds(result.pull_request) == frozenset({HoldKind.P1})

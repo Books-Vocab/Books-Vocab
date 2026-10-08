@@ -53,7 +53,11 @@ from delivery_control.domain.telemetry import (
     DurationSample,
     TelemetryReadResult,
 )
-from delivery_control.services.pr_contract import render_pull_request_body
+from delivery_control.services.pr_contract import (
+    IssueLinks,
+    parse_body_issues,
+    render_pull_request_body,
+)
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -734,6 +738,73 @@ def test_publish_command_makes_github_durable_then_releases_local_assets() -> No
     assert git.worktrees == ()
     assert git.local is None
     assert git.remote == HEAD
+
+
+def _publish_app(external_ids: tuple[str, ...] = ()):
+    registry = FakeRegistry()
+    registry.record = replace(registry.record, external_ids=external_ids)
+    github = FakeGitHub()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+    return app, github
+
+
+def test_publish_parser_collects_repeated_closes_and_refs() -> None:
+    args = _parser().parse_args(
+        ["publish", "--lane", "L", "--title", "t", "--closes", "3", "--closes", "4"]
+        + ["--refs", "9"]
+    )
+    bare = _parser().parse_args(["publish", "--lane", "L", "--title", "t"])
+
+    assert (args.closes, args.refs) == ([3, 4], [9])
+    assert (bare.closes, bare.refs) == (None, None)
+
+
+def test_publish_without_issue_sources_keeps_the_legacy_body() -> None:
+    app, github = _publish_app(external_ids=("DIRECT-CLI",))
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert "## Issues" not in github.pull_request.body
+
+
+def test_publish_flags_render_issues_and_enqueue_accepts_that_body() -> None:
+    app, github = _publish_app()
+
+    app.publish(
+        lane_id="DIRECT-CLI",
+        title="fix: exact delivery",
+        closes=[2030, 2029],
+        refs=[2026],
+    )
+    queued = app.enqueue(pull_request_number=41)
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(
+        closes=(2029, 2030), refs=(2026,)
+    )
+    assert queued["telemetry_warnings"] == ()
+
+
+def test_publish_defaults_closes_from_registry_external_issue_ids() -> None:
+    app, github = _publish_app(external_ids=("DIRECT-CLI", "#2392"))
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(closes=(2392,))
+
+
+def test_publish_flags_replace_registry_external_issue_ids() -> None:
+    app, github = _publish_app(external_ids=("DIRECT-CLI", "#2392"))
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery", refs=[2392])
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(refs=(2392,))
 
 
 def test_publish_records_github_advanced_base_without_rewriting_handback() -> None:
