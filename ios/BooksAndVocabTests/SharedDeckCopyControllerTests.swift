@@ -70,10 +70,12 @@ struct SharedDeckCopyControllerTests {
 
     @Test func failure_transitions_and_retains_key() async {
         let c = controller()
-        let fake = FakeDeckCopier([.failure(URLError(.timedOut))])
+        // Mirror the real `KGService.copyDeck` path: transport failures arrive
+        // wrapped as `KGError.networkError`, never as a raw `URLError` (#2108).
+        let fake = FakeDeckCopier([.failure(KGError.networkError(underlying: URLError(.timedOut)))])
         await c.copy(deckId: "d1", notebookName: "GRE 3000", using: fake)
 
-        if case .failure = c.state {} else { Issue.record("expected .failure, got \(c.state)") }
+        #expect(c.state == .failure(L10n.string("explore.copy.error.offline")))
         #expect(c.currentIdempotencyKey == "key-1", "a failed attempt keeps its key so retry reuses it")
     }
 
@@ -123,7 +125,10 @@ struct SharedDeckCopyControllerTests {
     @Test func retry_reuses_same_idempotency_key() async {
         let c = controller()
         // First call fails, second (retry) succeeds.
-        let fake = FakeDeckCopier([.failure(URLError(.networkConnectionLost)), .success(response())])
+        let fake = FakeDeckCopier([
+            .failure(KGError.networkError(underlying: URLError(.networkConnectionLost))),
+            .success(response())
+        ])
         await c.copy(deckId: "d1", notebookName: "GRE 3000", using: fake)   // fails, key-1
         await c.copy(deckId: "d1", notebookName: "GRE 3000", using: fake)   // retry, MUST reuse key-1
 
@@ -154,6 +159,63 @@ struct SharedDeckCopyControllerTests {
         } else {
             Issue.record("expected .success, got \(c.state)")
         }
+    }
+
+    // MARK: - Error classification (#2108)
+
+    /// Errors as `KGService` actually throws them: `currentAuthToken()` raises
+    /// `.offline` when the connectivity gate is closed, and the request layer
+    /// wraps every transport `URLError` in `.networkError(underlying:)`.
+    enum ErrorCase: String, CaseIterable, Sendable, CustomTestStringConvertible {
+        case kgOffline
+        case wrappedTimedOut
+        case wrappedNotConnected
+        case wrappedConnectionLost
+        case wrappedCannotConnect
+        case rawTimedOut
+        case wrappedBadServerResponse
+        case unauthorized
+        case httpServerError
+
+        var testDescription: String { rawValue }
+
+        var error: Error {
+            switch self {
+            case .kgOffline: return KGError.offline
+            case .wrappedTimedOut: return KGError.networkError(underlying: URLError(.timedOut))
+            case .wrappedNotConnected: return KGError.networkError(underlying: URLError(.notConnectedToInternet))
+            case .wrappedConnectionLost: return KGError.networkError(underlying: URLError(.networkConnectionLost))
+            case .wrappedCannotConnect: return KGError.networkError(underlying: URLError(.cannotConnectToHost))
+            case .rawTimedOut: return URLError(.timedOut)
+            case .wrappedBadServerResponse: return KGError.networkError(underlying: URLError(.badServerResponse))
+            case .unauthorized: return KGError.unauthorized
+            case .httpServerError: return KGError.httpError(statusCode: 500, detail: "boom")
+            }
+        }
+
+        var expectedReason: String {
+            switch self {
+            case .kgOffline, .wrappedTimedOut, .wrappedNotConnected,
+                 .wrappedConnectionLost, .wrappedCannotConnect, .rawTimedOut:
+                return "offline"
+            case .unauthorized:
+                return "unauthorized"
+            case .wrappedBadServerResponse, .httpServerError:
+                return "generic"
+            }
+        }
+
+        var expectedMessageKey: String { "explore.copy.error.\(expectedReason)" }
+    }
+
+    @Test(arguments: ErrorCase.allCases)
+    func failureReason_classifies_service_errors(_ errorCase: ErrorCase) {
+        #expect(SharedDeckCopyController.failureReason(for: errorCase.error) == errorCase.expectedReason)
+    }
+
+    @Test(arguments: ErrorCase.allCases)
+    func message_maps_service_errors(_ errorCase: ErrorCase) {
+        #expect(SharedDeckCopyController.message(for: errorCase.error) == L10n.string(errorCase.expectedMessageKey))
     }
 
 }

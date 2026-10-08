@@ -78,7 +78,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | 檔案 | 說明 |
 |------|------|
 | `ios/BooksAndVocab/Models/FeedbackSettings.swift` | `FeedbackSettingsStore`：裝置本機聲音／觸覺回饋偏好；不控制 TTS 或 Podcast |
-| `ios/BooksAndVocab/Services/FeedbackAudioService.swift` | 短促非語音 UI 音效播放器；不取代 `SpeechService` 或 `PodcastAudioEngine` |
+| `ios/BooksAndVocab/Services/FeedbackAudioService.swift` | 短促非語音 UI 音效播放器；不取代 `SpeechService` 或 `PodcastAudioEngine`；每次 `play` 先 `AppAudioSession.prepare(for: .uiTone)` |
+| `ios/BooksAndVocab/Services/AppAudioSession.swift` | 短音訊的 app-level `AVAudioSession` policy（#2110），播放前一律設明確 category，不依賴先前是否開過 podcast：TTS（`SpeechService.speak`）= `.playback` + `.default` + `[.duckOthers, .interruptSpokenAudioAndMixWithOthers]`（靜音開關下仍出聲、duck 音樂／暫停其他語音，最新一句講完或取消後 `setActive(false, .notifyOthersOnDeactivation)` 還原其他 app 音量）；UI 音效 = `.ambient`（遵守靜音開關、與其他 app 混音）。**podcast 擁有 session 時不動**：以顯式 owner（`claimPodcastSession`/`releasePodcastSession(owner:)`）判定——`PodcastAudioEngine.configureAudioSession` 先 claim、`shutdown()`（deactivate 之後）與 `deinit` release，新 engine 接手後舊 engine 的遲到 release 為 no-op；不再用 `nowPlayingInfo` 推斷（遲到的 seek 完成回呼會復活它）；`shutdown()` 後 `updateNowPlayingInfo()` 為 no-op，直到下一次 `configureNowPlaying`/`loadAudio`。避免 tap 音效把播放中／暫停待續的 podcast 降成 `.ambient`；講話中的音效亦不降級。單測 `BooksAndVocabTests/AppAudioSessionTests.swift`（fake `AudioSessionControlling` seam） |
 | `ios/BooksAndVocab/UIComponents/FeedbackModifiers.swift` | `AppFeedbackEvent` 與 `appFeedback` modifier；集中 gate haptic 與 UI sound |
 
 ### Debug 工具

@@ -11,18 +11,27 @@ enum FeedbackSound: Hashable {
 
 /// Short, non-verbal UI sounds. TTS and Podcast playback deliberately use
 /// their existing services and are not routed through this type.
+/// Each tone sets `.ambient` via `AppAudioSession` first, so tones honour the
+/// silent switch even after a podcast left the session in `.playback` (#2110).
 final class FeedbackAudioService: NSObject {
     static let shared = FeedbackAudioService()
 
     private var players: [FeedbackSound: AVAudioPlayer] = [:]
+    private let audioSession: AppAudioSession
 
-    override init() {
+    init(audioSession: AppAudioSession) {
+        self.audioSession = audioSession
         super.init()
         preparePlayers()
     }
 
+    override convenience init() {
+        self.init(audioSession: .shared)
+    }
+
     func play(_ sound: FeedbackSound) {
         guard let player = players[sound] else { return }
+        audioSession.prepare(for: .uiTone)
         player.currentTime = 0
         player.play()
     }

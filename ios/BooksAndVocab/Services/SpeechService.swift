@@ -9,10 +9,26 @@ import AVFoundation
 
 /// 朗讀服務 — 使用 iOS 內建 TTS,零成本。
 /// 語音對應 `TranslationLanguage.currentSource`,因此查日文單字會用日文語音念。
-final class SpeechService: Speaking {
+/// 發音前經 `AppAudioSession` 設定明確的 `.playback` category（靜音開關下仍出聲、
+/// duck 其他 app），講完／被取消後釋放 session 讓其他 app 恢復音量（#2110）。
+final class SpeechService: NSObject, Speaking {
     static let shared = SpeechService()
 
     private let synthesizer = AVSpeechSynthesizer()
+    private let audioSession: AppAudioSession
+    /// 最新一句 utterance；只有它結束才釋放 session（`stopSpeaking` 取消的舊句不算）。
+    /// 只在 main thread 讀寫。Internal for tests.
+    private(set) var currentUtterance: AVSpeechUtterance?
+
+    init(audioSession: AppAudioSession) {
+        self.audioSession = audioSession
+        super.init()
+        synthesizer.delegate = self
+    }
+
+    override convenience init() {
+        self.init(audioSession: .shared)
+    }
 
     /// 解析 source language → BCP-47 voice code,缺對應語音時 fallback en-US。
     /// Internal for tests.
@@ -46,6 +62,25 @@ final class SpeechService: Speaking {
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.85
         utterance.pitchMultiplier = 1.0
 
+        currentUtterance = utterance
+        audioSession.prepare(for: .speech)
         synthesizer.speak(utterance)
+    }
+
+    /// Internal for tests: release the session only when the latest utterance ends.
+    func utteranceDidEnd(_ utterance: AVSpeechUtterance) {
+        guard utterance === currentUtterance else { return }
+        currentUtterance = nil
+        audioSession.endSpeech()
+    }
+}
+
+extension SpeechService: AVSpeechSynthesizerDelegate {
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async { self.utteranceDidEnd(utterance) }
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async { self.utteranceDidEnd(utterance) }
     }
 }
