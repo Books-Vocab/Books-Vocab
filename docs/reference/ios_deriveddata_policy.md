@@ -234,15 +234,18 @@ measurement evidence；dirty、unknown、超出 measurement budget 或其他未�
 
 `ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active、unknown 或 terminal residue worktree 上做破壞性清理。可用重複的 `--supervision-worktree <exact-path>` 將 caller 明確提供的 supervision checkout 傳給 attribution scan；這個排除只影響 disk quota accounting，不改 registry lifecycle 的 fail-closed 規則。預設每條 physical lane 上限 2 GiB、所有未排除 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀、真正 unknown／dirty／unregistered physical worktree，以及非 `active` registered dirty lane 時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc=75` 供 admission／writer fail-closed；registered active dirty implementation lane 仍完整計入 per-lane／aggregate bytes，只有 budget／identity／measurement 等其他 gate 失敗才 block。只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。missing registered path 本身若沒有 physical bytes 則為 `verdict=warning`、guard lane exit 0，讓可安全計量的新 lane 不被歷史紀錄誤擋。
 
-歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 240 秒呼叫
-`disk_usage.py --time-budget-seconds 240`，且任何 caller 提供的值都會被硬性封頂在 240 秒。guard 同時在 shell 邊界監督外部掃描程序；期限到達時會終止該程序及其子程序樹，並以結構化 `lane_usage_rc=75` fail closed，不會讓卡住的 attribution process 無限佔用 CPU、鎖或工作階段。時間到了仍會原子寫出報告，保留已量到的
-當 caller 為 `0` 以測試立即超時時，guard 仍保留最多 1 秒的 process-startup grace，讓這份 timeout evidence 能先原子落盤；內部 report 仍精確記錄 `budget_seconds=0`，真正卡住的程序仍會被終止。
-partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane 的
-`measurement_complete=false` 與 `policy.verdict=block` 中明確標示；partial 或 timeout
-絕不會被當成零 bytes，也不會授權清理或新的 writer。需要手動調整時只能透過
-`KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS`，無效值回到 240 秒，超過 240 秒也會被截斷。這使 guard 不會因為
-大型 workspace／DerivedData 遞迴掃描而永久佔住 lock；外部終止的短暫收尾時間不會改變這個 caller budget。`ops/kg_disk_guard.sh --help`
-是純說明命令，不會啟動 guard tick、改狀態或刪 cache。
+歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 240 秒呼叫 `disk_usage.py --time-budget-seconds 240`，任何 caller 提供的值都會被硬性封頂在 240 秒（只能透過 `KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS` 調整，無效值回到 240）。期限到達後掃描仍會原子寫出報告，保留已量到的 partial bytes，並在 `measurement.budget_exhausted=true`、各受影響 lane 的 `measurement_complete=false` 與 `policy.verdict=block` 中明確標示；partial 或 timeout 絕不會被當成零 bytes，也不會授權清理或新的 writer。
+
+guard 另在 shell 邊界監督外部掃描程序，避免卡住的 attribution process 無限佔用 CPU、鎖或工作階段。**監督用的 kill 時限是 budget + grace**（`KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS`，預設 60、範圍 1–120），嚴格晚於掃描自己的期限：掃描要先啟動程序才開始計時，期限過後還要一小段收尾才能寫出 partial 報告。2026-10-08 之前兩者都是從幾乎同一時刻起算的 240 秒，kill 永遠先到，期限機制形同虛設，報告 80 分鐘沒有被重寫。`ops/kg_disk_guard.sh --help` 是純說明命令，不會啟動 guard tick、改狀態或刪 cache。
+
+`lane_usage_rc` 的語意：`0`／`75` 只代表 `disk_usage.py` **這次**已原子寫出報告（0 = pass／warning、75 = 報告為 block）；被 kill 的掃描什麼都沒寫，記為 `124`（`timeout(1)` 慣例），其他非零是 crash。消費端（`ops/lib/ios_disk_budget.sh`）不只看 rc：報告的 mtime 不得早於寫出該 guard state 的 tick 超過 `KG_IOS_DISK_LANE_REPORT_SLACK_SECONDS`（預設 120 秒，小於 5 分鐘 tick 間隔，所以前一輪的報告不會過關）。過期或不存在的報告不能當結構性證據：輸出 `laneUsageFresh=no`、名單印 `unknown`，exit 75（暫時、可重試）並指向 `guard --refresh`；不會再因為一份舊報告點名早已不存在的 worktree 而 exit 77。
+
+**量測範圍（2026-10-08）。** 歸戶量的是 lane 的內容，不是整個磁碟：
+
+- canonical checkout 不遞迴 `.cache`（受 guard 自己的 cache 指標管轄）與 `backups`（維運資料），列在 `accounting.workspace_unmeasured_roots`。
+- 任何 checkout 內 basename 為 `.venv`、`node_modules`、`DerivedData`、`ios-{build,test,catalyst,release}-derived-data`、`ops-swift-build` 的目錄（`REGENERABLE_DIRNAMES`）只列名、不走訪，列在該 lane 的 `regenerable_roots` 與 `accounting.regenerable`，**不計入** per-lane／aggregate quota bytes。它們能由 lock 檔或 build 重建（`uv sync --locked`、`npm ci`、xcodebuild），iOS cache 另有 16 GiB／4 GiB 的 guard 預算管轄；單一 `backend/.venv` 約 216 MB，走訪它們與整個 canonical `.cache` 正是歸戶掃描跑不完的主因。
+- 要看這些目錄實際多大（例如決定修剪哪些 `.venv`）加 `--measure-regenerable`：用剩餘預算量，量不完只標 `measurement_complete=false`，既不阻擋也不當 0。quota 口徑與「清掉能回收多少」是兩個數字，別互相代換。
+- 巢狀 worktree 的歸屬用一次 ancestor 索引（`_nested_worktree_index`）算，成本隨 registry 記錄數線性成長；舊的逐對 `relative_to` 在約 1200 筆記錄時是 ~150 萬次純 Python 比對，且完全不看期限。
 
 每個 iOS writer 也會消費 guard 的 atomic state：若 state 明確報告
 `xctest_devices_verdict=block` 或 global `verdict=block`，build/test/release 立即以 exit 75

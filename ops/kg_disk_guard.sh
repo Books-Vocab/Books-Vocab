@@ -72,6 +72,18 @@ UV_BIN="${KG_DISK_GUARD_UV_BIN:-$HOME/.local/bin/uv}"
 LANE_USAGE_BUDGET_SECONDS="${KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-240}"
 [[ "$LANE_USAGE_BUDGET_SECONDS" =~ ^[0-9]+$ ]] || LANE_USAGE_BUDGET_SECONDS=240
 (( LANE_USAGE_BUDGET_SECONDS > 240 )) && LANE_USAGE_BUDGET_SECONDS=240
+# The supervisor's kill sits GRACE seconds past the scan's own deadline.  Both
+# used to be 240s from nearly the same instant, so the kill always won and a
+# scan that needed the whole window never got to write the partial report its
+# deadline exists to produce (2026-10-08: the report stayed 80 minutes stale).
+LANE_USAGE_GRACE_SECONDS="${KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS:-60}"
+[[ "$LANE_USAGE_GRACE_SECONDS" =~ ^[0-9]+$ ]] || LANE_USAGE_GRACE_SECONDS=60
+(( LANE_USAGE_GRACE_SECONDS < 1 )) && LANE_USAGE_GRACE_SECONDS=1
+(( LANE_USAGE_GRACE_SECONDS > 120 )) && LANE_USAGE_GRACE_SECONDS=120
+# disk_usage.py exits 0 or 75 only after it atomically wrote its report.  A scan
+# the supervisor had to kill wrote nothing this run, so it gets the conventional
+# timeout(1) status instead of sharing 75 with "report written".
+LANE_USAGE_KILLED_RC=124
 LANE_USAGE_RC=0
 LANE_USAGE_VERDICT="unavailable"
 LANE_USAGE_EXCLUSIONS_JSON='[]'
@@ -81,6 +93,7 @@ XCTEST_DEVICES_COUNT=0
 XCTEST_DEVICES_VERDICT="unavailable"
 XCTEST_DEVICES_RECLAIM_STATUS="not-requested"
 XCTEST_DEVICES_MANUAL_REVIEW=0
+XCTEST_DEVICES_TIME_LIMITED=0
 XCTEST_DEVICES_REPORT_ERROR=0
 SIMULATOR_RUNTIME_KB=0
 SIMULATOR_RUNTIME_OVERFLOW_KB=0
@@ -393,18 +406,18 @@ run_bounded_command() {
   local pid deadline timeout_seconds
   "$@" >/dev/null 2>&1 &
   pid="$!"
-  # A zero internal measurement budget still needs a brief process-startup
-  # grace so disk_usage.py can atomically write its explicit timeout report.
-  # A stuck external process remains bounded and fail-closed.
-  timeout_seconds="$LANE_USAGE_BUDGET_SECONDS"
-  (( timeout_seconds < 1 )) && timeout_seconds=1
+  # The kill is budget + grace, strictly after the scan's own deadline: the
+  # scan needs process startup before its clock starts and a short tail after
+  # it expires to atomically write its explicit timeout report (this also
+  # covers a zero budget).  A stuck external process remains bounded.
+  timeout_seconds=$((LANE_USAGE_BUDGET_SECONDS + LANE_USAGE_GRACE_SECONDS))
   deadline=$((SECONDS + timeout_seconds))
   while kill -0 "$pid" 2>/dev/null; do
     if (( SECONDS >= deadline )); then
       kill_process_tree "$pid" TERM
       kill_process_tree "$pid" KILL
       wait "$pid" 2>/dev/null || true
-      return 75
+      return "$LANE_USAGE_KILLED_RC"
     fi
     sleep 0.1
   done
@@ -412,7 +425,8 @@ run_bounded_command() {
 }
 
 write_lane_usage() {
-  local rc=0 observed="unavailable" path
+  local rc=0 observed="unavailable" path started_epoch report_mtime report_is_current=0
+  started_epoch="$(date +%s)"
   local -a command_args=(
     --workspace "$WORKSPACE"
     --state "$REGISTRY_STATE"
@@ -435,10 +449,20 @@ write_lane_usage() {
     run_bounded_command "$SCRIPT_DIR/disk_usage.py" "${command_args[@]}" \
       >/dev/null 2>&1 || rc=$?
   fi
-  if (( rc != 0 )); then
-    logger -t kg-disk-guard "lane-usage-report=blocked rc=$rc state=$LANE_USAGE_STATE" 2>/dev/null || true
-  fi
+  # Only a report this run wrote may feed this tick's state.  A killed or crashed
+  # scan leaves the previous file in place; parsing it would launder hours-old
+  # platform numbers and exclusions into a state stamped "now".  (-1s: mtime has
+  # whole-second granularity.)
   if [[ -f "$LANE_USAGE_STATE" ]]; then
+    report_mtime="$(kg_stat_mtime "$LANE_USAGE_STATE" 2>/dev/null || true)"
+    if [[ "$report_mtime" =~ ^[0-9]+$ ]] && (( report_mtime >= started_epoch - 1 )); then
+      report_is_current=1
+    fi
+  fi
+  if (( rc != 0 )); then
+    logger -t kg-disk-guard "lane-usage-report=blocked rc=$rc budget=${LANE_USAGE_BUDGET_SECONDS}s grace=${LANE_USAGE_GRACE_SECONDS}s killed=$(( rc == LANE_USAGE_KILLED_RC )) state=$LANE_USAGE_STATE" 2>/dev/null || true
+  fi
+  if (( report_is_current == 1 )); then
     observed="$(sed -n 's/^[[:space:]]*"verdict": "\([^"]*\)".*/\1/p' "$LANE_USAGE_STATE" | head -1)"
     case "$observed" in
       pass|warning|block) ;;
@@ -446,7 +470,7 @@ write_lane_usage() {
     esac
   fi
   (( rc != 0 )) && observed="block"
-  if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
+  if (( report_is_current == 1 )) && command -v jq >/dev/null 2>&1; then
     LANE_USAGE_EXCLUSIONS_JSON="$(
       jq -c '.exclusions.supervision_worktree_paths // []' "$LANE_USAGE_STATE" \
         2>/dev/null || printf '[]'
@@ -462,6 +486,7 @@ write_lane_usage() {
   XCTEST_DEVICES_VERDICT="unavailable"
   XCTEST_DEVICES_RECLAIM_STATUS="not-requested"
   XCTEST_DEVICES_MANUAL_REVIEW=0
+  XCTEST_DEVICES_TIME_LIMITED=0
   XCTEST_DEVICES_REPORT_ERROR=0
   SIMULATOR_RUNTIME_KB=0
   SIMULATOR_RUNTIME_OVERFLOW_KB=0
@@ -470,7 +495,7 @@ write_lane_usage() {
   SIMULATOR_RUNTIME_RECLAIM_STATUS="not-supported"
   SIMULATOR_RUNTIME_MANUAL_REVIEW=0
   SIMULATOR_RUNTIME_REPORT_ERROR=0
-  if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
+  if (( report_is_current == 1 )) && command -v jq >/dev/null 2>&1; then
     if jq -e '.accounting.shared_platform_storage.xctest_devices' "$LANE_USAGE_STATE" >/dev/null 2>&1; then
       XCTEST_DEVICES_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.budget_allocated_bytes // .accounting.shared_platform_storage.xctest_devices.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
       XCTEST_DEVICES_OVERFLOW_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.budget_overflow_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
@@ -478,7 +503,14 @@ write_lane_usage() {
       XCTEST_DEVICES_VERDICT="$(jq -r 'if .accounting.shared_platform_storage.xctest_devices.exists != true then "absent" elif .accounting.shared_platform_storage.xctest_devices.measurement_complete != true or .accounting.shared_platform_storage.xctest_devices.metadata_complete != true or .accounting.shared_platform_storage.xctest_devices.budget_exceeded == true then "block" else "pass" end' "$LANE_USAGE_STATE")"
       XCTEST_DEVICES_RECLAIM_STATUS="$(jq -r '.accounting.shared_platform_storage.xctest_devices.reclaim.status // "not-requested"' "$LANE_USAGE_STATE")"
       if [[ "$XCTEST_DEVICES_VERDICT" == "block" ]] && [[ "$XCTEST_DEVICES_RECLAIM_STATUS" != "reclaimed" ]]; then
-        XCTEST_DEVICES_MANUAL_REVIEW=1
+        # A walk that only ran out of time (the 226k-file physical-extent pass
+        # needs 150-220 s) is not a finding a human can act on: it clears on a
+        # later tick, so it stays a temporary block instead of the structural
+        # manual-review one.  Every other incompleteness (unreadable path,
+        # missing metadata) and a real budget overrun still need a human.
+        XCTEST_DEVICES_TIME_LIMITED="$(jq -r '.accounting.shared_platform_storage.xctest_devices as $x | (((($x.measurement_errors // []) + ($x.physical_measurement_errors // [])) | length) > 0 and ((($x.measurement_errors // []) + ($x.physical_measurement_errors // [])) | all(contains("measurement-time-budget-exceeded"))) and $x.metadata_complete == true and $x.budget_exceeded != true) | if . then 1 else 0 end' "$LANE_USAGE_STATE" 2>/dev/null || echo 0)"
+        [[ "$XCTEST_DEVICES_TIME_LIMITED" == "1" ]] || XCTEST_DEVICES_TIME_LIMITED=0
+        (( XCTEST_DEVICES_TIME_LIMITED == 1 )) || XCTEST_DEVICES_MANUAL_REVIEW=1
       fi
     else
       XCTEST_DEVICES_REPORT_ERROR=1
@@ -486,7 +518,7 @@ write_lane_usage() {
   else
     XCTEST_DEVICES_REPORT_ERROR=1
   fi
-  if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
+  if (( report_is_current == 1 )) && command -v jq >/dev/null 2>&1; then
     if jq -e '.accounting.shared_platform_storage.simulator_runtimes' "$LANE_USAGE_STATE" >/dev/null 2>&1; then
       SIMULATOR_RUNTIME_KB="$(jq -r '(.accounting.shared_platform_storage.simulator_runtimes.budget_allocated_bytes // .accounting.shared_platform_storage.simulator_runtimes.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
       SIMULATOR_RUNTIME_OVERFLOW_KB="$(jq -r '(.accounting.shared_platform_storage.simulator_runtimes.budget_overflow_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
@@ -834,6 +866,9 @@ main() {
     if (( XCTEST_DEVICES_MANUAL_REVIEW == 1 )); then
       reason="xctest-devices-manual-review-required"
       action="manual-review-xctest-devices"
+    elif (( XCTEST_DEVICES_TIME_LIMITED == 1 )); then
+      reason="xctest-devices-measurement-incomplete"
+      action="retry-next-tick"
     else
       reason="xctest-devices-budget-exceeded"
       action="reclaimed-xctest-devices"
@@ -883,6 +918,11 @@ Environment:
                                           shared mounted runtime cap (default: 56)
   KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS  attribution scan budget (default: 240)
                                             values above 240 are clamped to 240
+  KG_DISK_GUARD_LANE_USAGE_GRACE_SECONDS   how long past that budget the scan may
+                                            still write its report before the
+                                            supervisor kills it (default: 60,
+                                            range 1-120); a killed scan is
+                                            recorded as lane_usage_rc=124
   KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB  global BooksAndVocab-* cap (default: 4)
   KG_DISK_GUARD_DRY_RUN=1                  report intended cleanup only
   --supervision-worktree PATH               exclude one exact caller-supplied

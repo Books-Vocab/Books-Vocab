@@ -52,6 +52,29 @@ DEFAULT_XCTEST_DEVICES_BUDGET_GIB = 16
 DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB = 56
 SIMULATOR_RUNTIME_ROOT = Path("/Library/Developer/CoreSimulator")
 GIT_METADATA_DIRNAME = ".git"
+# Directories any checkout can recreate from a lock file or a build, matched by
+# exact basename at any depth.  They are the bulk of a lane's bytes and files
+# (a backend/.venv alone is ~216 MB), have their own budgets (the guard's
+# 16 GiB writer cache and 4 GiB global DerivedData caps) or none at all
+# (`uv sync --locked`, `npm ci`), and walking them is what kept the attribution
+# scan from finishing.  The scan lists them and, only on request, sizes them
+# separately; they never count toward a lane's quota bytes.
+REGENERABLE_DIRNAMES = frozenset(
+    {
+        ".venv",
+        "node_modules",
+        "DerivedData",
+        "ios-build-derived-data",
+        "ios-test-derived-data",
+        "ios-catalyst-derived-data",
+        "ios-release-derived-data",
+        "ops-swift-build",
+    }
+)
+# Top-level directories of the canonical checkout that are not lane content:
+# `.cache` is governed by the guard's own cache metrics, `backups` is operator
+# data.  The canonical entry is measured without them.
+UNMEASURED_WORKSPACE_DIRNAMES = (".cache", "backups")
 MEASUREMENT_BUDGET_ERROR = "measurement-time-budget-exceeded"
 MISSING_PATH_ERROR = "path-missing"
 XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
@@ -85,6 +108,13 @@ def _relative_to(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _display_relative(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
 
 
 def _allocated_bytes(stat_result: os.stat_result) -> int:
@@ -860,8 +890,14 @@ def measure_tree(
     excluded: set[Path] | None = None,
     deadline: float | None = None,
     physical_observation: dict[str, Any] | None = None,
+    regenerable_names: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
-    """Measure one bounded tree without following symlinked directories."""
+    """Measure one bounded tree without following symlinked directories.
+
+    Directories whose basename is in ``regenerable_names`` are not descended
+    into: they are returned under ``regenerable_roots`` for the caller to size
+    separately, and contribute nothing to the byte totals.
+    """
 
     root = _path(root)
     excluded = {_path(item) for item in (excluded or set())}
@@ -881,6 +917,7 @@ def measure_tree(
     pending = [root]
     complete = True
     errors: list[str] = []
+    regenerable_roots: list[Path] = []
 
     def budget_expired() -> bool:
         return _deadline_expired(deadline)
@@ -975,7 +1012,10 @@ def measure_tree(
                             logical += int(stat_result.st_size)
                             files += 1
                         elif entry.is_dir(follow_symlinks=False):
-                            pending.append(entry_path)
+                            if entry.name in regenerable_names:
+                                regenerable_roots.append(entry_path)
+                            else:
+                                pending.append(entry_path)
                         elif entry.is_file(follow_symlinks=False):
                             identity = (
                                 int(stat_result.st_dev),
@@ -1013,7 +1053,24 @@ def measure_tree(
     }
     if errors:
         result["errors"] = sorted(errors)[:20]
+    if regenerable_roots:
+        result["regenerable_roots"] = sorted(regenerable_roots)
     return result
+
+
+def _measure_regenerable(
+    roots: list[Path], *, deadline: float | None = None
+) -> dict[str, Any]:
+    """Size already-listed regenerable roots; independent of the quota bytes."""
+
+    total = {"logical_bytes": 0, "allocated_bytes": 0, "files": 0, "complete": True}
+    for root in roots:
+        measured = measure_tree(root, deadline=deadline)
+        total["logical_bytes"] += measured["logical_bytes"]
+        total["allocated_bytes"] += measured["allocated_bytes"]
+        total["files"] += measured["files"]
+        total["complete"] = bool(total["complete"] and measured["complete"])
+    return total
 
 
 def _parse_worktrees(
@@ -1500,6 +1557,22 @@ def _nested_worktree_paths(root: Path, candidates: set[Path]) -> set[Path]:
     }
 
 
+def _nested_worktree_index(known: set[Path]) -> dict[Path, set[Path]]:
+    """Map every known path to the known paths nested anywhere below it.
+
+    One pass over each path's ancestors instead of one ``_relative_to`` per
+    (lane, candidate) pair: with ~1200 registry records the pairwise form was
+    ~1.5M pure-Python comparisons that no measurement deadline interrupts.
+    """
+
+    nested: dict[Path, set[Path]] = {}
+    for path in known:
+        for parent in path.parents:
+            if parent in known:
+                nested.setdefault(parent, set()).add(path)
+    return nested
+
+
 def _lane_entry(
     *,
     branch: str,
@@ -1524,6 +1597,7 @@ def _lane_entry(
                 path,
                 excluded=scan_excluded,
                 deadline=deadline,
+                regenerable_names=REGENERABLE_DIRNAMES,
             )
         else:
             measured = {
@@ -1596,6 +1670,10 @@ def _lane_entry(
     }
     if topology is not None:
         entry["topology"] = topology
+    if measured.get("regenerable_roots"):
+        entry["regenerable_roots"] = sorted(
+            _display_relative(root, path) for root in measured["regenerable_roots"]
+        )
     if physical is not None:
         entry["worktree_state"] = physical.get("worktree_state", "unknown")
         entry["inspection_complete"] = bool(physical.get("inspection_complete", False))
@@ -1635,6 +1713,7 @@ def build_report(
     xctest_devices_budget_gib: int = DEFAULT_XCTEST_DEVICES_BUDGET_GIB,
     auto_reclaim_xctest_devices: bool = False,
     simulator_runtime_budget_gib: int = DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB,
+    measure_regenerable: bool = False,
 ) -> dict[str, Any]:
     measurement_started = time.monotonic()
     if time_budget_seconds is None:
@@ -1655,12 +1734,6 @@ def build_report(
     simulator_runtimes = inspect_simulator_runtimes(
         budget_bytes=max(0, int(simulator_runtime_budget_gib)) * GIB,
         deadline=deadline,
-    )
-    xctest_devices = inspect_xctest_devices(
-        xctest_devices_root,
-        budget_bytes=max(0, int(xctest_devices_budget_gib)) * GIB,
-        deadline=deadline,
-        auto_reclaim=auto_reclaim_xctest_devices,
     )
     requested_supervision_paths: list[Path] = []
     for value in supervision_worktree_paths:
@@ -1768,10 +1841,17 @@ def build_report(
         workspace,
         {path for path in known_worktree_paths if path.is_dir()},
     )
+    nested_index = _nested_worktree_index(known_worktree_paths)
+    unmeasured_workspace_roots = sorted(
+        workspace / name
+        for name in UNMEASURED_WORKSPACE_DIRNAMES
+        if (workspace / name).is_dir()
+    )
     workspace_measurement = measure_tree(
         workspace,
-        excluded=nested_worktrees,
+        excluded=nested_worktrees | set(unmeasured_workspace_roots),
         deadline=deadline,
+        regenerable_names=REGENERABLE_DIRNAMES,
     )
 
     applied_exclusions: list[Path] = []
@@ -1832,7 +1912,7 @@ def build_report(
             registry_index=selected_index,
             physical=physical_by_path.get(normalized),
             deadline=deadline,
-            scan_excluded=_nested_worktree_paths(normalized, known_worktree_paths),
+            scan_excluded=nested_index.get(normalized, set()),
             measured=workspace_measurement if normalized == workspace else None,
             physical_state_override=(
                 "terminal-residue"
@@ -1886,7 +1966,7 @@ def build_report(
             physical=physical,
             deadline=deadline,
             excluded=is_excluded,
-            scan_excluded=_nested_worktree_paths(physical_path, known_worktree_paths),
+            scan_excluded=nested_index.get(physical_path, set()),
             measured=workspace_measurement if physical_path == workspace else None,
             topology=topology,
         )
@@ -1948,6 +2028,61 @@ def build_report(
             item["registry_index"] or -1,
         ),
     )
+    # The shared XCTestDevices store is measured only after lane attribution.  Its
+    # clone-aware physical accounting opens every file (226k files, 52 GB on the
+    # felix/oscar hosts) and alone took 150-220 s of the 240 s window; measured
+    # first, it left the registry/worktree/lane attribution that decides every
+    # writer's admission with no time at all (2026-10-08).  Lane attribution is
+    # cheap and decisive, so it goes first; a slow platform walk can only make
+    # its own section incomplete.
+    xctest_devices = inspect_xctest_devices(
+        xctest_devices_root,
+        budget_bytes=max(0, int(xctest_devices_budget_gib)) * GIB,
+        deadline=deadline,
+        auto_reclaim=auto_reclaim_xctest_devices,
+    )
+    # Regenerable roots were listed, not walked.  Sizing them is opt-in and runs
+    # last on whatever budget is left: it can only add evidence beside the quota
+    # bytes, so an expired budget here never blocks (partial = reported, not 0).
+    regenerable_root_count = 0
+    regenerable_totals = {
+        "logical_bytes": 0,
+        "allocated_bytes": 0,
+        "files": 0,
+        "complete": True,
+    }
+    for item in lanes:
+        relative_roots = item.get("regenerable_roots") or []
+        regenerable_root_count += len(relative_roots)
+        if not (measure_regenerable and relative_roots):
+            continue
+        sized = _measure_regenerable(
+            [Path(item["path"]) / relative for relative in relative_roots],
+            deadline=deadline,
+        )
+        item["regenerable_logical_bytes"] = sized["logical_bytes"]
+        item["regenerable_allocated_bytes"] = sized["allocated_bytes"]
+        item["regenerable_measurement_complete"] = sized["complete"]
+        for key in ("logical_bytes", "allocated_bytes", "files"):
+            regenerable_totals[key] += sized[key]
+        regenerable_totals["complete"] = bool(
+            regenerable_totals["complete"] and sized["complete"]
+        )
+    regenerable_accounting: dict[str, Any] = {
+        "names": sorted(REGENERABLE_DIRNAMES),
+        "root_count": regenerable_root_count,
+        "counted_in_quota": False,
+        "measured": bool(measure_regenerable),
+    }
+    if measure_regenerable:
+        regenerable_accounting.update(
+            {
+                "logical_bytes": regenerable_totals["logical_bytes"],
+                "allocated_bytes": regenerable_totals["allocated_bytes"],
+                "files": regenerable_totals["files"],
+                "measurement_complete": regenerable_totals["complete"],
+            }
+        )
     physical_lanes_by_path = {
         Path(item["path"]): item
         for item in lanes
@@ -2403,6 +2538,10 @@ def build_report(
             "nested_worktrees_excluded_from_workspace": sorted(
                 str(item) for item in nested_worktrees
             ),
+            "workspace_unmeasured_roots": [
+                str(item) for item in unmeasured_workspace_roots
+            ],
+            "regenerable": regenerable_accounting,
             "lane_attribution": lane_attribution,
             "shared_platform_storage": {
                 "xctest_devices": xctest_devices,
@@ -2510,6 +2649,11 @@ def main(argv: list[str] | None = None) -> int:
         help="shared XCTestDevices budget in GiB (default: 16)",
     )
     parser.add_argument(
+        "--measure-regenerable",
+        action="store_true",
+        help="also size regenerable roots (.venv, node_modules, DerivedData) beside the quota bytes, on leftover budget",
+    )
+    parser.add_argument(
         "--auto-reclaim-xctest-devices",
         action="store_true",
         help="attempt only exact stale/ephemeral devices via supported simctl; otherwise fail closed",
@@ -2534,6 +2678,7 @@ def main(argv: list[str] | None = None) -> int:
         xctest_devices_budget_gib=args.xctest_devices_budget_gib,
         auto_reclaim_xctest_devices=args.auto_reclaim_xctest_devices,
         simulator_runtime_budget_gib=args.simulator_runtime_budget_gib,
+        measure_regenerable=args.measure_regenerable,
     )
     if args.output:
         _write_atomic(_path(args.output), report)
