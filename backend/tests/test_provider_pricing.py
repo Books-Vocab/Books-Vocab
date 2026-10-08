@@ -1,5 +1,6 @@
 """Phase 5 — quota_service.token_cost_usd prices each call_type by its
 currently-routed provider."""
+
 from __future__ import annotations
 
 import pytest
@@ -25,5 +26,9 @@ def test_chat_cost_uses_deepseek_pricing_when_routed(monkeypatch):
 
 def test_embed_cost_independent_of_chat_default(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER_DEFAULT", "deepseek")
-    # embed never inherits the chat default → gemini embed price $0.00025/1M
-    assert token_cost_usd("embed", 1_000_000, 0) == pytest.approx(0.00025)
+    # embed never inherits the chat default → gemini-embedding-2-preview $0.20/1M
+    assert token_cost_usd("embed", 1_000_000, 0) == pytest.approx(0.20)
+
+
+def test_embed_cost_20k_tokens():
+    assert token_cost_usd("embed", 20_000, 0) == pytest.approx(0.004)
