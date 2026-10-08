@@ -1,5 +1,6 @@
 """Tests for KGSettings defaults."""
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -198,3 +199,15 @@ def test_env_example_and_readme_contract():
     assert "uv sync" in readme
     assert "uv run uvicorn kg.api:app --reload --port 8000" in readme
     assert "JWT_SECRET" in readme
+
+
+@pytest.mark.parametrize(
+    "flag",
+    ["APP_STORE_ALLOW_UNSIGNED_SYNC", "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS"],
+)
+def test_unsigned_app_store_flags_log_warning(monkeypatch, caplog, flag):
+    monkeypatch.setenv("JWT_SECRET", "x" * 32)
+    monkeypatch.setenv(flag, "True")
+    with caplog.at_level(logging.WARNING, logger="kg.settings"):
+        load_settings()
+    assert any(flag in r.getMessage() and r.levelno == logging.WARNING for r in caplog.records)

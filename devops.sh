@@ -268,32 +268,11 @@ acquire_deploy_lock() {
 # ── 指令：env-check ───────────────────────────────────────────────────────────
 cmd_env_check() {
   section "檢查遠端 .env 環境變數"
-  local missing=()
-  local unsafe=()
-  for key in "${REQUIRED_ENV_KEYS[@]}"; do
-    if run_remote "grep -q '^${key}=' $REMOTE_DIR/.env" 2>/dev/null; then
-      ok "$key"
-    else
-      echo "✗ ${key} (缺少)"
-      missing+=("$key")
-    fi
-  done
-
-  for key in APP_STORE_ALLOW_UNSIGNED_SYNC APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS; do
-    if run_remote "grep -Eq '^${key}=(1|true|TRUE|yes|YES)$' $REMOTE_DIR/.env" 2>/dev/null; then
-      echo "✗ ${key} (production 不可啟用)"
-      unsafe+=("$key")
-    else
-      ok "${key:-unset}"
-    fi
-  done
-
-  if [ ${#missing[@]} -gt 0 ]; then
-    err "缺少必要環境變數：${missing[*]}，請手動 SSH 更新 .env 後重試"
-  fi
-  if [ ${#unsafe[@]} -gt 0 ]; then
-    err "偵測到不安全的 App Store fallback 開關：${unsafe[*]}，production 請移除或設為 false"
-  fi
+  local env_text
+  env_text=$(run_remote "cat -- $REMOTE_DIR/.env") || err "無法讀取遠端 .env：$REMOTE_DIR/.env"
+  # 判定邏輯（缺值／unsafe 旗標，與 backend settings._env_truthy 對齊）在 ops/env_drift.py。
+  # stdout 維持 `✓ KEY` / `✗ KEY (…)`，release_train.evaluate_env 依此解析。
+  printf '%s\n' "$env_text" | "$DEVOPS_SCRIPT_DIR/ops/env_drift.py" env-check "${REQUIRED_ENV_KEYS[@]}" || exit 1
 }
 
 cmd_env_drift() {
