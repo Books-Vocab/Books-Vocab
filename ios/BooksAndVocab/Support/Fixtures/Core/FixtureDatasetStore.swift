@@ -34,12 +34,6 @@ struct UIWorldInstalledAsset: Equatable {
 }
 
 enum FixtureDatasetStore {
-    enum RuntimeMaterializationError: Error, Equatable {
-        case unavailable(fixtureID: String)
-        case missingSourceAsset(assetID: String)
-        case invalidSourceAsset(ref: String, reason: String)
-    }
-
     enum Availability: Equatable {
         case absent
         case loaded
@@ -47,7 +41,6 @@ enum FixtureDatasetStore {
     }
 
     @TaskLocal static var testingOverrideData: Data?
-    @TaskLocal static var testingOverrideIsActive = false
     @TaskLocal static var testingAssetRoot: URL?
 
     private typealias PreparedEvidenceFixtureProof = (
@@ -72,32 +65,16 @@ enum FixtureDatasetStore {
     }
 
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
-        try $testingOverrideIsActive.withValue(true) {
-            try $testingOverrideData.withValue(data) {
-                try perform()
-            }
+        try $testingOverrideData.withValue(data) {
+            try perform()
         }
     }
 
     static func withTestingData<T>(_ data: Data?, perform: () async throws -> T) async rethrows -> T {
-        try await $testingOverrideIsActive.withValue(true) {
-            try await $testingOverrideData.withValue(data) {
-                try await perform()
-            }
+        try await $testingOverrideData.withValue(data) {
+            try await perform()
         }
     }
-
-    static var isFixtureDriven: Bool {
-        if testingOverrideIsActive || AppRuntimeOptions.isUITesting() {
-            return true
-        }
-        let environment = ProcessInfo.processInfo.environment
-        return environment.keys.contains {
-            $0 == FixtureDatasetLoader.deflateEnvironmentKey
-                || $0 == FixtureDatasetLoader.datasetEnvironmentKey
-        }
-    }
-
 
     static func withTestingAssetRoot<T>(_ root: URL?, perform: () throws -> T) rethrows -> T {
         try $testingAssetRoot.withValue(root?.standardizedFileURL) {
