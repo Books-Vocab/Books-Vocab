@@ -46,9 +46,9 @@ embeddings 預設 provider = Gemini（DeepSeek 無 embeddings endpoint）。cach
 查當月內部歸因:
 
 ```bash
-curl -fsS https://wordnexus.lol/api/admin/user-cost-summary?range=month \
-  -H "Authorization: Bearer $ADMIN_TOKEN" | jq
-# 或對單用戶
+# 全用戶排名(per-user)
+./ops/devops_kg_safe.sh ops-cli cost-overview --range month --json
+# 單用戶 service/model/call_type 歸因
 curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range=month" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq
 ```

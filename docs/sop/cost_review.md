@@ -47,14 +47,16 @@ aws ce get-cost-and-usage \
 ### 1.3 內部 LLM 歸因
 
 ```bash
-# 全用戶排名(provider × call_type × USD)
+# 全用戶排名(per-user calls × USD;無 provider/call_type 維度)
 ./ops/devops_kg_safe.sh ops-cli cost-overview --range month --json
-# 單用戶細項(reconciliation / 異常追用)
+# 單用戶 call_type 拆解
+./ops/devops_kg_safe.sh ops-cli cost <uid> --range month --json | jq '.by_call_type'
+# 單用戶 service/model/call_type 細項(reconciliation / 異常追用)
 curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range=month" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq
 ```
 
-兩個入口分工:cost-overview 排名找「誰吃最兇」;cost-summary endpoint 拆單一 user 的 service/model breakdown。
+分工:cost-overview 回 per-user 排名(`users[].user_id/total_calls/total_cost_usd`,加 `count`),找「誰吃最兇」;單一 user 的 call_type 拆解用 `ops-cli cost <uid>`(`.by_call_type`),service/model/call_type 用 user-cost-summary endpoint(`by_service`/`by_model`/`by_call_type`)。
 
 ### 1.4 Gemini 外部帳單(GCP)
 
@@ -107,9 +109,11 @@ Reconciliation: 內部 $A vs 外部 $B,drift Δ%(<10% = 健康)
 ### 3.1 哪個 service 漲?
 
 ```bash
-# 全用戶排名(看哪個 call_type 總體在漲)
-./ops/devops_kg_safe.sh ops-cli cost-overview --range 30d --json | jq '.by_service // .'
-# 鎖定可疑 user 後拆細
+# 全用戶排名(per-user,先鎖定可疑 user)
+./ops/devops_kg_safe.sh ops-cli cost-overview --range 30d --json | jq '.users'
+# 該 user 的 call_type 拆解
+./ops/devops_kg_safe.sh ops-cli cost <uid> --range 30d --json | jq '.by_call_type'
+# 或 endpoint 拆 service
 curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range=30d" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq '.by_service'
 ```
@@ -125,11 +129,11 @@ curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range
 ### 3.3 哪天開始漲?
 
 ```bash
-./ops/devops_kg_safe.sh ops-cli db-query <uid> \
-  "SELECT date(created_at) d, call_type, sum(input_tokens+output_tokens) t \
-   FROM token_usage WHERE created_at >= date('now','-30 days') \
-   GROUP BY d, call_type ORDER BY d, t DESC"
+./ops/devops_kg_safe.sh ops-cli timeseries cost --bucket day --range 30d --uid <uid>
+./ops/devops_kg_safe.sh ops-cli timeseries calls --bucket day --range 30d --uid <uid>
 ```
+
+`token_usage` 在全域 `token_usage.db`,不在 per-user `cards.db`,`db-query` 查不到;時間維度一律走 `timeseries`。
 
 ### 3.4 哪個 endpoint?
 
