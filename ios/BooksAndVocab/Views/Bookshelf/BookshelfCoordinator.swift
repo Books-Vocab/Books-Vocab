@@ -124,9 +124,18 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         fileManager: any BookFileManaging,
         toastCoordinator: AppToastCoordinator
     ) {
+        // 刪除是「暫存 DB 變更 → 刪檔 → 才 save」：檔案刪除失敗時 rollback() 讓 row 與
+        // 單字連結原封不動（若先 save 再刪檔，失敗時 row 已沒、檔案還在，使用者看到
+        // 「已刪除」後 AppOrphanBookRecovery 又讓書復活）。rollback() 會丟棄 context 內
+        // **所有**未存變更，故先把既有 pending 變更（autosave 尚未落盤者）沖掉，只讓
+        // rollback 涵蓋本次刪除。
+        if modelContext.hasChanges {
+            guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
+        }
+
         // Manual cascade: clear bookId on related vocabulary entries
         let bookId = book.id
-        let fileName = book.epubFileName  // 先捕捉：row 刪除 + save 後再讀 property 可能已 fault
+        let fileName = book.epubFileName  // 先捕捉：row 刪除後再讀 property 可能已 fault
         var descriptor = FetchDescriptor<VocabularyEntry>()
         descriptor.predicate = #Predicate<VocabularyEntry> { $0.bookId == bookId }
         do {
@@ -138,11 +147,21 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             AppLog.book.error("delete cascade: vocab fetch failed for bookId=\(bookId): \(error.localizedDescription)")
         }
 
-        // DB-first：先刪 row + save（可回滾），成功才做破壞性磁碟刪除。save 失敗則
-        // 不碰磁碟——避免「檔案/manifest 已刪但 row 還在」的孤兒列 + metadata 永久遺失。
         modelContext.delete(book)
-        guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
-        fileManager.deleteBookFile(named: fileName)
+        do {
+            try fileManager.deleteBookFile(named: fileName)
+        } catch {
+            AppLog.book.error("delete book: file removal failed, rolling back bookId=\(bookId): \(error.localizedDescription)")
+            modelContext.rollback()
+            toastCoordinator.error(L10n.string("刪除失敗，書籍檔案無法移除"))
+            return
+        }
+        // save 失敗（罕見）：檔案已刪但 row 回滾保留、manifest 不動 → metadata 不遺失，
+        // 再刪一次即可完成（缺檔不算刪除失敗）。
+        guard modelContext.safeSaveWithToast(toastCoordinator) else {
+            modelContext.rollback()
+            return
+        }
         BookManifestStore().delete(bookId: bookId)
         toastCoordinator.success("已刪除".localized)
     }

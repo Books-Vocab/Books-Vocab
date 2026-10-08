@@ -38,7 +38,7 @@ enum DemoDataProvider {
 
             context.insert(entry)
         }
-        try? context.save()
+        context.safeSave()
     }
 
     static func removeDemoEntries(from container: ModelContainer) {
@@ -46,7 +46,7 @@ enum DemoDataProvider {
         let predicate = #Predicate<VocabularyEntry> { $0.isDemoEntry == true }
         if let entries = try? context.fetch(FetchDescriptor(predicate: predicate)) {
             for entry in entries { context.delete(entry) }
-            try? context.save()
+            context.safeSave()
         }
     }
 
