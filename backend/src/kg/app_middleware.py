@@ -235,29 +235,3 @@ def install_app_middlewares_from_dependencies(
     return AppMiddlewareRuntime(
         rate_limit_exempt_prefixes=rate_limit_exempt_prefixes,
     )
-
-
-def install_app_middlewares(
-    app: FastAPI,
-    *,
-    cors_origins: tuple[str, ...],
-    rate_limit_trusted_hops: int,
-    request_id_var: ContextVar[str],
-    tag_request_id: Callable[[str | None], None],
-    api_limiter: RateLimiter,
-    translate_limiter: RateLimiter,
-    login_limiter: RateLimiter | None = None,
-) -> AppMiddlewareRuntime:
-    """Backward-compatible wrapper around :func:`install_app_middlewares_from_dependencies`."""
-    return install_app_middlewares_from_dependencies(
-        dependencies=AppMiddlewareDependencies(
-            app=app,
-            cors_origins=cors_origins,
-            rate_limit_trusted_hops=rate_limit_trusted_hops,
-            request_id_var=request_id_var,
-            tag_request_id=tag_request_id,
-            api_limiter=api_limiter,
-            translate_limiter=translate_limiter,
-            login_limiter=login_limiter,
-        )
-    )

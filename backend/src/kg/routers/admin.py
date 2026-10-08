@@ -16,8 +16,7 @@ AdminEndpointResult = dict[str, Any] | HTMLResponse | AdminUserEntitlementRespon
 
 
 class AdminEndpoint(Protocol):
-    def __call__(self, *args: Any, **kwargs: Any) -> AdminEndpointResult | Awaitable[AdminEndpointResult]:
-        ...
+    def __call__(self, *args: Any, **kwargs: Any) -> AdminEndpointResult | Awaitable[AdminEndpointResult]: ...
 
 
 class SupportsAdminSettings(Protocol):
@@ -151,6 +150,7 @@ class AdminRouters:
 # Login router — no auth required
 # ---------------------------------------------------------------------------
 
+
 def build_login_routes(
     *,
     runtime_settings_fn: RuntimeSettingsFn,
@@ -184,6 +184,7 @@ def build_login_routes(
 # ---------------------------------------------------------------------------
 # HTML admin router — auth check inline, redirect to /admin/login on failure
 # ---------------------------------------------------------------------------
+
 
 def _build_html_admin_router_from_handlers(
     *,
@@ -255,26 +256,10 @@ def _build_html_admin_router_from_handlers(
     return router
 
 
-def build_html_admin_router(
-    *,
-    admin_ui: AdminEndpoint,
-    admin_tests_ui: AdminEndpoint,
-    admin_user_detail_ui: AdminEndpoint | None = None,
-    runtime_settings_fn: RuntimeSettingsFn,
-) -> APIRouter:
-    return _build_html_admin_router_from_handlers(
-        handlers=AdminHtmlHandlers(
-            admin_ui=admin_ui,
-            admin_tests_ui=admin_tests_ui,
-            admin_user_detail_ui=admin_user_detail_ui,
-        ),
-        runtime_settings_fn=runtime_settings_fn,
-    )
-
-
 # ---------------------------------------------------------------------------
 # API admin router — 403 on auth failure (unchanged behavior)
 # ---------------------------------------------------------------------------
+
 
 def _register_api_route(router: APIRouter, spec: _AdminApiRouteSpec) -> None:
     if spec.endpoint is None:
@@ -303,61 +288,6 @@ def _build_api_admin_router_from_handlers(
     return router
 
 
-def build_api_admin_router(
-    *,
-    admin_stats: AdminEndpoint,
-    admin_logs: AdminEndpoint,
-    admin_user_entitlement: AdminEndpoint,
-    admin_grant_pro_access: AdminEndpoint,
-    admin_revoke_pro_access: AdminEndpoint,
-    admin_run_tests: AdminEndpoint,
-    admin_last_test_run: AdminEndpoint,
-    admin_test_catalog: AdminEndpoint,
-    admin_graph_density: AdminEndpoint | None = None,
-    admin_graph_playback: AdminEndpoint | None = None,
-    admin_pipeline_runs: AdminEndpoint | None = None,
-    admin_judge_stats: AdminEndpoint | None = None,
-    admin_translate_history: AdminEndpoint | None = None,
-    admin_user_activity: AdminEndpoint | None = None,
-    admin_user_usage: AdminEndpoint | None = None,
-    admin_user_cost_summary: AdminEndpoint | None = None,
-    admin_host_metrics: AdminEndpoint | None = None,
-    admin_users_search: AdminEndpoint | None = None,
-    admin_observability: AdminEndpoint | None = None,
-    admin_stats_trends: AdminEndpoint | None = None,
-    admin_log_retention_run: AdminEndpoint | None = None,
-    admin_audit: AdminEndpoint | None = None,
-    admin_orphans_scan: AdminEndpoint | None = None,
-) -> APIRouter:
-    return _build_api_admin_router_from_handlers(
-        handlers=AdminApiHandlers(
-            admin_stats=admin_stats,
-            admin_logs=admin_logs,
-            admin_user_entitlement=admin_user_entitlement,
-            admin_grant_pro_access=admin_grant_pro_access,
-            admin_revoke_pro_access=admin_revoke_pro_access,
-            admin_run_tests=admin_run_tests,
-            admin_last_test_run=admin_last_test_run,
-            admin_test_catalog=admin_test_catalog,
-            admin_graph_density=admin_graph_density,
-            admin_graph_playback=admin_graph_playback,
-            admin_pipeline_runs=admin_pipeline_runs,
-            admin_judge_stats=admin_judge_stats,
-            admin_translate_history=admin_translate_history,
-            admin_user_activity=admin_user_activity,
-            admin_user_usage=admin_user_usage,
-            admin_user_cost_summary=admin_user_cost_summary,
-            admin_host_metrics=admin_host_metrics,
-            admin_users_search=admin_users_search,
-            admin_observability=admin_observability,
-            admin_stats_trends=admin_stats_trends,
-            admin_log_retention_run=admin_log_retention_run,
-            admin_audit=admin_audit,
-            admin_orphans_scan=admin_orphans_scan,
-        ),
-    )
-
-
 def build_admin_routers_from_handlers(
     *,
     handlers: AdminRouteHandlers,
@@ -371,142 +301,3 @@ def build_admin_routers_from_handlers(
     )
     api = _build_api_admin_router_from_handlers(handlers=handlers.api)
     return AdminRouters(login=login, html=html, api=api)
-
-
-# ---------------------------------------------------------------------------
-# Router composition
-# ---------------------------------------------------------------------------
-
-def build_admin_routers(
-    *,
-    admin_ui: AdminEndpoint,
-    admin_stats: AdminEndpoint,
-    admin_logs: AdminEndpoint,
-    admin_user_entitlement: AdminEndpoint,
-    admin_grant_pro_access: AdminEndpoint,
-    admin_revoke_pro_access: AdminEndpoint,
-    admin_run_tests: AdminEndpoint,
-    admin_last_test_run: AdminEndpoint,
-    admin_test_catalog: AdminEndpoint,
-    admin_tests_ui: AdminEndpoint,
-    admin_graph_density: AdminEndpoint | None = None,
-    admin_graph_playback: AdminEndpoint | None = None,
-    admin_pipeline_runs: AdminEndpoint | None = None,
-    admin_judge_stats: AdminEndpoint | None = None,
-    admin_translate_history: AdminEndpoint | None = None,
-    admin_user_activity: AdminEndpoint | None = None,
-    admin_user_usage: AdminEndpoint | None = None,
-    admin_user_cost_summary: AdminEndpoint | None = None,
-    admin_host_metrics: AdminEndpoint | None = None,
-    admin_users_search: AdminEndpoint | None = None,
-    admin_observability: AdminEndpoint | None = None,
-    admin_stats_trends: AdminEndpoint | None = None,
-    admin_log_retention_run: AdminEndpoint | None = None,
-    admin_audit: AdminEndpoint | None = None,
-    admin_orphans_scan: AdminEndpoint | None = None,
-    admin_user_detail_ui: AdminEndpoint | None = None,
-    runtime_settings_fn: RuntimeSettingsFn,
-) -> AdminRouters:
-    """Backward-compatible builder around the named router-layer handler contract."""
-    return build_admin_routers_from_handlers(
-        handlers=AdminRouteHandlers(
-            html=AdminHtmlHandlers(
-                admin_ui=admin_ui,
-                admin_tests_ui=admin_tests_ui,
-                admin_user_detail_ui=admin_user_detail_ui,
-            ),
-            api=AdminApiHandlers(
-                admin_stats=admin_stats,
-                admin_logs=admin_logs,
-                admin_user_entitlement=admin_user_entitlement,
-                admin_grant_pro_access=admin_grant_pro_access,
-                admin_revoke_pro_access=admin_revoke_pro_access,
-                admin_run_tests=admin_run_tests,
-                admin_last_test_run=admin_last_test_run,
-                admin_test_catalog=admin_test_catalog,
-                admin_graph_density=admin_graph_density,
-                admin_graph_playback=admin_graph_playback,
-                admin_pipeline_runs=admin_pipeline_runs,
-                admin_judge_stats=admin_judge_stats,
-                admin_translate_history=admin_translate_history,
-                admin_user_activity=admin_user_activity,
-                admin_user_usage=admin_user_usage,
-                admin_user_cost_summary=admin_user_cost_summary,
-                admin_host_metrics=admin_host_metrics,
-                admin_users_search=admin_users_search,
-                admin_observability=admin_observability,
-                admin_stats_trends=admin_stats_trends,
-                admin_log_retention_run=admin_log_retention_run,
-                admin_audit=admin_audit,
-                admin_orphans_scan=admin_orphans_scan,
-            ),
-        ),
-        runtime_settings_fn=runtime_settings_fn,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible tuple builder
-# ---------------------------------------------------------------------------
-
-def build_admin_router(
-    *,
-    admin_ui: AdminEndpoint,
-    admin_stats: AdminEndpoint,
-    admin_logs: AdminEndpoint,
-    admin_user_entitlement: AdminEndpoint,
-    admin_grant_pro_access: AdminEndpoint,
-    admin_revoke_pro_access: AdminEndpoint,
-    admin_run_tests: AdminEndpoint,
-    admin_last_test_run: AdminEndpoint,
-    admin_test_catalog: AdminEndpoint,
-    admin_tests_ui: AdminEndpoint,
-    admin_graph_density: AdminEndpoint | None = None,
-    admin_graph_playback: AdminEndpoint | None = None,
-    admin_pipeline_runs: AdminEndpoint | None = None,
-    admin_judge_stats: AdminEndpoint | None = None,
-    admin_translate_history: AdminEndpoint | None = None,
-    admin_user_activity: AdminEndpoint | None = None,
-    admin_user_usage: AdminEndpoint | None = None,
-    admin_user_cost_summary: AdminEndpoint | None = None,
-    admin_host_metrics: AdminEndpoint | None = None,
-    admin_users_search: AdminEndpoint | None = None,
-    admin_observability: AdminEndpoint | None = None,
-    admin_stats_trends: AdminEndpoint | None = None,
-    admin_log_retention_run: AdminEndpoint | None = None,
-    admin_audit: AdminEndpoint | None = None,
-    admin_orphans_scan: AdminEndpoint | None = None,
-    admin_user_detail_ui: AdminEndpoint | None = None,
-    runtime_settings_fn: RuntimeSettingsFn,
-) -> tuple[APIRouter, APIRouter, APIRouter]:
-    """Backward-compatible wrapper around :func:`build_admin_routers`."""
-    routers = build_admin_routers(
-        admin_ui=admin_ui,
-        admin_stats=admin_stats,
-        admin_logs=admin_logs,
-        admin_user_entitlement=admin_user_entitlement,
-        admin_grant_pro_access=admin_grant_pro_access,
-        admin_revoke_pro_access=admin_revoke_pro_access,
-        admin_run_tests=admin_run_tests,
-        admin_last_test_run=admin_last_test_run,
-        admin_test_catalog=admin_test_catalog,
-        admin_tests_ui=admin_tests_ui,
-        admin_graph_density=admin_graph_density,
-        admin_graph_playback=admin_graph_playback,
-        admin_pipeline_runs=admin_pipeline_runs,
-        admin_judge_stats=admin_judge_stats,
-        admin_translate_history=admin_translate_history,
-        admin_user_activity=admin_user_activity,
-        admin_user_usage=admin_user_usage,
-        admin_user_cost_summary=admin_user_cost_summary,
-        admin_host_metrics=admin_host_metrics,
-        admin_users_search=admin_users_search,
-        admin_observability=admin_observability,
-        admin_stats_trends=admin_stats_trends,
-        admin_log_retention_run=admin_log_retention_run,
-        admin_audit=admin_audit,
-        admin_orphans_scan=admin_orphans_scan,
-        admin_user_detail_ui=admin_user_detail_ui,
-        runtime_settings_fn=runtime_settings_fn,
-    )
-    return routers.login, routers.html, routers.api

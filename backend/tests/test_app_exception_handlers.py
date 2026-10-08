@@ -16,7 +16,6 @@ from kg.app_exception_handlers import (
     _redact_validation_body,
     _redact_validation_payload,
     _sanitize_non_finite,
-    install_app_exception_handlers,
     install_app_exception_handlers_from_dependencies,
 )
 from kg.exceptions import BadRequestError, ExternalServiceError
@@ -93,28 +92,6 @@ def test_install_app_exception_handlers_returns_named_bundle_and_handles_routes(
         client.close()
 
 
-def test_install_app_exception_handlers_from_dependencies_matches_compat_wrapper():
-    named_app = FastAPI()
-    compat_app = FastAPI()
-
-    named = install_app_exception_handlers_from_dependencies(
-        dependencies=_dependencies(named_app),
-    )
-    compat = install_app_exception_handlers(
-        compat_app,
-        logger=logging.getLogger("kg.api"),
-    )
-
-    assert isinstance(named, AppExceptionHandlers)
-    assert isinstance(compat, AppExceptionHandlers)
-    assert callable(named.validation_error_handler)
-    assert callable(named.kg_error_handler)
-    assert callable(named.unhandled_exception_handler)
-    assert callable(compat.validation_error_handler)
-    assert callable(compat.kg_error_handler)
-    assert callable(compat.unhandled_exception_handler)
-
-
 def test_app_exception_handler_dependencies_are_replaceable_named_contract():
     deps = _dependencies(FastAPI())
     replacement = replace(deps, logger=logging.getLogger("kg.api.alt"))
@@ -151,7 +128,9 @@ def _reject_constant(name: str):
 @pytest.mark.parametrize("field", ["count", "name", "ratio"])
 def test_validation_handler_returns_strict_json_422_for_non_finite_input(field, raw, expected):
     app = FastAPI()
-    install_app_exception_handlers(app, logger=logging.getLogger("kg.api"))
+    install_app_exception_handlers_from_dependencies(
+        dependencies=_dependencies(app),
+    )
 
     @app.post("/payload")
     def post_payload(payload: _NonFinitePayload):

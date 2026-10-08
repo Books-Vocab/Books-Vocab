@@ -1,4 +1,3 @@
-from .admin import build_admin_router, build_admin_routers
 from .auth import router as auth_router
 from .billing import router as billing_router
 from .dictionary import router as dictionary_router
@@ -16,8 +15,6 @@ from .vocab import router as vocab_router
 from .web_auth import router as web_auth_router
 
 __all__ = [
-    "build_admin_router",
-    "build_admin_routers",
     "auth_router",
     "billing_router",
     "dictionary_router",

@@ -65,19 +65,3 @@ def install_runtime_user_state_from_dependencies(
     app.state.save_users = bindings.save_users
     app.state.normalize_users_payload = bindings.normalize_users_payload
     return bindings
-
-
-def install_runtime_user_state(
-    app: FastAPI,
-    settings: KGSettings,
-    *,
-    default_subscription_payload_fn: DefaultSubscriptionPayloadFn,
-) -> RuntimeUserState:
-    """Backward-compatible wrapper around :func:`install_runtime_user_state_from_dependencies`."""
-    return install_runtime_user_state_from_dependencies(
-        dependencies=RuntimeUserStateDependencies(
-            app=app,
-            settings=settings,
-            default_subscription_payload_fn=default_subscription_payload_fn,
-        )
-    )

@@ -8,7 +8,12 @@ from fastapi import APIRouter
 
 from kg.api_models import AdminUserEntitlementResponse
 from kg.deps import get_admin_user
-from kg.routers.admin import build_api_admin_router
+from kg.routers.admin import (
+    AdminApiHandlers,
+    AdminHtmlHandlers,
+    AdminRouteHandlers,
+    build_admin_routers_from_handlers,
+)
 from kg.routers.admin_features import registry as registry_module
 from kg.routers.admin_features.registry import (
     ADMIN_API_ROUTE_REGISTRY,
@@ -47,10 +52,7 @@ EXPECTED_ADMIN_API_ROUTE_KEYS = (
 def test_admin_route_registry_has_unique_feature_owned_routes_in_safe_order():
     validate_admin_route_registry()
 
-    route_keys = [
-        (registration.method, registration.path)
-        for registration in ADMIN_API_ROUTE_REGISTRY
-    ]
+    route_keys = [(registration.method, registration.path) for registration in ADMIN_API_ROUTE_REGISTRY]
 
     assert tuple(route_keys) == EXPECTED_ADMIN_API_ROUTE_KEYS
     assert len(route_keys) == len(set(route_keys))
@@ -128,39 +130,18 @@ def test_admin_api_router_keeps_registry_surface_and_admin_dependency_in_sync():
     def endpoint():
         return {"ok": True}
 
-    router = build_api_admin_router(
-        admin_stats=endpoint,
-        admin_logs=endpoint,
-        admin_user_entitlement=endpoint,
-        admin_grant_pro_access=endpoint,
-        admin_revoke_pro_access=endpoint,
-        admin_run_tests=endpoint,
-        admin_last_test_run=endpoint,
-        admin_test_catalog=endpoint,
-        admin_graph_density=endpoint,
-        admin_graph_playback=endpoint,
-        admin_pipeline_runs=endpoint,
-        admin_judge_stats=endpoint,
-        admin_translate_history=endpoint,
-        admin_user_activity=endpoint,
-        admin_user_usage=endpoint,
-        admin_user_cost_summary=endpoint,
-        admin_host_metrics=endpoint,
-        admin_users_search=endpoint,
-        admin_observability=endpoint,
-        admin_stats_trends=endpoint,
-        admin_log_retention_run=endpoint,
-        admin_audit=endpoint,
-        admin_orphans_scan=endpoint,
+    routers = build_admin_routers_from_handlers(
+        handlers=AdminRouteHandlers(
+            html=AdminHtmlHandlers(admin_ui=endpoint, admin_tests_ui=endpoint),
+            api=AdminApiHandlers(**{name: endpoint for name in AdminApiHandlers.__dataclass_fields__}),
+        ),
+        runtime_settings_fn=lambda: SimpleNamespace(admin_token="adm-token", admin_password=""),
     )
+    router = routers.api
 
-    legacy_surface = {
-        (frozenset(route.methods or ()), route.path)
-        for route in router.routes
-    }
+    legacy_surface = {(frozenset(route.methods or ()), route.path) for route in router.routes}
     registry_surface = {
-        (frozenset({registration.method.upper()}), registration.path)
-        for registration in ADMIN_API_ROUTE_REGISTRY
+        (frozenset({registration.method.upper()}), registration.path) for registration in ADMIN_API_ROUTE_REGISTRY
     }
 
     assert isinstance(router, APIRouter)

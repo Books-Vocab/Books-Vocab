@@ -107,32 +107,6 @@ def build_app_routers_from_dependencies(
     )
 
 
-def build_app_routers(
-    *,
-    runtime_settings_fn: RuntimeSettingsFn,
-    runtime_users_lock_file_fn: Callable[[], Path],
-    load_users_fn: Callable[[], UsersPayload],
-    save_users_fn: Callable[[UsersPayload], None],
-    mem_log_getter: MemLogGetter,
-    card_store_factory: CardStoreFactory,
-    build_entitlements_response_fn: EntitlementsBuilder,
-    current_admin_grant_record_fn: AdminGrantRecordReader,
-) -> AppRouters:
-    """Backward-compatible wrapper around :func:`build_app_routers_from_dependencies`."""
-    return build_app_routers_from_dependencies(
-        dependencies=AppRouterDependencies(
-            runtime_settings_fn=runtime_settings_fn,
-            runtime_users_lock_file_fn=runtime_users_lock_file_fn,
-            load_users_fn=load_users_fn,
-            save_users_fn=save_users_fn,
-            mem_log_getter=mem_log_getter,
-            card_store_factory=card_store_factory,
-            build_entitlements_response_fn=build_entitlements_response_fn,
-            current_admin_grant_record_fn=current_admin_grant_record_fn,
-        )
-    )
-
-
 def include_app_routers(app: FastAPI, routers: AppRouters) -> None:
     for router in routers.domain:
         app.include_router(router)

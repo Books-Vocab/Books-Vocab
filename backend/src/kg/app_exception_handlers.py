@@ -187,17 +187,3 @@ def install_app_exception_handlers_from_dependencies(
         kg_error_handler=kg_error_handler,
         unhandled_exception_handler=unhandled_exception_handler,
     )
-
-
-def install_app_exception_handlers(
-    app: FastAPI,
-    *,
-    logger: logging.Logger | Any,
-) -> AppExceptionHandlers:
-    """Backward-compatible wrapper around :func:`install_app_exception_handlers_from_dependencies`."""
-    return install_app_exception_handlers_from_dependencies(
-        dependencies=AppExceptionHandlerDependencies(
-            app=app,
-            logger=logger,
-        )
-    )
