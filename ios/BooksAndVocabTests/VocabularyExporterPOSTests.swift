@@ -88,6 +88,21 @@ struct VocabularyExporterPOSTests {
         #expect(csv.contains("\"v., n.\""))
     }
 
+    @Test func test_csv_neutralizes_formula_injection() throws {
+        let entry = VocabularyEntry(
+            word: "+cmd|calc",
+            translation: "x",
+            context: "=HYPERLINK(\"http://x\",\"y\")",
+            partOfSpeech: "n.",
+            bookTitle: "@SUM(1)"
+        )
+        let csv = try read(VocabularyExporter.exportAsCSV(entries: [entry]))
+        #expect(csv.contains("\"'=HYPERLINK("))
+        #expect(!csv.contains(",\"=HYPERLINK"))
+        #expect(csv.contains("\"'+cmd|calc\""))
+        #expect(csv.contains("\"'@SUM(1)\""))
+    }
+
     @Test func test_csv_exports_are_independent() throws {
         try expectIndependentExports(VocabularyExporter.exportAsCSV(entries:))
     }
