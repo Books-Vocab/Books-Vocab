@@ -226,8 +226,7 @@ def _env_rate_limit(name: str, default: int) -> int:
         return default
     if not 0 < value <= MAX_RATE_LIMIT_REQUESTS:
         _logger.warning(
-            "Env var %s=%r is outside the supported range 1..%s; "
-            "falling back to default %s.",
+            "Env var %s=%r is outside the supported range 1..%s; falling back to default %s.",
             name,
             raw,
             MAX_RATE_LIMIT_REQUESTS,
@@ -246,12 +245,8 @@ def load_rate_limit_settings() -> RateLimitSettingsSnapshot:
     """
     return RateLimitSettingsSnapshot(
         api_rate_limit=_env_rate_limit("API_RATE_LIMIT", DEFAULT_API_RATE_LIMIT),
-        translate_rate_limit=_env_rate_limit(
-            "TRANSLATE_RATE_LIMIT", DEFAULT_TRANSLATE_RATE_LIMIT
-        ),
-        admin_login_rate_limit=_env_rate_limit(
-            "ADMIN_LOGIN_RATE_LIMIT", DEFAULT_ADMIN_LOGIN_RATE_LIMIT
-        ),
+        translate_rate_limit=_env_rate_limit("TRANSLATE_RATE_LIMIT", DEFAULT_TRANSLATE_RATE_LIMIT),
+        admin_login_rate_limit=_env_rate_limit("ADMIN_LOGIN_RATE_LIMIT", DEFAULT_ADMIN_LOGIN_RATE_LIMIT),
     )
 
 
@@ -275,8 +270,7 @@ def load_settings() -> KGSettings:
     app_store_allow_unsigned_notifications = _env_truthy("APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS")
     if app_store_allow_unsigned_notifications:
         _logger.warning(
-            "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS is ON — "
-            "signature verification disabled. DO NOT use in production."
+            "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS is ON — signature verification disabled. DO NOT use in production."
         )
 
     rate_limit_settings = load_rate_limit_settings()
@@ -307,13 +301,9 @@ def load_settings() -> KGSettings:
         admin_login_rate_limit=rate_limit_settings.admin_login_rate_limit,
         judge_confidence_threshold=_env_float("JUDGE_CONFIDENCE_THRESHOLD", 0.7),
         dictionary_lookup_enabled=_env_truthy("DICTIONARY_LOOKUP_ENABLED"),
-        dictionary_provider_default=os.getenv(
-            "DICTIONARY_PROVIDER_DEFAULT", "free_dictionary"
-        ),
+        dictionary_provider_default=os.getenv("DICTIONARY_PROVIDER_DEFAULT", "free_dictionary"),
         dictionary_cache_ttl_days=_env_int("DICTIONARY_CACHE_TTL_DAYS", 30),
-        dictionary_negative_cache_ttl_hours=_env_int(
-            "DICTIONARY_NEGATIVE_CACHE_TTL_HOURS", 24
-        ),
+        dictionary_negative_cache_ttl_hours=_env_int("DICTIONARY_NEGATIVE_CACHE_TTL_HOURS", 24),
         cors_origins=tuple(
             o.strip()
             for o in os.getenv(
@@ -331,13 +321,7 @@ def load_settings() -> KGSettings:
         library_asset_max_bytes=_env_int("LIBRARY_ASSET_MAX_BYTES", 200 * 1024 * 1024),
         shared_decks_publish_enabled=_env_truthy("SHARED_DECKS_PUBLISH_ENABLED"),
         max_cards_per_deck=_env_int("MAX_CARDS_PER_DECK", 2000),
-        shared_decks_publish_rate_limit_per_day=_env_int(
-            "SHARED_DECKS_PUBLISH_RATE_LIMIT_PER_DAY", 20
-        ),
-        shared_decks_report_auto_hide_threshold=_env_int(
-            "SHARED_DECKS_REPORT_AUTO_HIDE_THRESHOLD", 5
-        ),
-        shared_decks_rating_min_count_for_sort=_env_int(
-            "SHARED_DECKS_RATING_MIN_COUNT_FOR_SORT", 3
-        ),
+        shared_decks_publish_rate_limit_per_day=_env_int("SHARED_DECKS_PUBLISH_RATE_LIMIT_PER_DAY", 20),
+        shared_decks_report_auto_hide_threshold=_env_int("SHARED_DECKS_REPORT_AUTO_HIDE_THRESHOLD", 5),
+        shared_decks_rating_min_count_for_sort=_env_int("SHARED_DECKS_RATING_MIN_COUNT_FOR_SORT", 3),
     )

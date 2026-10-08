@@ -1,4 +1,5 @@
 """Tests for KGSettings defaults."""
+
 from pathlib import Path
 
 import pytest
@@ -45,9 +46,7 @@ def test_invalid_float_env_falls_back_to_default(monkeypatch):
         ("JUDGE_CONFIDENCE_THRESHOLD", "judge_confidence_threshold", 0.7, "-inf"),
     ],
 )
-def test_non_finite_float_envs_fall_back_to_defaults(
-    monkeypatch, env_name, setting_name, default, raw
-):
+def test_non_finite_float_envs_fall_back_to_defaults(monkeypatch, env_name, setting_name, default, raw):
     monkeypatch.setenv("JWT_SECRET", "x" * 32)
     monkeypatch.setenv(env_name, raw)
 
@@ -111,9 +110,7 @@ def test_rate_limit_envs_missing_use_safe_defaults(monkeypatch):
         ("ADMIN_LOGIN_RATE_LIMIT", "admin_login_rate_limit", 5, "10001"),
     ],
 )
-def test_rate_limit_envs_invalid_non_positive_or_too_large_fall_back(
-    monkeypatch, env_name, setting_name, default, raw
-):
+def test_rate_limit_envs_invalid_non_positive_or_too_large_fall_back(monkeypatch, env_name, setting_name, default, raw):
     monkeypatch.setenv("JWT_SECRET", "x" * 32)
     monkeypatch.setenv(env_name, raw)
 
