@@ -70,7 +70,12 @@ final class SubscriptionManager: SubscriptionManaging {
             last_synced_at: nil
         )
     )
-    var isLoading = false
+    /// In-flight operation count; overlapping ops (purchase + settings refresh) must not clear each other.
+    private(set) var loadingDepth = 0
+    var isLoading: Bool { loadingDepth > 0 }
+
+    func beginLoading() { loadingDepth += 1 }
+    func endLoading() { loadingDepth = max(0, loadingDepth - 1) }
     var lastError: String?
     var activePaywallSource: PaywallSource?
     var proProduct: Product?

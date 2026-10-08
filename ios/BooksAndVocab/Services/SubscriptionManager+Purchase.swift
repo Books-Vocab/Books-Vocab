@@ -22,8 +22,8 @@ extension SubscriptionManager {
     }
 
     func loadProducts() async {
-        isLoading = true
-        defer { isLoading = false }
+        beginLoading()
+        defer { endLoading() }
         lastError = nil
         for attempt in 1...Self.productRetryAttempts {
             do {
@@ -65,8 +65,8 @@ extension SubscriptionManager {
             return
         }
 
-        isLoading = true
-        defer { isLoading = false }
+        beginLoading()
+        defer { endLoading() }
 
         do {
             let result = try await product.purchase(options: purchaseOptions(for: authManager.userId))
@@ -116,8 +116,8 @@ extension SubscriptionManager {
     }
 
     func restorePurchases(using kgService: any KGServing, authManager: any AuthManaging) async {
-        isLoading = true
-        defer { isLoading = false }
+        beginLoading()
+        defer { endLoading() }
 
         do {
             try await AppStore.sync()
