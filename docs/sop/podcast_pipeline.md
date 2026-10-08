@@ -347,6 +347,7 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 - m4a 與 mp3 同檔名時 m4a 優先(post-Track-B 預設)
 - 逐檔 `aws s3 cp` = 原子換檔(S3 GetObject 永遠對 object 整版,無「半傳輸」概念);`metadata.json` 最後上傳當 ready 訊號
 - reconcile(取代 `sync --delete`)刪掉 series prefix 下 staging 沒有的 key;staging 不存在、掃描中出錯或缺 `metadata.json` 時**拒絕 prune 並讓 upload 失敗**(空 staging 會讓整個 series 都算 orphan)
+- **部分重發 `--only-episodes N,N,...`(必用於「只重合成部分集數、其餘 audio 只在 S3」,例 #2094)**:蘊含 `--no-prune`,只 stage/上傳點名集數的 audio、`ep_01` preview、字幕、script,**不發任何 delete / sync --delete、略過 reconcile**;不動 series cover。`metadata.json` 由既有 remote metadata 合併重建(未點名集數沿用 remote 條目原樣,`createdAt`/`coverImageURL` 保留),index.json 仍由 bucket listing 重建,故未動集數持續列於 catalog。前置:remote 必須已有 `metadata.json`(首發請用完整上傳)、點名集數 local 必須有 audio、remote `audioFormat` 須與 local 相同,否則在任何上傳前中止。`--no-prune` 單用=完整上傳但不 prune。預設模式(完整 republish + reconcile)行為不變。先 `--dry-run` 看 staging 樹。
 - index 重建本機跑 boto3 → `put_object`,**不需 flock**(S3 last-writer-wins;比舊 SSH+flock 弱,但 race window 只有秒級,影響限於 dashboard 暫時看到舊 index)
 - Content-Type 逐檔覆寫(`.m4a`→`audio/mp4`, `.srt`→`text/plain`, `.json`→`application/json`),預防 AVPlayer 拒收 `binary/octet-stream`
 
