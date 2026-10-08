@@ -25,17 +25,17 @@ description: "把已合併到 main 的 backend／iOS 變更路由到 ops/release
 ## 命令選擇
 
 - `tag`：只建立版本標記，不部署；無 `--yes` 不寫入。
-- `release backend <version>`：版本變更、部署與線上 health／version 收斂檢查；生產寫入仍受 `ops/devops_kg_safe.sh`、批准與 rollback SOP 約束。
-- `release ios <version>`：版本變更、candidate、TestFlight upload、exact ASC proof；upload 或 ASC 等待失敗時保留 candidate，不重跑產生新 build。
-- `resubmit ios`：同 marketing version 取得 ASC 對帳後的新 build；同樣保留 candidate 與 exact proof。
-- `finalize ios <version> <build>`：只重查現有 candidate 的 exact ASC proof 並封版，不 archive、不 upload。
+- `release backend|ios <version>`：只產生 candidate（版本變更與 candidate commit），不 push、不 upload、不 deploy、不 tag；之後走 hand-back -> IM PR -> CM merge -> sync main。
+- `resubmit ios`：同 marketing version 取得 ASC 對帳後的新 build candidate；同樣只產生 candidate，不 push、不 upload、不 deploy、不 tag。
+- `resume ios <version> <build> --pr <n> --merged-source <sha>`：merged main 上的外部發布入口；先 dry-run，`--yes` 後依序 exact ASC probe、build 不存在才 upload、tag-only 收尾。只支援 ios；backend 部署與 prod 推進屬 approved release tooling（`docs/sop/deploy.md`）。
+- `finalize ios <version> <build> --pr <n> --merged-source <sha>`：tag 補救；重查 exact ASC 證據並封版，不 archive、不 upload。
 - `shipped ios`：只在 ASC 確認 App Store 已上架後建立上架標記；查不到唯一事實就拒絕猜測。
 
 所有有外部副作用的命令先 dry-run，只有使用者明確確認後才加 `--yes`。不可把文件、dry-run、本地 archive 或猜測當成部署／TestFlight／App Store 成功證據。
 
 ## iOS hard stops
 
-送審前依 `docs/sop/ios.md` 執行 workflow、App Review evidence 與 release gate；任一 BLOCK 只能查詢狀態或補 typed evidence，不可用手工 GUI 繞過 gate。`finalize` 的 proof 必須是當下 exact `(version, build)` ASC 輸出。
+送審前依 `docs/sop/ios.md` 執行 workflow、App Review evidence 與 release gate；任一 BLOCK 只能查詢狀態或補 typed evidence，不可用手工 GUI 繞過 gate。`resume`／`finalize` 必須帶 exact `--pr <n> --merged-source <sha>`，且 proof 必須是當下 exact `(version, build)` ASC 輸出。
 
 ## 回報
 
