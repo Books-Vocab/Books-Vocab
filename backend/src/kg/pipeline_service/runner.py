@@ -6,6 +6,7 @@ import uuid
 from typing import Any, Protocol
 
 from openai import OpenAIError
+from sqlalchemy.exc import StatementError
 
 from ..exceptions import KGError
 from ..retry import async_retry
@@ -14,12 +15,30 @@ from ..types import UserRecord
 from .runstate import _PIPELINE_RUNNING, _PIPELINE_RUNNING_LOCK
 from .steps import _step_difficulty, _step_embed_and_judge, _step_enrich
 
-# KGError covers QuotaExceededError raised mid-pipeline by TrackedLLM-quota
-# guards (or any future service-layer guard). Without it, quota exhaustion
-# leaks out of `_run_step` AND `run_pipeline_background`, leaving the run
-# stuck "running" in pipeline_log telemetry and bubbling a 429-style error
-# to a background task with no HTTP context to catch it.
+# Expected failure types for the outer `run_pipeline_background` safety net
+# (re-exported by `kg.pipeline_service`). `_run_step` does not gate on this
+# tuple: it isolates every `Exception`, so DB errors (sqlalchemy / sqlite3
+# derive from `Exception` only) never skip later steps (#2089). KGError covers
+# QuotaExceededError raised mid-pipeline by TrackedLLM-quota guards.
 _STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError, KGError)
+
+# Cap for the error text persisted on a pipeline_log step row (admin waterfall).
+_STEP_ERROR_MAX_CHARS = 500
+
+
+def _step_error_text(exc: Exception) -> str:
+    """Bounded, privacy-safe error text for a failed step's telemetry row.
+
+    `str(StatementError)` (DBAPIError and its OperationalError/IntegrityError
+    subclasses included) embeds the SQL statement and bound parameters (card
+    text), so for those only the class name and the driver's own message
+    (`exc.orig`) are kept. Every other type keeps its historical `str(exc)`.
+    """
+    if isinstance(exc, StatementError):
+        text = type(exc).__name__ if exc.orig is None else f"{type(exc).__name__}: {exc.orig}"
+    else:
+        text = str(exc)
+    return text[:_STEP_ERROR_MAX_CHARS]
 
 
 class AsyncLockFactory(Protocol):
@@ -99,11 +118,20 @@ async def _run_step(
         if run_id:
             _telemetry(logger, "end_step", run_id, name, status="quota_exhausted", error=str(exc))
         return "quota_exhausted"
-    except _STEP_ERRORS as exc:
-        logger.error("[%s] %s failed: %s", uid, name, exc, exc_info=True)
+    except asyncio.CancelledError:
+        # BaseException: not caught by `except Exception`. Close the step row so
+        # it is not left "running", then propagate so the run ends interrupted.
+        if run_id:
+            _telemetry(logger, "end_step", run_id, name, status="interrupted", error="cancelled")
+        raise
+    except Exception as exc:
+        # Any step failure (LLM, file I/O, data, and DB errors such as
+        # sqlalchemy/sqlite3 OperationalError) is isolated so later steps run.
+        error_text = _step_error_text(exc)
+        logger.error("[%s] %s failed: %s", uid, name, error_text, exc_info=True)
         capture_handled(exc, context="pipeline.step", tags={"step": name})
         if run_id:
-            _telemetry(logger, "end_step", run_id, name, status="failed", error=str(exc))
+            _telemetry(logger, "end_step", run_id, name, status="failed", error=error_text)
         return "failed"
 
 
@@ -148,10 +176,10 @@ async def run_pipeline_background(
             try:
                 logger.info("[%s] Pipeline started.", uid)
 
-                # Step isolation: each step catches its own errors so one
-                # failure never aborts subsequent steps. The union covers
-                # LLM calls (OpenAIError), file/DB I/O (OSError), and data
-                # issues (ValueError, RuntimeError).
+                # Step isolation: `_run_step` catches every `Exception` from
+                # its step (LLM, file/DB I/O, data issues, sqlalchemy/sqlite3
+                # errors) so one failure never aborts subsequent steps.
+                # CancelledError closes the step as interrupted and propagates.
 
                 pipeline_status = "completed"
 
@@ -228,21 +256,18 @@ async def run_pipeline_background(
                 telemetry_ended = True
                 raise
             except _STEP_ERRORS as exc:
-                # Mirrors `_STEP_ERRORS` so any unexpected leak from a step
-                # (including QuotaExceededError, which `_run_step` already
-                # catches via the same tuple) gets logged + telemetry-closed
-                # instead of crashing the background task.
+                # Safety net for failures raised outside `_run_step` (which
+                # already isolates every step `Exception`): log + close
+                # telemetry instead of crashing the background task.
                 logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
                 capture_handled(exc, context="pipeline.run")
                 _telemetry(logger, "end_run", run_id, "failed")
             except Exception as exc:
-                # Defensive catch-all: when a queued run reaches the body
-                # AFTER its owning user/notebook was deleted, store factories
-                # can raise anything (KeyError from a missing user dict,
-                # custom AppErrors, etc.). The lock-queue rewrite means
-                # such queued runs always reach this code; we must absorb
-                # the failure here so the exception doesn't escape into
-                # caller / asyncio.gather and so refcount unwinds cleanly.
+                # Defensive catch-all for non-step code. Store-factory
+                # failures of a queued run whose user/notebook was deleted
+                # (KeyError, custom AppErrors, ...) are isolated per step by
+                # `_run_step`; anything else must still not escape into
+                # caller / asyncio.gather, and refcount must unwind cleanly.
                 logger.error(
                     "[%s] Pipeline aborted due to non-recoverable error "
                     "(user/notebook may have been deleted mid-queue): %s",
