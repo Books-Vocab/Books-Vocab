@@ -225,6 +225,27 @@ def test_external_card_ingest_is_idempotent_and_supports_card_operations(externa
     assert deleted.json() == {"cardId": card_id, "deleted": True}
 
 
+def test_external_card_responses_project_per_card_preferences(external_api):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    created = external_api.client.post(
+        "/api/v1/cards", json={"content": "ephemeral", "clientId": "pref-1"}, headers=headers
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    prefs = external_api.client.patch(
+        "/api/vocab/ephemeral/preferences",
+        json={"reader_hidden": True, "review_excluded": True},
+        headers=external_api.jwt_headers,
+    )
+    assert prefs.status_code == 200, prefs.text
+
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["isReaderHidden"] is True
+    assert fetched.json()["isReviewExcluded"] is True
+
+
 @pytest.mark.parametrize("meaning", [" ", "\t", "\n"])
 def test_external_card_update_rejects_blank_meaning(external_api, meaning):
     api_key = _create_key(external_api)
