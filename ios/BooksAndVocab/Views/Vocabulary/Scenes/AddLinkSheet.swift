@@ -22,6 +22,11 @@ struct AddLinkSheet: View {
     @State private var didCompleteCreation = false
     @State private var recoveredProviderErrors: Set<UUID> = []
     @FocusState private var isSearchFocused: Bool
+    @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.networkMonitor) private var networkMonitor
+    /// Return on a word nothing in the notebook has: the create entry flashes (#2038).
+    @State private var isCreateHighlighted = false
+    @State private var createHighlightTask: Task<Void, Never>?
     // Names the notebook a new card lands in (the source card's own notebook).
     @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted })
     private var notebooks: [Notebook]
@@ -55,6 +60,10 @@ struct AddLinkSheet: View {
         ReviewCardNotebookBadgeResolver.badge(for: sourceEntry.notebookId, notebooks: notebooks).name
     }
 
+    private var connectivity: AddLinkConnectivity {
+        AddLinkConnectivity(isConnected: networkMonitor.isConnected)
+    }
+
     private var showsCreationProgress: Bool {
         creationCoordinator.phase == .running
             || creationCoordinator.phase == .failed
@@ -69,6 +78,7 @@ struct AddLinkSheet: View {
             allEntries: allEntries
         )
         let lookup = lookupState(snapshot)
+        let returnBehavior = AddLinkReturnBehavior.resolve(snapshot)
         NavigationStack {
             VStack(spacing: 0) {
                 Text(lookup.accessibilityValue)
@@ -125,11 +135,11 @@ struct AddLinkSheet: View {
                         AppBanner(message: message, systemImage: "exclamationmark.triangle")
                     }
 
-                    searchField
+                    searchField(returnBehavior, in: snapshot)
                         .padding(appSkin.metrics.cardBlockPadding)
 
                     List {
-                        localSection(snapshot)
+                        localSection(snapshot, returnBehavior: returnBehavior)
                     }
                     .listStyle(.insetGrouped)
                     .scrollContentBackground(.hidden)
@@ -159,7 +169,19 @@ struct AddLinkSheet: View {
             onLinked()
             dismiss()
         }
+        .onAppear {
+            // Offline from the start: say so now, not after a failed round trip (#2039).
+            if let notice = connectivity.noticeMessage { toastCoordinator.warning(notice) }
+        }
+        .onChange(of: networkMonitor.isConnected) { old, new in
+            guard let message = AddLinkConnectivity.transitionMessage(
+                from: AddLinkConnectivity(isConnected: old),
+                to: AddLinkConnectivity(isConnected: new)
+            ) else { return }
+            if new { toastCoordinator.success(message) } else { toastCoordinator.warning(message) }
+        }
         .onDisappear {
+            createHighlightTask?.cancel()
             coordinator.cancel()
             // A running creation is deliberately NOT cancelled: the hub owns it,
             // finishes the local projection, and the source card shows it as a
@@ -168,7 +190,10 @@ struct AddLinkSheet: View {
         .enableInjection()
     }
 
-    private func localSection(_ snapshot: AddLinkSearchSnapshot) -> some View {
+    private func localSection(
+        _ snapshot: AddLinkSearchSnapshot,
+        returnBehavior: AddLinkReturnBehavior
+    ) -> some View {
         Section(L10n.string("addLink.localSection")) {
             if snapshot.isEmptyQuery {
                 Text(L10n.string("輸入單字名稱來建立連結"))
@@ -203,6 +228,9 @@ struct AddLinkSheet: View {
                                         .accessibilityIdentifier("addLink.row.linking.\(entry.kgCardId ?? "")")
                                 }
                             }
+                            // Full-width row: the ↵ hint overlay sits at the row's edge.
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         // One link at a time: every row is locked while one is in flight.
                         .disabled(coordinator.linkingTargetCardID != nil)
@@ -213,6 +241,18 @@ struct AddLinkSheet: View {
                                 recoveringProviderError: recoveredProviderErrors.contains(entry.id)
                             )
                         )
+                        .overlay(alignment: .trailing) {
+                            // Return will link exactly this word (#2038). Applied after the
+                            // button's own id/value so the hint keeps an id of its own.
+                            if !isLinkingRow, returnBehavior == .linkExact(entry.id) {
+                                Image(systemName: "return")
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
+                                    .accessibilityIdentifier("addLink.row.returnHint")
+                                    .transition(.opacity)
+                            }
+                        }
+                        .animation(AppMotion.contentFade, value: returnBehavior)
 
                         dictionaryDetail(projection, for: entry)
                     }
@@ -353,10 +393,12 @@ struct AddLinkSheet: View {
                 AddLinkCreateRow(
                     title: AddLinkCreateCopy.title(target: searchText, source: sourceEntry.word),
                     notebookLine: AddLinkCreateCopy.notebookLine(notebookName: createNotebookName),
+                    isHighlighted: isCreateHighlighted,
+                    disabledReason: connectivity.createDisabledReason,
                     action: startCreation
                 )
                 .transition(.opacity)
-                .disabled(coordinator.linkingTargetCardID != nil)
+                .disabled(coordinator.linkingTargetCardID != nil || !connectivity.allowsServerWork)
                 .listRowBackground(Color.clear)
             } else if !hasCandidates {
                 Text(L10n.string("沒有結果"))
@@ -387,6 +429,12 @@ struct AddLinkSheet: View {
 
     private func selectEntry(_ entry: VocabularyEntry, in snapshot: AddLinkSearchSnapshot) {
         guard snapshot.containsCandidate(entry) else { return }
+        // Linking needs the server: refuse BEFORE the optimistic local write, so an
+        // offline tap never flashes a link that is then rolled back (#2039).
+        guard connectivity.allowsServerWork else {
+            if let notice = connectivity.noticeMessage { toastCoordinator.warning(notice) }
+            return
+        }
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
@@ -415,6 +463,11 @@ struct AddLinkSheet: View {
 
     private func startCreation() {
         guard let operationService = kgService as? any AddLinkOperationServing else { return }
+        // Retry also lands here: offline must not turn into another failed attempt.
+        guard connectivity.allowsServerWork else {
+            if let notice = connectivity.noticeMessage { toastCoordinator.warning(notice) }
+            return
+        }
         creationAttempt += 1
         creationCoordinator.start(
             word: searchText,
@@ -426,13 +479,48 @@ struct AddLinkSheet: View {
         )
     }
 
-    private var searchField: some View {
+    /// Return (#2038): links an exactly-typed existing word, otherwise only puts
+    /// the keyboard away. It never creates and never picks among partial matches.
+    private func submitSearch(_ behavior: AddLinkReturnBehavior, in snapshot: AddLinkSearchSnapshot) {
+        switch behavior {
+        case .linkExact(let id):
+            guard let entry = snapshot.candidates.first(where: { $0.id == id }) else { return }
+            isSearchFocused = false
+            selectEntry(entry, in: snapshot)
+        case .alreadyLinked:
+            toastCoordinator.info(
+                L10n.format("addLink.return.alreadyLinked", AddLinkCreateCopy.displayWord(snapshot.trimmedQuery))
+            )
+        case .dismissKeyboard:
+            isSearchFocused = false
+        case .revealCreate:
+            isSearchFocused = false
+            highlightCreateEntry()
+        }
+    }
+
+    /// Briefly points at the create entry so the user sees where "create" lives.
+    private func highlightCreateEntry() {
+        createHighlightTask?.cancel()
+        withAnimation(AppMotion.feedbackPulse) { isCreateHighlighted = true }
+        createHighlightTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1400))
+            guard !Task.isCancelled else { return }
+            withAnimation(AppMotion.feedbackPulse) { isCreateHighlighted = false }
+        }
+    }
+
+    private func searchField(
+        _ returnBehavior: AddLinkReturnBehavior,
+        in snapshot: AddLinkSearchSnapshot
+    ) -> some View {
         HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(appSkin.palette.tertiaryText)
             TextField(L10n.string("搜尋單字…"), text: $searchText)
                 .platformTextInputConfig()
-                .submitLabel(.done)
+                .submitLabel(returnBehavior.submitLabel)
+                .onSubmit { submitSearch(returnBehavior, in: snapshot) }
                 .focused($isSearchFocused)
                 // Opening the sheet is the intent to search: no extra tap.
                 .onAppear { isSearchFocused = true }

@@ -169,15 +169,21 @@ final class AddLinkCreationCoordinator {
         "\(sourceCardID)|\(normalizeWord(word))"
     }
 
-    /// Mirrors the backend's target resolution: `_clean_content` (trim, drop
-    /// trailing `.,;:!?`) followed by `find_by_content`'s NFC + lowercase key.
-    /// Diacritics stay significant, exactly as on the server.
-    nonisolated static func canonicalWord(_ word: String) -> String {
+    /// Trims whitespace and drops trailing `.,;:!?` — the backend's `_clean_content`.
+    /// The candidate search uses it too, so `run.` finds the same words as `run`.
+    nonisolated static func cleanedQuery(_ word: String) -> String {
         var cleaned = word.trimmingCharacters(in: .whitespacesAndNewlines)
         while let last = cleaned.last, ".,;:!?".contains(last) {
             cleaned.removeLast()
         }
-        return cleaned.precomposedStringWithCanonicalMapping
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Mirrors the backend's target resolution: `_clean_content` (trim, drop
+    /// trailing `.,;:!?`) followed by `find_by_content`'s NFC + lowercase key.
+    /// Diacritics stay significant, exactly as on the server.
+    nonisolated static func canonicalWord(_ word: String) -> String {
+        cleanedQuery(word).precomposedStringWithCanonicalMapping
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
     }
@@ -208,18 +214,6 @@ final class AddLinkCreationCoordinator {
         let linkedIDs = Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
         if let targetCardID = target.kgCardId, linkedIDs.contains(targetCardID) { return .linked }
         return .active
-    }
-
-    /// The "create and link" entry is offered for any typed word the notebook
-    /// does not have yet, even while partial-match candidates are listed
-    /// (typing `run` must still be able to create `run` next to `running`).
-    nonisolated static func showsCreateEntry(
-        query: String,
-        sourceEntry: VocabularyEntry,
-        allEntries: [VocabularyEntry]
-    ) -> Bool {
-        guard !normalizeWord(query).isEmpty else { return false }
-        return localTargetState(query: query, sourceEntry: sourceEntry, allEntries: allEntries) == .missing
     }
 
     func start(

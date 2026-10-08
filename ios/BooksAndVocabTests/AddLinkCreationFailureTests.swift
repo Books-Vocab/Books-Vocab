@@ -442,11 +442,32 @@ struct AddLinkTargetStateTests {
         let source = CreationFixtures.entry("source", cardID: "src")
         let running = CreationFixtures.entry("running", cardID: "c-running")
         let all = [source, running]
-        #expect(!AddLinkCoordinator.localCandidates(query: "run", sourceEntry: source, allEntries: all).isEmpty)
-        #expect(AddLinkCreationCoordinator.showsCreateEntry(query: "run", sourceEntry: source, allEntries: all))
-        #expect(!AddLinkCreationCoordinator.showsCreateEntry(query: "running", sourceEntry: source, allEntries: all))
-        #expect(!AddLinkCreationCoordinator.showsCreateEntry(query: "  ", sourceEntry: source, allEntries: all))
-        #expect(!AddLinkCreationCoordinator.showsCreateEntry(query: "source", sourceEntry: source, allEntries: all))
+        func snapshot(_ query: String) -> AddLinkSearchSnapshot {
+            AddLinkSearchSnapshot.make(query: query, sourceEntry: source, allEntries: all)
+        }
+        // The sheet offers "create" exactly when the snapshot's exact state is .missing.
+        let partial = snapshot("run")
+        #expect(!partial.candidates.isEmpty, "the partial match is listed")
+        #expect(partial.exactTargetState == .missing, "and `run` can still be created")
+        #expect(snapshot("running").exactTargetState == .active, "an exact existing word is not created again")
+        #expect(snapshot("  ").exactTargetState == nil)
+        #expect(snapshot("?!").exactTargetState == nil, "punctuation alone has no word to create")
+        #expect(snapshot("source").exactTargetState == .source)
+    }
+
+    @Test("trailing punctuation is cleaned like the backend before searching")
+    func candidatesIgnoreTrailingPunctuation() {
+        let source = CreationFixtures.entry("source", cardID: "src")
+        let run = CreationFixtures.entry("run", cardID: "c-run")
+        let all = [source, run]
+        for typed in ["run", "run.", "run?!", " run, "] {
+            #expect(
+                AddLinkCoordinator.localCandidates(query: typed, sourceEntry: source, allEntries: all).map(\.id)
+                    == [run.id],
+                "\(typed)"
+            )
+        }
+        #expect(AddLinkCoordinator.localCandidates(query: "?!", sourceEntry: source, allEntries: all).isEmpty)
     }
 }
 

@@ -13,6 +13,11 @@ struct AddLinkCreateRow: View {
 
     let title: String
     let notebookLine: String
+    /// Brief emphasis (#2038): Return on a word nothing has points here instead of creating.
+    var isHighlighted = false
+    /// Why the entry cannot be used right now (offline, #2039). The entry stays
+    /// listed — disabled and explained — instead of disappearing.
+    var disabledReason: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -26,10 +31,10 @@ struct AddLinkCreateRow: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                         .multilineTextAlignment(.leading)
-                    Text(notebookLine)
+                    Text(disabledReason ?? notebookLine)
                         .font(appSkin.typography.caption)
                         .foregroundStyle(appSkin.palette.secondaryText)
-                        .lineLimit(1)
+                        .lineLimit(disabledReason == nil ? 1 : 2)
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
@@ -37,12 +42,22 @@ struct AddLinkCreateRow: View {
             .contentShape(Rectangle())
         }
         .accessibilityIdentifier("addLink.create")
+        .background {
+            AppRoundedRect(roundness: AppRoundness.control)
+                .fill(appSkin.palette.accent.opacity(isHighlighted ? 0.14 : 0))
+        }
         .background(alignment: .topLeading) {
             ZStack {
                 marker("addLink.create.title", value: title)
                 marker("addLink.create.notebook", value: notebookLine)
+                marker("addLink.create.highlight", value: isHighlighted ? "on" : "off")
+                if let disabledReason {
+                    marker("addLink.create.disabledReason", value: disabledReason)
+                }
             }
         }
+        .animation(AppMotion.contentFade, value: disabledReason)
+        .animation(AppMotion.feedbackPulse, value: isHighlighted)
         // Text changes while typing (the word is in the sentence): fade, don't jump.
         .animation(AppMotion.contentFade, value: title)
         .animation(AppMotion.contentFade, value: notebookLine)

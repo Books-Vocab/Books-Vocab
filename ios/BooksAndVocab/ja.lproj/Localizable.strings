@@ -1342,3 +1342,11 @@
 
 /* Review card link strip: collapse an expanded group (#2043) */
 "todayReview.card.link.collapse" = "折りたたむ";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "「%@」にはすでにリンク済みです";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "オフラインです。単語の作成やリンクには接続が必要です。";
+"addLink.offline.restored" = "オンラインに戻りました。";
+"addLink.offline.createReason" = "オフライン中は新しい単語を作成できません。";

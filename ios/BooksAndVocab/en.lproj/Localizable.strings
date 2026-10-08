@@ -1361,3 +1361,11 @@
 
 /* Review card link strip: collapse an expanded group (#2043) */
 "todayReview.card.link.collapse" = "Show fewer";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "Already linked to “%@”";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "You are offline. Linking or creating words needs a connection.";
+"addLink.offline.restored" = "Back online.";
+"addLink.offline.createReason" = "Offline: reconnect to create a new word.";

@@ -181,7 +181,9 @@ final class AddLinkCoordinator {
         sourceEntry: VocabularyEntry,
         allEntries: [VocabularyEntry]
     ) -> [VocabularyEntry] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Same cleaning as the backend's `_clean_content` (trailing `.,;:!?`), so a
+        // typed `run.` lists what `run` lists and the exact word is never hidden.
+        let trimmed = AddLinkCreationCoordinator.cleanedQuery(query)
         guard !trimmed.isEmpty else { return [] }
         let linkedIDs = Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
         let folded = trimmed.folding(

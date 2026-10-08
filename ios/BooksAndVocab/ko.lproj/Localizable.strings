@@ -1342,3 +1342,11 @@
 
 /* Review card link strip: collapse an expanded group (#2043) */
 "todayReview.card.link.collapse" = "접기";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "“%@”에는 이미 연결되어 있습니다";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "오프라인입니다. 단어를 만들거나 연결하려면 인터넷 연결이 필요합니다.";
+"addLink.offline.restored" = "다시 온라인 상태입니다.";
+"addLink.offline.createReason" = "오프라인에서는 새 단어를 만들 수 없습니다.";

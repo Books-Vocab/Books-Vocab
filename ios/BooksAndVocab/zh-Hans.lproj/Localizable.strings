@@ -1342,3 +1342,11 @@
 
 /* Review card link strip: collapse an expanded group (#2043) */
 "todayReview.card.link.collapse" = "收起";
+
+/* Add Link Return key on an already linked word (#2038) */
+"addLink.return.alreadyLinked" = "已链接过“%@”";
+
+/* Add Link offline (#2039) */
+"addLink.offline.notice" = "当前离线，无法创建新单词或链接。";
+"addLink.offline.restored" = "已恢复连接。";
+"addLink.offline.createReason" = "离线中，联网后才能创建新单词。";

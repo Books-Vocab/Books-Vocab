@@ -28,7 +28,9 @@ struct AddLinkSearchSnapshot {
             sourceEntry: sourceEntry,
             allEntries: allEntries
         )
-        let exactTargetState: AddLinkLocalTargetState? = trimmed.isEmpty
+        // Punctuation-only input (`?!`) cleans to nothing: there is no word to
+        // look up, link or create.
+        let exactTargetState: AddLinkLocalTargetState? = AddLinkCreationCoordinator.cleanedQuery(query).isEmpty
             ? nil
             : AddLinkCreationCoordinator.localTargetState(
                 query: query,

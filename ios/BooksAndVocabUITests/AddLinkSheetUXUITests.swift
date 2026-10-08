@@ -34,6 +34,81 @@ final class AddLinkSheetUXUITests: UITestCase {
         captureStep("add-link-autofocus", app: app)
     }
 
+    // MARK: - #2038 Return key
+
+    /// Nothing in the notebook has the word: Return puts the keyboard away and
+    /// flashes the create entry, but never starts a creation.
+    @MainActor
+    func testReturnOnUnknownWordRevealsCreateAndNeverCreates() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-return-unknown") else { return }
+        let searchField = app.textFields["addLink.searchField"]
+        XCTAssertTrue(searchField.waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("zzqxv")
+        guard app.buttons.matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 5, named: "AddLink create entry") != nil else { return }
+
+        app.typeText("\n")
+        XCTAssertTrue(
+            marker("addLink.create.highlight", in: app).waitUntilValueEquals("on", timeout: 5),
+            "Return on an unknown word must point at the create entry"
+        )
+        XCTAssertTrue(app.keyboards.firstMatch.waitUntilGone(timeout: 5), "Return must put the keyboard away")
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "addLink.creation.progress").count,
+            0,
+            "Return must never start a creation"
+        )
+        XCTAssertEqual(searchField.value as? String, "zzqxv", "the typed word stays")
+        XCTAssertTrue(
+            marker("addLink.create.highlight", in: app).waitUntilValueEquals("off", timeout: 5),
+            "the highlight is brief"
+        )
+        captureStep("add-link-return-unknown", app: app)
+    }
+
+    /// Partial matches (even when several): Return only dismisses the keyboard;
+    /// nothing is linked or created.
+    @MainActor
+    func testReturnOnPartialMatchesOnlyDismissesKeyboard() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-return-partial") else { return }
+        XCTAssertTrue(app.textFields["addLink.searchField"].waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("fort")
+        XCTAssertTrue(lookupState(in: app).waitUntilValueEquals("results-2", timeout: 5))
+
+        app.typeText("\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitUntilGone(timeout: 5), "Return must put the keyboard away")
+        XCTAssertTrue(lookupState(in: app).waitUntilValueEquals("results-2", timeout: 5), "the list stays")
+        XCTAssertEqual(marker("addLink.row.returnHint", in: app).exists, false, "no row is singled out")
+        XCTAssertEqual(marker("addLink.error.reason", in: app).exists, false, "nothing was sent")
+        XCTAssertEqual(marker("addLink.creation.progress", in: app).exists, false)
+    }
+
+    /// An exactly-typed linkable word shows the ↵ hint on its row and Return
+    /// links it. The unreachable server fails the link, so the existing-word
+    /// failure banner is the evidence that THIS path (not creation) ran.
+    @MainActor
+    func testReturnOnExactWordLinksThatWord() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-return-exact") else { return }
+        XCTAssertTrue(app.textFields["addLink.searchField"].waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("epiphany")
+        XCTAssertTrue(
+            marker("addLink.row.returnHint", in: app).waitUntilExists(timeout: 5),
+            "the row Return will link shows the ↵ hint"
+        )
+
+        app.typeText("\n")
+        XCTAssertTrue(
+            marker("addLink.error.reason", in: app).waitUntilExists(timeout: 10),
+            "Return on the exact word starts the existing-word link"
+        )
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "addLink.creation.progress").count,
+            0,
+            "linking an existing word never opens the creation progress"
+        )
+        captureStep("add-link-return-exact", app: app)
+    }
+
     // MARK: - Helpers
 
     /// Launches the linked-cards world, opens `serendipity`'s detail and its
