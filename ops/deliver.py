@@ -54,7 +54,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from delivery_control.domain.errors import PolicyViolation
+from delivery_control.adapters.operation_lock import OperationLock
+from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.services.pr_contract import (
     parse_body_holds,
     pull_request_label_holds,
@@ -151,6 +152,20 @@ class LockWait:
     clock: Callable[[], float]
     say: Callable[[str], None]
 
+    def backoff(self, stage: str, detail: str, started: float) -> None:
+        """One busy refusal: sleep before the next attempt, or give up at the timeout."""
+        left = started + self.timeout - self.clock()
+        if left <= 0:
+            raise DeliverError(
+                f"{stage}: the delivery mutation lock is still held after "
+                f"{self.timeout:g}s: {detail}"
+            )
+        self.say(
+            f"{stage}: another delivery mutation holds the operation lock "
+            f"({detail}); retrying for up to {left:g}s more"
+        )
+        self.sleep(min(LOCK_RETRY_SECONDS, left))
+
 
 def must(
     runner: Runner,
@@ -174,17 +189,7 @@ def must(
         detail = failure_detail(done) or "no output"
         if lock is None or LOCK_BUSY not in detail:
             raise DeliverError(f"{stage} failed (rc={done.returncode}): {detail}")
-        left = started + lock.timeout - lock.clock()
-        if left <= 0:
-            raise DeliverError(
-                f"{stage}: the delivery mutation lock is still held after "
-                f"{lock.timeout:g}s: {detail}"
-            )
-        lock.say(
-            f"{stage}: another delivery mutation holds the operation lock "
-            f"({detail}); retrying for up to {left:g}s more"
-        )
-        lock.sleep(min(LOCK_RETRY_SECONDS, left))
+        lock.backoff(stage, detail, started)
         if before_retry is not None:
             before_retry()
 
@@ -532,6 +537,26 @@ class Delivery:
         prs = json.loads(out or "[]")
         return prs[0] if prs else None
 
+    def fetch_trunk(self) -> None:
+        """Refresh origin/main holding the delivery operation lease.
+
+        A fetch rewrites the one refs/remotes/origin/main that every worktree
+        shares; run beside another fetch or a delivery's sync-main it fails
+        with "cannot lock ref ... is at X but expected Y".  Taking the lease
+        every other ref mutation takes serializes it; a busy lease is waited
+        out like any other mutation's.
+        """
+        started = self.lock.clock()
+        while True:
+            try:
+                with OperationLock(self.canonical(), command="deliver:fetch"):
+                    self.git("fetch", "-q", "origin", "main", stage="preflight")
+                return
+            except DeliverySourceError as exc:
+                if LOCK_BUSY not in str(exc):
+                    raise
+                self.lock.backoff("preflight fetch", str(exc), started)
+
     def preflight(self) -> str:
         branch = self.git("rev-parse", "--abbrev-ref", "HEAD", stage="preflight")
         if branch in ("main", "HEAD"):
@@ -540,7 +565,7 @@ class Delivery:
             )
         if self.git("status", "--porcelain", stage="preflight"):
             raise DeliverError("worktree has uncommitted changes; commit them first")
-        self.git("fetch", "-q", "origin", "main", stage="preflight")
+        self.fetch_trunk()
         if self.git("rev-list", "--count", f"{TRUNK}..HEAD", stage="preflight") == "0":
             raise DeliverError(f"branch has no commits ahead of {TRUNK}")
         return branch
