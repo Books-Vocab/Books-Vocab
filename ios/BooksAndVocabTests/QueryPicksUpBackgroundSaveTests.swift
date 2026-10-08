@@ -108,4 +108,15 @@ struct QueryPicksUpBackgroundSaveTests {
         let fetched = try container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
         #expect(fetched.map(\.word) == ["ephemeral"])
     }
+
+    /// Guard: the app root must not reintroduce a swallowed main-context save "poke".
+    @Test func appRoot_hasNoSwallowedMainContextSave() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/BooksAndVocabApp.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        #expect(!source.contains("try? modelContainer.mainContext.save()"))
+        #expect(!source.contains("try? container.mainContext.save()"))
+    }
 }
