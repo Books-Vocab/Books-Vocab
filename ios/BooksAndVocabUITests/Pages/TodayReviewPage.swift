@@ -390,6 +390,21 @@ struct TodayReviewPage {
         queryElement("addLink.row.linking.\(cardID)")
     }
 
+    // MARK: Link strip "+N" overflow (#2043)
+
+    /// "+N" / "收合" control of one link group; value is `collapsed` or `expanded`.
+    func linkOverflowToggle(group: String) -> XCUIElement {
+        queryElement("todayReview.card.link.overflow.\(group)")
+    }
+
+    /// Real (non-pending) link buttons currently drawn whose target card id has
+    /// `prefix`. Excludes the overflow toggle and pending placeholders.
+    func drawnLinks(cardIDPrefix prefix: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "todayReview.card.link.\(prefix)")
+        )
+    }
+
     func link(id: String) -> XCUIElement {
         // Materialization dismisses the sheet and rebuilds the card cache in
         // the same main-actor turn. Keep this query pure so the assertion can

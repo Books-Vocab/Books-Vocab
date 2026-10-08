@@ -182,8 +182,12 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             app.buttons.matching(NSPredicate(format: "label == %@", "新增知識連結"))
         }
 
+        // Candidate rows only: the create entry (`addLink.create`) stays listed next
+        // to partial matches and its sentence repeats the typed word (#2030/#2037).
         func candidateQuery(for word: String) -> XCUIElementQuery {
-            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", word))
+            app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] %@ AND identifier != %@", word, "addLink.create")
+            )
         }
 
         func waitUntilEmpty(_ query: XCUIElementQuery, timeout: TimeInterval = 5) -> Bool {
@@ -443,6 +447,18 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             createAffordance.label.contains("zzqxv"),
             "AddLink create affordance must preserve the missing target query"
         )
+        // #2037: the entry says the whole action (new word + source word) and the
+        // notebook the new card lands in; each line is readable on its own id.
+        let createTitle = app.descendants(matching: .any)
+            .matching(identifier: "addLink.create.title").firstMatch
+        let createNotebook = app.descendants(matching: .any)
+            .matching(identifier: "addLink.create.notebook").firstMatch
+        XCTAssertTrue(createTitle.waitUntilExists(timeout: 5), "create entry must expose addLink.create.title")
+        XCTAssertTrue(createNotebook.waitUntilExists(timeout: 5), "create entry must expose addLink.create.notebook")
+        let titleText = createTitle.value as? String ?? ""
+        XCTAssertTrue(titleText.contains("zzqxv"), "create title must name the new word, got: \(titleText)")
+        XCTAssertTrue(titleText.contains("serendipity"), "create title must name the source word, got: \(titleText)")
+        XCTAssertFalse((createNotebook.value as? String ?? "").isEmpty, "create entry must name the target notebook")
         XCTAssertEqual(
             app.staticTexts.matching(NSPredicate(format: "label == %@", "沒有結果")).count,
             0,

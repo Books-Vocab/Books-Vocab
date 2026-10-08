@@ -1335,3 +1335,10 @@
 "addLink.creation.backToSearch" = "検索に戻る";
 "addLink.target.linkable" = "この単語帳にすでにあります。リストから選んでリンクしてください。";
 "addLink.target.alreadyLinked" = "すでにリンク済みです。";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "「%@」を作成して「%@」にリンク";
+"addLink.create.notebook" = "追加先：%@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "折りたたむ";

@@ -1335,3 +1335,10 @@
 "addLink.creation.backToSearch" = "검색으로 돌아가기";
 "addLink.target.linkable" = "이미 이 단어장에 있습니다. 목록에서 선택해 연결하세요.";
 "addLink.target.alreadyLinked" = "이미 연결되어 있습니다.";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "“%@” 만들고 “%@”에 연결";
+"addLink.create.notebook" = "추가 위치: %@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "접기";

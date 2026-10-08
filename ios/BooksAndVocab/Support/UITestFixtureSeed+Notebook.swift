@@ -156,6 +156,26 @@ extension UITestFixtureSeed {
                 entry.dateAdded = base.addingTimeInterval(Double(index))
                 entry.nextReviewAt = base
                 entry.lastReviewedAt = nil
+                if index == 5 {
+                    // The queue opens on the newest card; giving it links puts the
+                    // link strip (and its "+" add-link button) on screen at once.
+                    // Four links in one group: two show beside the label and the
+                    // other two sit behind the expandable "+2" (#2043).
+                    entry.graphLinksByKind = [
+                        "shares_usage": (0..<4).map { target in
+                            KGCardLinkSummary(
+                                id: "multinb-link-5-\(target)",
+                                cardId: "multinb-\(String(format: "%03d", target))",
+                                word: "multinb\(target)",
+                                kind: "shares_usage",
+                                label: "shares_usage",
+                                confidence: 0.9,
+                                reason: "fixture evidence",
+                                hidden: false
+                            )
+                        }
+                    ]
+                }
                 context.insert(entry)
             }
             try context.save()

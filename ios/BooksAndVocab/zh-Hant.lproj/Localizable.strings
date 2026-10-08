@@ -1343,3 +1343,10 @@
 "addLink.creation.backToSearch" = "返回搜尋";
 "addLink.target.linkable" = "這本單字本已有此單字，從上方列表選取即可連結。";
 "addLink.target.alreadyLinked" = "已連結。";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "建立「%@」並連結到「%@」";
+"addLink.create.notebook" = "加入：%@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "收合";

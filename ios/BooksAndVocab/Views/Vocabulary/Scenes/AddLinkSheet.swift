@@ -22,6 +22,9 @@ struct AddLinkSheet: View {
     @State private var didCompleteCreation = false
     @State private var recoveredProviderErrors: Set<UUID> = []
     @FocusState private var isSearchFocused: Bool
+    // Names the notebook a new card lands in (the source card's own notebook).
+    @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted })
+    private var notebooks: [Notebook]
 
     init(
         sourceEntry: VocabularyEntry,
@@ -44,6 +47,12 @@ struct AddLinkSheet: View {
             creationPhase: creationCoordinator.phase,
             creationAttempt: creationAttempt
         )
+    }
+
+    /// Display name of the notebook the created card is added to; never an id
+    /// (same resolver the review card's notebook badge uses).
+    private var createNotebookName: String {
+        ReviewCardNotebookBadgeResolver.badge(for: sourceEntry.notebookId, notebooks: notebooks).name
     }
 
     private var showsCreationProgress: Bool {
@@ -341,22 +350,12 @@ struct AddLinkSheet: View {
         switch targetState {
         case .missing:
             if kgService is any AddLinkOperationServing {
-                Button(action: startCreation) {
-                    HStack(spacing: appSkin.spacing.inlineGap) {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundStyle(appSkin.palette.accent)
-                        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                            Text(L10n.string("建立"))
-                                .foregroundStyle(appSkin.palette.primaryText)
-                            Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines))
-                                .font(appSkin.typography.caption)
-                                .foregroundStyle(appSkin.palette.secondaryText)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
-                .accessibilityIdentifier("addLink.create")
+                AddLinkCreateRow(
+                    title: AddLinkCreateCopy.title(target: searchText, source: sourceEntry.word),
+                    notebookLine: AddLinkCreateCopy.notebookLine(notebookName: createNotebookName),
+                    action: startCreation
+                )
+                .transition(.opacity)
                 .disabled(coordinator.linkingTargetCardID != nil)
                 .listRowBackground(Color.clear)
             } else if !hasCandidates {

@@ -167,6 +167,9 @@ struct ReviewCardView: View {
     /// This is only a transient mount gate. The actual measurements live in
     /// `content.measurementCache`, which survives resident-slot recycling.
     @State private var measurementProbeReadyToken: String?
+    /// 哪幾組知識連結被「+N」展開（#2043）。只活在記憶體、綁一張卡：常駐 slot 換卡後
+    /// 舊卡的展開狀態讀不到，也不寫入任何 store。
+    @State private var linkExpansion = ReviewCardLinkExpansion()
 
     private var reviewMeasurementCache: ReviewCardMeasurementCache { content.measurementCache }
 
@@ -851,60 +854,116 @@ struct ReviewCardView: View {
 
             VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
                 ForEach(groups) { group in
-                    HStack(spacing: AppSpacing.s1) {
-                        Text(group.label.localized + "：")
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.tertiaryText)
-
-                        let shownItems: [KGCardLinkSummary] = {
-                            switch presentation {
-                            case .twoPerGroup: Array(group.items.prefix(2))
-                            case .onePerGroup: Array(group.items.prefix(1))
-                            case .summary: []
-                            }
-                        }()
-                        ForEach(Array(shownItems.enumerated()), id: \.element.id) { index, item in
-                            if let creationState = item.pendingCreationState {
-                                pendingCreationLinkButton(item, state: creationState)
-                            } else {
-                                Button { actions.linkTap?(item) } label: {
-                                    Text(item.word)
-                                        .font(appSkin.typography.monoEmphasis)
-                                        .foregroundStyle(appSkin.palette.primaryText)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
-                            }
-
-                            if index < shownItems.count - 1 {
-                                Text("|")
-                                    .font(appSkin.typography.caption)
-                                    .foregroundStyle(appSkin.palette.quaternaryText)
-                            }
-                        }
-
-                        let overflow = group.overflowCount + max(group.items.count - shownItems.count, 0)
-                        if overflow > 0 {
-                            Text("+\(overflow)")
-                                .font(appSkin.typography.caption)
-                                .foregroundStyle(appSkin.palette.quaternaryText)
-                        }
-                    }
+                    linkGroupRow(group, presentation: presentation)
                 }
             }
 
             Spacer()
 
-            Button(action: { actions.addLink?() }) {
+            // 圖示放大一級；可點範圍 ≥44pt 但不佔版面，連結區高度不變（#2044）。
+            ReviewCardHitTargetButton(
+                action: { actions.addLink?() },
+                accessibilityIdentifier: "todayReview.card.addLink",
+                accessibilityLabel: L10n.string("vocab.card.addLink")
+            ) {
                 Image(systemName: "plus")
-                    .font(appSkin.typography.iconSmall)
+                    .font(appSkin.typography.iconMedium)
                     .foregroundStyle(appSkin.palette.secondaryText)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.string("vocab.card.addLink"))
-            .accessibilityIdentifier("todayReview.card.addLink")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One group of the strip: label, the links that fit beside it, and a "+N"
+    /// that is a real control — it expands the group in place (every link, wrapped
+    /// below the label) and collapses it again (#2043).
+    @ViewBuilder
+    private func linkGroupRow(
+        _ group: ReviewCardLinkGroup,
+        presentation: ReviewCardLayoutSolver.GraphLinkPresentation
+    ) -> some View {
+        let isExpanded = linkExpansion.isExpanded(group.id, cardKey: currentCardKey)
+        let row = ReviewCardLinkStripLayout.row(for: group, presentation: presentation, isExpanded: isExpanded)
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
+            HStack(spacing: AppSpacing.s1) {
+                Text(group.label.localized + "：")
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+
+                ForEach(Array(row.leading.enumerated()), id: \.element.id) { index, item in
+                    linkItemButton(item)
+
+                    if index < row.leading.count - 1 {
+                        Text("|")
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.quaternaryText)
+                    }
+                }
+
+                if row.isExpandable {
+                    linkOverflowToggle(group, row: row, isExpanded: isExpanded)
+                } else if row.overflowCount > 0 {
+                    // Links the device does not hold: counted, but nothing to expand.
+                    Text("+\(row.overflowCount)")
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
+                }
+            }
+
+            if !row.expanded.isEmpty {
+                CollocationFlowLayout(spacing: appSkin.spacing.inlineGap) {
+                    ForEach(row.expanded) { item in
+                        linkItemButton(item)
+                    }
+                }
+                .transition(.opacity)
+
+                if row.overflowCount > 0 {
+                    Text("+\(row.overflowCount)")
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
+                }
+            }
+        }
+    }
+
+    /// One tappable link (a pending placeholder explains what is happening instead).
+    @ViewBuilder
+    private func linkItemButton(_ item: KGCardLinkSummary) -> some View {
+        if let creationState = item.pendingCreationState {
+            pendingCreationLinkButton(item, state: creationState)
+        } else {
+            Button { actions.linkTap?(item) } label: {
+                Text(item.word)
+                    .font(appSkin.typography.monoEmphasis)
+                    .foregroundStyle(appSkin.palette.primaryText)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
+        }
+    }
+
+    /// "+N" (collapsed) / "收合" (expanded). The tap area reaches past the glyphs
+    /// without growing the row, so the strip's height budget is untouched.
+    private func linkOverflowToggle(
+        _ group: ReviewCardLinkGroup,
+        row: ReviewCardLinkStripLayout.Row,
+        isExpanded: Bool
+    ) -> some View {
+        let cardKey = currentCardKey
+        return Button {
+            withAnimation(AppMotion.reviewRevealSpring) {
+                linkExpansion.toggle(group.id, cardKey: cardKey)
+            }
+        } label: {
+            Text(isExpanded ? L10n.string("todayReview.card.link.collapse") : "+\(row.overflowCount)")
+                .font(appSkin.typography.caption)
+                .foregroundStyle(isExpanded ? appSkin.palette.tertiaryText : appSkin.palette.quaternaryText)
+                .contentShape(Rectangle().inset(by: -8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("todayReview.card.link.overflow.\(group.id)")
+        .accessibilityValue(isExpanded ? "expanded" : "collapsed")
     }
 
     /// A link whose target card is still being created. It is a real, tappable
@@ -949,17 +1008,19 @@ struct ReviewCardView: View {
     /// section is always *available* even though its content is empty.
     private var addLinkPrompt: some View {
         HStack(spacing: 0) {
-            Button(action: { actions.addLink?() }) {
+            // 可點範圍 ≥44pt 高，版面仍只佔一行 caption（#2044）。
+            ReviewCardHitTargetButton(
+                action: { actions.addLink?() },
+                accessibilityIdentifier: "todayReview.card.addLink"
+            ) {
                 HStack(spacing: appSkin.spacing.inlineGap) {
                     Image(systemName: "plus")
-                        .font(appSkin.typography.iconTiny)
+                        .font(appSkin.typography.iconSmall)
                     Text("新增連結".localized)
                         .font(appSkin.typography.caption)
                 }
                 .foregroundStyle(appSkin.palette.tertiaryText)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("todayReview.card.addLink")
         }
         // The field wrapper receives `todayReview.card.back.field.graphLinks`
         // from the caller. Keep it as a real AX container so the child action
@@ -1037,8 +1098,16 @@ struct ReviewCardView: View {
         face: ReviewCardFace,
         section: ReviewCardLayoutSolver.Section
     ) -> ReviewCardMeasurementKey {
-        ReviewCardMeasurementKey(
-            cardKey: currentCardKey,
+        // While a link group is expanded the graph-links section is taller than its
+        // compaction levels describe. Its heights go under their own key so they
+        // never overwrite the collapsed natural/intermediate/compact measurements
+        // (which collapsing returns to untouched) and never feed the solver a
+        // height the collapsed card would not draw (#2043).
+        let expandedVariant = section == .field(.graphLinks)
+            ? linkExpansion.measurementVariant(cardKey: currentCardKey)
+            : nil
+        return ReviewCardMeasurementKey(
+            cardKey: expandedVariant.map { currentCardKey + "|" + $0 } ?? currentCardKey,
             face: face,
             section: section,
             widthBucket: Int(containerWidth.rounded()),

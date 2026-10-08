@@ -170,6 +170,9 @@ Scope: `ios/BooksAndVocab`
 | 新增連結：既有字連結中 | 點候選列 | 該列 `addLink.row.linking.<cardId>` 進度、所有列與建立鈕鎖定；再次點擊不重送 | 已覆蓋（單元） |
 | 新增連結：既有字連結失敗 | `AddLinkActionError` | banner `addLink.error.reason`（value＝原因碼）依錯誤顯示不同文案；可重試者 banner 帶重試 | 已覆蓋（單元） |
 | 新增連結：建立入口 | 有輸入且本地無此字（含 `apple.` 等尾端標點正規化） | 部分符合候選之下仍有 `addLink.create`；精確符合已連結顯示「已連結」 | 已覆蓋（單元） |
+| 新增連結：建立入口文案（#2037） | 建立入口出現 | 主行為完整動作句「建立「新字」並連結到「來源字」」（`addLink.create.title`，超過 20 字元以「…」截斷、動詞與來源字完整，字內引號改為 `'`，最多兩行）；副行「加入：單字本名稱」（`addLink.create.notebook`，名稱取來源卡所在單字本，查不到→備援字串、永不顯示 id；單一單字本入口也顯示）；兩行各以隱藏元素鏡射 id（value＝文字），`addLink.create` 的 label 含新字與來源字；文字隨輸入淡入淡出、不跳變。舊 key `建立` 不改義（仍是 create_card 步驟標籤） | 已覆蓋（單元＋UITest） |
+| 連結區「+N」展開（#2043） | 某組連結多於 solver 的 presentation 能顯示（2／1／0 個） | 「+N」是按鈕（`todayReview.card.link.overflow.<groupId>`，value=`collapsed`／`expanded`）；點開就地在組名下方折行列出其餘連結（至多 20 個，其餘仍計入「+K」；`AppMotion.reviewRevealSpring`），再點收合（文案「收合」）。展開狀態只存記憶體、綁單張卡（換卡即還原）；展開高度寫在獨立的量測 key，不污染收合時 natural／intermediate／compact 的量測。裝置上沒有的連結只計數、不可展開 | 已覆蓋（單元＋UITest） |
+| 「＋」新增連結點擊範圍（#2044） | 連結列尾的「＋」或空狀態「新增連結」 | 圖示放大一級；可點範圍與 accessibility frame ≥ 44×44，版面佔位仍等於 label（連結區高度、solver 預算不變）；`todayReview.card.addLink` id 不變 | 已覆蓋（單元＋UITest） |
 | 建立中 app 被殺 | 下次進入複習，`resume` 發現 durable record | hub init 即還原 pending 項（projection 載入）；`resume` 依 operationId 續輪詢並完成本地 pull，或以同 key 重送未回應的 POST；source 卡已不存在則丟棄 | 已覆蓋（單元） |
 | 開啟新增連結 sheet | sheet 出現 | `addLink.searchField` 立即取得鍵盤 focus，可直接打字 | 已覆蓋（`AddLinkSheetUXUITests`） |
 | 建立進度步驟標籤 | `AddLinkCreationCoordinator` running | 六步依序為 `addLink.step.resolveTarget／translate／createCard／enrich／createLink／localProjection`，描述該步實際動作 | 已覆蓋（`AddLinkStepCopyTests`） |

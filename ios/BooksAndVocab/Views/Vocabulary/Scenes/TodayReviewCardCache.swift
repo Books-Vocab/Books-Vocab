@@ -23,19 +23,11 @@ struct TodayReviewCardCache {
 
     mutating func rebuild(for entry: VocabularyEntry) {
         let card = CardPresentation(entry: entry)
-        let compactGroups = card.activeLinkGroups.map { fullGroup in
-            let limited = fullGroup.limited(to: 2)
-            return TodayReviewPresenterState.LinkGroup(
-                id: fullGroup.id,
-                label: fullGroup.label,
-                items: limited.items,
-                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
-            )
-        }
+        let linkGroups = card.activeLinkGroups.map { Self.reviewLinkGroup($0.pendingFirst()) }
         let backDocument = card.document.reviewBackSubset()
         storage[entry.id] = .init(
             card: card,
-            linkGroups: compactGroups,
+            linkGroups: linkGroups,
             backDocument: backDocument,
             measurementCache: .init()
         )
@@ -79,22 +71,21 @@ struct TodayReviewCardCache {
         let (card, _) = PerfLog.review.measure("prewarm.card", "w=\(entry.word)") {
             CardPresentation(entry: entry)
         }
-        let compactGroups = card.activeLinkGroups.map { fullGroup in
-            let shuffled = fullGroup.shuffled().pendingFirst()
-            let limited = shuffled.limited(to: 2)
-            return TodayReviewPresenterState.LinkGroup(
-                id: fullGroup.id,
-                label: fullGroup.label,
-                items: limited.items,
-                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
-            )
-        }
+        let linkGroups = card.activeLinkGroups.map { Self.reviewLinkGroup($0.shuffled().pendingFirst()) }
         let backDocument = card.document.reviewBackSubset()
         return .init(
             card: card,
-            linkGroups: compactGroups,
+            linkGroups: linkGroups,
             backDocument: backDocument,
             measurementCache: .init()
         )
+    }
+
+    /// The prepared card keeps EVERY active link of the group, in display order
+    /// (pending first). How many show beside the label, and the "+N", is decided
+    /// at render time by `ReviewCardLinkStripLayout` — truncating here made the
+    /// "+N" impossible to expand (#2043).
+    private static func reviewLinkGroup(_ group: CardLinkGroupPresentation) -> ReviewCardLinkGroup {
+        ReviewCardLinkGroup(id: group.id, label: group.label, items: group.items, overflowCount: 0)
     }
 }

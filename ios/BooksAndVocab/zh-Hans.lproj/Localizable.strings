@@ -1335,3 +1335,10 @@
 "addLink.creation.backToSearch" = "返回搜索";
 "addLink.target.linkable" = "这本单字本已有此单词，从上方列表选取即可链接。";
 "addLink.target.alreadyLinked" = "已链接。";
+
+/* Add Link create entry (#2037) */
+"addLink.create.title" = "创建“%@”并链接到“%@”";
+"addLink.create.notebook" = "加入：%@";
+
+/* Review card link strip: collapse an expanded group (#2043) */
+"todayReview.card.link.collapse" = "收起";

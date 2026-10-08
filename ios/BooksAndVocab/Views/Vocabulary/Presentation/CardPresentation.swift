@@ -7,30 +7,19 @@ struct CardLinkGroupPresentation: Identifiable {
 
     var overflowCount: Int { 0 }
 
-    func limited(to count: Int) -> CardLinkGroupPresentation {
-        CardLinkGroupPresentation(
-            id: id,
-            label: label,
-            items: Array(items.prefix(max(0, count)))
-        )
-    }
-
     func shuffled() -> CardLinkGroupPresentation {
         CardLinkGroupPresentation(id: id, label: label, items: items.shuffled())
     }
 
     /// Stable partition that keeps links still being created in front, so a
-    /// shuffle followed by `limited(to:)` can never hide them behind "+N".
+    /// shuffle followed by the strip's per-presentation cut can never hide them
+    /// behind "+N".
     func pendingFirst() -> CardLinkGroupPresentation {
         CardLinkGroupPresentation(
             id: id,
             label: label,
             items: items.filter(\.isPendingCreation) + items.filter { !$0.isPendingCreation }
         )
-    }
-
-    func overflowed(relativeToFullGroup fullGroup: CardLinkGroupPresentation) -> Int {
-        max(0, fullGroup.items.count - items.count)
     }
 }
 
