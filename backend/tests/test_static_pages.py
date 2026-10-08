@@ -13,6 +13,7 @@ class TestStaticPages:
     def _patch_static_root(self, tmp_path: Path, monkeypatch):
         """Point _STATIC_ROOT at tmp_path so tests don't depend on repo root files."""
         import kg.routers.static_pages as mod
+
         monkeypatch.setattr(mod, "_STATIC_ROOT", tmp_path)
         return tmp_path
 
@@ -85,3 +86,35 @@ class TestStaticPages:
         assert isinstance(resp, HTMLResponse)
         assert resp.status_code == 404
         assert "Guide Not Found" in resp.body.decode()
+
+
+class TestHeadAndCrawlerRoutes:
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from kg.routers.static_pages import router
+
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    def test_head_allowed_on_pages(self):
+        c = self._client()
+        for path in ("/", "/privacy.html", "/support.html", "/terms.html", "/guide.html"):
+            assert c.head(path).status_code != 405, path
+
+    def test_robots_txt(self):
+        r = self._client().get("/robots.txt")
+        assert r.status_code == 200
+        assert "Disallow: /admin" in r.text and "Sitemap:" in r.text
+
+    def test_sitemap_lists_pages(self):
+        r = self._client().get("/sitemap.xml")
+        assert r.status_code == 200
+        assert "/privacy.html" in r.text and "xml" in r.headers["content-type"]
+
+    def test_favicon_served(self):
+        c = self._client()
+        assert c.get("/favicon.ico").status_code == 200
+        assert c.head("/favicon.ico").status_code == 200
