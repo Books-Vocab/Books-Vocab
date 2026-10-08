@@ -114,6 +114,19 @@ struct PodcastPlayerViewModelTests {
         #expect(viewModel.state == .paused)
     }
 
+    @Test
+    func secondInterruptionBeganDoesNotClearTheResumeLatch() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 2)
+        #expect(viewModel.state == .playing)
+    }
+
     // #2109: VoiceOver swipe up/down on the seek bar (adjustable trait) must
     // seek ±15 s through viewModel.seek, clamped to the episode bounds.
     @Test

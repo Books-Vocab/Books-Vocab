@@ -242,7 +242,8 @@ final class PodcastPlayerViewModel {
                 // load would otherwise leave VM stuck in .loading forever
                 // because no natural .ready transition happens post-interrupt.
                 guard let self else { return }
-                self.resumeAfterSystemPause = self.state == .playing
+                // A repeated began must not clear an earlier latch.
+                if self.state == .playing { self.resumeAfterSystemPause = true }
                 if self.state == .playing || self.state == .loading {
                     self.state = .paused
                 }

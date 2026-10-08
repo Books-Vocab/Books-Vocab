@@ -398,6 +398,12 @@ final class PodcastAudioEngine: NSObject {
         #endif
     }
 
+    /// MPRemoteCommand handlers are not documented to run on main, while the
+    /// owner's callbacks assume main-actor isolation.
+    private func runOnMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+
     #if os(iOS)
     private func registerAudioSessionObservers() {
         guard interruptionObserver == nil else { return }
@@ -525,13 +531,13 @@ final class PodcastAudioEngine: NSObject {
         center.changePlaybackPositionCommand.isEnabled = true
         let play = center.playCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            if let onRemotePlay = self.onRemotePlay { onRemotePlay() } else { self.play() }
+            self.runOnMain { if let onRemotePlay = self.onRemotePlay { onRemotePlay() } else { self.play() } }
             return .success
         }
         remoteCommandTargets.append((center.playCommand, play))
         let pause = center.pauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            if let onRemotePause = self.onRemotePause { onRemotePause() } else { self.pause() }
+            self.runOnMain { if let onRemotePause = self.onRemotePause { onRemotePause() } else { self.pause() } }
             return .success
         }
         remoteCommandTargets.append((center.pauseCommand, pause))
