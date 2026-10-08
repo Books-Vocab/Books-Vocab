@@ -30,13 +30,17 @@ def should_apply_subscription_snapshot(
     existing: object,
     incoming: dict[str, Any],
 ) -> bool:
-    """Reject stale or duplicate signed notifications without losing audit data."""
+    """Reject stale or duplicate Apple-signed snapshots without losing audit data.
+
+    The watermark is Apple's ``signedDate``: a notification's envelope, or the
+    transaction JWS of a verified /sync or /reconcile.
+    """
     existing_subscription = existing if isinstance(existing, dict) else {}
     existing_date = _parse_signed_date(existing_subscription.get("last_signed_date"))
     incoming_date = _parse_signed_date(incoming.get("signed_date"))
 
     # Unsigned/dev snapshots remain supported, but may not erase an ordering
-    # watermark established by a verified App Store notification.
+    # watermark established by an Apple-signed notification or transaction.
     if existing_date is not None and incoming_date is None:
         return False
     if incoming_date is None or existing_date is None:
@@ -104,7 +108,9 @@ def write_subscription_snapshot(
             "is_active": normalized_status in ACTIVE_BEARING_STATUSES,
             "product_id": product_id.strip(),
             "plan_name": "Books & Vocab Pro",
-            "price_display": price_display.strip() if isinstance(price_display, str) and price_display.strip() else subscription.get("price_display"),
+            "price_display": price_display.strip()
+            if isinstance(price_display, str) and price_display.strip()
+            else subscription.get("price_display"),
             "status": normalized_status,
             "is_trial": is_trial,
             "trial_days": subscription.get("trial_days") or 7,
