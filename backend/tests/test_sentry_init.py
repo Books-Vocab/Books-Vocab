@@ -67,6 +67,14 @@ def test_scrub_event_redacts_authorization_header():
     assert req["cookies"]["preferences"] == "dark"
 
 
+def test_scrub_event_redacts_api_key_headers():
+    event = {"request": {"headers": {"X-KG-API-Key": "kg_secret", "X-API-Key": "s2", "accept": "*/*"}}}
+    headers = _scrub_event(event, {})["request"]["headers"]
+    assert headers["X-KG-API-Key"] == "[scrubbed]"
+    assert headers["X-API-Key"] == "[scrubbed]"
+    assert headers["accept"] == "*/*"
+
+
 def test_scrub_event_tolerates_missing_request():
     assert _scrub_event({}, {}) == {}
     assert _scrub_event({"request": None}, {}) == {"request": None}
