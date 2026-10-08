@@ -127,6 +127,23 @@ struct PodcastPlayerViewModelTests {
         #expect(viewModel.state == .playing)
     }
 
+    // An interruption that ends WITHOUT `.shouldResume` must drop the latch,
+    // or a later interruption's `.shouldResume` restarts audio the user never resumed.
+    @Test
+    func interruptionEndedWithoutShouldResumeClearsTheLatch() {
+        let (audio, viewModel) = makeReadyViewModel()
+        viewModel.play()
+
+        audio.emitSystemPause()
+        audio.emitInterruptionEndedWithoutResume()
+        #expect(viewModel.state == .paused)
+        audio.emitSystemPause()
+        audio.emitSystemResume()
+
+        #expect(audio.playCount == 1)
+        #expect(viewModel.state == .paused)
+    }
+
     // Route loss (headphones unplugged) is not an interruption: a later
     // interruption's `.shouldResume` must not restart audio on the speaker.
     @Test
@@ -352,7 +369,7 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     var onLoadFailed: ((String) -> Void)?
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
     var onSystemPause: (() -> Void)?
-    var onSystemResume: (() -> Void)?
+    var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)?
     var onRouteLost: (() -> Void)?
     var onRemotePlay: (() -> Void)?
     var onRemotePause: (() -> Void)?
@@ -392,7 +409,9 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
         isPlaying = false
         onSystemPause?()
     }
-    func emitSystemResume() { onSystemResume?() }
+    func emitSystemResume() { onInterruptionEnded?(true) }
+    /// Interruption `.ended` without `.shouldResume` (e.g. the other app's audio kept focus).
+    func emitInterruptionEndedWithoutResume() { onInterruptionEnded?(false) }
     /// Real engine: route loss pauses the player, then reports it (no resume follows).
     func emitRouteLost() {
         isPlaying = false

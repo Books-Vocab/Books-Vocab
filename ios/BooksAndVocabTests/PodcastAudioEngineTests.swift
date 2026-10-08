@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import BooksAndVocab
@@ -208,5 +209,155 @@ struct PodcastAudioEngineTests {
         // as-is (no ceiling), but a negative seek is still floored at 0.
         #expect(PodcastSeekPolicy.clamp(75, duration: 0) == 75)
         #expect(PodcastSeekPolicy.clamp(-5, duration: 0) == 0)
+    }
+
+    // MARK: - Audio-session notification routing (#2103)
+    //
+    // The VM tests use a fake engine, so these pin the real engine half: which
+    // callback each AVAudioSession notification reaches, and that remote
+    // commands hop to main before touching the owner's main-actor callbacks.
+
+    #if os(iOS)
+    private func interruption(_ type: AVAudioSession.InterruptionType,
+                              options: AVAudioSession.InterruptionOptions? = nil) -> Notification {
+        var info: [AnyHashable: Any] = [AVAudioSessionInterruptionTypeKey: type.rawValue]
+        if let options { info[AVAudioSessionInterruptionOptionKey] = options.rawValue }
+        return Notification(name: AVAudioSession.interruptionNotification, object: nil, userInfo: info)
+    }
+
+    private func routeChange(_ reason: AVAudioSession.RouteChangeReason) -> Notification {
+        Notification(
+            name: AVAudioSession.routeChangeNotification,
+            object: nil,
+            userInfo: [AVAudioSessionRouteChangeReasonKey: reason.rawValue]
+        )
+    }
+
+    @Test func interruptionBegan_firesOnSystemPauseOnly() {
+        let engine = PodcastAudioEngine()
+        var events: [String] = []
+        engine.onSystemPause = { events.append("pause") }
+        engine.onInterruptionEnded = { events.append("ended(\($0))") }
+        engine.onRouteLost = { events.append("route") }
+
+        engine.handleInterruptionNotification(interruption(.began))
+
+        #expect(events == ["pause"])
+    }
+
+    @Test func interruptionEndedWithShouldResume_reportsTrueAndNeverRestartsAudioItself() {
+        let engine = PodcastAudioEngine()
+        var ended: [Bool] = []
+        var paused = 0
+        engine.onSystemPause = { paused += 1 }
+        engine.onInterruptionEnded = { ended.append($0) }
+
+        engine.handleInterruptionNotification(interruption(.ended, options: .shouldResume))
+
+        #expect(ended == [true])
+        #expect(paused == 0)
+        #expect(!engine.isPlaying, "engine must leave the resume decision to its owner")
+    }
+
+    @Test func interruptionEndedWithoutShouldResume_stillReportsFalse() {
+        let engine = PodcastAudioEngine()
+        var ended: [Bool] = []
+        engine.onInterruptionEnded = { ended.append($0) }
+
+        engine.handleInterruptionNotification(interruption(.ended))
+        engine.handleInterruptionNotification(interruption(.ended, options: []))
+
+        #expect(ended == [false, false])
+    }
+
+    @Test func malformedInterruptionNotification_isIgnored() {
+        let engine = PodcastAudioEngine()
+        var fired = 0
+        engine.onSystemPause = { fired += 1 }
+        engine.onInterruptionEnded = { _ in fired += 1 }
+
+        engine.handleInterruptionNotification(
+            Notification(name: AVAudioSession.interruptionNotification, object: nil, userInfo: nil)
+        )
+
+        #expect(fired == 0)
+    }
+
+    @Test func routeLoss_firesOnRouteLostNotOnSystemPause() {
+        let engine = PodcastAudioEngine()
+        var events: [String] = []
+        engine.onSystemPause = { events.append("pause") }
+        engine.onInterruptionEnded = { events.append("ended(\($0))") }
+        engine.onRouteLost = { events.append("route") }
+
+        engine.handleRouteChangeNotification(routeChange(.oldDeviceUnavailable))
+
+        #expect(events == ["route"])
+    }
+
+    @Test func otherRouteChanges_doNotFireAnything() {
+        let engine = PodcastAudioEngine()
+        var fired = 0
+        engine.onRouteLost = { fired += 1 }
+        engine.onSystemPause = { fired += 1 }
+
+        engine.handleRouteChangeNotification(routeChange(.newDeviceAvailable))
+        engine.handleRouteChangeNotification(routeChange(.categoryChange))
+
+        #expect(fired == 0)
+    }
+    #endif
+
+    // MARK: - Remote command dispatch
+
+    private final class MainThreadProbe: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _ranOnMain: [Bool] = []
+        func record() { lock.lock(); _ranOnMain.append(Thread.isMainThread); lock.unlock() }
+        var ranOnMain: [Bool] { lock.lock(); defer { lock.unlock() }; return _ranOnMain }
+    }
+
+    @Test func remotePlay_fromBackgroundThread_runsOwnerCallbackOnMain() async {
+        let engine = PodcastAudioEngine()
+        let probe = MainThreadProbe()
+        engine.onRemotePlay = { probe.record() }
+
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                engine.dispatchRemotePlay()
+                // Main-queue FIFO: this runs after the hop enqueued above.
+                DispatchQueue.main.async { done.resume() }
+            }
+        }
+
+        #expect(probe.ranOnMain == [true])
+    }
+
+    @Test func remotePause_fromBackgroundThread_runsOwnerCallbackOnMain() async {
+        let engine = PodcastAudioEngine()
+        let probe = MainThreadProbe()
+        engine.onRemotePause = { probe.record() }
+
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                engine.dispatchRemotePause()
+                DispatchQueue.main.async { done.resume() }
+            }
+        }
+
+        #expect(probe.ranOnMain == [true])
+    }
+
+    @MainActor
+    @Test func remoteCommand_onMain_runsSynchronouslyWithoutExtraHop() {
+        let engine = PodcastAudioEngine()
+        var calls: [String] = []
+        engine.onRemotePlay = { calls.append("play") }
+        engine.onRemotePause = { calls.append("pause") }
+
+        engine.dispatchRemotePlay()
+        engine.dispatchRemotePause()
+
+        #expect(calls == ["play", "pause"])
     }
 }

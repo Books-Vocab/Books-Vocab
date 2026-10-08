@@ -321,7 +321,7 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     var onLoadFailed: ((String) -> Void)?
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
     var onSystemPause: (() -> Void)?
-    var onSystemResume: (() -> Void)?
+    var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)?
     var onRouteLost: (() -> Void)?
     var onRemotePlay: (() -> Void)?
     var onRemotePause: (() -> Void)?

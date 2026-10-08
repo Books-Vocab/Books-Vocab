@@ -61,7 +61,7 @@ protocol PodcastAudioPlaying: AnyObject {
     var onLoadFailed: ((String) -> Void)? { get set }
     var onBufferedEndChanged: ((TimeInterval) -> Void)? { get set }
     var onSystemPause: (() -> Void)? { get set }
-    var onSystemResume: (() -> Void)? { get set }
+    var onInterruptionEnded: ((_ shouldResume: Bool) -> Void)? { get set }
     var onRouteLost: (() -> Void)? { get set }
     var onRemotePlay: (() -> Void)? { get set }
     var onRemotePause: (() -> Void)? { get set }
@@ -175,7 +175,7 @@ final class PodcastPlayerViewModel {
     @ObservationIgnored
     private var sleepTimerSource: DispatchSourceTimer?
     /// True only when a system pause (interruption began) hit
-    /// while the user was actually playing. Consumed by `onSystemResume`; any
+    /// while the user was actually playing. Consumed by `onInterruptionEnded`; any
     /// explicit play/pause/teardown clears it, so `.shouldResume` never
     /// restarts audio the user had paused.
     @ObservationIgnored
@@ -250,13 +250,16 @@ final class PodcastPlayerViewModel {
                 }
             }
         }
-        audioEngine.onSystemResume = { [weak self] in
+        audioEngine.onInterruptionEnded = { [weak self] shouldResume in
             MainActor.assumeIsolated {
-                // The engine only reports that resuming is allowed; resume
-                // through play() iff we were playing when the system paused us.
-                guard let self, self.resumeAfterSystemPause else { return }
+                // Every interruption end consumes the latch, so an interruption
+                // that ends without `.shouldResume` cannot leak it into a later
+                // one. Resume through play() iff we were playing when the
+                // system paused us AND the system allows resuming.
+                guard let self else { return }
+                let armed = self.resumeAfterSystemPause
                 self.resumeAfterSystemPause = false
-                if self.state == .paused { self.play() }
+                if shouldResume, armed, self.state == .paused { self.play() }
             }
         }
         // Lock-screen / Control Center commands go through the same path as
