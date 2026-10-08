@@ -6,6 +6,7 @@ Covers:
     and totals match per-call cost via :mod:`kg.quota_service`
   * range='month' boundary excludes prior-month rows
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -135,8 +136,12 @@ def test_aggregates_by_service_model_calltype(cost_env):
 
     # by_call_type round-trip
     assert set(r["by_call_type"].keys()) == {
-        "judge", "manual_link_judge", "judge_manual",
-        "translate_quick", "embed", "enrich",
+        "judge",
+        "manual_link_judge",
+        "judge_manual",
+        "translate_quick",
+        "embed",
+        "enrich",
     }
 
     # Cross-check: sum of by_call_type cost == total_cost_usd (modulo rounding)
@@ -201,10 +206,24 @@ def test_by_model_uses_real_model_column(cost_env):
     from kg.quota_service import token_cost_usd
 
     now = datetime.now(UTC)
-    _record("u1", "judge", t_in=1_000_000, t_out=0, when=now - timedelta(minutes=1),
-            provider="deepseek", model="deepseek-v4-flash")
-    _record("u1", "judge", t_in=1_000_000, t_out=0, when=now - timedelta(minutes=2),
-            provider="gemini", model="gemini-2.5-flash-lite")
+    _record(
+        "u1",
+        "judge",
+        t_in=1_000_000,
+        t_out=0,
+        when=now - timedelta(minutes=1),
+        provider="deepseek",
+        model="deepseek-v4-flash",
+    )
+    _record(
+        "u1",
+        "judge",
+        t_in=1_000_000,
+        t_out=0,
+        when=now - timedelta(minutes=2),
+        provider="gemini",
+        model="gemini-2.5-flash-lite",
+    )
 
     r = get_user_cost_summary("u1", range_="month")
     assert set(r["by_model"].keys()) == {"deepseek-v4-flash", "gemini-2.5-flash-lite"}
@@ -212,9 +231,11 @@ def test_by_model_uses_real_model_column(cost_env):
     assert r["by_model"]["gemini-2.5-flash-lite"]["calls"] == 1
     # Each model's cost priced at its own provider's rate.
     assert r["by_model"]["deepseek-v4-flash"]["cost_usd"] == round(
-        token_cost_usd("judge", 1_000_000, 0, provider="deepseek"), 6)
+        token_cost_usd("judge", 1_000_000, 0, provider="deepseek"), 6
+    )
     assert r["by_model"]["gemini-2.5-flash-lite"]["cost_usd"] == round(
-        token_cost_usd("judge", 1_000_000, 0, provider="gemini"), 6)
+        token_cost_usd("judge", 1_000_000, 0, provider="gemini"), 6
+    )
 
 
 def test_by_model_null_model_falls_back_to_inferred(cost_env):
@@ -233,3 +254,12 @@ def test_invalid_range_raises(cost_env):
 
     with pytest.raises(ValueError):
         get_user_cost_summary("u1", range_="forever")
+
+
+def test_cost_summary_uses_cached_tokens(cost_env):
+    import kg.token_tracker as tt
+    from kg.admin_cost_summary import get_user_cost_summary
+
+    tt.record("u1", "judge", 1000, 100, cached_input_tokens=800, provider="deepseek")
+    r = get_user_cost_summary("u1", range_="all")
+    assert r["total_cost_usd"] == pytest.approx((200 * 0.14 + 800 * 0.0028 + 100 * 0.28) / 1e6, abs=1e-6)

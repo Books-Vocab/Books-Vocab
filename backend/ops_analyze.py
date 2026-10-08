@@ -25,7 +25,7 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from kg.ops_shared import connect_ro, data_dir, notebook_files, provider_column_expr, resolve_uid
+from kg.ops_shared import column_expr, connect_ro, data_dir, notebook_files, provider_column_expr, resolve_uid
 from kg.quota_service import token_cost_usd
 
 
@@ -96,14 +96,19 @@ def level_1(uid: str, udir: Path) -> None:
     if token_db.exists():
         conn = connect_ro(token_db)
         pcol = provider_column_expr(conn)
+        ccol = column_expr(conn, "token_usage", "cached_input_tokens")
         rows = conn.execute(
-            f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
+            f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens), "
+            f"SUM(COALESCE({ccol}, 0)) "
             f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
             (uid, cutoff),
         ).fetchall()
         conn.close()
-        total = sum(token_cost_usd(ct, inp or 0, out or 0, provider=prov) for ct, prov, _, inp, out in rows)
-        total_calls = sum(c for _, _, c, _, _ in rows)
+        total = sum(
+            token_cost_usd(ct, inp or 0, out or 0, provider=prov, cached_tokens=cached or 0)
+            for ct, prov, _, inp, out, cached in rows
+        )
+        total_calls = sum(c for _, _, c, _, _, _ in rows)
         print(f"  24h 額度: ${total:.4f} / ${pro_limit:.2f} ({total / pro_limit * 100:.1f}%)")
         print(f"  24h 呼叫: {total_calls} 次")
     else:
@@ -148,8 +153,10 @@ def level_2(uid: str, udir: Path) -> None:
     cutoff = (datetime.now(UTC) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     conn = connect_ro(token_db)
     pcol = provider_column_expr(conn)
+    ccol = column_expr(conn, "token_usage", "cached_input_tokens")
     rows = conn.execute(
-        f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
+        f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens), "
+        f"SUM(COALESCE({ccol}, 0)) "
         f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
         (uid, cutoff),
     ).fetchall()
@@ -162,14 +169,14 @@ def level_2(uid: str, udir: Path) -> None:
     # GROUP BY (call_type, provider) 把同一 call_type 拆成多列；各 provider
     # 切片用自身費率定價後折回 per-call_type bucket，顯示維持逐 call_type。
     buckets: dict[str, dict] = {}
-    for ct, prov, calls, inp, out in rows:
+    for ct, prov, calls, inp, out, cached in rows:
         inp = inp or 0
         out = out or 0
         b = buckets.setdefault(ct, {"calls": 0, "inp": 0, "out": 0, "cost": 0.0})
         b["calls"] += calls
         b["inp"] += inp
         b["out"] += out
-        b["cost"] += token_cost_usd(ct, inp, out, provider=prov)
+        b["cost"] += token_cost_usd(ct, inp, out, provider=prov, cached_tokens=cached or 0)
 
     ordered = sorted(buckets.items(), key=lambda kv: kv[1]["inp"], reverse=True)
 

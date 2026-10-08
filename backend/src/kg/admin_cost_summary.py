@@ -79,14 +79,12 @@ def model_for(call_type: str) -> str:
     return _MODEL_MAP.get(call_type, _DEFAULT_MODEL)
 
 
-def query_cost_rows(
-    conn: Any, *, user_id: str | None = None, since: str | None = None
-) -> list[tuple]:
+def query_cost_rows(conn: Any, *, user_id: str | None = None, since: str | None = None) -> list[tuple]:
     """Connection-agnostic:對 ``token_usage`` 跑唯一的 cost 聚合 query。
 
     cost-by-call_type 業務語意的**單一真相源** —— admin(RW conn)與 ops
     (``connect_ro``)都呼叫本函式,各自只負責「怎麼連」,不重寫「查什麼」。
-    回傳 ``(uid, call_type, provider, model, cnt, total_in, total_out)``;
+    回傳 ``(uid, call_type, provider, model, cnt, total_in, total_out, total_cached)``;
     ``user_id=None`` 表跨用戶(供 cost-overview)。``provider``/``model`` 欄缺的
     legacy DB 以 NULL 切片回傳,由 :func:`fold_user_summary` fallback 定價/推斷。
     """
@@ -94,14 +92,16 @@ def query_cost_rows(
 
     pcol = column_expr(conn, "token_usage", "provider")
     mcol = column_expr(conn, "token_usage", "model")
+    ccol = column_expr(conn, "token_usage", "cached_input_tokens")
     # 跨用戶(user_id=None)才投影領頭 uid 欄供 cost-overview 依 row[0] 分組;
-    # 單用戶不需要 —— fold_user_summary 只讀 row[-6:],省掉 uid 欄即免去 echo
+    # 單用戶不需要 —— fold_user_summary 只讀 row[-7:],省掉 uid 欄即免去 echo
     # 一個沒人讀的值與位置敏感的雙重 param 綁定。
     uid_select = "user_id AS uid, " if user_id is None else ""
     sql = (
         f"SELECT {uid_select}call_type, {pcol} AS provider, "
         f"{mcol} AS model, COUNT(*) AS cnt, "
-        "SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out "
+        "SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out, "
+        f"SUM(COALESCE({ccol}, 0)) AS total_cached "
         "FROM token_usage"
     )
     where: list[str] = []
@@ -114,11 +114,7 @@ def query_cost_rows(
         params.append(since)
     if where:
         sql += " WHERE " + " AND ".join(where)
-    group = (
-        "call_type, provider, model"
-        if user_id is not None
-        else "user_id, call_type, provider, model"
-    )
+    group = "call_type, provider, model" if user_id is not None else "user_id, call_type, provider, model"
     sql += f" GROUP BY {group}"
     return conn.execute(sql, params).fetchall()
 
@@ -141,7 +137,7 @@ def fold_user_summary(rows: list[tuple]) -> dict[str, Any]:
     by_call_type + totals。每個 (call_type, provider) 切片以自身 provider 費率
     定價;NULL provider 的 legacy 列 fallback 到 call_type 當前 route 的 provider。
 
-    只讀每列尾端的 ``call_type, provider, model, cnt, total_in, total_out``,
+    只讀每列尾端的 ``call_type, provider, model, cnt, total_in, total_out, total_cached``,
     領頭 uid(若有)忽略 —— 故單用戶/跨用戶共用同一折疊邏輯。
     """
     from .quota_service import token_cost_usd
@@ -154,11 +150,11 @@ def fold_user_summary(rows: list[tuple]) -> dict[str, Any]:
     total_cost = 0.0
 
     for row in rows:
-        call_type, provider, model, cnt, t_in, t_out = row[-6:]
+        call_type, provider, model, cnt, t_in, t_out, t_cached = row[-7:]
         ti = int(t_in or 0)
         to = int(t_out or 0)
         c = int(cnt or 0)
-        cost = token_cost_usd(call_type, ti, to, provider=provider)
+        cost = token_cost_usd(call_type, ti, to, provider=provider, cached_tokens=int(t_cached or 0))
 
         total_in += ti
         total_out += to
@@ -194,9 +190,7 @@ def _accumulate(
     cost: float,
 ) -> None:
     """Fold one priced row slice into ``buckets[key]``, creating it if absent."""
-    bucket = buckets.setdefault(
-        key, {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
-    )
+    bucket = buckets.setdefault(key, {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0})
     bucket["calls"] += calls
     bucket["input_tokens"] += input_tokens
     bucket["output_tokens"] += output_tokens

@@ -14,6 +14,7 @@ from pathlib import Path
 from kg.ops_edit_shared import users_file
 from kg.ops_shared import (
     assert_readonly_sql,
+    column_expr,
     connect_ro,
     data_dir,
     emit_json,
@@ -84,18 +85,22 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
 
     conn = connect_ro(db_path)
     provider_col = provider_column_expr(conn)
+    cached_col = f"COALESCE({column_expr(conn, 'token_usage', 'cached_input_tokens')}, 0)"
     rows = conn.execute(
-        f"SELECT call_type, input_tokens, output_tokens, created_at, {provider_col} AS provider "
+        f"SELECT call_type, input_tokens, output_tokens, created_at, {provider_col} AS provider, "
+        f"{cached_col} AS cached "
         "FROM token_usage WHERE user_id = ? AND created_at >= ? ORDER BY created_at",
         (uid, cutoff),
     ).fetchall()
     conn.close()
 
-    total = sum(token_cost_usd(r[0], r[1], r[2], provider=r[4]) for r in rows)
+    total = sum(token_cost_usd(r[0], r[1], r[2], provider=r[4], cached_tokens=r[5]) for r in rows)
     hourly: dict[str, float] = {}
-    for call_type, inp, out, ts, provider in rows:
+    for call_type, inp, out, ts, provider, cached in rows:
         hour = ts[:13]
-        hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
+        hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(
+            call_type, inp, out, provider=provider, cached_tokens=cached
+        )
 
     if args.json:
         emit_json(
@@ -285,8 +290,10 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
 
     conn = connect_ro(db_path)
     provider_col = provider_column_expr(conn)
+    cached_col = f"COALESCE({column_expr(conn, 'token_usage', 'cached_input_tokens')}, 0)"
     rows = conn.execute(
-        f"SELECT user_id, call_type, input_tokens, output_tokens, {provider_col} AS provider "
+        f"SELECT user_id, call_type, input_tokens, output_tokens, {provider_col} AS provider, "
+        f"{cached_col} AS cached "
         "FROM token_usage WHERE created_at >= ?",
         (cutoff,),
     ).fetchall()
@@ -294,8 +301,10 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
 
     user_costs: dict[str, float] = {}
     user_calls: dict[str, int] = {}
-    for uid, call_type, inp, out, provider in rows:
-        user_costs[uid] = user_costs.get(uid, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
+    for uid, call_type, inp, out, provider, cached in rows:
+        user_costs[uid] = user_costs.get(uid, 0.0) + token_cost_usd(
+            call_type, inp, out, provider=provider, cached_tokens=cached
+        )
         user_calls[uid] = user_calls.get(uid, 0) + 1
 
     ranked = sorted(

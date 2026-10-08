@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from kg.error_signals import JUDGE_AUTO_REJECT_WHERE, PIPELINE_FAILURE_WHERE
-from kg.ops_shared import connect_ro, data_dir, emit_json, print_table, provider_column_expr, resolve_uid
+from kg.ops_shared import column_expr, connect_ro, data_dir, emit_json, print_table, provider_column_expr, resolve_uid
 from kg.quota_service import token_cost_usd
 
 from .ops_cli_shared import _bucket_key_from_date, _enumerate_buckets, _parse_day
@@ -95,7 +95,11 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     if db_path.exists():
         conn = connect_ro(db_path)
         pcol = provider_column_expr(conn)
-        sql = f"SELECT user_id, call_type, {pcol} AS provider, input_tokens, output_tokens, created_at FROM token_usage"
+        ccol = f"COALESCE({column_expr(conn, 'token_usage', 'cached_input_tokens')}, 0)"
+        sql = (
+            f"SELECT user_id, call_type, {pcol} AS provider, input_tokens, output_tokens, "
+            f"{ccol} AS cached, created_at FROM token_usage"
+        )
         clauses: list[str] = []
         params: list = []
         if since_dt is not None:
@@ -114,7 +118,7 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         rows = conn.execute(sql, params).fetchall()
         conn.close()
 
-        for user_id, call_type, provider, t_in, t_out, created_at in rows:
+        for user_id, call_type, provider, t_in, t_out, t_cached, created_at in rows:
             created_dt = _parse_utc_instant(created_at)
             if created_dt is None or (since_dt is not None and created_dt < since_dt):
                 continue
@@ -124,7 +128,7 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
             max_dt = d if max_dt is None or d > max_dt else max_dt
             if metric == "cost":
                 acc[key] = float(acc.get(key, 0.0)) + token_cost_usd(
-                    call_type, int(t_in or 0), int(t_out or 0), provider=provider
+                    call_type, int(t_in or 0), int(t_out or 0), provider=provider, cached_tokens=int(t_cached or 0)
                 )
             elif metric == "calls":
                 acc[key] = int(acc.get(key, 0)) + 1

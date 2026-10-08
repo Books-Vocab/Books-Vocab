@@ -53,6 +53,37 @@ class TestTokenCostUsd:
         assert cost < 0.001
 
 
+class TestTokenCostCached:
+    def test_cached_tokens_priced_at_cache_rate(self):
+        cost = token_cost_usd("judge", 1000, 100, provider="deepseek", cached_tokens=800)
+        assert cost == pytest.approx((200 * 0.14 + 800 * 0.0028 + 100 * 0.28) / 1e6)
+
+    def test_cached_clamped_to_input(self):
+        cost = token_cost_usd("judge", 100, 0, provider="deepseek", cached_tokens=900)
+        assert cost == pytest.approx(100 * 0.0028 / 1e6)
+        assert token_cost_usd("judge", 100, 0, provider="deepseek", cached_tokens=-5) == pytest.approx(100 * 0.14 / 1e6)
+
+    def test_embed_ignores_cached(self):
+        assert token_cost_usd("embed", 1_000_000, 0, cached_tokens=500_000) == pytest.approx(EMBED_PER_M)
+
+    def test_recorded_usd_uses_cached_column(self, tmp_path, monkeypatch):
+        import kg.token_tracker as tt
+        from kg.quota_service import get_all_quota_usage
+
+        monkeypatch.setattr(tt, "DB_PATH", tmp_path / "token_usage.db", raising=True)
+        tt._conn = None
+        try:
+            tt.record("u1", "judge", 1000, 100, cached_input_tokens=800, provider="deepseek")
+            used = get_all_quota_usage()["u1"]["used_usd"]
+            assert used == pytest.approx((200 * 0.14 + 800 * 0.0028 + 100 * 0.28) / 1e6, abs=1e-6)
+            stats = tt.get_all_stats()["u1"]["judge"]["cost_usd"]
+            assert stats == pytest.approx((200 * 0.14 + 800 * 0.0028 + 100 * 0.28) / 1e6)
+        finally:
+            if tt._conn is not None:
+                tt._conn.close()
+                tt._conn = None
+
+
 # ── configure_limits ───────────────────────────────────────────────
 
 
@@ -112,8 +143,7 @@ def mock_db():
     """)
     conn.commit()
     lock = threading.Lock()
-    with patch("kg.quota_service._get_conn", return_value=conn), \
-         patch("kg.quota_service._lock", lock):
+    with patch("kg.quota_service._get_conn", return_value=conn), patch("kg.quota_service._lock", lock):
         yield conn
     conn.close()
 
@@ -132,6 +162,7 @@ class TestGetAllQuotaUsage:
 
     def test_free_and_pro_use_own_limit(self, mock_db):
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
         # Same spend ($0.015 = 150k input @ $0.10/M) for a free and a pro user.
         _insert_usage(mock_db, "free_u", "translate", 150_000, 0, now)
@@ -147,6 +178,7 @@ class TestGetAllQuotaUsage:
 
     def test_unknown_user_defaults_to_free(self, mock_db):
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
         _insert_usage(mock_db, "ghost", "translate", 150_000, 0, now)
         usage = get_all_quota_usage()  # no map → conservative free tier
@@ -162,6 +194,7 @@ class TestGetQuotaState:
 
     def test_some_usage_reduces_fraction(self, mock_db):
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
         # Use half the free limit ($0.03 / 2 = $0.015)
         # $0.015 = 150,000 input tokens at $0.10/M
@@ -171,6 +204,7 @@ class TestGetQuotaState:
 
     def test_pro_vs_free_limit(self, mock_db):
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
         _insert_usage(mock_db, "user1", "translate", 150_000, 0, now)
         free_state = get_quota_state("user1", is_pro=False)
@@ -187,6 +221,7 @@ class TestCheckQuota:
 
     def test_exceeded_when_over_limit(self, mock_db):
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
         # Free limit = $0.03 → need 300,000 input tokens at $0.10/M
         _insert_usage(mock_db, "user1", "translate", 300_000, 0, now)
@@ -247,15 +282,14 @@ class TestTierTransitions:
         layer — the rolling 24h window is unaffected by tier change.
         """
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
 
         # 80% of free limit ($0.03 * 0.8 = $0.024) → 240,000 input tokens
         _insert_usage(mock_db, "user1", "translate", 240_000, 0, now)
 
         free_state = get_quota_state("user1", is_pro=False)
-        assert free_state["fraction"] == pytest.approx(0.20, abs=0.01), (
-            "free user should have ~20% remaining"
-        )
+        assert free_state["fraction"] == pytest.approx(0.20, abs=0.01), "free user should have ~20% remaining"
 
         # Tier transition: same usage, evaluate as pro
         pro_state = get_quota_state("user1", is_pro=True)
@@ -276,6 +310,7 @@ class TestTierTransitions:
         ticking on the original 24h schedule.
         """
         from datetime import UTC, datetime
+
         now = datetime.now(UTC).isoformat()
 
         # 50% of pro limit ($0.30 * 0.5 = $0.15) → 1,500,000 input tokens
@@ -292,8 +327,7 @@ class TestTierTransitions:
         # Cost ($0.15) >> free limit ($0.03) → exceeded, fraction floored to 0
         assert free_check["exceeded"] is True
         assert free_state["fraction"] == 0.0, (
-            "downgrade does NOT reset the rolling window — past pro usage "
-            "still counts against the smaller free ceiling"
+            "downgrade does NOT reset the rolling window — past pro usage still counts against the smaller free ceiling"
         )
         # Reset window still 24h — no shortened period on downgrade
         assert free_state["reset_seconds"] == 86400
@@ -338,9 +372,9 @@ class TestGrantRevoke:
             after_revoke = get_quota_state("user1", is_pro=True)
             # Back to original ~33% — usage preserved, limit reset
             assert after_revoke["fraction"] == pytest.approx(0.33, abs=0.01)
-            assert after_revoke["fraction"] == pytest.approx(
-                before_grant["fraction"], abs=0.001
-            ), "revoke should land exactly back at pre-grant fraction"
+            assert after_revoke["fraction"] == pytest.approx(before_grant["fraction"], abs=0.001), (
+                "revoke should land exactly back at pre-grant fraction"
+            )
 
             # And current usage is still consistent against the baseline
             revoke_check = check_quota("user1", "translate", is_pro=True)

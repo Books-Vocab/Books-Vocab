@@ -201,6 +201,16 @@ class TrackedLLM:
             return None
         return usage
 
+    @staticmethod
+    def _cached_tokens(usage) -> int:
+        """Prompt-cache-hit tokens: DeepSeek ``prompt_cache_hit_tokens``, else
+        OpenAI-style ``prompt_tokens_details.cached_tokens`` (object or dict)."""
+        hit = getattr(usage, "prompt_cache_hit_tokens", None)
+        if not hit:
+            details = getattr(usage, "prompt_tokens_details", None)
+            hit = details.get("cached_tokens") if isinstance(details, dict) else getattr(details, "cached_tokens", None)
+        return hit if isinstance(hit, int) and hit > 0 else 0
+
     def _record_chat(self, call_type: str, resp, model: str | None = None) -> None:
         usage = self._usage_or_warn(call_type, resp, model)
         if usage is None:
@@ -209,11 +219,13 @@ class TrackedLLM:
         # default chat model so the row is never NULL when a provider is bound.
         if model is None and self._provider is not None:
             model = self._provider.chat_model
+        prompt = getattr(usage, "prompt_tokens", 0) or 0
         record(
             self.user_id,
             call_type,
-            getattr(usage, "prompt_tokens", 0) or 0,
+            prompt,
             getattr(usage, "completion_tokens", 0) or 0,
+            cached_input_tokens=min(self._cached_tokens(usage), prompt),
             provider=self._provider_name(),
             model=model,
         )

@@ -1,4 +1,5 @@
 """Tests for TrackedLLM — unified LLM wrapper with auto token tracking."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -33,7 +34,7 @@ class TestTrackedLLMChat:
         client, _ = _mock_client(prompt_tokens=15, completion_tokens=25)
         llm = TrackedLLM(client, user_id="u1")
         resp = llm.chat("judge", model="m", messages=[])
-        mock_record.assert_called_once_with("u1", "judge", 15, 25, provider=None, model="m")
+        mock_record.assert_called_once_with("u1", "judge", 15, 25, cached_input_tokens=0, provider=None, model="m")
         assert resp.choices[0].message.content == '{"ok": true}'
 
     @patch("kg.tracked_llm.logger")
@@ -57,7 +58,6 @@ class TestTrackedLLMChat:
         llm.chat("judge", model="m", messages=[])
         llm.chat("judge", model="m", messages=[])
         assert mock_record.call_count == 2
-
 
     @patch("kg.tracked_llm.logger")
     @patch("kg.tracked_llm.record")
@@ -96,7 +96,6 @@ class TestTrackedLLMEmbed:
         llm.embed("embed", input=["hi"], model="m")
         mock_record.assert_called_once_with("u1", "embed", 8, 0, provider=None, model="m")
 
-
     @patch("kg.tracked_llm.logger")
     @patch("kg.tracked_llm.record")
     def test_embed_no_usage_skips_record_and_warns(self, mock_record, mock_logger):
@@ -120,11 +119,14 @@ class TestTrackedLLMChatAsync:
 
         async def mock_create(**kwargs):
             return resp
+
         client.chat.completions.create = mock_create
 
         llm = TrackedLLM(client, user_id="u1")
         await llm.chat_async("translate_quick", model="m", messages=[])
-        mock_record.assert_called_once_with("u1", "translate_quick", 10, 20, provider=None, model="m")
+        mock_record.assert_called_once_with(
+            "u1", "translate_quick", 10, 20, cached_input_tokens=0, provider=None, model="m"
+        )
 
 
 class TestTrackedLLMProviderBinding:
@@ -139,7 +141,8 @@ class TestTrackedLLMProviderBinding:
         llm = TrackedLLM(client, user_id="u1", provider=REGISTRY["deepseek"])
         llm.chat("judge", model="deepseek-v4-flash", messages=[])
         mock_record.assert_called_once_with(
-            "u1", "judge", 11, 22, provider="deepseek", model="deepseek-v4-flash")
+            "u1", "judge", 11, 22, cached_input_tokens=0, provider="deepseek", model="deepseek-v4-flash"
+        )
 
     @patch("kg.tracked_llm.record")
     def test_chat_model_falls_back_to_provider_chat_model(self, mock_record):
@@ -149,7 +152,8 @@ class TestTrackedLLMProviderBinding:
         llm = TrackedLLM(client, user_id="u1", provider=REGISTRY["gemini"])
         llm.chat("judge", messages=[])  # no model kwarg
         mock_record.assert_called_once_with(
-            "u1", "judge", 10, 20, provider="gemini", model="gemini-2.5-flash-lite")
+            "u1", "judge", 10, 20, cached_input_tokens=0, provider="gemini", model="gemini-2.5-flash-lite"
+        )
 
 
 class TestTrackedLLMFailureRecording:
@@ -182,6 +186,7 @@ class TestTrackedLLMFailureRecording:
 
         async def boom(**kwargs):
             raise RuntimeError("async boom")
+
         client.chat.completions.create = boom
 
         llm = TrackedLLM(client, user_id="u1")
@@ -212,6 +217,7 @@ class TestTrackedLLMFailureRecording:
 
         class Fake429(Exception):
             status_code = 429
+
         client.chat.completions.create.side_effect = Fake429("rate limited")
 
         llm = TrackedLLM(client, user_id="u1")
@@ -259,3 +265,102 @@ class TestTrackedLLMFailureRecording:
             llm.chat("judge", model="m", messages=[])
         # recording failure should emit a warning, not raise.
         mock_logger.warning.assert_called_once()
+
+
+# ── cache-aware cost (#2272) ──────────────────────────────────────
+
+
+@pytest.fixture()
+def tracker_db(tmp_path, monkeypatch):
+    import kg.token_tracker as tt
+
+    monkeypatch.setattr(tt, "DB_PATH", tmp_path / "token_usage.db", raising=True)
+    tt._conn = None
+    try:
+        yield tt
+    finally:
+        if tt._conn is not None:
+            tt._conn.close()
+            tt._conn = None
+
+
+def _chat_with_usage(usage):
+    from kg.llm.providers import REGISTRY
+
+    client = MagicMock()
+    client.chat.completions.create.return_value = SimpleNamespace(choices=[], usage=usage)
+    llm = TrackedLLM(client, user_id="u1", provider=REGISTRY["deepseek"])
+    llm.chat("judge", model="deepseek-v4-flash", messages=[])
+
+
+def _stored_cached_and_cost(tt):
+    from kg.quota_service import token_cost_usd
+
+    with tt._lock:
+        cached, t_in, t_out = (
+            tt._get_conn()
+            .execute("SELECT SUM(cached_input_tokens), SUM(input_tokens), SUM(output_tokens) FROM token_usage")
+            .fetchone()
+        )
+    return cached, token_cost_usd("judge", t_in, t_out, provider="deepseek", cached_tokens=cached)
+
+
+class TestCacheAwareChatCost:
+    EXPECTED = (200 * 0.14 + 800 * 0.0028 + 100 * 0.28) / 1e6
+
+    def test_deepseek_style_usage(self, tracker_db):
+        _chat_with_usage(SimpleNamespace(prompt_tokens=1000, prompt_cache_hit_tokens=800, completion_tokens=100))
+        cached, cost = _stored_cached_and_cost(tracker_db)
+        assert cached == 800
+        assert cost == pytest.approx(self.EXPECTED)
+
+    def test_openai_style_usage(self, tracker_db):
+        details = SimpleNamespace(cached_tokens=800)
+        _chat_with_usage(SimpleNamespace(prompt_tokens=1000, prompt_tokens_details=details, completion_tokens=100))
+        cached, cost = _stored_cached_and_cost(tracker_db)
+        assert cached == 800
+        assert cost == pytest.approx(self.EXPECTED)
+
+    def test_openai_style_dict_details(self, tracker_db):
+        _chat_with_usage(
+            SimpleNamespace(prompt_tokens=1000, prompt_tokens_details={"cached_tokens": 800}, completion_tokens=100)
+        )
+        assert _stored_cached_and_cost(tracker_db)[0] == 800
+
+    def test_no_cache_fields_matches_legacy_formula(self, tracker_db):
+        _chat_with_usage(SimpleNamespace(prompt_tokens=1000, completion_tokens=100))
+        cached, cost = _stored_cached_and_cost(tracker_db)
+        assert cached == 0
+        assert cost == pytest.approx((1000 * 0.14 + 100 * 0.28) / 1e6)
+
+    def test_cached_over_input_is_clamped(self, tracker_db):
+        _chat_with_usage(SimpleNamespace(prompt_tokens=100, prompt_cache_hit_tokens=500, completion_tokens=0))
+        _, cost = _stored_cached_and_cost(tracker_db)
+        assert cost >= 0
+        assert cost == pytest.approx(100 * 0.0028 / 1e6)
+
+
+def test_legacy_db_gains_cached_column_with_zero_default(tmp_path, monkeypatch):
+    import sqlite3
+
+    import kg.token_tracker as tt
+
+    db = tmp_path / "token_usage.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,"
+        " call_type TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0,"
+        " output_tokens INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, provider TEXT, model TEXT)"
+    )
+    conn.execute("INSERT INTO token_usage VALUES (1,'u1','judge',10,5,'2026-01-01T00:00:00+00:00',NULL,NULL)")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(tt, "DB_PATH", db, raising=True)
+    tt._conn = None
+    try:
+        with tt._lock:
+            assert tt._get_conn().execute("SELECT cached_input_tokens FROM token_usage").fetchall() == [(0,)]
+    finally:
+        if tt._conn is not None:
+            tt._conn.close()
+            tt._conn = None
