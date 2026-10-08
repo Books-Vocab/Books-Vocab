@@ -116,7 +116,7 @@ struct TodayReviewAutoplayGatingTests {
         }
     }
 
-    @Test func performRefusesBlockedIntentsWhilePlayingAndAllowsThemAfterPause() throws {
+    @Test func performRefusesBlockedIntentsWhilePlayingAndPausedAndAllowsThemAfterStop() throws {
         let entries = (0..<3).map { index -> VocabularyEntry in
             let entry = VocabularyEntry(
                 word: "block-\(UUID().uuidString.prefix(6))-\(index)",
@@ -146,8 +146,18 @@ struct TodayReviewAutoplayGatingTests {
         #expect(state.currentIndex == 0, "被擋的操作不得推進卡片")
         #expect(state.rememberedCount == 0 && state.forgotCount == 0, "被擋的操作不得計分")
 
+        // 暫停不解除封鎖:提示文案叫人「關閉」而非「暫停」,正是因為這裡仍被擋。
+        state.toggleAutoPlayPause()
+        #expect(state.isAutoPlayPaused, "前置:確實進入暫停態")
+        #expect(state.isAutoPlaying, "暫停時 isAutoPlaying 仍為 true")
+        for intent in [ReviewIntent.forgot, .remembered, .shuffle] {
+            #expect(!state.performReviewIntent(intent, container: container, reviewSettings: .default), "\(intent) 暫停中仍被擋")
+            #expect(state.autoplayBlocks(intent), "暫停中 view 仍須提示(文案要求關閉,而非暫停)")
+        }
+        #expect(state.currentIndex == 0 && state.rememberedCount == 0, "暫停中被擋的操作不得推進或計分")
+
         state.stopAutoPlay()
-        #expect(!state.autoplayBlocks(.forgot), "暫停後不再提示")
+        #expect(!state.autoplayBlocks(.forgot), "關閉後不再提示")
         #expect(
             state.performReviewIntent(.remembered, container: container, reviewSettings: .default),
             "正控:停止播放後同一個操作必須放行"

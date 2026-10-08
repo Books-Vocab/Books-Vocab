@@ -382,7 +382,8 @@ final class TodayReviewState {
         modelContext.safeSave()
     }
 
-    /// 自動播放中會被擋掉的操作（#2046）：評分與洗牌要等使用者先暫停。單一真相 ——
+    /// 自動播放中會被擋掉的操作（#2046）：評分與洗牌要等使用者先關閉自動播放（暫停不算：`isAutoPlaying` 在暫停時仍為 true，
+    /// 擋的範圍與提示文案都以「關閉」為準，否則提示會叫人做一件解不開的事）。單一真相 ——
     /// `performReviewIntent` 的守衛與 view 層「為何沒反應」的 pill 提示都問它，
     /// 兩邊不會對「哪些操作被擋」各說各話。
     static func autoplayBlocks(_ intent: ReviewIntent, isAutoPlaying: Bool) -> Bool {
@@ -393,7 +394,7 @@ final class TodayReviewState {
         }
     }
 
-    /// 「自動播放中請先暫停」pill 的事件鍵：按鈕 / 鍵盤 / 滑動三個入口共用同一個 key，
+    /// 「自動播放中請先關閉」pill 的事件鍵：按鈕 / 鍵盤 / 滑動三個入口共用同一個 key，
     /// 連點取代而非堆疊（pill 規範見 docs/sop/ui-design.md「暫時性提示」）。
     static let autoplayBlockedNoticeKey = "todayReview.autoplayBlocked"
 

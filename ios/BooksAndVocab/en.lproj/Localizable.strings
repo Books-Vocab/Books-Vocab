@@ -976,7 +976,7 @@
 "todayReview.card.notebook.default" = "Default notebook";
 "todayReview.card.notebook.unnamed" = "Untitled notebook";
 "todayReview.saveFailure" = "Review result wasn't saved. Please try again later.";
-"todayReview.autoplay.blockedHint" = "Autoplay is on. Pause it first.";
+"todayReview.autoplay.blockedHint" = "Autoplay is on. Turn it off first.";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "Export failed";
