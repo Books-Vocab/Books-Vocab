@@ -1,4 +1,5 @@
 """Unit tests for kg.ops_edit_user_commands — direct function calls."""
+
 from __future__ import annotations
 
 import argparse
@@ -69,9 +70,7 @@ class TestUserCreate:
     def test_allow_existing(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         user_cmd.cmd_user_create(_make_args(uid="newuser", commit=True))
-        rc = user_cmd.cmd_user_create(
-            _make_args(uid="newuser", allow_existing=True, commit=True)
-        )
+        rc = user_cmd.cmd_user_create(_make_args(uid="newuser", allow_existing=True, commit=True))
         assert rc == 0
 
 
@@ -81,9 +80,7 @@ class TestUserCreate:
 class TestUserDelete:
     def test_dry_run_keeps_user(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        user_cmd.cmd_user_create(
-            _make_args(uid="doomed", email="doomed@test.com", commit=True)
-        )
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="doomed@test.com", commit=True))
         capsys.readouterr()
 
         rc = user_cmd.cmd_user_delete(_make_args(uid="doomed"))
@@ -92,13 +89,9 @@ class TestUserDelete:
         assert "dry-run" in capsys.readouterr().out
         assert (tmp_path / "users" / "doomed").exists()
 
-    def test_commit_removes_dir_record_and_email_index(
-        self, tmp_path, monkeypatch
-    ):
+    def test_commit_removes_dir_record_and_email_index(self, tmp_path, monkeypatch):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        user_cmd.cmd_user_create(
-            _make_args(uid="doomed", email="doomed@test.com", commit=True)
-        )
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="doomed@test.com", commit=True))
 
         rc = user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
 
@@ -108,16 +101,10 @@ class TestUserDelete:
         assert not (tmp_path / "users" / "doomed").exists()
         assert "doomed@test.com" not in users.get("_email_index", {})
 
-    def test_commit_scrubs_subscription_index_and_spares_others(
-        self, tmp_path, monkeypatch
-    ):
+    def test_commit_scrubs_subscription_index_and_spares_others(self, tmp_path, monkeypatch):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        user_cmd.cmd_user_create(
-            _make_args(uid="doomed", email="doomed@test.com", commit=True)
-        )
-        user_cmd.cmd_user_create(
-            _make_args(uid="keeper", email="keeper@test.com", commit=True)
-        )
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="doomed@test.com", commit=True))
+        user_cmd.cmd_user_create(_make_args(uid="keeper", email="keeper@test.com", commit=True))
         users_path = tmp_path / "users.json"
         payload = json.loads(users_path.read_text())
         payload["_subscription_index"] = {
@@ -144,9 +131,7 @@ class TestUserDelete:
 
     def test_delete_then_restore_round_trip(self, tmp_path, monkeypatch):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        user_cmd.cmd_user_create(
-            _make_args(uid="doomed", email="doomed@test.com", commit=True)
-        )
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="doomed@test.com", commit=True))
         user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
 
         rc = user_cmd.cmd_restore(_make_args(uid="doomed", commit=True))
@@ -182,21 +167,18 @@ class TestUserConfigSet:
     def _setup_user(self, tmp_path: Path, uid: str = "u1") -> Path:
         data_dir = tmp_path
         (data_dir / "users").mkdir()
-        (data_dir / "users.json").write_text(
-            f'{{"{uid}": {{"config": {{}}, "email": "{uid}@test.com"}}}}'
-        )
+        (data_dir / "users.json").write_text(f'{{"{uid}": {{"config": {{}}, "email": "{uid}@test.com"}}}}')
         user_dir = data_dir / "users" / uid
         user_dir.mkdir()
         from kg.notebook import NotebookStore
+
         NotebookStore(user_dir / "notebooks.db").close()
         return data_dir
 
     def test_dry_run(self, tmp_path, monkeypatch, capsys):
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = user_cmd.cmd_user_config_set(
-            _make_args(translation_source="en", translation_target="zh-Hant")
-        )
+        rc = user_cmd.cmd_user_config_set(_make_args(translation_source="en", translation_target="zh-Hant"))
         assert rc == 0
         out = capsys.readouterr().out
         assert "dry-run" in out
@@ -205,9 +187,7 @@ class TestUserConfigSet:
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         rc = user_cmd.cmd_user_config_set(
-            _make_args(
-                translation_source="en", translation_target="zh-Hant", commit=True
-            )
+            _make_args(translation_source="en", translation_target="zh-Hant", commit=True)
         )
         assert rc == 0
         users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
@@ -218,9 +198,7 @@ class TestUserConfigSet:
     def test_commit_review_clock_paused(self, tmp_path, monkeypatch, capsys):
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = user_cmd.cmd_user_config_set(
-            _make_args(review_clock="paused", commit=True)
-        )
+        rc = user_cmd.cmd_user_config_set(_make_args(review_clock="paused", commit=True))
         assert rc == 0
         users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
         assert users["u1"]["config"]["review_clock"]["is_paused"] is True
@@ -240,9 +218,7 @@ class TestUserConfigSet:
     def test_commit_auto_link_off(self, tmp_path, monkeypatch, capsys):
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = user_cmd.cmd_user_config_set(
-            _make_args(auto_link="off", commit=True)
-        )
+        rc = user_cmd.cmd_user_config_set(_make_args(auto_link="off", commit=True))
         assert rc == 0
         users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
         al = users["u1"]["config"]["auto_link"]
@@ -252,9 +228,7 @@ class TestUserConfigSet:
     def test_commit_auto_link_on(self, tmp_path, monkeypatch, capsys):
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = user_cmd.cmd_user_config_set(
-            _make_args(auto_link="on", commit=True)
-        )
+        rc = user_cmd.cmd_user_config_set(_make_args(auto_link="on", commit=True))
         assert rc == 0
         users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
         assert users["u1"]["config"]["auto_link"]["enabled"] is True
@@ -263,6 +237,7 @@ class TestUserConfigSet:
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             user_cmd.cmd_user_config_set(_make_args())
 
@@ -270,10 +245,9 @@ class TestUserConfigSet:
         self._setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
-            user_cmd.cmd_user_config_set(
-                _make_args(paused_at="2024-01-01T00:00:00Z")
-            )
+            user_cmd.cmd_user_config_set(_make_args(paused_at="2024-01-01T00:00:00Z"))
 
 
 # ── cmd_list_backups ─────────────────────────────────────────────────────
@@ -305,6 +279,7 @@ class TestListBackups:
 class TestRestore:
     def _create_backup(self, tmp_path: Path, uid: str = "u1") -> Path:
         import tarfile
+
         backup_dir = tmp_path / "_ops_backups"
         backup_dir.mkdir()
         dest = backup_dir / f"{uid}__20240101T000000Z.tar.gz"
@@ -334,6 +309,7 @@ class TestRestore:
     def test_no_backup_raises(self, tmp_path, monkeypatch):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             user_cmd.cmd_restore(_make_args(uid="u1"))
 
@@ -348,13 +324,9 @@ def _error_payload(capsys) -> dict:
 class TestDestructiveFailureReporting:
     def _create(self, tmp_path, monkeypatch, uid="doomed"):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        user_cmd.cmd_user_create(
-            _make_args(uid=uid, email=f"{uid}@test.com", commit=True)
-        )
+        user_cmd.cmd_user_create(_make_args(uid=uid, email=f"{uid}@test.com", commit=True))
 
-    def test_user_delete_rmtree_failure_marks_data_mutated(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_user_delete_rmtree_failure_marks_data_mutated(self, tmp_path, monkeypatch, capsys):
         self._create(tmp_path, monkeypatch)
         capsys.readouterr()
 
@@ -379,18 +351,14 @@ class TestDestructiveFailureReporting:
         users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
         assert "doomed" not in users  # record 已被移除,故必須回報 data_mutated
 
-    def test_user_delete_missing_user_is_not_mutating(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_user_delete_missing_user_is_not_mutating(self, tmp_path, monkeypatch, capsys):
         from kg.ops_edit_support import EditError
 
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         with pytest.raises(EditError):
             user_cmd.cmd_user_delete(_make_args(uid="ghost", commit=True))
 
-    def test_restore_rmtree_failure_marks_data_mutated(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_restore_rmtree_failure_marks_data_mutated(self, tmp_path, monkeypatch, capsys):
         self._create(tmp_path, monkeypatch, uid="u1")
         # 先做一次成功 delete 產生備份,再讓 user_dir 重建(restore 前提:現存目錄會被清)
         user_cmd.cmd_user_delete(_make_args(uid="u1", commit=True))
@@ -414,9 +382,7 @@ class TestDestructiveFailureReporting:
         assert "restore u1" in out["recovery_path"]
         assert out["backup"] in out["recovery_path"]
 
-    def test_restore_arcname_mismatch_is_not_mutating(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_restore_arcname_mismatch_is_not_mutating(self, tmp_path, monkeypatch, capsys):
         import tarfile
 
         from kg.ops_edit_support import EditError

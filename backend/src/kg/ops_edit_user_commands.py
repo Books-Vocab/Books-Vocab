@@ -49,9 +49,7 @@ def _resolve_notebook_id_for_command(user_dir: Path, ref: str) -> str:
         for notebook in store.all():
             if notebook.name == ref:
                 return notebook.id
-        raise EditError(
-            f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
-        )
+        raise EditError(f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)")
     finally:
         store.close()
 
@@ -74,15 +72,19 @@ def cmd_user_create(args: argparse.Namespace) -> int:
 
     if already and not args.allow_existing:
         emit(
-            {"mode": "error", "action": "user-create", "uid": uid, "plan": plan,
-             "committed": False,
-             "error": "user 已存在;確認後加 --allow-existing 才會 merge record"},
+            {
+                "mode": "error",
+                "action": "user-create",
+                "uid": uid,
+                "plan": plan,
+                "committed": False,
+                "error": "user 已存在;確認後加 --allow-existing 才會 merge record",
+            },
             json_mode=args.json,
         )
         return 1
 
-    ctx = EditContext(data_dir=dd, uid=uid, commit=args.commit,
-                      json_mode=args.json, require_user=False)
+    ctx = EditContext(data_dir=dd, uid=uid, commit=args.commit, json_mode=args.json, require_user=False)
 
     def apply_fn() -> dict[str, Any]:
         now = datetime.now(tz=UTC).isoformat()
@@ -92,9 +94,7 @@ def cmd_user_create(args: argparse.Namespace) -> int:
             # user-create 可能都讀到「不存在」再雙雙進鎖覆寫。鎖內 re-check 關掉
             # 這個 TOCTOU —— 第二個進鎖者若發現已存在且未 --allow-existing 即中止。
             if uid in users and not args.allow_existing:
-                raise EditError(
-                    "user 已存在(鎖內偵測);加 --allow-existing 才會 merge record"
-                )
+                raise EditError("user 已存在(鎖內偵測);加 --allow-existing 才會 merge record")
             idx = users.setdefault("_email_index", {})
             record = users.get(uid, {}) if isinstance(users.get(uid), dict) else {}
             record.setdefault("config", {})
@@ -188,11 +188,7 @@ def cmd_user_delete(args: argparse.Namespace) -> int:
             for key, value in current[bucket_name].items()
             if value == uid
         ]
-        return {
-            "ok": uid not in current
-            and not user_dir_for(dd, uid).exists()
-            and not leftovers
-        }
+        return {"ok": uid not in current and not user_dir_for(dd, uid).exists() and not leftovers}
 
     return ctx.run(action="user-delete", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -253,9 +249,7 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
         updates["auto_link"] = {"enabled": args.auto_link == "on"}
 
     if not updates:
-        raise EditError(
-            "user-config-set 需至少一個 translation/review_clock/review_mode/vocab_ui/auto_link 相關旗標"
-        )
+        raise EditError("user-config-set 需至少一個 translation/review_clock/review_mode/vocab_ui/auto_link 相關旗標")
 
     plan = {"updates": updates}
     state: dict[str, Any] = {}
@@ -397,12 +391,12 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
 
     return ctx.run(action="user-config-set", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
+
 def cmd_list_backups(args: argparse.Namespace) -> int:
     dd = data_dir()
     assert_safe_uid(args.uid)
     backups = list_user_backups(dd, args.uid)
-    emit({"action": "list-backups", "uid": args.uid, "count": len(backups),
-          "backups": backups}, json_mode=args.json)
+    emit({"action": "list-backups", "uid": args.uid, "count": len(backups), "backups": backups}, json_mode=args.json)
     return 0
 
 
@@ -428,14 +422,20 @@ def cmd_link_list(args: argparse.Namespace) -> int:
                 continue
             fc = cards.get(lk.from_id)
             tc = cards.get(lk.to_id)
-            links.append({
-                "id": lk.id,
-                "from": fc.content if fc else lk.from_id,
-                "to": tc.content if tc else lk.to_id,
-                "kind": str(lk.kind), "confidence": lk.confidence, "reason": lk.reason,
-            })
-        emit({"action": "link-list", "uid": args.uid, "notebook_id": nb_id,
-              "count": len(links), "links": links}, json_mode=args.json)
+            links.append(
+                {
+                    "id": lk.id,
+                    "from": fc.content if fc else lk.from_id,
+                    "to": tc.content if tc else lk.to_id,
+                    "kind": str(lk.kind),
+                    "confidence": lk.confidence,
+                    "reason": lk.reason,
+                }
+            )
+        emit(
+            {"action": "link-list", "uid": args.uid, "notebook_id": nb_id, "count": len(links), "links": links},
+            json_mode=args.json,
+        )
         return 0
     finally:
         if graph is not None:
@@ -448,8 +448,7 @@ def cmd_link_list(args: argparse.Namespace) -> int:
 def cmd_restore(args: argparse.Namespace) -> int:
     """從備份還原 user_dir。commit 前 EditContext 會先備份**當前**狀態,故可回退。"""
     dd = data_dir()
-    ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit,
-                      json_mode=args.json, require_user=False)
+    ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json, require_user=False)
     backups = list_user_backups(dd, args.uid)
     if args.backup:
         backup_path = Path(args.backup)
@@ -474,11 +473,16 @@ def cmd_restore(args: argparse.Namespace) -> int:
     db_files = [n for n in names if n.endswith(".db")]
     graph_files = [n for n in names if n.endswith(".json") and f"/{_USER_BACKUP_META_DIR}/" not in n]
     has_record_snapshot = f"{args.uid}/{_USER_BACKUP_META_DIR}/{_USER_BACKUP_RECORD}" in names
-    plan = {"restore_from": str(backup_path), "target_dir": str(ctx.user_dir),
-            "available_backups": len(backups), "total_members": len(names),
-            "db_files": len(db_files), "graph_files": len(graph_files),
-            "has_record_snapshot": has_record_snapshot,
-            "sample_members": names[:10]}
+    plan = {
+        "restore_from": str(backup_path),
+        "target_dir": str(ctx.user_dir),
+        "available_backups": len(backups),
+        "total_members": len(names),
+        "db_files": len(db_files),
+        "graph_files": len(graph_files),
+        "has_record_snapshot": has_record_snapshot,
+        "sample_members": names[:10],
+    }
 
     def apply_fn() -> dict[str, Any]:
         # EditContext 已在此之前備份了當前 user_dir(若存在),所以即使還原錯版本

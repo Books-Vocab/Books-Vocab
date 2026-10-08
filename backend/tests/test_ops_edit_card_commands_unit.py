@@ -2,6 +2,7 @@
 
 Covers all cmd_* functions with dry-run + commit paths using real CardStore.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,9 +71,7 @@ class TestCmdCardAdd:
     def test_commit_creates_card(self, tmp_path, monkeypatch, capsys):
         _setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_add(
-            _make_args(content="hello", meaning="world", commit=True)
-        )
+        rc = cards_cmd.cmd_card_add(_make_args(content="hello", meaning="world", commit=True))
         assert rc == 0
         out = capsys.readouterr().out
         assert "commit" in out
@@ -90,8 +89,11 @@ class TestCmdCardAdd:
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         rc = cards_cmd.cmd_card_add(
             _make_args(
-                content="hello", meaning="world", commit=True,
-                review="new", interval=12.0,
+                content="hello",
+                meaning="world",
+                commit=True,
+                review="new",
+                interval=12.0,
             )
         )
         assert rc == 0
@@ -109,8 +111,11 @@ class TestCmdCardAdd:
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         rc = cards_cmd.cmd_card_add(
             _make_args(
-                content="hello", meaning="world", commit=True,
-                note="a note", difficulty=3,
+                content="hello",
+                meaning="world",
+                commit=True,
+                note="a note",
+                difficulty=3,
             )
         )
         assert rc == 0
@@ -140,9 +145,7 @@ class TestCmdCardUpdate:
         _setup_user(tmp_path)
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_update(
-            _make_args(card=cid, set=["meaning=updated"])
-        )
+        rc = cards_cmd.cmd_card_update(_make_args(card=cid, set=["meaning=updated"]))
         assert rc == 0
         out = capsys.readouterr().out
         assert "dry-run" in out
@@ -151,9 +154,7 @@ class TestCmdCardUpdate:
         _setup_user(tmp_path)
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_update(
-            _make_args(card=cid, set=["meaning=updated"], commit=True)
-        )
+        rc = cards_cmd.cmd_card_update(_make_args(card=cid, set=["meaning=updated"], commit=True))
         assert rc == 0
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         try:
@@ -167,9 +168,7 @@ class TestCmdCardUpdate:
         _setup_user(tmp_path)
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_update(
-            _make_args(card=cid, set=["content=banana"], commit=True)
-        )
+        rc = cards_cmd.cmd_card_update(_make_args(card=cid, set=["content=banana"], commit=True))
         assert rc == 0
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         try:
@@ -184,6 +183,7 @@ class TestCmdCardUpdate:
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             cards_cmd.cmd_card_update(_make_args(card=cid, set=["badfield=1"]))
 
@@ -192,6 +192,7 @@ class TestCmdCardUpdate:
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             cards_cmd.cmd_card_update(_make_args(card=cid, set=[]))
 
@@ -204,9 +205,7 @@ class TestCmdCardUpdate:
         finally:
             store.close()
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_update(
-            _make_args(card=c1.id, set=['content="banana"'], commit=True)
-        )
+        rc = cards_cmd.cmd_card_update(_make_args(card=c1.id, set=['content="banana"'], commit=True))
         assert rc == 1
 
 
@@ -235,9 +234,7 @@ class TestCmdCardSetReview:
         _setup_user(tmp_path)
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_set_review(
-            _make_args(card=cid, state="new", interval=12.0, commit=True)
-        )
+        rc = cards_cmd.cmd_card_set_review(_make_args(card=cid, state="new", interval=12.0, commit=True))
         assert rc == 0
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         try:
@@ -252,9 +249,7 @@ class TestCmdCardSetReview:
         _setup_user(tmp_path)
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_set_review(
-            _make_args(card=cid, state="due", interval=12.0, commit=True)
-        )
+        rc = cards_cmd.cmd_card_set_review(_make_args(card=cid, state="due", interval=12.0, commit=True))
         assert rc == 0
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         try:
@@ -270,9 +265,7 @@ class TestCmdCardSetReview:
         _setup_user(tmp_path)
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_set_review(
-            _make_args(card=cid, state="reviewed", interval=24.0, commit=True)
-        )
+        rc = cards_cmd.cmd_card_set_review(_make_args(card=cid, state="reviewed", interval=24.0, commit=True))
         assert rc == 0
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         try:
@@ -289,6 +282,7 @@ class TestCmdCardSetReview:
         cid = self._seed_card(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             cards_cmd.cmd_card_set_review(_make_args(card=cid, state="bogus"))
 
@@ -372,6 +366,7 @@ class TestCmdCardImport:
         _setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             cards_cmd.cmd_card_import(_make_args(csv="/nonexistent.csv"))
 
@@ -411,9 +406,7 @@ class TestCmdCardMove:
         _setup_user(tmp_path)
         cid, nbid = self._seed_card_and_nb(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_move(
-            _make_args(card=cid, to_notebook=nbid, commit=True)
-        )
+        rc = cards_cmd.cmd_card_move(_make_args(card=cid, to_notebook=nbid, commit=True))
         assert rc == 0
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         try:
@@ -431,9 +424,7 @@ class TestCmdCardMove:
         finally:
             store.close()
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = cards_cmd.cmd_card_move(
-            _make_args(card=c.id, to_notebook="default", commit=True)
-        )
+        rc = cards_cmd.cmd_card_move(_make_args(card=c.id, to_notebook="default", commit=True))
         assert rc == 1
 
 
@@ -452,9 +443,7 @@ class TestCmdCardMoveDestructiveReporting:
             store.close()
             nb_store.close()
 
-    def test_failure_after_link_purge_marks_data_mutated(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_failure_after_link_purge_marks_data_mutated(self, tmp_path, monkeypatch, capsys):
         from types import SimpleNamespace
 
         cid, nbid = self._seed(tmp_path)
@@ -485,9 +474,7 @@ class TestCmdCardMoveDestructiveReporting:
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         capsys.readouterr()
 
-        rc = cards_cmd.cmd_card_move(
-            _make_args(card=cid, to_notebook="default", commit=True)
-        )
+        rc = cards_cmd.cmd_card_move(_make_args(card=cid, to_notebook="default", commit=True))
 
         out = json.loads(capsys.readouterr().out)
         assert rc == 1
