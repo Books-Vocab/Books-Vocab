@@ -45,7 +45,6 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | 檔案 | 說明 |
 |------|------|
 | `Scenes/VocabularyListPresenter.swift` | `struct VocabularyListPresenter<Content>: View` + `VocabularyListPresenterState` |
-| `Scenes/PendingVocabPresenter.swift` | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
 | `Scenes/KGVocabPresenter.swift` | Books & Vocab 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
 | `Scenes/KnowledgeGraphPresenter.swift` | 知識圖譜佈局 |
 | `Scenes/WordDetailPresenter.swift` | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆。**卡片生命週期動作依成本分層**：封存在標題列（`archivebox` ⇄ `archivebox.fill` 單擊切換，`canArchive` 對未同步卡收起——`archiveCard` 以 word+notebookId 定址伺服器，未同步必 404）；刪除壓在內容最底的 `cardManagementSection`，與卡片隔一條 `AppAirDivider`，並收編原本孤懸的「閱讀時不標記此單字」toggle |
