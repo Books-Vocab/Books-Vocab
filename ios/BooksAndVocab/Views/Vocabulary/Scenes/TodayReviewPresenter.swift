@@ -217,6 +217,8 @@ struct TodayReviewPresenter: View {
                     appSkin.palette.shadow.opacity(0.25)
                         .ignoresSafeArea()
                         .onTapGesture { onToggleHelp() }
+                        // Catalyst-only scrim; dismissal is the keyboard shortcut / help toggle.
+                        .accessibilityHidden(true)
                         .transition(.overlayFade)
 
                     shortcutHelpOverlay

@@ -1313,3 +1313,4 @@
 "notebookSettings.syncFailedDetail" = "Settings sync failed: %@";
 "notebookSettings.serverUnsupported" = "Server does not support notebook settings yet";
 "notebookSettings.retry" = "Retry";
+"kgVocab.row.selectMultipleAction" = "Select multiple";

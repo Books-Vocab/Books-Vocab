@@ -1302,3 +1302,4 @@
 "notebookSettings.syncFailedDetail" = "設定同步失敗：%@";
 "notebookSettings.serverUnsupported" = "伺服器尚未支援單字本設定";
 "notebookSettings.retry" = "重試";
+"kgVocab.row.selectMultipleAction" = "多選";

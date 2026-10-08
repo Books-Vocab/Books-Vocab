@@ -1,9 +1,6 @@
-# tap_a11y_lint baseline — generated 2026-10-07
+# tap_a11y_lint baseline — generated 2026-10-08
 # Line-number-free finding keys: <relpath>::tap-a11y::<normalized-call-text>.
 # Regenerate after a sanctioned sweep:  bash ops/tap_a11y_lint.sh --baseline
-# Review-mode UI (TodayReview*, ReviewCardView) is baselined on purpose: epic #2036
-# decided VoiceOver is NOT a product requirement for review mode. Everything else
-# must use Button / declare a trait / carry // a11y-allow: — do not add keys here.
+# Zero tolerance: every .onTapGesture must use Button / declare a trait or action /
+# be accessibilityHidden / carry // a11y-allow: <reason> — do not add keys here.
 
-Views/Vocabulary/Scenes/ReviewCardView.swift::tap-a11y::.onTapGesture { guard !showsAnswer, interactive else { return } actions.advanceReveal?() }
-Views/Vocabulary/Scenes/TodayReviewPresenter.swift::tap-a11y::.onTapGesture { onToggleHelp() }

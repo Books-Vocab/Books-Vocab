@@ -253,6 +253,13 @@ struct KGVocabRow: View {
                 .onTapGesture(perform: onTap)
                 .accessibilityAddTraits(isSelecting && isSelected ? [.isButton, .isSelected] : .isButton)
                 .onLongPressGesture(perform: onLongPress)
+                // 長按是進入多選模式的唯一入口；VoiceOver／Switch Control 沒有長按手勢，
+                // 提供等效 action（#2053）。選取模式中 row tap 已是 toggle，不再提供。
+                .accessibilityActions {
+                    if allowsSelection && !isSelecting {
+                        Button(L10n.string("kgVocab.row.selectMultipleAction")) { onLongPress() }
+                    }
+                }
         }
         .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
         .padding(.vertical, AppSpacing.s1)

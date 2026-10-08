@@ -1294,3 +1294,4 @@
 "notebookSettings.syncFailedDetail" = "設定の同期に失敗しました：%@";
 "notebookSettings.serverUnsupported" = "サーバーはまだ単語帳設定に対応していません";
 "notebookSettings.retry" = "再試行";
+"kgVocab.row.selectMultipleAction" = "複数選択";

@@ -93,6 +93,15 @@ struct Clean: View {
                 .onTapGesture { c() }
                 .accessibilityAction(.default) { c() }
 
+            // Trailing-closure action forms (no parenthesis).
+            Row()
+                .onTapGesture { c2() }
+                .accessibilityAction { c2() }
+
+            Row()
+                .onTapGesture { c3() }
+                .accessibilityActions { Button("x") { c3() } }
+
             // Decorative dismiss catcher hidden from AT.
             Color.clear
                 .onTapGesture { d() }

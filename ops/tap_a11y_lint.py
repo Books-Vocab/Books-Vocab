@@ -75,7 +75,9 @@ TAP_RX = re.compile(r"\.onTapGesture\b")
 # Evaluated on the semantic chain text only (strings/comments blanked, closure
 # bodies excluded), so none of these can be satisfied by literal copy.
 BUTTON_TRAIT_RX = re.compile(r"\.accessibilityAddTraits\([^)]*\bisButton\b")
-ACTION_RX = re.compile(r"\.accessibilityAction\(")
+# `\b` (not `\(`): also accepts the trailing-closure form `.accessibilityAction { … }`
+# and `.accessibilityActions { … }`, but not e.g. `.accessibilityActionFoo`.
+ACTION_RX = re.compile(r"\.accessibilityActions?\b")
 HIDDEN_RX = re.compile(r"\.accessibilityHidden\(\s*true\s*\)")
 ALLOW_RX = re.compile(r"//\s*a11y-allow:")
 SNIPPET_MAX = 120
@@ -204,9 +206,8 @@ def main() -> int:
             f"# tap_a11y_lint baseline — generated {dt.date.today().isoformat()}",
             "# Line-number-free finding keys: <relpath>::tap-a11y::<normalized-call-text>.",
             "# Regenerate after a sanctioned sweep:  bash ops/tap_a11y_lint.sh --baseline",
-            "# Review-mode UI (TodayReview*, ReviewCardView) is baselined on purpose: epic #2036",
-            "# decided VoiceOver is NOT a product requirement for review mode. Everything else",
-            "# must use Button / declare a trait / carry // a11y-allow: — do not add keys here.",
+            "# Zero tolerance: every .onTapGesture must use Button / declare a trait or action /",
+            "# be accessibilityHidden / carry // a11y-allow: <reason> — do not add keys here.",
             "",
         ]
         BASELINE_FILE.write_text("\n".join(header + keys) + "\n", encoding="utf-8")
