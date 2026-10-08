@@ -36,7 +36,12 @@ def test_lookup_vocab_word_unicode_normalized():
     precomposed = unicodedata.normalize("NFC", "café")
     decomposed = unicodedata.normalize("NFD", "café")
     cards = _FakeCardsStore([_FakeCard(id="c1", content=precomposed)])
-    result = lookup_vocab_word(decomposed, cards_store=cards, graph=SimpleNamespace(get_links_for=lambda card_id: []), card_response_builder=_card_builder)
+    result = lookup_vocab_word(
+        decomposed,
+        cards_store=cards,
+        graph=SimpleNamespace(get_links_for=lambda card_id: []),
+        card_response_builder=_card_builder,
+    )
     assert result["id"] == "c1"
 
 
@@ -112,11 +117,13 @@ class TestBatchDeleteVocabWords:
         `not_found` retains its pure meaning: lookup miss only. iOS treats
         `not_found` as 'server no longer has it -> converge/remove locally', so a
         graph-failed (still-existing) word must never appear there."""
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-            _FakeCard(id="c3", content="foo"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+                _FakeCard(id="c3", content="foo"),
+            ]
+        )
 
         class _FailSecondGraph(_FakeArchiveGraph):
             def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
@@ -125,9 +132,7 @@ class TestBatchDeleteVocabWords:
                 return super().cleanup_for_card(card_id, remove_blocked=remove_blocked)
 
         graph = _FailSecondGraph()
-        result = batch_delete_vocab_words(
-            ["hello", "world", "missing", "foo"], cards_store=cards, graph=graph
-        )
+        result = batch_delete_vocab_words(["hello", "world", "missing", "foo"], cards_store=cards, graph=graph)
 
         assert result["deleted"] == 2
         assert set(result["deleted_words"]) == {"hello", "foo"}
@@ -141,11 +146,13 @@ class TestBatchArchiveVocabWords:
         is rolled back to its original value, the word goes to `failed` (the card
         still exists on the server), the rest succeed, and the function does not
         raise. `not_found` must stay empty here (no lookup miss)."""
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-            _FakeCard(id="c3", content="foo"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+                _FakeCard(id="c3", content="foo"),
+            ]
+        )
 
         class _FailSecondGraph(_FakeArchiveGraph):
             def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
@@ -154,9 +161,7 @@ class TestBatchArchiveVocabWords:
                 return super().cleanup_for_card(card_id, remove_blocked=remove_blocked)
 
         graph = _FailSecondGraph()
-        result = batch_archive_vocab_words(
-            ["hello", "world", "foo"], archived=True, cards_store=cards, graph=graph
-        )
+        result = batch_archive_vocab_words(["hello", "world", "foo"], archived=True, cards_store=cards, graph=graph)
 
         assert result["updated"] == 2
         assert set(result["updated_words"]) == {"hello", "foo"}
@@ -169,10 +174,12 @@ class TestBatchArchiveVocabWords:
     def test_unarchive_rolls_back_on_graph_failure(self):
         """Unarchive path: restore_links_for failure rolls is_archived back to
         its original True value."""
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello", is_archived=True),
-            _FakeCard(id="c2", content="world", is_archived=True),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello", is_archived=True),
+                _FakeCard(id="c2", content="world", is_archived=True),
+            ]
+        )
 
         class _FailRestoreGraph(_FakeArchiveGraph):
             def restore_links_for(self, card_id, cards_store, *, source="auto"):
@@ -181,9 +188,7 @@ class TestBatchArchiveVocabWords:
                 return super().restore_links_for(card_id, cards_store)
 
         graph = _FailRestoreGraph()
-        result = batch_archive_vocab_words(
-            ["hello", "world"], archived=False, cards_store=cards, graph=graph
-        )
+        result = batch_archive_vocab_words(["hello", "world"], archived=False, cards_store=cards, graph=graph)
 
         assert result["updated"] == 1
         assert result["updated_words"] == ["hello"]
@@ -197,10 +202,12 @@ class TestBatchDeleteCaseInsensitive:
     """batch_delete_vocab_words must match words case-insensitively."""
 
     def test_case_insensitive_match(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="Hello"),
-            _FakeCard(id="c2", content="WORLD"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="Hello"),
+                _FakeCard(id="c2", content="WORLD"),
+            ]
+        )
         result = batch_delete_vocab_words(["hello", "world"], cards_store=cards)
         assert result["deleted"] == 2
         assert set(result["deleted_words"]) == {"hello", "world"}
@@ -231,10 +238,12 @@ class TestBatchDeleteCaseInsensitive:
 
     def test_no_find_by_content_calls(self):
         """After N+1 fix, batch_delete should use all() not find_by_content."""
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+            ]
+        )
         call_count = 0
         original_find = cards.find_by_content
 
@@ -252,10 +261,12 @@ class TestBatchArchiveCaseInsensitive:
     """batch_archive_vocab_words must match words case-insensitively."""
 
     def test_case_insensitive_match(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="Hello"),
-            _FakeCard(id="c2", content="WORLD"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="Hello"),
+                _FakeCard(id="c2", content="WORLD"),
+            ]
+        )
         result = batch_archive_vocab_words(["hello", "world"], archived=True, cards_store=cards)
         assert result["updated"] == 2
         assert result["not_found"] == []
@@ -285,10 +296,12 @@ class TestBatchArchiveCaseInsensitive:
 
     def test_no_find_by_content_calls(self):
         """After N+1 fix, batch_archive should use all() not find_by_content."""
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+            ]
+        )
         call_count = 0
         original_find = cards.find_by_content
 
@@ -308,7 +321,10 @@ class TestDeleteEvictsEmbedding:
         graph = _FakeArchiveGraph()
         emb = _FakeEmbeddingStore(ids=["c1"])
         delete_vocab_word(
-            "evoke", cards_store=cards, graph=graph, embeddings=emb,
+            "evoke",
+            cards_store=cards,
+            graph=graph,
+            embeddings=emb,
         )
         assert emb.removed == ["c1"]
 
@@ -337,8 +353,10 @@ class TestDeleteEvictsEmbedding:
         try:
             with pytest.raises(RuntimeError):
                 delete_vocab_word(
-                    "testword", cards_store=cards_store,
-                    graph=_FailingGraph(), embeddings=emb,
+                    "testword",
+                    cards_store=cards_store,
+                    graph=_FailingGraph(),
+                    embeddings=emb,
                 )
             assert emb.removed == [], "embedding evicted despite rollback"
             assert not cards_store.get(card.id).is_deleted
@@ -346,24 +364,31 @@ class TestDeleteEvictsEmbedding:
             cards_store.close()
 
     def test_batch_delete_removes_embeddings(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-            _FakeCard(id="c3", content="keep"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+                _FakeCard(id="c3", content="keep"),
+            ]
+        )
         graph = _FakeArchiveGraph()
         emb = _FakeEmbeddingStore(ids=["c1", "c2", "c3"])
         batch_delete_vocab_words(
-            ["hello", "world"], cards_store=cards, graph=graph, embeddings=emb,
+            ["hello", "world"],
+            cards_store=cards,
+            graph=graph,
+            embeddings=emb,
         )
         assert set(emb.removed) == {"c1", "c2"}
         assert "c3" not in emb.removed
 
     def test_batch_delete_without_embeddings_still_works(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+            ]
+        )
         result = batch_delete_vocab_words(["hello", "world"], cards_store=cards)
         assert result["deleted"] == 2
 
@@ -383,7 +408,10 @@ class TestBatchDeleteGraphFailureBranch:
         emb = _FakeEmbeddingStore(ids=[c1.id, c2.id])
 
         result = batch_delete_vocab_words(
-            ["hello", "world"], cards_store=cards, graph=graph, embeddings=emb,
+            ["hello", "world"],
+            cards_store=cards,
+            graph=graph,
+            embeddings=emb,
         )
 
         assert result["deleted"] == 1
@@ -405,7 +433,10 @@ class TestBatchDeleteGraphFailureBranch:
         emb = _FakeEmbeddingStore(ids=[c1.id])
 
         result = batch_delete_vocab_words(
-            ["hello"], cards_store=cards, graph=graph, embeddings=emb,
+            ["hello"],
+            cards_store=cards,
+            graph=graph,
+            embeddings=emb,
         )
         assert result["deleted"] == 0
         assert result["failed"] == ["hello"]
