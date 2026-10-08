@@ -4,6 +4,7 @@ Distinct from PATCH /api/vocab/{word}/archive (archive state toggle) and
 DELETE /api/vocab/{word} (soft delete). This route mutates editorial content:
 meaning / note (with `explanation` accepted as a write-through alias for note).
 """
+
 from __future__ import annotations
 
 import json
@@ -66,9 +67,7 @@ def _seed_word(api, word="apple", translation="蘋果"):
 
 def test_update_meaning(isolated_api):
     word = _seed_word(isolated_api)
-    r = isolated_api.client.patch(
-        f"/api/vocab/{word}", json={"meaning": "a round fruit"}, headers=isolated_api.headers
-    )
+    r = isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": "a round fruit"}, headers=isolated_api.headers)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["content"] == word
@@ -77,9 +76,7 @@ def test_update_meaning(isolated_api):
 
 def test_update_note(isolated_api):
     word = _seed_word(isolated_api)
-    r = isolated_api.client.patch(
-        f"/api/vocab/{word}", json={"note": "from Latin malum"}, headers=isolated_api.headers
-    )
+    r = isolated_api.client.patch(f"/api/vocab/{word}", json={"note": "from Latin malum"}, headers=isolated_api.headers)
     assert r.status_code == 200, r.text
     assert r.json()["note"] == "from Latin malum"
 
@@ -125,9 +122,7 @@ def test_empty_body_returns_400(isolated_api):
 
 
 def test_update_nonexistent_word_returns_404(isolated_api):
-    r = isolated_api.client.patch(
-        "/api/vocab/ghostword", json={"meaning": "x"}, headers=isolated_api.headers
-    )
+    r = isolated_api.client.patch("/api/vocab/ghostword", json={"meaning": "x"}, headers=isolated_api.headers)
     assert r.status_code == 404, r.text
 
 
@@ -138,9 +133,111 @@ def test_update_requires_auth(isolated_api):
 
 def test_update_persists_in_lookup(isolated_api):
     word = _seed_word(isolated_api)
-    isolated_api.client.patch(
-        f"/api/vocab/{word}", json={"meaning": "persisted"}, headers=isolated_api.headers
-    )
+    isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": "persisted"}, headers=isolated_api.headers)
     r = isolated_api.client.get(f"/api/vocab/{word}", headers=isolated_api.headers)
     assert r.status_code == 200, r.text
     assert r.json()["meaning"] == "persisted"
+
+
+# --------------------------------------------------------------------- #
+# #2254: word-addressed edits for words that equal a static PATCH segment
+# --------------------------------------------------------------------- #
+# `/api/vocab/review`, `/api/vocab/review-events` and `/api/vocab/batch-archive`
+# are registered before `/api/vocab/{word}`, so a saved card whose content is one
+# of those segments used to hit the static handler and always get a 422.
+
+
+def _stored_card(api, word):
+    from kg.cards import CardStore
+
+    store = CardStore(api.data_dir / "users" / api.user_id / "cards.db")
+    try:
+        return store.find_by_content(word, notebook_id="default")
+    finally:
+        store.close()
+
+
+def _review_entry(word, **overrides):
+    entry = {
+        "word": word,
+        "review_interval_hours": 24.0,
+        "next_review_at": "2026-06-02T10:00:00+00:00",
+        "last_reviewed_at": "2026-06-01T10:00:00+00:00",
+        "review_count": 1,
+        "lapse_count": 0,
+        "review_streak": 1,
+        "last_review_feedback": 1,
+    }
+    entry.update(overrides)
+    return entry
+
+
+@pytest.mark.parametrize("word", ["review", "review-events", "batch-archive"])
+def test_content_edit_reaches_word_equal_to_static_segment(isolated_api, word):
+    _seed_word(isolated_api, word=word, translation="舊")
+    r = isolated_api.client.patch(
+        f"/api/vocab/{word}",
+        params={"notebook_id": "default"},
+        json={"meaning": "new meaning", "explanation": "teacher note"},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["content"] == word
+    assert body["meaning"] == "new meaning"
+    assert body["note"] == "teacher note"
+    # GET /api/vocab/{word} is not used: GET /api/vocab/review-events is a
+    # separate static route, so read the card store directly.
+    stored = _stored_card(isolated_api, word)
+    assert stored is not None
+    assert (stored.meaning, stored.note) == ("new meaning", "teacher note")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{}, {"meaning": "ignored"}],
+    ids=["entries-only", "entries-wins-over-content-keys"],
+)
+def test_static_review_push_still_applies_entries(isolated_api, extra):
+    word = _seed_word(isolated_api)
+    r = isolated_api.client.patch(
+        "/api/vocab/review",
+        json={"entries": [_review_entry(word)], **extra},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body) == {"updated", "skipped"}
+    assert body["updated"] == 1
+    stored = _stored_card(isolated_api, word)
+    assert stored.review_count == 1
+    assert stored.meaning == "蘋果"
+
+
+@pytest.mark.parametrize(
+    ("payload", "loc"),
+    [
+        ({}, ["body", "entries"]),
+        ({"entries": [_review_entry("apple", review_count=-1)]}, ["body", "entries", 0, "review_count"]),
+    ],
+    ids=["empty-body", "invalid-entry"],
+)
+def test_static_review_push_malformed_body_still_422(isolated_api, payload, loc):
+    _seed_word(isolated_api)
+    r = isolated_api.client.patch("/api/vocab/review", json=payload, headers=isolated_api.headers)
+    assert r.status_code == 422, r.text
+    assert [error["loc"] for error in r.json()["detail"]] == [loc]
+
+
+def test_static_batch_archive_still_archives(isolated_api):
+    word = _seed_word(isolated_api)
+    r = isolated_api.client.patch(
+        "/api/vocab/batch-archive",
+        params={"notebook_id": "default"},
+        json={"words": [word]},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["updated_words"] == [word]
+    assert body["not_found"] == []

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, Query
 from fastapi.responses import Response
-from pydantic import Field
+from pydantic import BaseModel, Field, PlainValidator
 
 from ..api_models import (
     AddLinkOperationRequest,
@@ -167,7 +167,41 @@ def get_add_link_operation(operation_id: str, user: CurrentUser):
     return operation_response(record)
 
 
-# Static paths MUST be registered before {word} path parameter
+# Static paths MUST be registered before {word} path parameter. The static PATCH
+# routes below shadow PATCH /api/vocab/{word} for a saved word equal to their
+# segment ("review", "review-events", "batch-archive"), so they forward that
+# word-addressed content edit to update_word_content (#2254).
+
+_CONTENT_EDIT_KEYS = frozenset({"meaning", "note", "explanation"})
+
+
+def _forward_content_edit(static_model: type[BaseModel], required_key: str) -> PlainValidator:
+    """Validate a static-route body, or a content edit for the word equal to the segment.
+
+    Only a dict that lacks ``required_key`` and carries a content key — a body the
+    static model always rejected with 422 — becomes a VocabContentUpdateRequest.
+    Every other body is validated by ``static_model`` alone, in the same
+    ``from_attributes`` mode FastAPI validates bodies with, so its 422 details
+    (``loc`` and error type) are unchanged.
+    """
+
+    def _validate(body: Any) -> BaseModel:
+        if isinstance(body, dict) and required_key not in body and not _CONTENT_EDIT_KEYS.isdisjoint(body):
+            return VocabContentUpdateRequest.model_validate(body, from_attributes=True)
+        return static_model.model_validate(body, from_attributes=True)
+
+    return PlainValidator(_validate, json_schema_input_type=static_model | VocabContentUpdateRequest)
+
+
+_BatchArchiveBody = Annotated[
+    BatchArchiveRequest | VocabContentUpdateRequest, _forward_content_edit(BatchArchiveRequest, "words")
+]
+_ReviewStatePushBody = Annotated[
+    ReviewStatePushRequest | VocabContentUpdateRequest, _forward_content_edit(ReviewStatePushRequest, "entries")
+]
+_ReviewEventsPushBody = Annotated[
+    ReviewEventsPushRequest | VocabContentUpdateRequest, _forward_content_edit(ReviewEventsPushRequest, "entries")
+]
 
 
 @router.post("/api/vocab/batch-delete", response_model=BatchDeleteResponse)
@@ -188,12 +222,14 @@ def batch_delete(
     )
 
 
-@router.patch("/api/vocab/batch-archive", response_model=BatchArchiveResponse)
+@router.patch("/api/vocab/batch-archive", response_model=BatchArchiveResponse | CardResponse)
 def batch_archive(
-    req: BatchArchiveRequest,
+    req: _BatchArchiveBody,
     user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
+    if isinstance(req, VocabContentUpdateRequest):
+        return update_word_content("batch-archive", req, user, notebook_id=notebook_id)
     return batch_archive_response(
         req,
         user,
@@ -204,13 +240,16 @@ def batch_archive(
     )
 
 
-@router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)
+@router.patch("/api/vocab/review", response_model=ReviewStatePushResponse | CardResponse)
 def push_review(
-    req: ReviewStatePushRequest,
+    req: _ReviewStatePushBody,
     user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
+    if isinstance(req, VocabContentUpdateRequest):
+        return update_word_content("review", req, user, notebook_id=notebook_id)
     # notebook_id 不做過濾：iOS client 推送全部 notebook 的複習狀態，
-    # 後端需在全域卡片中查找匹配。
+    # 後端需在全域卡片中查找匹配（query notebook_id 只用於上面的內容編輯）。
     return push_review_response(
         req,
         user,
@@ -229,8 +268,14 @@ def pull_review_events(user: CurrentUser, since: str | None = None):
     )
 
 
-@router.patch("/api/vocab/review-events", response_model=ReviewEventsPushResponse)
-def push_review_events(req: ReviewEventsPushRequest, user: CurrentUser):
+@router.patch("/api/vocab/review-events", response_model=ReviewEventsPushResponse | CardResponse)
+def push_review_events(
+    req: _ReviewEventsPushBody,
+    user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    if isinstance(req, VocabContentUpdateRequest):
+        return update_word_content("review-events", req, user, notebook_id=notebook_id)
     return push_review_events_response(
         req,
         user,
