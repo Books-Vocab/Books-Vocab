@@ -143,7 +143,7 @@ struct NotebookCard: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(L10n.format("%@ 詞", "\(data.cardCount)"))
+                            Text(L10n.format("vocab_graph_node_count_plural", Int64(data.cardCount)))
                                 .font(skin.typography.monoLabel)
                                 .monospacedDigit()
                                 .foregroundStyle(skin.palette.secondaryText)
@@ -423,7 +423,7 @@ struct EditorialCoverComposition: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        Text(L10n.format("%@ 詞", "\(cardCount)"))
+                        Text(L10n.format("vocab_graph_node_count_plural", Int64(cardCount)))
                             .font(skin.typography.monoLabel)
                             .monospacedDigit()
                             .foregroundStyle(skin.palette.secondaryText)
