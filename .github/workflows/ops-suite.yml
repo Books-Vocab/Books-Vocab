@@ -143,5 +143,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Install uv
+        # macos-26 映像清單有 jq/git/pipx，但沒有 uv 也沒有 ripgrep；ios-ops 的
+        # test_ios_ops.sh 與 backend pytest 都經 `uv run`，缺了會在中段以 rc=127
+        # 收尾（不是在入口就具名失敗）。與 Linux job 同一份 pin，不靠映像碰巧預裝。
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Verify tools the macOS groups need
+        # 明列且 fail-fast：映像工具清單不是契約。ripgrep 刻意不在清單內——這三個
+        # group 的碼已改用 grep，不得再依賴映像沒有的 rg。
+        shell: bash
+        run: |
+          set -euo pipefail
+          for command_name in jq uv plutil xcrun; do
+            command -v "$command_name" >/dev/null 2>&1 || {
+              echo "macOS native ops group needs '$command_name' on PATH" >&2
+              exit 1
+            }
+          done
       - name: Run macOS native ops groups
         run: ./ops/test_ops.sh ios-sentry-wiring ios-ops lldb-forensics

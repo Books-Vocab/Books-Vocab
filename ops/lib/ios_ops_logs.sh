@@ -57,11 +57,10 @@ LOG
     return 0
   fi
   if [[ "${KG_IOS_OPS_LOG_STREAM_FIXTURE:-}" == "1" ]]; then
-    # unbounded producer: exercises the real SIGPIPE(141) path when a downstream
-    # `head -n` closes the pipe after the limit is reached.
-    while :; do
-      printf '%s\n' '2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:sync] sync completed'
-    done
+    # unbounded producer: exercises the real SIGPIPE(141) path when the downstream
+    # stop gate closes the pipe after the limit is reached. The loop ends on a failed
+    # write too: with SIGPIPE ignored (CI runner steps) there is no signal, only EPIPE.
+    while printf '%s\n' '2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:sync] sync completed'; do :; done
     return 0
   fi
   /usr/bin/log stream --style compact --predicate "$predicate"
@@ -82,9 +81,7 @@ NDJSON
     return 0
   fi
   if [[ "${KG_IOS_OPS_LOG_STREAM_FIXTURE:-}" == "1" ]]; then
-    while :; do
-      printf '%s\n' '{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}'
-    done
+    while printf '%s\n' '{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}'; do :; done
     return 0
   fi
   /usr/bin/log stream --style ndjson --predicate "$predicate"
@@ -93,19 +90,23 @@ NDJSON
 # Stream live compact logs, filtering framework noise. limit>0 stops after N lines.
 # Runs in a subshell so `set +o pipefail` stays local (this is a sourceable lib).
 # Subshell exit status carries PIPESTATUS[0] (the producer's rc).
+# Filter and stop gate are ONE process that exits by itself at N. `grep | head -n N`
+# leaves the stop to SIGPIPE travelling back through grep to the producer; a caller
+# that started us with SIGPIPE ignored (GitHub Actions runner steps) gets no signal and
+# BSD grep swallows EPIPE, so the stream was drained forever (macOS CI hung 30 min).
 cmd_logs_follow_text() {
   local predicate="$1" limit="$2" rc=0
   (
     set +o pipefail
-    if (( limit > 0 )); then
-      run_log_stream_compact "$predicate" | grep --line-buffered -vE "$LOG_NOISE_REGEX" | head -n "$limit"
-    else
-      run_log_stream_compact "$predicate" | grep --line-buffered -vE "$LOG_NOISE_REGEX"
-    fi
+    run_log_stream_compact "$predicate" \
+      | KG_LOG_NOISE="$LOG_NOISE_REGEX" awk -v limit="$limit" '
+          BEGIN { noise = ENVIRON["KG_LOG_NOISE"] }
+          $0 !~ noise { print; fflush(); if (limit > 0 && ++n >= limit) exit }
+        '
     exit "${PIPESTATUS[0]}"
   ) || rc=$?
-  # Propagate real `log stream` failures; SIGPIPE (head closed) is benign.
-  # rc is PIPESTATUS[0] (producer); grep no-match lives in PIPESTATUS[1] and is dropped.
+  # Propagate real `log stream` failures; SIGPIPE/EPIPE once the gate exited is benign.
+  # rc is PIPESTATUS[0] (producer); the filter's status is PIPESTATUS[1] and is dropped.
   if (( rc != 0 && rc != 141 )); then
     return "$rc"
   fi
@@ -113,26 +114,30 @@ cmd_logs_follow_text() {
 }
 
 # Stream live ndjson logs as one filtered JSON object per line. limit>0 stops after N.
+# jq's own limit() is the stop gate for the same reason as the text path: jq also
+# swallows EPIPE, so a trailing `head -n N` never ended the stream with SIGPIPE ignored.
 cmd_logs_follow_json() {
   local predicate="$1" limit="$2" rc=0
   (
     set +o pipefail
     run_log_stream_ndjson "$predicate" \
-      | jq -c --unbuffered --arg schema "kg.ios.log-stream.v1" --arg noise "$LOG_NOISE_REGEX" '
+      | jq -nc --unbuffered --arg schema "kg.ios.log-stream.v1" --arg noise "$LOG_NOISE_REGEX" --argjson limit "$limit" '
           def message: (.eventMessage // .formatString // "");
-          select((message | test($noise)) | not)
-          | {
-              schema:$schema,
-              timestamp:(.timestamp // null),
-              eventType:(.eventType // null),
-              processID:(.processID // null),
-              subsystem:(.subsystem // null),
-              category:(.category // null),
-              message:message,
-              sender:(.senderImagePath // null)
-            }
-        ' \
-      | { if (( limit > 0 )); then head -n "$limit"; else cat; fi; }
+          def entries:
+            inputs
+            | select((message | test($noise)) | not)
+            | {
+                schema:$schema,
+                timestamp:(.timestamp // null),
+                eventType:(.eventType // null),
+                processID:(.processID // null),
+                subsystem:(.subsystem // null),
+                category:(.category // null),
+                message:message,
+                sender:(.senderImagePath // null)
+              };
+          if $limit > 0 then limit($limit; entries) else entries end
+        '
     exit "${PIPESTATUS[0]}"
   ) || rc=$?
   if (( rc != 0 && rc != 141 )); then
