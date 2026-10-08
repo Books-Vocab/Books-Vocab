@@ -5,7 +5,8 @@ spoofing) and `test_auth_service.py` (basic merge semantics) by covering:
 
 1. Apple-then-Google with the same verified email merges into one canonical
    user without losing per-user data (notebook directories keyed by canonical
-   id remain accessible).
+   id remain accessible). A linked provider keeps resolving to that canonical
+   even when its later token omits or changes the verified email.
 2. After account deletion (the canonical session-invalidation pathway), the
    original JWT must be rejected even if the same provider sub re-registers
    later — the `_revoked_before` watermark must outlive the data wipe until
@@ -30,6 +31,7 @@ from kg.auth_handlers import auth_verify_response
 from kg.auth_service import resolve_and_link_user
 from kg.user_context import resolve_current_user
 from kg.user_handlers import delete_user_account_response
+from kg.user_store import collect_account_ids_for_deletion
 from kg.user_store import parse_datetime as _parse_datetime
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +327,50 @@ async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
     assert users["apple-sub"]["_linked_to"] == "google-sub"
     assert canonical_data.exists()
     assert json.loads(canonical_data.read_text())["title"] == "canonical data"
+
+
+@pytest.mark.asyncio
+async def test_linked_apple_email_change_keeps_canonical_session(tmp_path):
+    """#2256: once Apple is linked to Google, a later Apple token carrying a
+    different verified email must still issue the canonical session. A split
+    `sub=a-sub` session would show an empty account, and Delete Account from it
+    would reach the real canonical through the stale `_linked_to` pointer."""
+    users_file, lock, load, save = _make_user_store(tmp_path)
+    settings = make_settings(tmp_path)
+
+    async def sign_in(provider: str, sub: str, email: str):
+        kwargs = _build_handler_kwargs(
+            users_file,
+            lock,
+            provider=provider,
+            sub=sub,
+            email=email,
+            email_verified=True,
+        )
+        return await auth_verify_response(
+            AuthVerifyRequest(provider=provider, token=f"{sub}-token", email=None),
+            **kwargs,
+        )
+
+    assert (await sign_in("google", "g-sub", "first@example.com")).user_id == "g-sub"
+    assert (await sign_in("apple", "a-sub", "first@example.com")).user_id == "g-sub"
+    resp = await sign_in("apple", "a-sub", "relay@privaterelay.appleid.com")
+
+    assert resp.user_id == "g-sub"
+    claims = pyjwt.decode(resp.access_token, TEST_JWT_SECRET, algorithms=[TEST_ALGORITHM])
+    assert claims["sub"] == "g-sub"
+
+    record = resolve_current_user(
+        resp.access_token,
+        settings=settings,
+        load_users=load,
+        parse_datetime=_parse_datetime,
+    )
+    assert record["id"] == "g-sub"
+    assert not (tmp_path / "users" / "a-sub").exists()
+
+    # Deletion from this session starts at the real canonical, not a split id.
+    assert collect_account_ids_for_deletion(load(), claims["sub"]) == ("g-sub", ["a-sub", "g-sub"])
 
 
 # --------------------------------------------------------------------------- #
