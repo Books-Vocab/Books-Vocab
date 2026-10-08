@@ -132,6 +132,9 @@ final class NotebookListCoordinator: NotebookListCoordinating {
 
         modelContext.safeSave()
         reconcileError = nil
+
+        // Remote merge keeps locally-newer settings dirty; push them now.
+        await NotebookSettingsDrain.drain(modelContext: modelContext, service: kgService)
     }
 
     /// Reconcile the server vocab-ui projection with the local active notebook
