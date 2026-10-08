@@ -69,8 +69,11 @@ class TestCrossInstanceLinks:
                 barrier.wait(timeout=5)
                 for i in range(n):
                     store.add_link(
-                        f"{prefix}_from_{i}", f"{prefix}_to_{i}",
-                        LinkKind.CONTRASTS_WITH, 0.9, f"{prefix}{i}",
+                        f"{prefix}_from_{i}",
+                        f"{prefix}_to_{i}",
+                        LinkKind.CONTRASTS_WITH,
+                        0.9,
+                        f"{prefix}{i}",
                     )
             except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
@@ -86,10 +89,7 @@ class TestCrossInstanceLinks:
 
         reloaded = _new_store(tmp_path)
         ids = {lk.id for lk in reloaded.all_links()}
-        assert len(ids) == 2 * n, (
-            f"expected {2 * n} links on disk, found {len(ids)} "
-            "-- cross-instance lost update"
-        )
+        assert len(ids) == 2 * n, f"expected {2 * n} links on disk, found {len(ids)} -- cross-instance lost update"
 
     def test_blocked_pairs_not_lost_across_instances(self, tmp_path):
         """hard_delete on one instance must not be erased by another's flush."""
@@ -103,9 +103,7 @@ class TestCrossInstanceLinks:
         b.add_link("p", "q", LinkKind.SHARES_USAGE, 0.8, "r2")
 
         reloaded = _new_store(tmp_path)
-        assert reloaded.is_blocked("x", "y"), (
-            "blocked pair lost: B's stale blocked snapshot overwrote A's delete"
-        )
+        assert reloaded.is_blocked("x", "y"), "blocked pair lost: B's stale blocked snapshot overwrote A's delete"
 
 
 class TestUnblockNotResurrected:
@@ -135,9 +133,7 @@ class TestUnblockNotResurrected:
         b.add_link("p", "q", LinkKind.SHARES_USAGE, 0.8, "r2")
 
         reloaded = _new_store(tmp_path)
-        assert not reloaded.is_blocked("x", "y"), (
-            "unblock resurrected: B's stale snapshot re-added the pair"
-        )
+        assert not reloaded.is_blocked("x", "y"), "unblock resurrected: B's stale snapshot re-added the pair"
 
     def test_unblock_then_self_flush_not_resurrected(self, tmp_path):
         """unblock_pair's own flush must not union the pair back from disk."""
@@ -149,9 +145,7 @@ class TestUnblockNotResurrected:
         store.unblock_pair("x", "y")
 
         reloaded = _new_store(tmp_path)
-        assert not reloaded.is_blocked("x", "y"), (
-            "unblock_pair's merge resurrected the pair from its own disk file"
-        )
+        assert not reloaded.is_blocked("x", "y"), "unblock_pair's merge resurrected the pair from its own disk file"
 
     def test_remove_blocked_pairs_for_not_resurrected(self, tmp_path):
         """remove_blocked_pairs_for must survive a stale instance flush."""
@@ -192,9 +186,7 @@ class TestUnblockNotResurrected:
 
         reloaded = _new_store(tmp_path)
         assert not reloaded.is_blocked("x", "y"), "A's unblock did not take effect"
-        assert reloaded.is_blocked("m", "n"), (
-            "foreign blocked pair from B was dropped by A's unblock flush"
-        )
+        assert reloaded.is_blocked("m", "n"), "foreign blocked pair from B was dropped by A's unblock flush"
 
 
 class TestDiskMergeBehaviour:
@@ -222,9 +214,7 @@ class TestDiskMergeBehaviour:
 
         on_disk = json.loads((tmp_path / "links.json").read_text())
         disk_ids = {row["id"] for row in on_disk}
-        assert "ext_link_0001" in disk_ids, (
-            "flush overwrote an externally-added link with a stale snapshot"
-        )
+        assert "ext_link_0001" in disk_ids, "flush overwrote an externally-added link with a stale snapshot"
 
 
 class TestCrossInstancePendingJudge:
@@ -293,9 +283,39 @@ class TestCrossInstancePendingJudge:
         assert popped == ["c1"]
 
         reloaded = _new_store_pj(tmp_path)
-        assert reloaded._pending_judge == {"c2"}, (
-            "pop_pending_judge wiped a card added by another instance"
-        )
+        assert reloaded._pending_judge == {"c2"}, "pop_pending_judge wiped a card added by another instance"
+
+
+def _run_two_poppers(pop, join_timeout: float = 10) -> list[list]:
+    """Run ``pop`` concurrently in two threads; return both results.
+
+    Fails loudly if a thread raised, hung, or produced no result, so the
+    callers' exactly-once assertions can never pass on a partial run.
+    """
+    barrier = threading.Barrier(2)
+    results: list[list] = []
+    errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def popper():
+        try:
+            barrier.wait(timeout=5)
+            popped = pop()
+            with lock:
+                results.append(popped)
+        except BaseException as exc:  # noqa: BLE001 - surfaced by the asserts
+            with lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=popper) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=join_timeout)
+    assert not any(t.is_alive() for t in threads), "popper thread still alive"
+    assert not errors, f"popper errors: {errors}"
+    assert len(results) == 2, f"expected 2 popper results, got {len(results)}"
+    return results
 
 
 class TestPopExactlyOnce:
@@ -307,22 +327,7 @@ class TestPopExactlyOnce:
         n = 50
         store.add_pending_judge([f"c{i}" for i in range(n)])
 
-        barrier = threading.Barrier(2)
-        results: list[list[str]] = []
-        lock = threading.Lock()
-
-        def popper():
-            barrier.wait(timeout=5)
-            popped = store.pop_pending_judge()
-            with lock:
-                results.append(popped)
-
-        t1 = threading.Thread(target=popper)
-        t2 = threading.Thread(target=popper)
-        t1.start()
-        t2.start()
-        t1.join(timeout=10)
-        t2.join(timeout=10)
+        results = _run_two_poppers(store.pop_pending_judge)
 
         all_popped = [x for r in results for x in r]
         assert sorted(all_popped) == sorted(f"c{i}" for i in range(n)), (
@@ -336,31 +341,46 @@ class TestPopExactlyOnce:
         for i in range(n):
             store.add_candidate(f"f{i}", f"t{i}", 0.9)
 
-        barrier = threading.Barrier(2)
-        results: list[list] = []
-        lock = threading.Lock()
+        results = _run_two_poppers(store.pop_candidates)
 
-        def popper():
-            barrier.wait(timeout=5)
-            popped = store.pop_candidates()
-            with lock:
-                results.append(popped)
-
-        t1 = threading.Thread(target=popper)
-        t2 = threading.Thread(target=popper)
-        t1.start()
-        t2.start()
-        t1.join(timeout=10)
-        t2.join(timeout=10)
-
-        all_pairs = [
-            tuple(sorted([c.from_id, c.to_id]))
-            for r in results for c in r
-        ]
-        assert sorted(all_pairs) == sorted(
-            tuple(sorted([f"f{i}", f"t{i}"])) for i in range(n)
-        ), "pop_candidates handed a pair to two callers (or lost one)"
+        all_pairs = [tuple(sorted([c.from_id, c.to_id])) for r in results for c in r]
+        assert sorted(all_pairs) == sorted(tuple(sorted([f"f{i}", f"t{i}"])) for i in range(n)), (
+            "pop_candidates handed a pair to two callers (or lost one)"
+        )
         assert store.candidate_count() == 0
+
+
+class TestRunTwoPoppersGuards:
+    """The exactly-once tests must not pass when a popper thread died or hung."""
+
+    def test_raising_popper_fails(self):
+        calls = 0
+        guard = threading.Lock()
+
+        def pop():
+            nonlocal calls
+            with guard:
+                calls += 1
+                second = calls == 2
+            if second:
+                raise RuntimeError("boom")
+            return []
+
+        with pytest.raises(AssertionError, match="popper errors"):
+            _run_two_poppers(pop)
+
+    def test_hung_popper_fails(self):
+        release = threading.Event()
+
+        def pop():
+            release.wait(timeout=5)
+            return []
+
+        try:
+            with pytest.raises(AssertionError, match="still alive"):
+                _run_two_poppers(pop, join_timeout=0.2)
+        finally:
+            release.set()
 
 
 class TestCrossInstanceCandidates:
@@ -379,9 +399,7 @@ class TestCrossInstanceCandidates:
         b.add_candidate("b1", "b2", 0.8)
 
         reloaded = _new_store(tmp_path)
-        pairs = {
-            tuple(sorted([c.from_id, c.to_id])) for c in reloaded._candidates
-        }
+        pairs = {tuple(sorted([c.from_id, c.to_id])) for c in reloaded._candidates}
         assert ("a1", "a2") in pairs, "candidate from A lost (overwritten by B)"
         assert ("b1", "b2") in pairs, "candidate from B lost"
 
@@ -412,8 +430,7 @@ class TestCrossInstanceCandidates:
 
         reloaded = _new_store(tmp_path)
         assert len(reloaded._candidates) == 2 * n, (
-            f"expected {2 * n} candidates on disk, found "
-            f"{len(reloaded._candidates)} -- cross-instance lost update"
+            f"expected {2 * n} candidates on disk, found {len(reloaded._candidates)} -- cross-instance lost update"
         )
 
     def test_pop_candidates_preserves_foreign_added_candidate(self, tmp_path):
@@ -429,12 +446,8 @@ class TestCrossInstanceCandidates:
         assert ("a1", "a2") in popped_pairs
 
         reloaded = _new_store(tmp_path)
-        pairs = {
-            tuple(sorted([c.from_id, c.to_id])) for c in reloaded._candidates
-        }
-        assert pairs == {("b1", "b2")}, (
-            "pop_candidates wiped a candidate added by another instance"
-        )
+        pairs = {tuple(sorted([c.from_id, c.to_id])) for c in reloaded._candidates}
+        assert pairs == {("b1", "b2")}, "pop_candidates wiped a candidate added by another instance"
 
 
 if __name__ == "__main__":  # pragma: no cover
