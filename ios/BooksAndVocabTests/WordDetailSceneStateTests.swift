@@ -451,6 +451,28 @@ struct WordDetailSceneStateTests {
         return ModelContext(container)
     }
 
+    @Test func metadataLinkCount_usesPluralKey() {
+        let entry = makeEntry(cardId: "root-card", word: "meticulous")
+        entry.insertLink(
+            KGCardLinkSummary(
+                id: "link-1",
+                cardId: "peer-card",
+                word: "precise",
+                kind: "shares_usage",
+                label: "相關",
+                confidence: 0.8,
+                reason: "seed"
+            ),
+            kind: "shares_usage"
+        )
+
+        let state = WordDetailPresentation.state(for: entry, in: [entry], lookup: [:], now: Date())
+
+        let expected = L10n.format("vocab_graph_link_count_plural", Int64(1))
+        #expect(state.metadataItems.contains { $0.text == expected })
+        #expect(!state.metadataItems.contains { $0.text == L10n.format("%@ 個連結", "1") })
+    }
+
     private func makeEntry(cardId: String, word: String) -> VocabularyEntry {
         let entry = VocabularyEntry(
             word: word,
