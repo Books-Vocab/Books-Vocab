@@ -179,9 +179,9 @@ def test_seed_routes_without_cards_get():
     }
     graph = _CardNotebookGraph(spy, Path("."), _gl_factory(per_nb))
     graph.seed(cards)
-    assert [l.to_id for l in graph.get_links_for("a")] == ["x"]
-    assert [l.to_id for l in graph.get_links_for("b")] == ["y"]
-    assert [l.to_id for l in graph.get_links_for("c")] == ["z"]
+    assert [lk.to_id for lk in graph.get_links_for("a")] == ["x"]
+    assert [lk.to_id for lk in graph.get_links_for("b")] == ["y"]
+    assert [lk.to_id for lk in graph.get_links_for("c")] == ["z"]
     assert spy.get_calls == []
 
 
@@ -206,7 +206,7 @@ def test_list_vocab_cards_global_no_per_card_get(n):
     seen = {}
 
     def builder(card, g, by_id):
-        seen[card.id] = [(l.from_id, l.to_id) for l in g.get_links_for(card.id)]
+        seen[card.id] = [(lk.from_id, lk.to_id) for lk in g.get_links_for(card.id)]
         return card.id
 
     responses, _ = list_vocab_cards(since=None, cards_store=spy, graph=graph, card_response_builder=builder)
