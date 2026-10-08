@@ -417,7 +417,7 @@ case "${1:-}" in
     fi
     ;;
   stats) printf 'cpu_pct\t4.2\nmem_pct\t38.0\n' ;;
-  logs) [ -n "${KG_TEST_LOG_FIXTURE:-}" ] && cat "$KG_TEST_LOG_FIXTURE" ;;
+  logs) [ -n "${KG_TEST_LOG_FIXTURE:-}" ] && cat "$KG_TEST_LOG_FIXTURE" || : ;;
   *) exit 1 ;;
 esac
 EOF
@@ -478,12 +478,14 @@ log_errs() {  # $1=fixture 檔 → log_errors_1h 的 raw
 }
 LOGMIX="$(mktemp)"; LOGWARN="$(mktemp)"; LOGCRIT="$(mktemp)"; LOGBARE="$(mktemp)"
 printf '%s\n' \
-  '{"level":"WARNING","msg":"NotFoundError: book missing -> 404"}' \
+  '{"ts":1,"level":"WARNING","msg":"NotFoundError [x] GET /api/x -> 404"}' \
+  '{"ts":2,"level":"WARNING","msg":"NotFoundError [y] GET /api/x -> 404"}' \
+  '{"ts":3,"level":"WARNING","msg":"NotFoundError [z] GET /api/x -> 404"}' \
   '{"level":"WARNING","msg":"QuotaExceededError: daily quota -> 429"}' \
   '{"level":"WARNING","msg":"QuotaExceededError: daily quota -> 429"}' \
   '{"level":"WARNING","msg":"Validation error on body"}' \
-  '127.0.0.1 - "GET /error HTTP/1.1" 200' \
-  '{"level":"ERROR","msg":"unhandled"}' \
+  'INFO:     127.0.0.1:1 - "GET /api/error?error=1 HTTP/1.1" 404' \
+  '{"ts":9,"level": "ERROR","msg":"unhandled"}' \
   'Traceback (most recent call last):' \
   '  File "app.py", line 1, in handler' \
   'ValueError: boom Exception tail' >"$LOGMIX"

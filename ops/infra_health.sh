@@ -67,7 +67,7 @@ DISK_WARN="${KG_HEALTH_DISK_WARN:-80}";   DISK_CRIT="${KG_HEALTH_DISK_CRIT:-90}"
 INODE_WARN="${KG_HEALTH_INODE_WARN:-80}"; INODE_CRIT="${KG_HEALTH_INODE_CRIT:-90}"
 MEM_WARN="${KG_HEALTH_MEM_WARN:-15}";     MEM_CRIT="${KG_HEALTH_MEM_CRIT:-8}"   # 可用%，低於告警
 CERT_WARN="${KG_HEALTH_CERT_WARN:-14}";   CERT_CRIT="${KG_HEALTH_CERT_CRIT:-3}" # 剩餘天數
-ERR_WARN="${KG_HEALTH_ERR_WARN:-20}";     ERR_CRIT="${KG_HEALTH_ERR_CRIT:-100}" # 近1h錯誤行
+ERR_WARN="${KG_HEALTH_ERR_WARN:-20}";     ERR_CRIT="${KG_HEALTH_ERR_CRIT:-100}" # 近1h ERROR 級 log 事件數
 # swap 使用%。macOS 動態 swap + 壓縮記憶體：中度 swap 是常態（惰性換頁），swap-used
 # 高 ≠ OOM 前兆（真實記憶體壓力看 mem_avail_pct）。故閾值比 Linux 寬鬆，swap 僅當粗略
 # 旁證信號，避免 RAM 健康時假 crit。Linux 舊值 warn20/crit50 不適用 macOS。
@@ -228,7 +228,7 @@ printf "ingress\t%s\n" "$(pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 && echo
 # log_errors_1h 只數 ERROR/CRITICAL **等級**記錄（JSON "level" 欄位，或 bare 格式行首 ERROR:/CRITICAL ），
 # 不 grep 訊息文字：WARNING 的 NotFoundError→404、QuotaExceededError→429、/error 路徑與多行
 # traceback 都不是錯誤記錄（#2317）。grep -c 無匹配會印 0 但 exit 1，故保留 || true。
-printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -cE "\"level\":\"(ERROR|CRITICAL)\"|^(ERROR|CRITICAL)[: ]" || true)"
+printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -cE "\"level\": ?\"(ERROR|CRITICAL)\"|^(ERROR|CRITICAL)[: ]" || true)"
 printf "data_dir_mb\t%s\n" "$(du -sm "$D" 2>/dev/null | cut -f1 || echo 0)"
 # 部署漂移組（IMP-0022）。全用雙引號：本段是單引號字串，出現單引號會提前結束它，
 # 故不得改用 awk（awk 程式需要單引號）。各自帶 || 保底，printf 恆回 0，不觸 set -e。
@@ -360,7 +360,7 @@ add http_probe "HTTPS 端點" "$HTTP_CODE" "$hst" "$HTTP_CODE"
 
 # 近期錯誤
 errs="$(getm log_errors_1h)"
-add log_errors_1h "近1h log ERROR/CRITICAL 記錄" "${errs:-?}" "$(th_high "${errs:-}" $ERR_WARN $ERR_CRIT)" "$errs"
+add log_errors_1h "近1h ERROR 級 log 事件" "${errs:-?}" "$(th_high "${errs:-}" $ERR_WARN $ERR_CRIT)" "$errs"
 
 # 憑證
 add cert_days_left "TLS 憑證剩餘" "${CERT_DAYS:-?} 天" "$(th_low "${CERT_DAYS:-}" $CERT_WARN $CERT_CRIT)" "$CERT_DAYS"
