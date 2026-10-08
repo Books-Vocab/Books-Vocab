@@ -42,8 +42,9 @@ def store(tmp_path):
 
 
 class FakeCard:
-    def __init__(self, id, content="word", meaning="meaning", is_deleted=False,
-                 is_archived=False, notebook_id="default"):
+    def __init__(
+        self, id, content="word", meaning="meaning", is_deleted=False, is_archived=False, notebook_id="default"
+    ):
         self.id = id
         self.content = content
         self.meaning = meaning
@@ -83,6 +84,7 @@ def _make_judge(response_json: str):
     resp.usage = None
     client.chat.completions.create.return_value = resp
     from kg.tracked_llm import TrackedLLM
+
     return ManualLinkJudge(TrackedLLM(client, "test_user"))
 
 
@@ -112,6 +114,7 @@ class TestHideTouchGuard:
 
     def test_touch_failure_logs_error(self, store, caplog):
         import logging
+
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         cards = FakeCardsStore([FakeCard("a"), FakeCard("b")], fail_ids={"b"})
         with caplog.at_level(logging.ERROR, logger="kg.vocab_graph_ops"):
@@ -162,6 +165,7 @@ class TestDeleteTouchGuard:
 
     def test_touch_failure_logs_error(self, store, caplog):
         import logging
+
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         cards = FakeCardsStore([FakeCard("a"), FakeCard("b")], fail_ids={"b"})
         with caplog.at_level(logging.ERROR, logger="kg.vocab_graph_ops"):
@@ -173,36 +177,40 @@ class TestDeleteTouchGuard:
 class TestCreateManualLinkTouchGuard:
     def test_new_link_touch_failure_reraises(self, store):
         cards = FakeCardsStore(
-            [FakeCard("a", content="apple", meaning="蘋果"),
-             FakeCard("b", content="banana", meaning="香蕉")],
+            [FakeCard("a", content="apple", meaning="蘋果"), FakeCard("b", content="banana", meaning="香蕉")],
             fail_ids={"b"},
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         with pytest.raises(RuntimeError):
-            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+            create_manual_link(
+                from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+            )
 
     def test_new_link_touch_failure_attempts_both_endpoints(self, store):
         cards = FakeCardsStore(
-            [FakeCard("a", content="apple", meaning="蘋果"),
-             FakeCard("b", content="banana", meaning="香蕉")],
+            [FakeCard("a", content="apple", meaning="蘋果"), FakeCard("b", content="banana", meaning="香蕉")],
             fail_ids={"a"},
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         with pytest.raises(RuntimeError):
-            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+            create_manual_link(
+                from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+            )
         assert "a" in cards.touched and "b" in cards.touched
 
     def test_new_link_touch_failure_logs_error(self, store, caplog):
         import logging
+
         cards = FakeCardsStore(
-            [FakeCard("a", content="apple", meaning="蘋果"),
-             FakeCard("b", content="banana", meaning="香蕉")],
+            [FakeCard("a", content="apple", meaning="蘋果"), FakeCard("b", content="banana", meaning="香蕉")],
             fail_ids={"b"},
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         with caplog.at_level(logging.ERROR, logger="kg.vocab_graph_ops"):
             with pytest.raises(RuntimeError):
-                create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+                create_manual_link(
+                    from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+                )
         assert any(rec.levelno == logging.ERROR for rec in caplog.records)
 
     def test_unhide_branch_touch_failure_reraises_and_rolls_back(self, store):
@@ -211,13 +219,14 @@ class TestCreateManualLinkTouchGuard:
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "original")
         store.hide_link(lk.id)
         cards = FakeCardsStore(
-            [FakeCard("a", content="apple", meaning="蘋果"),
-             FakeCard("b", content="banana", meaning="香蕉")],
+            [FakeCard("a", content="apple", meaning="蘋果"), FakeCard("b", content="banana", meaning="香蕉")],
             fail_ids={"b"},
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新"}')
         with pytest.raises(RuntimeError):
-            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+            create_manual_link(
+                from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+            )
         assert store.get_link(lk.id).status == "hidden"
 
 
@@ -234,10 +243,86 @@ class TestSuccessPathUnchanged:
 
     def test_create_success_returns_link_and_touches_both(self, store):
         cards = FakeCardsStore(
-            [FakeCard("a", content="apple", meaning="蘋果"),
-             FakeCard("b", content="banana", meaning="香蕉")],
+            [FakeCard("a", content="apple", meaning="蘋果"), FakeCard("b", content="banana", meaning="香蕉")],
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
-        link = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+        link = create_manual_link(
+            from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+        )
         assert link is not None
         assert "a" in cards.touched and "b" in cards.touched
+
+
+class _RaisingJudge:
+    def evaluate(self, *args, **kwargs):
+        from kg.exceptions import QuotaExceededError
+
+        raise QuotaExceededError(60)
+
+
+class TestBlockedPairSurvivesJudgeFailure:
+    def test_judge_failure_keeps_pair_blocked(self, store):
+        from kg.exceptions import QuotaExceededError
+
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hard_delete_link(lk.id)
+        assert store.is_blocked("a", "b")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        with pytest.raises(QuotaExceededError):
+            create_manual_link(
+                from_id="a",
+                to_id="b",
+                cards_store=cards,
+                graph=store,
+                judge=_RaisingJudge(),
+                notebook_id="default",
+            )
+        assert store.is_blocked("a", "b")
+
+
+class TestToggleStatusGuard:
+    def test_toggle_on_deprecated_404_and_unchanged(self, store):
+        from kg.exceptions import NotFoundError
+
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.get_link(lk.id).status = "deprecated"
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        for fn in (unhide_graph_link, hide_graph_link):
+            with pytest.raises(NotFoundError):
+                fn(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "deprecated"
+        assert cards.touched == []
+
+    def test_delete_on_deprecated_404_unchanged_and_not_blocked(self, store):
+        from kg.exceptions import NotFoundError
+
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.get_link(lk.id).status = "deprecated"
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        with pytest.raises(NotFoundError):
+            delete_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "deprecated"
+        assert not store.is_blocked("a", "b")
+        assert cards.touched == []
+
+    def test_delete_on_hidden_still_works(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        delete_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id) is None
+        assert store.is_blocked("a", "b")
+
+    def test_hide_already_hidden_with_failing_touch_stays_hidden(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")], fail_ids={"b"})
+        hide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "hidden"
+        assert cards.touched == []
+
+    def test_unhide_active_is_noop(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")], fail_ids={"b"})
+        unhide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.get_link(lk.id).status == "active"
