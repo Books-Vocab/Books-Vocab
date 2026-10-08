@@ -151,6 +151,30 @@ struct ReviewCardTemporaryDetailTests {
         #expect(reentered.presenterState.temporaryDetailCardKey == nil)
     }
 
+    @Test func showingDetailPausesAutoplayAndRestoringDoesNotResumeIt() {
+        let entries = Self.makeEntries(count: 3)
+        let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
+        state.toggleAutoPlay()
+        defer { state.stopAutoPlay() }
+        #expect(state.isAutoPlaying && !state.isAutoPlayPaused)
+
+        state.toggleTemporaryDetail()
+        #expect(state.presenterState.temporaryDetailCardKey != nil)
+        #expect(state.isAutoPlayPaused, "an autoplay advance would forget the detailed view within one interval")
+
+        state.toggleTemporaryDetail()
+        #expect(state.presenterState.temporaryDetailCardKey == nil)
+        #expect(state.isAutoPlayPaused, "restoring compact must not silently resume playback")
+    }
+
+    @Test func togglingDetailWithoutAutoplayDoesNotStartOrPausePlayback() {
+        let entries = Self.makeEntries(count: 2)
+        let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
+        state.toggleTemporaryDetail()
+        #expect(!state.isAutoPlaying)
+        #expect(!state.isAutoPlayPaused)
+    }
+
     private static func makeEntries(count: Int) -> [VocabularyEntry] {
         (0..<count).map { index in
             let entry = VocabularyEntry(

@@ -110,4 +110,36 @@ struct ReviewLinkEntryResolverTests {
         let live = ReviewLinkEntryResolver.liveEntries(in: container.mainContext, fallback: [a])
         #expect(Set(live.map(\.word)) == ["a", "b"])
     }
+
+    @Test("hiding a link to a card created after the snapshot hides the reciprocal link too")
+    func hideLinkReachesPeerOutsideSnapshot() throws {
+        let container = try CreationFixtures.container()
+        let source = CreationFixtures.entry("source", cardID: "card-src")
+        source.markSynced()
+        let created = CreationFixtures.entry("luminous", cardID: "card-new")
+        try insert(source, created, into: container)
+
+        let link = KGCardLinkSummary(
+            id: "link-1", cardId: "card-new", word: "luminous", kind: "shares_usage",
+            label: "相關", confidence: 0.7, reason: "seed"
+        )
+        source.insertLink(link, kind: link.kind)
+        created.insertLink(link, kind: link.kind)
+
+        // The session started before `created` existed: its snapshot cannot see it.
+        let state = TodayReviewState(entries: [source], allEntries: [source], currentUserID: nil)
+        #expect(state.linkedEntryLookup["card-new"] == nil, "precondition: peer is outside the snapshot")
+        let peer = ReviewLinkEntryResolver.entry(
+            forCardID: link.cardId, snapshot: state.linkedEntryLookup, context: container.mainContext
+        )
+        #expect(peer === created)
+
+        state.hideLink(link, peer: peer)
+        #expect(source.graphLinksByKind[link.kind]?.first?.hidden == true)
+        #expect(created.graphLinksByKind[link.kind]?.first?.hidden == true)
+
+        state.restoreHiddenLink(link, sourceEntry: source, targetEntry: peer)
+        #expect(source.graphLinksByKind[link.kind]?.first?.hidden == false)
+        #expect(created.graphLinksByKind[link.kind]?.first?.hidden == false)
+    }
 }

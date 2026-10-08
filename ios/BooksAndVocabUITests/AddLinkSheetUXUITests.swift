@@ -46,6 +46,10 @@ final class AddLinkSheetUXUITests: UITestCase {
         app.typeText("zzqxv")
         guard app.buttons.matching(identifier: "addLink.create")
             .exactlyOneElement(timeout: 5, named: "AddLink create entry") != nil else { return }
+        XCTAssertTrue(
+            marker("addLink.return.action", in: app).waitUntilValueEquals("revealCreate", timeout: 5),
+            "an unknown word must announce Return as reveal-create, never create"
+        )
 
         app.typeText("\n")
         XCTAssertTrue(
@@ -74,6 +78,10 @@ final class AddLinkSheetUXUITests: UITestCase {
         XCTAssertTrue(app.textFields["addLink.searchField"].waitUntilValue(hasKeyboardFocus: true, timeout: 5))
         app.typeText("fort")
         XCTAssertTrue(lookupState(in: app).waitUntilValueEquals("results-2", timeout: 5))
+        XCTAssertTrue(
+            marker("addLink.return.action", in: app).waitUntilValueEquals("dismissKeyboard", timeout: 5),
+            "partial matches must announce Return as dismiss-keyboard"
+        )
 
         app.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitUntilGone(timeout: 5), "Return must put the keyboard away")
@@ -94,6 +102,10 @@ final class AddLinkSheetUXUITests: UITestCase {
         XCTAssertTrue(
             marker("addLink.row.returnHint", in: app).waitUntilExists(timeout: 5),
             "the row Return will link shows the ↵ hint"
+        )
+        XCTAssertTrue(
+            marker("addLink.return.action", in: app).waitUntilValueEquals("linkExact", timeout: 5),
+            "the exact word must announce Return as link-exact"
         )
 
         app.typeText("\n")

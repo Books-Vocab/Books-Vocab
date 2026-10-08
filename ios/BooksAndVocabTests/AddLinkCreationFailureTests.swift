@@ -557,6 +557,39 @@ struct AddLinkCreationHubP1Tests {
         #expect(service.startKeys.count == 1, "warning retry must not POST again")
     }
 
+    @Test("dismissing a warning while its retry is in flight does not bring the job back")
+    func dismissDuringWarningRetryStaysDismissed() async throws {
+        let service = ScriptedCreationService(
+            onStart: { _, _ in CreationFixtures.status("op-1", "succeeded", sequence: 1) },
+            onFetch: { _, id in CreationFixtures.status(id, "succeeded", sequence: 2) }
+        )
+        let gate = Gate()
+        let pulls = SleepRecorder()
+        service.onPull = {
+            pulls.record(1)
+            if pulls.durations.count > 1 { await gate.wait() }
+            throw KGError.offline
+        }
+        let rig = try makeRig()
+        startAndAbandon(rig, service: service)
+        #expect(await CreationFixtures.eventually { rig.store.records.first?.state == .warning })
+        let jobKey = try #require(rig.hub.jobs.keys.first)
+
+        #expect(rig.hub.retry(jobKey: jobKey))
+        #expect(await CreationFixtures.eventually { service.pullCount == 2 })
+        #expect(rig.hub.job(forJobKey: jobKey)?.coordinator?.isRetryingWarnings == true)
+
+        rig.hub.dismiss(jobKey: jobKey)
+        #expect(rig.hub.jobs.isEmpty)
+
+        // The retry now ends with a warning again; it must stay dismissed.
+        await gate.release()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(rig.hub.jobs.isEmpty)
+        #expect(rig.store.records.isEmpty)
+        #expect(rig.projection.links(forSourceCardID: "src").isEmpty)
+    }
+
     @Test("a restored warning record regains a working retry after resume")
     func restoredWarningRetry() async throws {
         let record = PendingLinkCreationRecord(

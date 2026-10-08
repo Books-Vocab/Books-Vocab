@@ -119,7 +119,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/AddLinkStepCopy.swift` | `enum AddLinkStep`：後端六個 step id（順序即後端回報順序）→ 描述該步實際動作的 `addLink.step.*` 文案；`AddLinkCreationCoordinator.initialSteps()` 只從這裡取標籤 |
 | `Scenes/AddLinkCreateCopy.swift` | `enum AddLinkCreateCopy`（#2037）：建立入口的純文案——完整動作句 `addLink.create.title`（新字＋來源字，超過 20 字元截斷、折疊空白、字內引號換成 `'`）與副行 `addLink.create.notebook`（單字本名稱由 `ReviewCardNotebookBadgeResolver` 解析，永不顯示 id）。舊 key `建立` 不改義 |
 | `Scenes/AddLinkConnectivity.swift` | `enum AddLinkConnectivity`（#2039）：以 `NetworkMonitor.isConnected` 判定 sheet 能否做 server 工作；離線時提供提示文案、建立入口的停用原因與狀態轉換 toast，純值 |
-| `Scenes/AddLinkReturnKey.swift` | `enum AddLinkReturnBehavior`（#2038）：搜尋框 Return 的純函數（`resolve(snapshot)`）——完全相同的可連結字→`linkExact`、完全相同已連結→`alreadyLinked`、部分符合／不可連結→`dismissKeyboard`、本地無此字→`revealCreate`；永不建立、永不在部分符合間猜選；`submitLabel` 隨狀態變（`.go`／`.done`） |
+| `Scenes/AddLinkReturnKey.swift` | `enum AddLinkReturnBehavior`（#2038）：搜尋框 Return 的純函數（`resolve(snapshot)`）——完全相同的可連結字→`linkExact`、完全相同已連結→`alreadyLinked`、部分符合／不可連結→`dismissKeyboard`、本地無此字→`revealCreate`；永不建立、永不在部分符合間猜選；`submitLabel` 隨狀態變（`.join`／`.done`），`accessibilityValue` 供 UITest 讀決策名（隱藏元素 `addLink.return.action`） |
 | `Scenes/AddLinkCreateRow.swift` | 建立入口視圖：兩行文字的 `addLink.create` 按鈕，另以隱藏元素鏡射 `addLink.create.title`／`addLink.create.notebook`（Button 會合併子元素） |
 | `Scenes/ReviewCardLinkStrip.swift` | `ReviewCardLinkStripLayout`（每組顯示哪幾個、「+N」是多少、展開後至多 `expandedLimit`=20 個、能否展開）與 `ReviewCardLinkExpansion`（綁單張卡的記憶體展開狀態＋展開期間 graph-links 量測 key 的 variant）；純值，畫面與測試共用 |
 | `Scenes/AddLinkCoordinator.swift` | `@Observable` 加連線流程狀態機；本地候選搜尋與 manual link 的 begin/create/commit 在此收斂 |

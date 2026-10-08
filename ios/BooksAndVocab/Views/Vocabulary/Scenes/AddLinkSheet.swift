@@ -87,6 +87,14 @@ struct AddLinkSheet: View {
                     .frame(width: 1, height: 1)
                     .accessibilityIdentifier("addLink.lookup.state")
                     .accessibilityValue(lookup.accessibilityValue)
+                    .background(alignment: .topLeading) {
+                        // What Return will do right now (#2038); read by UITests.
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityElement()
+                            .accessibilityIdentifier("addLink.return.action")
+                            .accessibilityValue(returnBehavior.accessibilityValue)
+                    }
 
                 Text(L10n.format("addLink.sourceWord", sourceEntry.word))
                     .font(appSkin.typography.caption)

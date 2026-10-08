@@ -218,14 +218,18 @@ final class TodayReviewState {
         linkedCardStack.append(target)
     }
 
-    func hideLink(_ link: KGCardLinkSummary) {
+    /// `peer` is the link's other end resolved live by the caller (it also
+    /// finds cards created after the start-of-session snapshot, e.g. via Add
+    /// Link); the snapshot is only the fallback. Hide and restore must act on the
+    /// same peer or the reciprocal link stays visible on it.
+    func hideLink(_ link: KGCardLinkSummary, peer: VocabularyEntry? = nil) {
         tappedLink = nil
         guard let entry = currentEntry else { return }
         setLinkHidden(
             true,
             for: link,
             sourceEntry: entry,
-            targetEntry: linkedEntryLookup[link.cardId]
+            targetEntry: peer ?? linkedEntryLookup[link.cardId]
         )
     }
 
@@ -278,10 +282,16 @@ final class TodayReviewState {
     /// #2041: the compact card's "show detailed for now" button (same button
     /// restores compact). Action path only — never called from a body.
     /// Animated with the reveal spring so the card's height change is continuous.
+    /// Showing the detail pauses autoplay (no auto-resume, like the layout editor):
+    /// the next autoplay advance would otherwise forget the override within one
+    /// interval, defeating "let me read this card in full".
     func toggleTemporaryDetail() {
         guard let key = currentCardState?.card.reviewCardKey else { return }
         withAnimation(AppMotion.reviewRevealSpring) {
             temporaryDetail.toggle(cardKey: key)
+        }
+        if temporaryDetail.isDetailed(cardKey: key) {
+            pauseAutoPlayForModalInterruption()
         }
     }
 

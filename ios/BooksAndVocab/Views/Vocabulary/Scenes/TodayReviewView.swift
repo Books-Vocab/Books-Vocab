@@ -249,7 +249,7 @@ struct TodayReviewView: View {
                         snapshot: state.linkedEntryLookup,
                         context: modelContext
                     )
-                    state.hideLink(link)
+                    state.hideLink(link, peer: peer)
                     Task {
                         do {
                             try await kgService.hideLink(linkId: link.id, notebookId: notebookId)

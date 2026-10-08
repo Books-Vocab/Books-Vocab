@@ -127,9 +127,13 @@ final class AddLinkCreationHub: AddLinkCreationObserving {
     }
 
     /// The user gives up on a failed job or accepts a partial one; neither may
-    /// disappear on its own.
+    /// disappear on its own. A warning retry may still be in flight: it is
+    /// cancelled first (its generation bump silences every later callback), or
+    /// its eventual `.succeededWithWarnings` / `.failed` publish would upsert the
+    /// dismissed job straight back onto the source card.
     func dismiss(jobKey: String) {
         guard let job = jobs[jobKey], job.record.state != .creating else { return }
+        job.coordinator?.cancel()
         remove(jobKey: jobKey)
     }
 

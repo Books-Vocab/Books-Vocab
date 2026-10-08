@@ -35,7 +35,8 @@ struct AddLinkReturnKeyTests {
         let result = behavior("run", source: source, entries: [run, running])
         #expect(result == .linkExact(run.id), "the exact word wins over the partial match `running`")
         #expect(result.linksOnReturn)
-        #expect(result.submitLabel == .go)
+        #expect(result.submitLabel == .join)
+        #expect(result.accessibilityValue == "linkExact")
     }
 
     @Test("an exact word beyond the candidate cap is listed first and still linkable on Return")

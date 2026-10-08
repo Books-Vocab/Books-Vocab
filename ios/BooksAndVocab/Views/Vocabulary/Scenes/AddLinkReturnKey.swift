@@ -21,12 +21,25 @@ enum AddLinkReturnBehavior: Equatable {
     /// highlighted. Never creates.
     case revealCreate
 
-    /// The keyboard key label announces what Return will do. The system offers no
-    /// custom text, so "link" maps to `.go` and everything else to `.done`.
+    /// The keyboard key label announces what Return will do. `SubmitLabel` has no
+    /// custom text, so "link" maps to `.join` (the system-localized word closest
+    /// to "add / link") and everything else to `.done`.
     var submitLabel: SubmitLabel {
         switch self {
-        case .linkExact: .go
+        case .linkExact: .join
         case .alreadyLinked, .dismissKeyboard, .revealCreate: .done
+        }
+    }
+
+    /// The decision's name, exposed as the value of the hidden
+    /// `addLink.return.action` element so UITests (which cannot read the
+    /// keyboard label) can assert what Return will do.
+    var accessibilityValue: String {
+        switch self {
+        case .linkExact: "linkExact"
+        case .alreadyLinked: "alreadyLinked"
+        case .dismissKeyboard: "dismissKeyboard"
+        case .revealCreate: "revealCreate"
         }
     }
 
