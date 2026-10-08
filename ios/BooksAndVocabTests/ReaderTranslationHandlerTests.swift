@@ -474,6 +474,32 @@ struct ReaderTranslationHandlerTests {
                 "no vocabContext provided → no autoSave path → isSaved must remain false")
     }
 
+    @Test func retryLastLookup_afterExplanationFailure_retriesOnlyExplanationAndStaysExpanded() async {
+        let service = MockTranslating()
+        service.quickResult = .success(TranslationResult(translation: "t", partOfSpeech: nil, explanation: nil))
+        service.explanationResult = .failure(MockError.canned("boom"))
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+
+        handler.handleWordSelected(word: "eta", context: "ctx", vocabularyContext: ctx)
+        await drain(handler)
+        handler.handleExpand()
+        await drain(handler)
+        #expect(handler.explanationErrorMessage != nil)
+        #expect(service.explanationCalls == 1)
+
+        service.explanationResult = .success(("explained", 0.1))
+        handler.retryLastLookup(vocabularyContext: ctx)
+        #expect(handler.isExpanded == true, "retry must not collapse the panel")
+        await drain(handler)
+
+        #expect(service.quickCalls == 1, "retry must not re-run the word translation")
+        #expect(service.explanationCalls == 2)
+        #expect(handler.isExpanded == true)
+        #expect(handler.explanationText == "explained")
+        #expect(handler.explanationErrorMessage == nil)
+    }
+
     // MARK: - deleteFromVocabulary
 
     @Test func deleteFromVocabulary_callsContextDeleteAndDismisses() {
