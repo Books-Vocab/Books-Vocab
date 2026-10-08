@@ -34,6 +34,11 @@ _CANCEL_REREAD_DELAY_SECONDS = 1.0
 _CANCEL_COMPLETED_RACE_MARKER = "cannot cancel a workflow run that is completed"
 
 
+# createdAt survives a rerun; startedAt/updatedAt restart with each attempt and
+# anchor the wedged-run age (see _attempt_started_at).
+_REQUIRED_RUN_LIST_FIELDS = "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt"
+
+
 def _required_run_list_command(*, branch: str, head_sha: str) -> tuple[str, ...]:
     return (
         "gh",
@@ -50,7 +55,7 @@ def _required_run_list_command(*, branch: str, head_sha: str) -> tuple[str, ...]
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        _REQUIRED_RUN_LIST_FIELDS,
     )
 
 
@@ -74,7 +79,7 @@ def _select_exact_required_run(
     if not isinstance(payload, list):
         raise AdapterPayloadError("GitHub required workflow list must be a JSON list")
 
-    candidates: list[tuple[datetime, int, str, str | None]] = []
+    candidates: list[tuple[datetime, int, str, str | None, datetime]] = []
     for index, item in enumerate(payload):
         if not isinstance(item, Mapping):
             raise AdapterPayloadError(f"GitHub required workflow[{index}] is malformed")
@@ -114,13 +119,45 @@ def _select_exact_required_run(
             or event != "pull_request"
         ):
             continue
-        candidates.append((created_at, database_id, status.casefold(), conclusion))
+        candidates.append(
+            (
+                created_at,
+                database_id,
+                status.casefold(),
+                conclusion,
+                _attempt_started_at(item, index=index, created_at=created_at),
+            )
+        )
 
     if not candidates:
         raise AdapterPayloadError(
             "no exact pull_request pr-gate run exists for the required PR HEAD"
         )
-    return max(candidates, key=lambda item: (item[0], item[1]))
+    _, database_id, status, conclusion, attempt_started_at = max(
+        candidates, key=lambda item: (item[0], item[1])
+    )
+    return attempt_started_at, database_id, status, conclusion
+
+
+def _attempt_started_at(
+    item: Mapping[str, object], *, index: int, created_at: datetime
+) -> datetime:
+    """Latest of createdAt/startedAt/updatedAt: when the current attempt began.
+
+    GitHub keeps ``createdAt`` across re-run attempts, so measuring wedged age
+    from it alone would re-fire recovery on every tick after the first rerun.
+    gh renders a never-started attempt's startedAt as the zero time, which the
+    ``max`` ignores.
+    """
+
+    stamps = [created_at]
+    for key in ("startedAt", "updatedAt"):
+        stamp = parse_optional_timestamp(
+            item.get(key), field=f"GitHub required workflow[{index}] {key}"
+        )
+        if stamp is not None:
+            stamps.append(stamp)
+    return max(stamps)
 
 
 class GitHubCommands:
@@ -169,17 +206,19 @@ class GitHubCommands:
     ) -> RequiredTriggerOutcome:
         del number, base_sha
         list_argv = _required_run_list_command(branch=branch, head_sha=head_sha)
-        created_at, database_id, status, conclusion = _select_exact_required_run(
-            self.client.load_json(list_argv),
-            branch=branch,
-            head_sha=head_sha,
+        attempt_started_at, database_id, status, conclusion = (
+            _select_exact_required_run(
+                self.client.load_json(list_argv),
+                branch=branch,
+                head_sha=head_sha,
+            )
         )
         recovered_reason: str | None = None
         if status in _ACTIVE_RUN_STATUSES:
             assessment = assess_active_run(
                 database_id=database_id,
                 status=status,
-                created_at=created_at,
+                attempt_started_at=attempt_started_at,
                 now=datetime.now(tz=UTC),
                 threshold=wedged_run_after(),
                 load_jobs=lambda: self._load_job_counts(database_id),

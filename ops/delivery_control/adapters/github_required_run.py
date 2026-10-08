@@ -89,14 +89,18 @@ def assess_active_run(
     *,
     database_id: int,
     status: str,
-    created_at: datetime,
+    attempt_started_at: datetime,
     now: datetime,
     threshold: timedelta,
     load_jobs: Callable[[], JobCounts],
 ) -> ActiveRunAssessment:
-    """Return ``wedged=True`` only for an aged, run-level queued, zero-job run."""
+    """Return ``wedged=True`` only for an aged, run-level queued, zero-job run.
 
-    age = now - created_at
+    Age is measured from the current attempt's start, not the run's createdAt,
+    which GitHub does not reset on rerun.
+    """
+
+    age = now - attempt_started_at
     prefix = f"run {database_id} is {status} for {_minutes(age)}m"
     if status != "queued":
         return ActiveRunAssessment(

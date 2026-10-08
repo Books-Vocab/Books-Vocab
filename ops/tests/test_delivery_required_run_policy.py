@@ -33,7 +33,7 @@ LIST = (
     "--limit",
     "20",
     "--json",
-    "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
 )
 JOBS = ("gh", "run", "view", "12345", "--json", "jobs")
 CANCEL = ("gh", "run", "cancel", "--force", "12345")
@@ -62,21 +62,34 @@ def _ok(argv: tuple[str, ...], payload: object = "") -> CommandResult:
     return CommandResult(argv, 0, body, "")
 
 
+def _stamp(age: timedelta) -> str:
+    return (datetime.now(tz=UTC) - age).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _run(
-    *, status: str, conclusion: str | None, age: timedelta
+    *,
+    status: str,
+    conclusion: str | None,
+    age: timedelta,
+    attempt_age: timedelta | None = None,
+    updated_age: timedelta | None = None,
 ) -> list[dict[str, object]]:
-    created = datetime.now(tz=UTC) - age
-    return [
-        {
-            "databaseId": 12345,
-            "headBranch": "feat/one",
-            "headSha": HEAD,
-            "event": "pull_request",
-            "status": status,
-            "conclusion": conclusion,
-            "createdAt": created.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-    ]
+    """``age`` is createdAt (kept across reruns); ``attempt_age`` is startedAt."""
+
+    item: dict[str, object] = {
+        "databaseId": 12345,
+        "headBranch": "feat/one",
+        "headSha": HEAD,
+        "event": "pull_request",
+        "status": status,
+        "conclusion": conclusion,
+        "createdAt": _stamp(age),
+    }
+    if attempt_age is not None:
+        item["startedAt"] = _stamp(attempt_age)
+    if updated_age is not None:
+        item["updatedAt"] = _stamp(updated_age)
+    return [item]
 
 
 def _jobs(*states: str) -> dict[str, object]:
@@ -207,6 +220,109 @@ def test_wedged_run_past_default_threshold_with_zero_jobs_is_recovered() -> None
     assert outcome.action == "recover_wedged_run"
     assert "0 of 2 jobs started" in outcome.reason
     assert runner.calls == [LIST, JOBS, CANCEL, LIST, RERUN]
+
+
+@pytest.mark.parametrize(
+    ("attempt_age", "updated_age"),
+    [
+        (timedelta(minutes=10), None),
+        (None, timedelta(minutes=10)),
+        (timedelta(minutes=10), timedelta(minutes=10)),
+    ],
+)
+def test_rerun_attempt_rearms_the_wedged_wait_guard(
+    attempt_age: timedelta | None, updated_age: timedelta | None
+) -> None:
+    """createdAt survives a rerun; the 6h guard must restart with the attempt."""
+
+    runner = ScriptedRunner(
+        {
+            LIST: [
+                _ok(
+                    LIST,
+                    _run(
+                        status="queued",
+                        conclusion=None,
+                        age=timedelta(hours=7),
+                        attempt_age=attempt_age,
+                        updated_age=updated_age,
+                    ),
+                )
+            ],
+        }
+    )
+
+    outcome = _trigger(runner)
+
+    assert outcome.action == "wait"
+    assert "10m" in outcome.reason
+    assert "below the 360m wedged threshold" in outcome.reason
+    assert runner.calls == [LIST]
+    _no_mutation(runner)
+
+
+def test_second_tick_after_recovery_waits_instead_of_looping() -> None:
+    first = _run(status="queued", conclusion=None, age=timedelta(hours=7))
+    cancelled = _run(status="completed", conclusion="cancelled", age=timedelta(hours=7))
+    reran = _run(
+        status="queued",
+        conclusion=None,
+        age=timedelta(hours=7),
+        attempt_age=timedelta(seconds=30),
+        updated_age=timedelta(seconds=30),
+    )
+    runner = ScriptedRunner(
+        {
+            LIST: [_ok(LIST, first), _ok(LIST, cancelled), _ok(LIST, reran)],
+            JOBS: [_ok(JOBS, _jobs("queued"))],
+            CANCEL: [_ok(CANCEL)],
+            RERUN: [_ok(RERUN)],
+        }
+    )
+
+    assert _trigger(runner).action == "recover_wedged_run"
+    second = _trigger(runner)
+
+    assert second.action == "wait"
+    assert runner.calls.count(CANCEL) == 1
+    assert runner.calls.count(RERUN) == 1
+
+
+def test_stale_attempt_timestamps_do_not_postpone_an_old_wedged_run() -> None:
+    queued = _run(
+        status="queued",
+        conclusion=None,
+        age=timedelta(hours=9),
+        attempt_age=timedelta(hours=8),
+        updated_age=timedelta(hours=8),
+    )
+    cancelled = _run(status="completed", conclusion="cancelled", age=timedelta(hours=9))
+    runner = ScriptedRunner(
+        {
+            LIST: [_ok(LIST, queued), _ok(LIST, cancelled)],
+            JOBS: [_ok(JOBS, _jobs("queued"))],
+            CANCEL: [_ok(CANCEL)],
+            RERUN: [_ok(RERUN)],
+        }
+    )
+
+    assert _trigger(runner).action == "recover_wedged_run"
+
+
+def test_zero_time_attempt_stamp_is_ignored() -> None:
+    queued = _run(status="queued", conclusion=None, age=timedelta(hours=9))
+    queued[0]["startedAt"] = ZERO_TIME
+    cancelled = _run(status="completed", conclusion="cancelled", age=timedelta(hours=9))
+    runner = ScriptedRunner(
+        {
+            LIST: [_ok(LIST, queued), _ok(LIST, cancelled)],
+            JOBS: [_ok(JOBS, _jobs("queued"))],
+            CANCEL: [_ok(CANCEL)],
+            RERUN: [_ok(RERUN)],
+        }
+    )
+
+    assert _trigger(runner).action == "recover_wedged_run"
 
 
 def test_wedged_run_with_no_jobs_at_all_is_recovered() -> None:
