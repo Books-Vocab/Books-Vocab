@@ -705,32 +705,16 @@ class Delivery:
             )
         return base
 
-    def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
-        """Abandon an active claim whose base is not the branch's fork point.
+    def claim_base_is_stale(self, record: dict[str, Any]) -> bool:
+        """Whether an active claim's base is not the branch's fork point.
 
         A claim adopted against a stale local ``main`` records that old base;
         once the branch sits on a newer ``origin/main`` the three-dot diff then
-        includes merged main commits and the receipt refuses.  The registry's
-        own ``resolve --status abandoned`` retires the claim; the caller then
-        re-adopts against that fork point.
+        includes merged main commits and the receipt refuses.  The caller
+        re-adopts with ``worktree_orchestrate.py readopt``, which retires the
+        claim and adopts again under one operation-lock lease.
         """
-        fork = self.claim_base()
-        if record.get("base_sha") == fork:
-            return False
-        head = self.git("rev-parse", "HEAD", stage="preflight")
-        sealed = record.get("handed_back_sha")
-        self.abandon(
-            branch,
-            str(self.work),
-            record.get("claim_generation", 0),
-            str(sealed or head),
-            "retire stale-base claim",
-        )
-        self.say(
-            f"claim base {record.get('base_sha')} is not the fork point {fork}; "
-            "claim retired, re-adopting"
-        )
-        return True
+        return record.get("base_sha") != self.claim_base()
 
     def wait_for(self, what: str, probe: Callable[[], str | None]) -> str:
         deadline = self.clock() + self.args.timeout
@@ -784,11 +768,21 @@ class Delivery:
 
         if stage in ("adopt", "hand-back", "receipt"):
             self.rebase_if_behind()
+        stale_claim: tuple[int, str] | None = None  # (generation, head) to retire
         if (
             stage in ("hand-back", "receipt")
             and record is not None
-            and self.reclaim_if_base_stale(record, branch)
+            and self.claim_base_is_stale(record)
         ):
+            self.say(
+                f"claim base {record.get('base_sha')} is not the fork point "
+                f"{self.claim_base()}; re-adopting"
+            )
+            head = str(
+                record.get("handed_back_sha")
+                or self.git("rev-parse", "HEAD", stage="preflight")
+            )
+            stale_claim = (int(record.get("claim_generation") or 0), head)
             record, stage = None, "adopt"
         if stage in ("adopt", "hand-back"):
             if not self.args.check:
@@ -858,7 +852,7 @@ class Delivery:
                     self.mutate(
                         [
                             orchestrate,
-                            "adopt",
+                            "readopt" if stale_claim else "adopt",
                             "--worktree",
                             str(self.work),
                             "--base",
@@ -872,6 +866,16 @@ class Delivery:
                             "--codex-thread-id",
                             self.args.thread_id,
                             "--delegated",
+                            *(
+                                [
+                                    "--expected-generation",
+                                    str(stale_claim[0]),
+                                    "--expected-head-sha",
+                                    stale_claim[1],
+                                ]
+                                if stale_claim
+                                else []
+                            ),
                             "--json",
                         ],
                         self.work,

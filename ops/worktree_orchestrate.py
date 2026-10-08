@@ -69,6 +69,7 @@ MUTATING_COMMANDS = frozenset(
     {
         "open",
         "adopt",
+        "readopt",
         "reanchor",
         "reanchor-handback",
         "resume-published",
@@ -487,6 +488,49 @@ def cmd_adopt(args: argparse.Namespace) -> int:
             else f"✗ adopt refused: {record.get('reason', record)}"
         ),
     )
+    return rc
+
+
+def cmd_readopt(args: argparse.Namespace) -> int:
+    """Retire the worktree's claim and adopt it again inside one lock lease.
+
+    ``main`` takes the operation lock once for the whole command, so a rival
+    ``open`` with an overlapping Scope cannot claim the files between the
+    retire and the adopt (#2466).  The retire is the registry's compare-and-swap
+    on the claim generation and head; if it refuses, nothing changed.
+    """
+    refusal = _require_unfrozen("readopt")
+    worktree = _path(args.worktree or os.getcwd())
+    rc, branch = _git(["branch", "--show-current"], worktree)
+    if refusal or rc != 0 or not branch:
+        reason = refusal or "worktree is detached or not a git worktree"
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": reason},
+            as_json=args.json,
+            human=f"✗ readopt refused: {reason}",
+        )
+        return EXIT_BLOCK if refusal else EXIT_USAGE
+    rc = cmd_resolve(
+        argparse.Namespace(
+            status="abandoned",
+            branch=branch,
+            path=str(worktree),
+            state=args.state,
+            json=args.json,
+            expected_generation=args.expected_generation,
+            expected_head_sha=args.expected_head_sha,
+            remove=False,
+        )
+    )
+    if rc != EXIT_OK:
+        return rc
+    rc = cmd_adopt(args)
+    if rc != EXIT_OK:
+        print(
+            f"✗ readopt: the claim on {branch} was retired but the adopt failed; "
+            "adopt the worktree again",
+            file=sys.stderr,
+        )
     return rc
 
 
@@ -2127,22 +2171,36 @@ def _parser() -> argparse.ArgumentParser:
     op.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     op.set_defaults(func=cmd_open)
 
+    def adopt_args(p: argparse.ArgumentParser) -> None:
+        common(p)
+        p.add_argument("--worktree", default=None)
+        p.add_argument("--intent", required=True)
+        p.add_argument("--base", default=BASE_DEFAULT)
+        p.add_argument("--external-id", action="append", default=[])
+        p.add_argument("--scope")
+        p.add_argument("--scope-file")
+        p.add_argument(
+            "--scope-from-diff",
+            action="store_true",
+            help="derive Scope from the worktree's diff against --base",
+        )
+        p.add_argument("--codex-thread-id")
+        p.add_argument(
+            "--delegated", action=argparse.BooleanOptionalAction, default=None
+        )
+
     ad = sub.add_parser("adopt", help="register an existing linked worktree")
-    common(ad)
-    ad.add_argument("--worktree", default=None)
-    ad.add_argument("--intent", required=True)
-    ad.add_argument("--base", default=BASE_DEFAULT)
-    ad.add_argument("--external-id", action="append", default=[])
-    ad.add_argument("--scope")
-    ad.add_argument("--scope-file")
-    ad.add_argument(
-        "--scope-from-diff",
-        action="store_true",
-        help="derive Scope from the worktree's diff against --base",
-    )
-    ad.add_argument("--codex-thread-id")
-    ad.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
+    adopt_args(ad)
     ad.set_defaults(func=cmd_adopt)
+
+    re_ad = sub.add_parser(
+        "readopt",
+        help="retire the worktree's stale claim and adopt it again in one lock lease",
+    )
+    adopt_args(re_ad)
+    re_ad.add_argument("--expected-generation", type=int, required=True)
+    re_ad.add_argument("--expected-head-sha", required=True)
+    re_ad.set_defaults(func=cmd_readopt)
 
     worktree_reanchor.add_parser(
         sub, common=common, handler=cmd_reanchor, default_repo=ROOT

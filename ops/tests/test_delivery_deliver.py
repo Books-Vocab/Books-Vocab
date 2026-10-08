@@ -1299,23 +1299,23 @@ def _agent_record(**extra: Any) -> dict[str, Any]:
     }
 
 
-def test_an_agent_claim_with_a_stale_base_is_retired_and_readopted_on_trunk() -> None:
+def test_an_agent_claim_with_a_stale_base_is_readopted_in_one_call() -> None:
+    """#2466: retire + adopt are one orchestrator mutation (one lock lease)."""
     world = FakeWorld(branch="worktree-agent-abc123", record=_agent_record())
     code, result = ship(world, "--check", "docs=good")
     assert code == 0, result
-    assert world.names() == ["resolve", "adopt", "hand-back", "receipt", "publish"]
-    resolve = next(c for c in world.calls if c[1:2] == ["resolve"])
-    assert resolve[resolve.index("--status") + 1] == "abandoned"
-    assert resolve[resolve.index("--expected-head-sha") + 1] == "e" * 40
-    adopt = next(c for c in world.calls if c[1:2] == ["adopt"])
-    assert adopt[adopt.index("--base") + 1] == "f" * 40  # world.fork
+    assert world.names() == ["readopt", "hand-back", "receipt", "publish"]
+    readopt = next(c for c in world.calls if c[1:2] == ["readopt"])
+    assert _value(readopt, "--expected-head-sha") == "e" * 40
+    assert _value(readopt, "--expected-generation") == "0"
+    assert _value(readopt, "--base") == "f" * 40  # world.fork
 
 
 def _adopt_bases(world: FakeWorld) -> list[str]:
     return [
         _value(c, "--base")
         for c in world.calls
-        if c[0].endswith("worktree_orchestrate.py") and c[1] == "adopt"
+        if c[0].endswith("worktree_orchestrate.py") and c[1] in ("adopt", "readopt")
     ]
 
 
@@ -1326,23 +1326,22 @@ def test_a_readopt_after_a_lock_wait_declares_the_fork_not_a_moved_trunk() -> No
     world = FakeWorld(
         branch="worktree-agent-abc123",
         record=_agent_record(),
-        lock_busy={"resolve": 1, "adopt": 1},
+        lock_busy={"readopt": 2},
         trunk_moves_to=moved,
     )
     code, result = ship(world, "--check", "docs=good")
     assert code == 0, result
     assert world.trunk == moved  # main really moved during the wait
     assert world.names() == [
-        "resolve",
-        "resolve",
-        "adopt",
-        "adopt",
+        "readopt",
+        "readopt",
+        "readopt",
         "hand-back",
         "receipt",
         "publish",
     ]
     bases = _adopt_bases(world)
-    assert bases == [world.fork, world.fork]
+    assert bases == [world.fork] * 3
     assert all(deliver.SHA.fullmatch(b) for b in bases)
     assert deliver.TRUNK not in bases and moved not in bases
 
@@ -1458,14 +1457,10 @@ def test_stale_local_main_base_is_detected_in_a_real_agent_style_checkout(
         return deliver.run(cmd, cwd)
 
     delivery.runner = spy
-    assert delivery.reclaim_if_base_stale(
-        {"base_sha": stale, "handed_back_sha": "e" * 40}, "worktree-agent-x"
-    )
-    assert retired and "abandoned" in retired[0]
+    assert delivery.claim_base_is_stale({"base_sha": stale})
     fork = sh("git", "merge-base", "HEAD", "origin/main", cwd=repo)
-    assert not delivery.reclaim_if_base_stale(
-        {"base_sha": fork, "handed_back_sha": "e" * 40}, "worktree-agent-x"
-    )
+    assert not delivery.claim_base_is_stale({"base_sha": fork})
+    assert not retired  # detection retires nothing: readopt does, atomically
 
 
 def test_the_claim_base_stays_on_the_fork_when_origin_main_moves_on_real_git(

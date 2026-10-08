@@ -3306,3 +3306,140 @@ def test_adopt_accepts_scope_sharing_only_an_allowlisted_file(
     assert adopt(shared, "ios/issue_1033.py") == coordinator.EXIT_OK
     [_, adopted] = coordinator.registry.load_state(state_path)["records"]
     assert adopted["scope"]["files"][0]["path"] == shared
+
+
+def test_readopt_retires_and_adopts_under_one_lease(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2466: a competing overlapping `open` cannot slip in between the retire
+    and the adopt, because both run inside one operation-lock lease."""
+    repo = _synthetic_rebase_refs(tmp_path)
+    state_path = tmp_path / "worktree_registry.json"
+    scope = json.dumps(
+        {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ios/issue_1033.py", "operation": "add"}],
+        }
+    )
+    # the registry's stored head of an unsealed claim in another repo is its base
+    head = _git(repo, "rev-parse", "main")
+    adopt_argv = [
+        "--state",
+        str(state_path),
+        "--worktree",
+        str(repo),
+        "--intent",
+        "agent worktree",
+        "--external-id",
+        "ISSUE-9",
+        "--scope",
+        scope,
+        "--codex-thread-id",
+        "worker-thread",
+        "--delegated",
+        "--json",
+    ]
+    assert coordinator.main(["adopt", *adopt_argv, "--base", "main"]) == 0
+    capsys.readouterr()
+
+    competing: list[subprocess.CompletedProcess[str]] = []
+    real_adopt = coordinator.cmd_adopt
+
+    def adopt_with_a_rival(args: Namespace) -> int:
+        competing.append(
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(coordinator.__file__)),
+                    "open",
+                    "--state",
+                    str(state_path),
+                    "--intent",
+                    "rival",
+                    "--slug",
+                    "rival",
+                    "--external-id",
+                    "ISSUE-RIVAL",
+                    "--scope",
+                    scope,
+                    "--codex-thread-id",
+                    "rival-thread",
+                    "--delegated",
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        )
+        return real_adopt(args)
+
+    monkeypatch.setattr(coordinator, "cmd_adopt", adopt_with_a_rival)
+
+    rc = coordinator.main(
+        [
+            "readopt",
+            *adopt_argv,
+            "--base",
+            "base",
+            "--expected-generation",
+            "0",
+            "--expected-head-sha",
+            head,
+        ]
+    )
+    capsys.readouterr()
+
+    assert rc == coordinator.EXIT_OK
+    [rival] = competing
+    assert rival.returncode != 0
+    assert "delivery mutation already in progress" in rival.stdout + rival.stderr
+    records = coordinator.registry.load_state(state_path)["records"]
+    active = [r for r in records if r["status"] == "active"]
+    assert [r["status"] for r in records].count("abandoned") == 1
+    assert len(active) == 1
+    assert active[0]["base_sha"] == _git(repo, "rev-parse", "base")
+    assert active[0]["scope"]["files"] == [
+        {"path": "ios/issue_1033.py", "operation": "add"}
+    ]
+
+
+def test_readopt_leaves_the_claim_when_the_retire_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    state_path = tmp_path / "worktree_registry.json"
+    argv = [
+        "--state",
+        str(state_path),
+        "--worktree",
+        str(repo),
+        "--intent",
+        "agent worktree",
+        "--external-id",
+        "ISSUE-9",
+        "--scope-from-diff",
+        "--codex-thread-id",
+        "worker-thread",
+        "--delegated",
+        "--json",
+    ]
+    assert coordinator.main(["adopt", *argv, "--base", "main"]) == 0
+    rc = coordinator.main(
+        [
+            "readopt",
+            *argv,
+            "--base",
+            "base",
+            "--expected-generation",
+            "0",
+            "--expected-head-sha",
+            "0" * 40,  # not the claim's head: the registry CAS refuses
+        ]
+    )
+    capsys.readouterr()
+    assert rc != coordinator.EXIT_OK
+    [record] = coordinator.registry.load_state(state_path)["records"]
+    assert record["status"] == "active"
