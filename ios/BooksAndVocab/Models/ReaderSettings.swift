@@ -394,7 +394,7 @@ final class ReaderSettings {
     /// Catalog harness 共用，免得同一個數字在不同入口 format 成不同樣子。
     /// static 版本給沒有 `ReaderSettings` 實例的呼叫端（harness）。
     static func fontSizeText(for scale: Double) -> String {
-        String(format: "%.2gx", scale)
+        String(format: "%.4gx", locale: Locale(identifier: "en_US_POSIX"), scale)
     }
 
     static func letterSpacingText(for value: Double) -> String {
