@@ -8,7 +8,9 @@ worktree/ref mutation while leaving observation commands concurrent.  Most
 mutating commands hold it for their whole run; ``queue``, ``cleanup-merged``
 and ``release-published`` take it only around those local sections, so their
 GitHub API calls, ``ls-remote`` and ``push`` run outside it (#2236).  The
-lease stays non-blocking and its busy refusal text is unchanged.  The kernel
+lease is non-blocking by default; ``KG_DELIVERY_LOCK_WAIT_SECONDS=N`` (>0) opts
+into polling every ~0.1s for up to N seconds before the same busy refusal
+(#2423).  The kernel
 releases the lock when the owning process exits, so a stale lock file is
 harmless.
 """
@@ -19,6 +21,7 @@ import errno
 import fcntl
 import hashlib
 import os
+import time
 from pathlib import Path
 from types import TracebackType
 from typing import IO, Self
@@ -38,6 +41,19 @@ _HELD_LOCKS: dict[Path, tuple[IO[str], int]] = {}
 # excluding each other, which silently weakens the fail-closed lease, so never
 # set it in an operator, launchd, or CI delivery environment.
 LOCK_DIR_ENV = "KG_DELIVERY_LOCK_DIR"
+
+# Opt-in bounded wait: unset, invalid, or <= 0 keeps the single fail-fast try.
+WAIT_SECONDS_ENV = "KG_DELIVERY_LOCK_WAIT_SECONDS"
+_POLL_INTERVAL = 0.1
+
+
+def _wait_seconds() -> float:
+    try:
+        seconds = float(os.environ.get(WAIT_SECONDS_ENV, ""))
+    except ValueError:
+        return 0.0
+    # NaN fails the comparison, so it also falls back to 0.
+    return seconds if seconds > 0 else 0.0
 
 
 def _lock_path(repo: Path) -> Path:
@@ -67,16 +83,25 @@ class OperationLock:
             return self
 
         handle = self.path.open("a+")
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as error:
-            handle.close()
-            if error.errno in {errno.EACCES, errno.EAGAIN}:
-                raise DeliverySourceError(
-                    "delivery mutation already in progress; "
-                    f"command={self.command}; retry after the active operation exits"
-                ) from error
-            raise
+        deadline = time.monotonic() + _wait_seconds()
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as error:
+                if error.errno in {errno.EACCES, errno.EAGAIN}:
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        time.sleep(min(_POLL_INTERVAL, remaining))
+                        continue
+                    handle.close()
+                    raise DeliverySourceError(
+                        "delivery mutation already in progress; "
+                        f"command={self.command}; "
+                        "retry after the active operation exits"
+                    ) from error
+                handle.close()
+                raise
         _HELD_LOCKS[self.path] = (handle, 1)
         self._handle = handle
         return self

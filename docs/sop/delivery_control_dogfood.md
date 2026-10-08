@@ -63,13 +63,19 @@ verified_against: 9d1fc2de80eb235fa74410b319324e3085cc07b2
 
 本地 `worktree` 測試群組會先取得 repository common Git directory 下的 blocking
 test-execution lock。這只序列化會共用 registry fixture／mutation lock 的測試程序；production
-`OperationLock` 仍維持 non-blocking、fail-closed 語義，不會因測試互斥而改變實際交付命令。
+`OperationLock` 預設仍是 non-blocking、fail-closed 語義，不會因測試互斥而改變實際交付命令。
 ops pytest 另由 `ops/tests/conftest.py` 的 autouse fixture 設定 `KG_DELIVERY_LOCK_DIR` 到 per-test tmp 目錄，
 讓 `OperationLock` 在測試中使用隔離的 lock 檔（依 canonical repo 雜湊命名），因此真實 delivery 正持有
 `.cache/delivery-control.operation.lock` 時，測試不會因 `delivery mutation already in progress` 變紅。
 該變數僅供測試：任何 operator、launchd 或 CI 的真實 delivery 環境都不得設定，否則使用不同值的程序彼此不再互斥，會削弱 fail-closed lease；production 不設定時路徑不變。
 不要平行直接啟動 registry mutation 測試；使用 `./ops/test_ops.sh worktree`，讓 wrapper
 在不同 linked worktree 之間共用同一把鎖。程序中止時由作業系統釋放鎖，不建立第二套 registry 狀態。
+
+`KG_DELIVERY_LOCK_WAIT_SECONDS=N`（#2423）讓 `OperationLock` opt-in 有界等待：N 為大於 0 的數字時，取鎖失敗後每約 0.1 秒
+重試，最久 N 秒，逾時才拋出與原本完全相同的 `delivery mutation already in progress` 訊息；未設定、`0`、負值、無法解析或 NaN
+一律維持單次 fail-fast（預設行為不變）。同一程序內的 re-entrant 取鎖不受影響。輪詢不保證 FIFO，只降低、不消除競爭者被餓死的機率。
+它與 `deliver.py --lock-timeout` 疊加而非取代：設了之後每次嘗試最多先阻塞 N 秒，仍失敗才進入 `deliver.py` 每 5 秒一次的重試迴圈。
+此變數是 operator 的明確選擇，不是預設；publish 的 scoped-lease 切分與 `cleanup-merged` 預設等待仍屬 #2423 後續工作。
 
 `OperationLock` 的持有範圍：`publish`、`sync-main`、`record-published-base`、`abandon-pr`、`discard-*`、main preservation、
 `admit-candidate`、`issue-intake` 等 mutating command 仍整段持有；`queue`、`cleanup-merged`、`release-published`

@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -131,3 +132,124 @@ def test_lock_dir_env_override_is_keyed_per_repo(
         OperationLock(repo_a, command="a").path
         != OperationLock(repo_b, command="b").path
     )
+
+
+# --- opt-in bounded wait (#2423) -------------------------------------------
+
+_BUSY = (
+    "delivery mutation already in progress; "
+    "command=waiter; retry after the active operation exits"
+)
+
+_HOLDER = """
+from pathlib import Path
+import sys, time
+sys.path.insert(0, sys.argv[2])
+from delivery_control.adapters.operation_lock import OperationLock
+with OperationLock(Path(sys.argv[1]), command='holder'):
+    print('ready', flush=True)
+    time.sleep(float(sys.argv[3]))
+"""
+
+
+def _spawn_holder(repo: Path, hold: float) -> subprocess.Popen[str]:
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _HOLDER, str(repo), str(OPS), str(hold)],
+        env={**os.environ, "PYTHONPATH": str(OPS)},
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert proc.stdout is not None
+    assert proc.stdout.readline().strip() == "ready"
+    return proc
+
+
+def test_wait_env_acquires_after_holder_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", "10")
+    holder = _spawn_holder(tmp_path, 0.5)
+    try:
+        with OperationLock(tmp_path, command="waiter"):
+            assert holder.poll() is not None or holder.wait(timeout=5) == 0
+    finally:
+        holder.wait(timeout=10)
+
+
+def test_wait_env_timeout_yields_identical_busy_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from delivery_control.domain.errors import DeliverySourceError
+
+    monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", "0.3")
+    holder = _spawn_holder(tmp_path, 3)
+    try:
+        started = time.monotonic()
+        with pytest.raises(DeliverySourceError) as raised:
+            OperationLock(tmp_path, command="waiter").__enter__()
+        assert str(raised.value) == _BUSY
+        assert time.monotonic() - started >= 0.3
+    finally:
+        holder.kill()
+        holder.wait(timeout=10)
+
+
+@pytest.mark.parametrize("value", [None, "0", "-3", "abc", "nan", ""])
+def test_wait_env_unset_zero_or_invalid_fails_fast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    from delivery_control.domain.errors import DeliverySourceError
+
+    if value is None:
+        monkeypatch.delenv("KG_DELIVERY_LOCK_WAIT_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", value)
+    holder = _spawn_holder(tmp_path, 3)
+    try:
+        started = time.monotonic()
+        with pytest.raises(DeliverySourceError) as raised:
+            OperationLock(tmp_path, command="waiter").__enter__()
+        assert str(raised.value) == _BUSY
+        assert time.monotonic() - started < 0.2
+    finally:
+        holder.kill()
+        holder.wait(timeout=10)
+
+
+def test_wait_env_does_not_delay_reentrant_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", "5")
+    with OperationLock(tmp_path, command="outer"):
+        started = time.monotonic()
+        with OperationLock(tmp_path, command="inner"):
+            pass
+        assert time.monotonic() - started < 0.2
+
+
+def test_wait_env_lets_two_contending_processes_both_succeed(
+    tmp_path: Path,
+) -> None:
+    script = """
+from pathlib import Path
+import sys, time
+sys.path.insert(0, sys.argv[2])
+from delivery_control.adapters.operation_lock import OperationLock
+with OperationLock(Path(sys.argv[1]), command='contender'):
+    time.sleep(0.3)
+"""
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(OPS),
+        "KG_DELIVERY_LOCK_WAIT_SECONDS": "5",
+    }
+    procs = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(tmp_path), str(OPS)],
+            env=env,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(2)
+    ]
+    assert [proc.wait(timeout=20) for proc in procs] == [0, 0]
