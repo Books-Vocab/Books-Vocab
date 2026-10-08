@@ -2675,7 +2675,10 @@ def stage_audio_qa(
     if rc is None:
         return False
     if rc != 0:
-        log.error(f"audio_qa found FAIL findings — see {report}")
+        if rc == 1 and report.exists():
+            log.error(f"audio_qa found FAIL findings — see {report}")
+        else:
+            log.error(f"audio_qa failed (exit {rc}); no report written — see stage output")
         return False
     log.event(f"audio_qa passed — report at {report.relative_to(workspace)}")
     return True
@@ -2699,6 +2702,10 @@ def stage_subtitle(
         log=log,
         env=_UNBUF_ENV,
     )
+    if rc not in (0, None):
+        log.error(
+            f"subtitle exited {rc} (partial failure: some SRTs not written; see stage output)"
+        )
     return rc == 0
 
 
