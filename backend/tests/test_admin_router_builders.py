@@ -11,8 +11,6 @@ from kg.routers.admin import (
     AdminRouteHandlers,
     AdminRouters,
     build_admin_route_handlers,
-    build_admin_router,
-    build_admin_routers,
     build_admin_routers_from_handlers,
 )
 
@@ -60,24 +58,12 @@ class _FlatAdminHandlers:
 
 
 def _route_surface(router: APIRouter) -> set[tuple[str, tuple[str, ...]]]:
-    return {
-        (route.path, tuple(sorted(route.methods or ())))
-        for route in router.routes
-    }
+    return {(route.path, tuple(sorted(route.methods or ()))) for route in router.routes}
 
 
-def test_build_admin_routers_returns_named_bundle():
-    routers = build_admin_routers(
-        admin_ui=_html,
-        admin_stats=_api,
-        admin_logs=_api,
-        admin_user_entitlement=_api,
-        admin_grant_pro_access=_api,
-        admin_revoke_pro_access=_api,
-        admin_run_tests=_api,
-        admin_last_test_run=_api,
-        admin_test_catalog=_api,
-        admin_tests_ui=_html,
+def test_build_admin_routers_from_handlers_returns_named_bundle():
+    routers = build_admin_routers_from_handlers(
+        handlers=build_admin_route_handlers(_FlatAdminHandlers()),
         runtime_settings_fn=_settings,
     )
 
@@ -104,71 +90,19 @@ def test_build_admin_routers_from_handlers_matches_explicit_builder():
         handlers=build_admin_route_handlers(_FlatAdminHandlers()),
         runtime_settings_fn=_settings,
     )
-    explicit = build_admin_routers(
-        admin_ui=_html,
-        admin_stats=_api,
-        admin_logs=_api,
-        admin_user_entitlement=_api,
-        admin_grant_pro_access=_api,
-        admin_revoke_pro_access=_api,
-        admin_run_tests=_api,
-        admin_last_test_run=_api,
-        admin_test_catalog=_api,
-        admin_tests_ui=_html,
-        admin_graph_density=_api,
-        admin_graph_playback=_api,
-        admin_pipeline_runs=_api,
-        admin_judge_stats=_api,
-        admin_translate_history=_api,
-        admin_user_activity=_api,
-        admin_user_usage=_api,
-        admin_user_cost_summary=_api,
-        admin_host_metrics=_api,
-        admin_users_search=_api,
-        admin_observability=_api,
-        admin_stats_trends=_api,
-        admin_log_retention_run=_api,
-        admin_audit=_api,
-        admin_orphans_scan=_api,
-        admin_user_detail_ui=_html,
+    api_names = [name for name in AdminApiHandlers.__dataclass_fields__]
+    explicit = build_admin_routers_from_handlers(
+        handlers=AdminRouteHandlers(
+            html=AdminHtmlHandlers(
+                admin_ui=_html,
+                admin_tests_ui=_html,
+                admin_user_detail_ui=_html,
+            ),
+            api=AdminApiHandlers(**{name: _api for name in api_names}),
+        ),
         runtime_settings_fn=_settings,
     )
 
     assert _route_surface(routed.login) == _route_surface(explicit.login)
     assert _route_surface(routed.html) == _route_surface(explicit.html)
     assert _route_surface(routed.api) == _route_surface(explicit.api)
-
-
-def test_build_admin_router_preserves_legacy_tuple_contract():
-    named = build_admin_routers(
-        admin_ui=_html,
-        admin_stats=_api,
-        admin_logs=_api,
-        admin_user_entitlement=_api,
-        admin_grant_pro_access=_api,
-        admin_revoke_pro_access=_api,
-        admin_run_tests=_api,
-        admin_last_test_run=_api,
-        admin_test_catalog=_api,
-        admin_tests_ui=_html,
-        runtime_settings_fn=_settings,
-    )
-
-    legacy = build_admin_router(
-        admin_ui=_html,
-        admin_stats=_api,
-        admin_logs=_api,
-        admin_user_entitlement=_api,
-        admin_grant_pro_access=_api,
-        admin_revoke_pro_access=_api,
-        admin_run_tests=_api,
-        admin_last_test_run=_api,
-        admin_test_catalog=_api,
-        admin_tests_ui=_html,
-        runtime_settings_fn=_settings,
-    )
-
-    assert len(legacy) == 3
-    assert _route_surface(legacy[0]) == _route_surface(named.login)
-    assert _route_surface(legacy[1]) == _route_surface(named.html)
-    assert _route_surface(legacy[2]) == _route_surface(named.api)

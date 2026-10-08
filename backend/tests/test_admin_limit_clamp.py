@@ -7,11 +7,12 @@ clamps the upper bound (``min(limit, CAP)``); these tests pin the missing
 lower bound, mirroring the ``max(1, min(limit, CAP))`` pattern already used by
 ``admin_audit.list_audit`` / ``admin_trends.collect_trends``.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from kg.admin_wiring import create_admin_handlers
+from kg.admin_wiring import AdminHandlerDependencies, create_admin_handlers_from_dependencies
 
 
 def _noop(*_a, **_k):  # pragma: no cover - placeholder dep
@@ -26,15 +27,17 @@ def handlers():
     store modules (imported lazily inside the closure), so the other injected
     callables are never invoked and can stay as tripwire no-ops.
     """
-    return create_admin_handlers(
-        runtime_settings_fn=_noop,
-        runtime_users_lock_file_fn=_noop,
-        load_users_fn=_noop,
-        save_users_fn=_noop,
-        mem_log_getter=_noop,
-        card_store_factory=_noop,
-        build_entitlements_response_fn=_noop,
-        current_admin_grant_record_fn=_noop,
+    return create_admin_handlers_from_dependencies(
+        dependencies=AdminHandlerDependencies(
+            runtime_settings_fn=_noop,
+            runtime_users_lock_file_fn=_noop,
+            load_users_fn=_noop,
+            save_users_fn=_noop,
+            mem_log_getter=_noop,
+            card_store_factory=_noop,
+            build_entitlements_response_fn=_noop,
+            current_admin_grant_record_fn=_noop,
+        )
     )
 
 
@@ -79,6 +82,7 @@ def translate_isolated(tmp_path, monkeypatch):
 
 # ---- #1 admin_pipeline_runs ----------------------------------------------
 
+
 @pytest.mark.parametrize("bad_limit", [-1, 0, -100])
 def test_pipeline_runs_non_positive_limit_clamped(handlers, pipeline_isolated, bad_limit):
     out = handlers.admin_pipeline_runs("u1", limit=bad_limit)
@@ -92,6 +96,7 @@ def test_pipeline_runs_positive_limit_unaffected(handlers, pipeline_isolated):
 
 
 # ---- #1 admin_translate_history ------------------------------------------
+
 
 @pytest.mark.parametrize("bad_limit", [-1, 0, -100])
 def test_translate_history_non_positive_limit_clamped(handlers, translate_isolated, bad_limit):

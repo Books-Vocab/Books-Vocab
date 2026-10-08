@@ -10,7 +10,6 @@ import pytest
 from kg.admin_wiring import (
     AdminHandlerDependencies,
     AdminHandlers,
-    create_admin_handlers,
     create_admin_handlers_from_dependencies,
 )
 
@@ -69,33 +68,6 @@ def test_create_admin_handlers_from_dependencies_returns_named_bundle():
     assert callable(handlers.admin_test_catalog)
 
 
-def test_create_admin_handlers_preserves_legacy_wrapper_contract():
-    deps = _dependencies()
-
-    named = create_admin_handlers_from_dependencies(dependencies=deps)
-    legacy = create_admin_handlers(
-        runtime_settings_fn=deps.runtime_settings_fn,
-        runtime_users_lock_file_fn=deps.runtime_users_lock_file_fn,
-        load_users_fn=deps.load_users_fn,
-        save_users_fn=deps.save_users_fn,
-        mem_log_getter=deps.mem_log_getter,
-        card_store_factory=deps.card_store_factory,
-        build_entitlements_response_fn=deps.build_entitlements_response_fn,
-        current_admin_grant_record_fn=deps.current_admin_grant_record_fn,
-    )
-
-    assert isinstance(legacy, AdminHandlers)
-    named_ui = named.admin_ui()
-    legacy_ui = legacy.admin_ui()
-    assert type(named_ui) is type(legacy_ui)
-    assert named_ui.body == legacy_ui.body
-
-    named_tests_ui = named.admin_tests_ui()
-    legacy_tests_ui = legacy.admin_tests_ui()
-    assert type(named_tests_ui) is type(legacy_tests_ui)
-    assert named_tests_ui.body == legacy_tests_ui.body
-
-
 def test_admin_handler_dependencies_are_replaceable_named_contract():
     deps = _dependencies()
     replacement = replace(deps, runtime_users_lock_file_fn=lambda: Path("/tmp/other.lock"))
@@ -120,8 +92,10 @@ async def test_admin_log_retention_runs_via_threadpool():
         calls.append((fn, args, kwargs))
         return fn(*args, **kwargs)
 
-    with patch("kg.log_retention.run_all", return_value=report) as run_all, \
-         patch("kg.admin_wiring.run_in_threadpool", new=fake_threadpool):
+    with (
+        patch("kg.log_retention.run_all", return_value=report) as run_all,
+        patch("kg.admin_wiring.run_in_threadpool", new=fake_threadpool),
+    ):
         response = await handlers.admin_log_retention_run()
 
     assert calls == [(run_all, (), {})]

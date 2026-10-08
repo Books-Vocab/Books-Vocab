@@ -459,29 +459,3 @@ def create_admin_handlers_from_dependencies(
         admin_user_detail_ui=admin_user_detail_ui,
         admin_orphans_scan=admin_orphans_scan,
     )
-
-
-def create_admin_handlers(
-    *,
-    runtime_settings_fn: RuntimeSettingsFn,
-    runtime_users_lock_file_fn: Callable[[], Path],
-    load_users_fn: UsersLoader,
-    save_users_fn: UsersSaver,
-    mem_log_getter: MemLogGetter,
-    card_store_factory: CardStoreFactory,
-    build_entitlements_response_fn: EntitlementsBuilder,
-    current_admin_grant_record_fn: AdminGrantRecordReader,
-) -> AdminHandlers:
-    """Backward-compatible wrapper around :func:`create_admin_handlers_from_dependencies`."""
-    return create_admin_handlers_from_dependencies(
-        dependencies=AdminHandlerDependencies(
-            runtime_settings_fn=runtime_settings_fn,
-            runtime_users_lock_file_fn=runtime_users_lock_file_fn,
-            load_users_fn=load_users_fn,
-            save_users_fn=save_users_fn,
-            mem_log_getter=mem_log_getter,
-            card_store_factory=card_store_factory,
-            build_entitlements_response_fn=build_entitlements_response_fn,
-            current_admin_grant_record_fn=current_admin_grant_record_fn,
-        )
-    )

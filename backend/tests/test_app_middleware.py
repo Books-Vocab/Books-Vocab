@@ -15,7 +15,6 @@ from conftest import make_jwt, make_settings
 from kg.app_middleware import (
     AppMiddlewareDependencies,
     AppMiddlewareRuntime,
-    install_app_middlewares,
     install_app_middlewares_from_dependencies,
 )
 from kg.rate_limit import RateLimiter
@@ -86,28 +85,6 @@ def test_install_app_middlewares_returns_named_runtime_and_wires_headers(monkeyp
         client.close()
 
     assert close_calls == 1
-
-
-def test_install_app_middlewares_from_dependencies_matches_compat_wrapper():
-    named_app = FastAPI()
-    compat_app = FastAPI()
-
-    named = install_app_middlewares_from_dependencies(
-        dependencies=_dependencies(named_app),
-    )
-    compat = install_app_middlewares(
-        compat_app,
-        cors_origins=("https://example.com",),
-        rate_limit_trusted_hops=1,
-        request_id_var=ContextVar("request_id"),
-        tag_request_id=lambda _rid: None,
-        api_limiter=_AllowAllLimiter(),
-        translate_limiter=_AllowAllLimiter(),
-    )
-
-    assert isinstance(named, AppMiddlewareRuntime)
-    assert isinstance(compat, AppMiddlewareRuntime)
-    assert named.rate_limit_exempt_prefixes == compat.rate_limit_exempt_prefixes
 
 
 def test_app_middleware_dependencies_are_replaceable_named_contract():
