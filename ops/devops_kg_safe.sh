@@ -24,7 +24,7 @@ safe_usage() {
     [[ -n "$blocked" ]] && blocked+=" / "
     blocked+="$command"
   done
-  printf '\nblocked by default:\n  %s / any destructive run command\n' "$blocked"
+  printf '\nblocked by default:\n  %s / any destructive run command / sensitive file reads (users.json, .env, keys)\n' "$blocked"
 }
 
 preflight() {
@@ -119,6 +119,36 @@ is_blocked_run() {
   return 1
 }
 
+# Deny-list for reads of secret-bearing files (#2134, option A). It stops
+# accidental and naive reads only and is NOT a security boundary: globbing
+# (`cat u*`), string assembly (`python3 -c`, base64), variable indirection and
+# os.environ inside the container all bypass it. docs/policy/safety.md owns the
+# policy; agents read users through the typed `users` command, never via run.
+is_sensitive_read() {
+  local cmd re
+  # Lowercase and drop quotes/backticks/backslashes so "USERS.JSON" and
+  # users\.json normalise to the same token. LC_ALL=C: byte-wise, never fails on
+  # non-UTF-8 script bytes (a failing tr would silently fail open).
+  cmd="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -d '\042\047\140\134')"
+  local -a patterns=(
+    'users\.json'                                          # _email_index, email, subscription, linked_ids
+    '(^|[^a-z0-9_])\.env([^a-z0-9_]|$)'                    # backend secrets (.env, .env.prod; not os.environ)
+    '(^|[^a-z0-9_])\.secrets([^a-z0-9_]|$)'                # operator credential dir synced to felix
+    '\.(pem|p8|p12)([^a-z0-9_]|$)'                         # TLS / App Store Connect key material
+    '(^|[^a-z0-9_])id_(rsa|ecdsa|ed25519)([^a-z0-9_.]|$)'  # ssh private keys (not .pub)
+  )
+  for re in "${patterns[@]}"; do
+    [[ "$cmd" =~ $re ]] && return 0
+  done
+  return 1
+}
+
+refuse_sensitive_read() {
+  echo "✗ blocked sensitive file read (users.json / .env / ~/.secrets / private keys)" >&2
+  echo "  use the typed \`users\` command; policy and its limits: docs/policy/safety.md" >&2
+  exit 1
+}
+
 main() {
   local sub="${1:-}"
 
@@ -143,9 +173,16 @@ main() {
     preflight)
       preflight
       ;;
-    deploy|restart|status|backup|env-check|env-drift|migrate|users)
+    deploy|restart|status|backup|env-check|env-drift|migrate)
       preflight
       "$BASE" "$sub"
+      ;;
+    users)
+      # #2098：只有固定的 count + uid 摘要。多餘參數（例如未來的 --raw）一律拒絕，
+      # safe surface 上不存在整檔 dump 路徑。
+      [[ $# -eq 1 ]] || { echo "✗ usage: $0 users" >&2; exit 64; }
+      preflight
+      "$BASE" users
       ;;
     backup-s3-test)
       # standby：排程備份由 launchd `com.kg.backup` → S3 跑（非 Lightsail cron）。
@@ -231,6 +268,9 @@ main() {
         echo "✗ blocked dangerous command" >&2
         exit 1
       fi
+      if is_sensitive_read "$raw"; then
+        refuse_sensitive_read
+      fi
       "$BASE" "$sub" "$raw"
       ;;
     ops-cli)
@@ -260,6 +300,13 @@ main() {
       preflight
       shift
       [[ -n "${1:-}" ]] || { echo "✗ usage: $0 container-script <script> [args...]" >&2; exit 1; }
+      # #2134：腳本內容與參數套用同一份敏感檔 deny-list。argv 不經 remote shell 解析，
+      # 所以 is_blocked_run 的毀滅字串 guard 不適用，但「讀了什麼」是同一個問題。
+      local script_body=""
+      [[ -f "$1" ]] && script_body="$(<"$1")"
+      if is_sensitive_read "$* $script_body"; then
+        refuse_sensitive_read
+      fi
       "$BASE" container-script "$@"
       ;;
     *)

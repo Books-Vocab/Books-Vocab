@@ -657,12 +657,46 @@ cmd_backup() {
 }
 
 # ── 指令：users ───────────────────────────────────────────────────────────────
+# 隱私契約（#2098）：只輸出用戶目錄數、真實用戶數與每人一行 `uid provider last_login`。
+# users.json 同時存放 _email_index、email、subscription、linked_ids 與 config，絕不整檔
+# 輸出——縮減在遠端 python 內完成，敏感欄位根本不離開 host。腳本經 stdin（python3 -）
+# 傳入，不在 ssh 命令字串裡跳脫引號；`~` 由 expanduser 展開（%q 可能把它轉成字面值）。
 cmd_users() {
-  section "遠端用戶目錄"
-  run_remote "ls -la $REMOTE_DATA_DIR/users/ 2>/dev/null || echo '(無用戶資料)'"
+  section "遠端用戶（count + uid provider last_login；不含 email／訂閱）"
+  run_remote "python3 - $(printf '%q' "$REMOTE_DATA_DIR")" <<'PY'
+import json, os, sys
 
-  section "users.json（可選第三方整合設定）"
-  run_remote "cat $REMOTE_DATA_DIR/users.json 2>/dev/null || echo '(不存在)'"
+base = os.path.expanduser(sys.argv[1])
+
+def field(value, limit):
+    text = value if isinstance(value, str) else ""
+    return "".join(text.split())[:limit] or "-"
+
+users_dir = os.path.join(base, "users")
+try:
+    names = os.listdir(users_dir)
+    print("user dirs: %d" % sum(os.path.isdir(os.path.join(users_dir, n)) for n in names))
+except OSError:
+    print("user dirs: (無用戶資料目錄)")
+try:
+    with open(os.path.join(base, "users.json")) as fh:
+        data = json.load(fh)
+except (OSError, ValueError):
+    data = None
+if not isinstance(data, dict):
+    print("users: (users.json 不存在或無法解析)")
+    sys.exit(0)
+# 真實用戶 = backend user_store.is_real_user（非 `_` metadata 且值為 dict），再排除
+# auth_service 寫入的 `_linked_to` alias record（provider 連結，不是獨立帳號）。
+real = sorted(
+    uid for uid, rec in data.items()
+    if isinstance(rec, dict) and not uid.startswith("_") and "_linked_to" not in rec
+)
+print("users: %d" % len(real))
+for uid in real:
+    rec = data[uid]
+    print(field(uid, 80), field(rec.get("provider"), 24), field(rec.get("last_login"), 40))
+PY
 }
 
 # ── 指令：user-info <user_id> ─────────────────────────────────────────────────
