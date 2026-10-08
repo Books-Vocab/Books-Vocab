@@ -53,16 +53,58 @@ def test_print_mac_groups_lists_every_non_linux_group() -> None:
     got = [line for line in result.stdout.splitlines() if line]
     want = mac_groups_from_source()
     assert got == want
-    assert len(got) == 3
+    assert got == []
 
 
-def test_an_executed_expected_platform_failure_is_a_green_gate(tmp_path: Path) -> None:
+FIXTURE_GROUPS = ["fixture-alpha", "fixture-beta"]
+
+
+def fixture_env(runner: Path) -> dict[str, str]:
+    return os.environ | {
+        "KG_EXPECTED_FAIL_RUNNER": str(runner),
+        "KG_EXPECTED_FAIL_GROUPS": " ".join(FIXTURE_GROUPS),
+    }
+
+
+def test_an_empty_exclusion_list_is_green_and_never_calls_the_runner(
+    tmp_path: Path,
+) -> None:
     invocation_log = tmp_path / "invocations.log"
     runner = make_runner(tmp_path, 1, invocation_log=invocation_log)
     env = os.environ | {"KG_EXPECTED_FAIL_RUNNER": str(runner)}
     result = run("./ops/ci_expected_fail_exclusions.sh", env=env)
     assert result.returncode == 0, result.stderr
-    assert invocation_log.read_text().splitlines() == mac_groups_from_source()
+    assert "0 條排除" in result.stdout
+    assert "如預期失敗" not in result.stdout
+    assert not invocation_log.exists() or invocation_log.read_text() == ""
+
+
+def test_former_mac_groups_are_native_or_linux_not_expected_fail() -> None:
+    former = {"release", "ios-ops", "lldb-forensics"}
+    assert not former & set(mac_groups_from_source())
+    printed = run("./ops/tests/test_ops_ci_coverage.sh", "--print-mac-groups")
+    assert printed.returncode == 0 and printed.stdout == ""
+    linux = run("./ops/tests/test_ops_ci_coverage.sh", "--print-linux-groups")
+    assert "release" in linux.stdout.splitlines()
+    assert not former - {"release"} & set(linux.stdout.splitlines())
+
+
+def test_macos_job_runs_the_native_groups() -> None:
+    workflow = (ROOT / ".github/workflows/ops-suite.yml").read_text()
+    assert "./ops/test_ops.sh ios-sentry-wiring ios-ops lldb-forensics" in workflow
+    assert "macos-sentry-wiring" not in workflow
+
+
+def test_release_script_has_no_bsd_only_sed_in_place() -> None:
+    assert "sed -i ''" not in (ROOT / "ops/test_release.sh").read_text()
+
+
+def test_an_executed_expected_platform_failure_is_a_green_gate(tmp_path: Path) -> None:
+    invocation_log = tmp_path / "invocations.log"
+    runner = make_runner(tmp_path, 1, invocation_log=invocation_log)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
+    assert result.returncode == 0, result.stderr
+    assert invocation_log.read_text().splitlines() == FIXTURE_GROUPS
 
 
 def assert_runner_tool_error(result: subprocess.CompletedProcess[str]) -> None:
@@ -96,17 +138,15 @@ def test_a_runner_that_fails_to_launch_is_a_tool_error(tmp_path: Path) -> None:
 
 def test_a_surviving_exclusion_turns_the_gate_red(tmp_path: Path) -> None:
     runner = make_runner(tmp_path, 0)
-    env = os.environ | {"KG_EXPECTED_FAIL_RUNNER": str(runner)}
-    result = run("./ops/ci_expected_fail_exclusions.sh", env=env)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
     assert result.returncode == 1
-    assert "release" in result.stderr
-    assert "ios-ops" in result.stderr
+    assert "fixture-alpha" in result.stderr
+    assert "fixture-beta" in result.stderr
 
 
 def test_the_red_message_frames_the_result_as_a_hypothesis(tmp_path: Path) -> None:
     runner = make_runner(tmp_path, 0)
-    env = os.environ | {"KG_EXPECTED_FAIL_RUNNER": str(runner)}
-    result = run("./ops/ci_expected_fail_exclusions.sh", env=env)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
     assert "假設不是判決" in result.stderr
 
 
