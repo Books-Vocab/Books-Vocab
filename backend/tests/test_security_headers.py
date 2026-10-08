@@ -43,6 +43,13 @@ def test_client_fixture_closes_owned_client(monkeypatch):
     assert events == ["close"]
 
 
+def _set_public_web_base_url(client, monkeypatch, url):
+    import dataclasses
+
+    state = client.app.state
+    monkeypatch.setattr(state, "kg_settings", dataclasses.replace(state.kg_settings, public_web_base_url=url))
+
+
 class TestSecurityHeaders:
     @pytest.mark.parametrize(
         ("header_name", "expected_value"),
@@ -64,6 +71,33 @@ class TestSecurityHeaders:
         assert r.headers.get("X-Frame-Options") == "DENY"
         assert r.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
         assert r.headers.get("Permissions-Policy") == "camera=(), microphone=(), geolocation=()"
+
+    def test_hsts_sent_when_public_base_url_is_https_over_http_scheme(self, client, monkeypatch):
+        # TLS terminates at Cloudflare, so the app sees plain http; HSTS keys off the public URL.
+        _set_public_web_base_url(client, monkeypatch, "https://wordnexus.lol")
+        assert client.base_url.scheme == "http"
+        r = client.get("/privacy")
+        assert r.headers.get("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
+
+    @pytest.mark.parametrize(
+        ("path", "headers", "status"),
+        [
+            ("/privacy", None, None),
+            ("/nonexistent-path-404", None, 404),
+            ("/api/health", {"Authorization": "Bearer invalid"}, 401),
+        ],
+    )
+    def test_hsts_sent_with_default_settings_over_http_including_errors(self, client, path, headers, status):
+        assert client.base_url.scheme == "http"
+        r = client.get(path, headers=headers)
+        if status is not None:
+            assert r.status_code == status
+        assert r.headers.get("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
+
+    def test_hsts_not_sent_when_public_base_url_is_http(self, client, monkeypatch):
+        _set_public_web_base_url(client, monkeypatch, "http://localhost:8000")
+        r = client.get("/privacy")
+        assert "Strict-Transport-Security" not in r.headers
 
     def test_unauthorized_response_has_security_headers(self, client):
         r = client.get("/api/health", headers={"Authorization": "Bearer invalid"})
