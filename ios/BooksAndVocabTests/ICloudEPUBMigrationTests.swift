@@ -216,6 +216,23 @@ struct ICloudEPUBMigrationTests {
         #expect(mainThreadCalls.value == 0)
     }
 
+    @Test func pdfIsMigratedAndV1CompletedKeyIsRetired() async throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.remove() }
+        try Data(repeating: 1, count: 16).write(to: sandbox.local.appendingPathComponent("a.epub"))
+        try Data(repeating: 2, count: 16).write(to: sandbox.local.appendingPathComponent("b.pdf"))
+        try Data(repeating: 3, count: 16).write(to: sandbox.local.appendingPathComponent("C.PDF"))
+        try Data("x".utf8).write(to: sandbox.local.appendingPathComponent("notes.txt"))
+
+        let result = await ICloudEPUBMigration.schedule(
+            fileOps: Self.fileOps(sandbox, completed: Locked(false))
+        ).value
+
+        #expect(result == .completed(copied: 3, total: 3))
+        #expect(sandbox.names(in: sandbox.iCloud) == ["C.PDF", "a.epub", "b.pdf"])
+        #expect(ICloudEPUBMigration.completionKey.hasSuffix("_v2"))
+    }
+
     // MARK: - ICloudDownloadManager.startMonitoring
 
     @Test @MainActor func startMonitoringResolvesContainerOffMainWithoutBlocking() async {
