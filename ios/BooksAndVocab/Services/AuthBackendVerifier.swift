@@ -10,6 +10,12 @@ protocol AuthVerifying: AnyObject {
 }
 
 final class AuthBackendVerifier: AuthVerifying {
+    private let session: URLSession
+
+    init(session: URLSession = sharedURLSession) {
+        self.session = session
+    }
+
     func verify(provider: String, token: String, email: String?) async throws -> AuthVerificationResult {
         guard NetworkMonitor.shared.isConnected else {
             throw AuthVerificationError.offline
@@ -34,10 +40,14 @@ final class AuthBackendVerifier: AuthVerifying {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, response) = try await sharedURLSession.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthVerificationError.invalidResponse
+        }
+        if !(200...299).contains(httpResponse.statusCode) {
             let responseRequestID = RequestObservation.responseRequestID(from: httpResponse, fallback: requestID)
             AppLog.auth.error("Auth verify failed [\(httpResponse.statusCode)] request_id=\(responseRequestID)")
+            throw AuthVerificationError.httpStatus(httpResponse.statusCode)
         }
         guard !data.isEmpty else {
             throw AuthVerificationError.emptyResponse
@@ -64,6 +74,7 @@ enum AuthVerificationError: LocalizedError {
     case invalidResponse
     case missingCredentials(keys: [String])
     case offline
+    case httpStatus(Int)
 
     var errorDescription: String? {
         switch self {
@@ -75,6 +86,8 @@ enum AuthVerificationError: LocalizedError {
             return "Invalid JSON response format"
         case .missingCredentials(let keys):
             return "Missing access_token or user_id. Keys: \(keys.joined(separator: ", "))"
+        case .httpStatus(let code):
+            return "Auth verify HTTP \(code)"
         case .offline:
             return L10n.string("目前沒有網路連線，無法登入")
         }
