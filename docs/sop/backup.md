@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/data        # 2026-06-16 起 live data 移出 git worktree → felix ~/kg-data（由 KG_DATA_DIR 指向）
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: f69f5e53d6b2ac6e3b6f96febb8456a7ed58b477
 -->
 # Backup 策略總覽
 
@@ -58,5 +58,5 @@ aws s3 ls s3://kg-backups-prod-967512079054/data/ | wc -l
 - `docs/sop/debug.md` — 排障(含 CF tunnel / 容器 / Lightsail rollback)
 - `docs/sop/deploy.md` — 部署(含 standby 手動快照 / Lightsail rollback 重建)
 - `docs/runbook/system.md` — change flow
-- `ops/kg_backup.sh` — L3 script（standby/Lightsail 共用，靠 env 參數化）
+- `ops/kg_backup.sh` — L3 script（standby/Lightsail 共用，靠 env 參數化）。每個 `*.db` 以 SQLite online backup 快照到 staging 後才打包（含已提交 WAL，archive 無 `-wal`/`-shm`；快照失敗 → 不上傳，Issue #2250），細節見 `backup_restore.md §1`
 - `ops/launchd/com.kg.backup.plist` — L3 現役排程（standby）；`ops/cron/kg-backup.cron` — 舊 Lightsail cron（已停用）
