@@ -695,3 +695,15 @@ def test_copy_endpoint_end_to_end(isolated_api):
     assert r2.status_code == 200, r2.text
     assert r2.json()["alreadyCopied"] is True
     assert r2.json()["notebookId"] == nb_id
+
+
+def test_copy_endpoint_rejects_overlong_notebook_name(isolated_api):
+    env = isolated_api
+    shared = SharedDeckStore(env.data_dir / "shared_decks.db")
+    _publish_deck(shared)
+    r = env.client.post(
+        "/api/decks/deck_a/copy",
+        headers=env.headers,
+        json={"idempotencyKey": "req-long", "notebookName": "x" * 101},
+    )
+    assert r.status_code == 422, r.text
