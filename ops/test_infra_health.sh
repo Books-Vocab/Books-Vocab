@@ -16,6 +16,8 @@
 #      `bash -c "$2"` 的 stub，把整段 bundle 真的跑起來打 fixture repo（`KG_PROD_REPO`），
 #      端到端驗**值**。要驗「producer 印的東西消費端真的讀得到」就用這條——純掃 bundle
 #      文字的 grep 擋不住「註解列出 key 名」與「\t 換成空格」兩種突變（都實測過）。
+#   真執行的 fake docker `logs` 吐 $KG_TEST_LOG_FIXTURE 檔內容（未設則空），用來行使 log_errors_1h 的
+#   等級匹配（#2317）。
 #   要為其餘 bundle 內的邏輯補真實覆蓋，照抄這兩個模式，不必再擴充 canned stub。
 set -euo pipefail
 
@@ -415,7 +417,7 @@ case "${1:-}" in
     fi
     ;;
   stats) printf 'cpu_pct\t4.2\nmem_pct\t38.0\n' ;;
-  logs) : ;;
+  logs) [ -n "${KG_TEST_LOG_FIXTURE:-}" ] && cat "$KG_TEST_LOG_FIXTURE" || : ;;
   *) exit 1 ;;
 esac
 EOF
@@ -466,6 +468,40 @@ echo "$ej" | py 'import sys,json,time;d=json.load(sys.stdin);now=int(time.time()
 # 不是受測邏輯。deploy_drift 永不 crit 的契約由上面 stub 那段釘住（環境無關）。
 echo "$(exec_health || true)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="deploy_drift"][0];assert g["status"]=="warn",g' \
   && ok "真執行：HEAD 落後 origin/prod → deploy_drift=warn" || fail_t "真執行：HEAD 落後未判 warn"
+
+# log_errors_1h 只數 ERROR/CRITICAL **等級**記錄（#2317）：舊規則 grep 訊息文字
+# （error|exception|traceback|critical），把 WARNING 的 NotFoundError→404、
+# QuotaExceededError→429、/error 路徑與多行 traceback 都灌進去，穩態就噴假警報。
+# fake docker 的 `logs` 吐 KG_TEST_LOG_FIXTURE 的內容；bundle 與 grep 皆真跑。
+log_errs() {  # $1=fixture 檔 → log_errors_1h 的 raw
+  KG_TEST_LOG_FIXTURE="$1" exec_health | py 'import sys,json;d=json.load(sys.stdin);print([m for m in d["metrics"] if m["key"]=="log_errors_1h"][0]["raw"])'
+}
+LOGMIX="$(mktemp)"; LOGWARN="$(mktemp)"; LOGCRIT="$(mktemp)"; LOGBARE="$(mktemp)"
+printf '%s\n' \
+  '{"ts":1,"level":"WARNING","msg":"NotFoundError [x] GET /api/x -> 404"}' \
+  '{"ts":2,"level":"WARNING","msg":"NotFoundError [y] GET /api/x -> 404"}' \
+  '{"ts":3,"level":"WARNING","msg":"NotFoundError [z] GET /api/x -> 404"}' \
+  '{"level":"WARNING","msg":"QuotaExceededError: daily quota -> 429"}' \
+  '{"level":"WARNING","msg":"QuotaExceededError: daily quota -> 429"}' \
+  '{"level":"WARNING","msg":"Validation error on body"}' \
+  'INFO:     127.0.0.1:1 - "GET /api/error?error=1 HTTP/1.1" 404' \
+  '{"ts":9,"level": "ERROR","msg":"unhandled"}' \
+  'Traceback (most recent call last):' \
+  '  File "app.py", line 1, in handler' \
+  'ValueError: boom Exception tail' >"$LOGMIX"
+printf '%s\n' \
+  '{"level":"WARNING","msg":"error while parsing; exception ignored"}' \
+  '{"level":"INFO","msg":"recovered from Error, no traceback"}' >"$LOGWARN"
+printf '%s\n' '{"level":"CRITICAL","msg":"db down"}' >"$LOGCRIT"
+printf '%s\n' 'ERROR: bare line' 'CRITICAL bare line' 'WARNING: error word only' >"$LOGBARE"
+trap 'rm -f "$STUB" "$EXECBASE" "$LOGMIX" "$LOGWARN" "$LOGCRIT" "$LOGBARE"; rm -rf "$FAKEBIN" "$FIXPROD" "$EXECBIN"' EXIT
+[ "$(log_errs "$LOGMIX")" = 1 ] && ok "log_errors_1h：WARNING 404/429/Validation/路徑/traceback 不計，單一 ERROR 記錄=1" \
+  || fail_t "log_errors_1h 混合 log 不等於 1（仍在 grep 訊息文字？）"
+[ "$(log_errs "$LOGWARN")" = 0 ] && ok "log_errors_1h：僅 WARNING/INFO（訊息含 error/exception 字樣）=0" \
+  || fail_t "log_errors_1h WARNING/INFO-only 不為 0"
+[ "$(log_errs "$LOGCRIT")" = 1 ] && ok "log_errors_1h：CRITICAL 記錄=1" || fail_t "log_errors_1h CRITICAL 未計"
+[ "$(log_errs "$LOGBARE")" = 2 ] && ok "log_errors_1h：bare 格式 'ERROR:' / 'CRITICAL ' 開頭各計 1" \
+  || fail_t "log_errors_1h bare 格式計數錯誤"
 
 NOWE="$(date +%s)"
 
