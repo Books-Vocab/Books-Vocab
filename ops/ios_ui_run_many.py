@@ -30,7 +30,6 @@ CLEANUP_SCHEMA = "kg.ios.ui-run-cleanup.v1"
 SELECTOR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\/test[A-Za-z0-9_]+$")
 DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 REQUIREMENT_RE = re.compile(r"^P(?:[3-9]|1[0-5])$")
-FAILURE_TTL_SECONDS = 24 * 60 * 60
 EPHEMERAL_TTL_SECONDS = 30 * 60
 
 
