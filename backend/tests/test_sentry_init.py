@@ -174,12 +174,29 @@ def test_traces_sampler_default_baseline_1pct():
 
 
 def test_bind_user_no_op_when_sentry_inactive(monkeypatch):
-    # SENTRY_DSN unset → init returns False → bind_user must silently do nothing
-    monkeypatch.delenv("SENTRY_DSN", raising=False)
-    # Must not raise even though sentry isn't initialized.
-    bind_user("uid-123")
-    bind_user(None)
-    bind_user("")
+    """Inactive state is the module globals, not the env var: nothing may reach set_user."""
+    import kg.sentry_init as si
+
+    recorded: list = []
+
+    class FakeSentry:
+        @staticmethod
+        def set_user(payload):
+            recorded.append(payload)
+
+    # Sentry module present but not initialized.
+    monkeypatch.setattr(si, "_initialized", False, raising=False)
+    monkeypatch.setattr(si, "_sentry_module", FakeSentry, raising=False)
+    for uid in ("uid-123", None, ""):
+        bind_user(uid)
+    assert recorded == []
+
+    # Initialized flag set but no module loaded: still a no-op.
+    monkeypatch.setattr(si, "_initialized", True, raising=False)
+    monkeypatch.setattr(si, "_sentry_module", None, raising=False)
+    for uid in ("uid-123", None, ""):
+        bind_user(uid)
+    assert recorded == []
 
 
 def test_bind_user_only_sends_id(monkeypatch):
