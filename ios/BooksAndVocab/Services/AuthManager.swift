@@ -309,6 +309,44 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         authError = message
     }
 
+    /// Classification of a backend-verification failure for UI + crash reporting.
+    enum VerifyFailure: Equatable {
+        case cancelled
+        case offline
+        case server
+    }
+
+    nonisolated static func classifyVerifyFailure(_ error: Error) -> VerifyFailure {
+        if error is CancellationError { return .cancelled }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .cancelled: return .cancelled
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed,
+                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .timedOut:
+                return .offline
+            default: return .server
+            }
+        }
+        if case AuthVerificationError.offline = error { return .offline }
+        if case KGError.offline = error { return .offline }
+        return .server
+    }
+
+    /// Surfaces a verification failure; returns whether it is a genuine fault worth recording.
+    @discardableResult
+    func handleVerifyFailure(_ error: Error) -> Bool {
+        switch Self.classifyVerifyFailure(error) {
+        case .cancelled:
+            return false
+        case .offline:
+            setAuthError(L10n.string("目前沒有網路連線"))
+            return false
+        case .server:
+            setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
+            return true
+        }
+    }
+
     func recordProviderAuthenticationFailure() {
         setAuthError(L10n.string("登入暫時失敗"))
     }
