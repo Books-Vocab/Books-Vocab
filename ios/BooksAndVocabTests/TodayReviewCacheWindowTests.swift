@@ -3,7 +3,7 @@ import Testing
 
 @MainActor
 struct TodayReviewCacheWindowTests {
-    @Test func initDoesNotPrebuildWholeLargeQueue() async throws {
+    @Test func initDoesNotPrebuildWholeLargeQueue() {
         let entries = (0..<40).map { index in
             let entry = VocabularyEntry(
                 word: "word-\(index)",
@@ -16,9 +16,14 @@ struct TodayReviewCacheWindowTests {
         }
 
         let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
-        try await Task.sleep(for: .milliseconds(120))
 
-        #expect(state.preparedCardCache.count <= TodayReviewState.cacheLookaheadLimit + 1)
+        // prewarm runs synchronously in init: assert the exact window, not just an upper bound.
+        #expect(state.currentIndex == 0)
+        let limit = TodayReviewState.cacheLookaheadLimit
+        let expected = Set(state.queue[0...limit].map(\.id))
+        #expect(Set(state.preparedCardCache.keys) == expected)
+        #expect(state.preparedCardCache.count == limit + 1)
+        #expect(state.preparedCardCache[state.queue[39].id] == nil)
         #expect(state.currentCardForTesting != nil)
         #expect(state.nextCardForTesting != nil)
     }
