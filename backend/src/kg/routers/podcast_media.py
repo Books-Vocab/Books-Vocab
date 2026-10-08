@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections import OrderedDict
+from collections.abc import Callable, MutableMapping
 from email.utils import formatdate
 from functools import lru_cache
 from pathlib import Path
@@ -17,7 +18,29 @@ from ..settings import KGSettings
 
 logger = logging.getLogger(__name__)
 
-_S3_AUDIO_FMT_CACHE: dict[tuple[str | None, str], str] = {}
+_S3_AUDIO_FMT_CACHE_MAX = 256
+
+
+class _BoundedFmtCache(OrderedDict[tuple[str | None, str], str]):
+    """LRU-bounded (bucket, series) -> audio format map."""
+
+    def __init__(self, maxsize: int) -> None:
+        super().__init__()
+        self._maxsize = maxsize
+
+    def get(self, key, default=None):
+        if key in self:
+            self.move_to_end(key)
+        return super().get(key, default)
+
+    def __setitem__(self, key, value) -> None:
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self._maxsize:
+            self.popitem(last=False)
+
+
+_S3_AUDIO_FMT_CACHE = _BoundedFmtCache(_S3_AUDIO_FMT_CACHE_MAX)
 _AUDIO_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
 
@@ -116,7 +139,7 @@ def _s3_audio_format(
     s3_client_fn: S3ClientProvider,
     is_s3_not_found_fn: IsS3NotFound,
     logger_: LoggerProtocol,
-    cache: dict[tuple[str | None, str], str],
+    cache: MutableMapping[tuple[str | None, str], str],
 ) -> str:
     cfg = settings_fn(request)
     cache_key = (cfg.podcast_bucket, series_id)
@@ -149,7 +172,8 @@ def _s3_audio_format(
                 )
                 raise HTTPException(status_code=502, detail="Storage error resolving audio format") from exc
 
-    fmt = fmt or "m4a"
+    if fmt is None:
+        raise HTTPException(status_code=404)
     cache[cache_key] = fmt
     return fmt
 

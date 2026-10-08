@@ -20,7 +20,7 @@ no per-user owner, but access is *not* uniform:
 
 Hardening already in place:
 
-* ``series_id`` is constrained to ``\A[a-z0-9_]+\Z`` via ``_SERIES_ID_RE`` so
+* ``series_id`` is constrained to ``\A[a-z0-9_]{1,64}\Z`` via ``_SERIES_ID_RE`` so
   path traversal (``../etc``), uppercase, dots, slashes, and trailing newlines
   are all rejected with a 404 before any filesystem access. The ``\A``/``\Z``
   anchors are chosen over ``^``/``$`` so that ``series_a\n`` is rejected too
@@ -69,7 +69,7 @@ from .podcast_progress import build_podcast_progress_router
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["podcast"])
-_SERIES_ID_RE = re.compile(r"\A[a-z0-9_]+\Z")
+_SERIES_ID_RE = re.compile(r"\A[a-z0-9_]{1,64}\Z")
 _MAX_EPISODE_NUM = 999
 
 

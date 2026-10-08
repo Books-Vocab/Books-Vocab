@@ -344,6 +344,53 @@ def test_audio_format_cached_per_series_s3(monkeypatch, _clear_audio_fmt_cache):
     assert calls["n"] == 1
 
 
+def test_audio_format_all_probes_404_returns_404_and_not_cached(monkeypatch, _clear_audio_fmt_cache):
+    """No metadata format and both probes 404 -> 404, never an m4a guess, never cached."""
+    from fastapi import HTTPException
+
+    req = _s3_request()
+    monkeypatch.setattr(_podcast_mod, "_read_json_from_s3", lambda request, key, *, context: None)
+
+    class _NoSuchKey(Exception):
+        pass
+
+    class _FakeS3:
+        exceptions = SimpleNamespace(NoSuchKey=_NoSuchKey)
+
+        def head_object(self, Bucket, Key):  # noqa: N803
+            raise _NoSuchKey()
+
+    monkeypatch.setattr(_podcast_mod, "_s3_client", lambda request: _FakeS3())
+    with pytest.raises(HTTPException) as ei:
+        _podcast_mod._audio_filename(req, "ghost", 1)
+    assert ei.value.status_code == 404
+    assert len(_podcast_mod._S3_AUDIO_FMT_CACHE) == 0
+
+
+def test_audio_format_cache_is_bounded(monkeypatch, _clear_audio_fmt_cache):
+    from kg.routers import podcast_media as media_mod
+
+    req = _s3_request()
+    monkeypatch.setattr(_podcast_mod, "_read_json_from_s3", lambda request, key, *, context: {"audioFormat": "mp3"})
+    for i in range(media_mod._S3_AUDIO_FMT_CACHE_MAX + 50):
+        assert _podcast_mod._audio_filename(req, f"series_{i}", 1) == "audio.mp3"
+    assert len(_podcast_mod._S3_AUDIO_FMT_CACHE) <= media_mod._S3_AUDIO_FMT_CACHE_MAX
+
+
+def test_series_id_over_64_chars_rejected_before_s3(monkeypatch):
+    from fastapi import HTTPException
+
+    def _boom(*a, **k):
+        raise AssertionError("S3 must not be touched")
+
+    monkeypatch.setattr(_podcast_mod, "_read_json_from_s3", _boom)
+    monkeypatch.setattr(_podcast_mod, "_s3_client", _boom)
+    with pytest.raises(HTTPException) as ei:
+        _podcast_mod._validate_series_id("a" * 65)
+    assert ei.value.status_code == 404
+    _podcast_mod._validate_series_id("a" * 64)
+
+
 # ── Cover image endpoint (pipeline cover stage → <sid>/cover.png) ────────────
 
 

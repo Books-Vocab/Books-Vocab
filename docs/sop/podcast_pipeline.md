@@ -341,7 +341,7 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 
 ### upload.sh idempotent 保證
 
-- `_SERIES_ID_RE = ^[a-z0-9_]+$` 預先驗證 series_id(對齊 backend `_SERIES_ID_RE`)
+- `_SERIES_ID_RE = ^[a-z0-9_]+$` 預先驗證 series_id(backend `_SERIES_ID_RE` 為 `\A[a-z0-9_]{1,64}\Z`,長度上限 64 在 backend 端強制)
 - 抓 S3 上既有 `metadata.json` 保留 `createdAt`(避免 re-upload 重設創建時間)
 - pro/flash 同集去重(pro 優先)
 - m4a 與 mp3 同檔名時 m4a 優先(post-Track-B 預設)
@@ -382,7 +382,7 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 
 ### audioFormat 解析(S3 模式 mp3/m4a)
 
-backend `_audio_filename`(podcast.py)S3 模式**讀 series `metadata.json` 的 `audioFormat`** 決定 `audio.{m4a,mp3}` key;欄位缺失則 probe bucket(head_object m4a→mp3),per-(bucket,series) 快取。upload.sh 與 backfill 都會寫 `audioFormat`。**歷史 bug**:舊碼 S3 模式硬回 `audio.m4a`,legacy mp3 series 的 audio 端點 404(bucket 一直空才沒爆),修於 `f4f6b013`/`beaa33c4`。
+backend `_audio_filename`(podcast.py)S3 模式**讀 series `metadata.json` 的 `audioFormat`** 決定 `audio.{m4a,mp3}` key;欄位缺失則 probe bucket(head_object m4a→mp3),per-(bucket,series) 快取(LRU 上限 256 筆,只快取 metadata 或成功 head_object 確認的格式;兩個 probe 皆 404 回 404,不猜 m4a、不快取;非 404 故障回 502;series_id 上限 64 字元,超長直接 404 不碰 S3)。upload.sh 與 backfill 都會寫 `audioFormat`。**歷史 bug**:舊碼 S3 模式硬回 `audio.m4a`,legacy mp3 series 的 audio 端點 404(bucket 一直空才沒爆),修於 `f4f6b013`/`beaa33c4`。
 
 ### served-disk → S3 回填 + drift reconcile(`ops/podcast_backfill_disk.py`)
 
@@ -416,7 +416,7 @@ uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --wor
 uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --workspaces-dir lab/podcast/workspaces --check    # cover⟷metadata drift
 ```
 
-**原子靠排序**(S3 無跨-object 事務):① PUT `<sid>/cover.png`(新 key,metadata 未指 → client 看舊狀態) → ② RMW `<sid>/metadata.json` set `coverImageURL=/api/podcasts/<sid>/cover?v=<sha16>`(單-object 原子替換,可見性翻轉,先①後②保證 metadata 指向時 cover 必已在;`v` 為 cover bytes SHA-256 前 16 碼,backend 忽略 query,iOS 用它做本地 cache-bust) → ③ 從 bucket 全量重建 `index.json`(不丟其他 series)。任何中斷點皆安全 → **可重入 + 冪等**(同圖同 URL;不 bump `updatedAt`,body byte-stable;重跑收斂)。`--check` 分類 `in_sync` / `url_without_cover_png`(metadata 指但圖缺 → 404) / `cover_png_without_url`(圖在但 metadata 沒指,②沒跑完) / `unpublished` / `pending_publish`(local 有圖待發,或 local cover bytes 的 sha16 與 metadata `v` 不符)。dry-run 預設、PNG magic + series_id `\A[a-z0-9_]+\Z`(對齊 backend) + published gate(拒對無 metadata.json 的 series 發封面)、404 vs 真實 fault 區分(鐵律 1)。legacy 無 `?v=` 的 cover URL 在無 local bytes 比對時仍視為指向 cover,`--check` 不會誤報；一旦提供 local cover,legacy URL 會被標為待發布以補上 version token。
+**原子靠排序**(S3 無跨-object 事務):① PUT `<sid>/cover.png`(新 key,metadata 未指 → client 看舊狀態) → ② RMW `<sid>/metadata.json` set `coverImageURL=/api/podcasts/<sid>/cover?v=<sha16>`(單-object 原子替換,可見性翻轉,先①後②保證 metadata 指向時 cover 必已在;`v` 為 cover bytes SHA-256 前 16 碼,backend 忽略 query,iOS 用它做本地 cache-bust) → ③ 從 bucket 全量重建 `index.json`(不丟其他 series)。任何中斷點皆安全 → **可重入 + 冪等**(同圖同 URL;不 bump `updatedAt`,body byte-stable;重跑收斂)。`--check` 分類 `in_sync` / `url_without_cover_png`(metadata 指但圖缺 → 404) / `cover_png_without_url`(圖在但 metadata 沒指,②沒跑完) / `unpublished` / `pending_publish`(local 有圖待發,或 local cover bytes 的 sha16 與 metadata `v` 不符)。dry-run 預設、PNG magic + series_id `\A[a-z0-9_]+\Z`(backend 另限 1–64 字元) + published gate(拒對無 metadata.json 的 series 發封面)、404 vs 真實 fault 區分(鐵律 1)。legacy 無 `?v=` 的 cover URL 在無 local bytes 比對時仍視為指向 cover,`--check` 不會誤報；一旦提供 local cover,legacy URL 會被標為待發布以補上 version token。
 
 ### Headless 觀測 CLI(`ops/podcast_ops.py` — 不必起 dashboard)
 
