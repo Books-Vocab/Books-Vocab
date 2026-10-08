@@ -17,7 +17,7 @@ bash -n "$REL"   && ok "release.sh syntax" || fail_t "release.sh syntax error"
 
 # ── 2. 子命令 dispatch 齊全 ─────────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in status changelog bump bump-build tag publish release shipped resubmit finalize; do
+for sub in status changelog bump bump-build tag publish release promote shipped resubmit finalize; do
   grep -qE "^[[:space:]]*$sub\)" "$REL" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
@@ -87,14 +87,15 @@ echo "$tag_body" | grep -q 'backend/uv.lock' \
 # ── 5c. release 統一入口 gate：dry-run 預設、須在 main、委派 deploy/upload ────
 section "Release verb gate (unified backend/ios)"
 rel_body="$(awk '/^cmd_release\(\)/,/^}/' "$REL")"
-echo "$rel_body" | grep -q 'deploy --commit' \
-  && ok "release backend delegates to orchestrate deploy" || fail_t "release missing deploy delegation"
+grep -q 'orchestrate deploy' "$REL" \
+  && fail_t "release.sh references the nonexistent 'orchestrate deploy'; the only prod route is promote" \
+  || ok "no dead 'orchestrate deploy' reference (prod advance = promote)"
 echo "$rel_body" | grep -q 'ios_release.sh' \
   && ok "release ios delegates to ios_release.sh --upload" || fail_t "release missing ios_release delegation"
 echo "$rel_body" | grep -qE 'branch.*== main|== main.*branch|"\$branch" == main' \
   && ok "release guards on-main"            || fail_t "release missing on-main guard"
 # 負控：生產觸點（deploy/upload）不可洩進 dry-run 分支（--yes 前 return）
-echo "$rel_body" | awk '/YES -ne 1/,/return 0/' | grep -qE 'deploy --commit|--upload' \
+echo "$rel_body" | awk '/YES -ne 1/,/return 0/' | grep -qE 'push origin.*prod|--upload' \
   && fail_t "production touch leaked into release dry-run branch" \
   || ok "release dry-run branch contains no production touch"
 
@@ -1886,6 +1887,79 @@ fin_rc=0; fin_out="$(KG_PR_CMD="$fx_fin/.git/pr-fixture/pr-stub.sh" bash "$fx_fi
    && ! -e "$fx_fin/upload.called" && "$fin_out" == *"tag-only"* ]] \
   && ok "finalize verifies PR and publishes tag-only without upload/main push" \
   || fail_t "finalize was not exact-PR tag-only: $fin_out"
+
+# ── 24. promote backend：FF-only origin/prod，四道前置守衛 + dry-run 預設 ─────
+section "Promote backend (FF-only origin/prod)"
+TMP7="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$TMP5" "$TMP6" "$TMP7"' EXIT
+P_OK='{"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"success"}]}'
+P_RED='{"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"failure"}]}'
+P_NONE='{"check_runs":[{"name":"agent-review","status":"completed","conclusion":"success"}]}'
+p_commit() {  # $1=fixture $2=version $3=message → commit sha
+  printf '[project]\nversion = "%s"\n' "$2" > "$1/backend/pyproject.toml"
+  printf 'app = FastAPI(\n        title="kg",\n        version="%s",\n)\n' "$2" > "$1/backend/src/kg/api.py"
+  git -C "$1" add -A && git -C "$1" commit -q --allow-empty -m "$3" && git -C "$1" rev-parse HEAD
+}
+mk_promote_fx() {  # $1=name；設 P_FX/P_REMOTE/P_BASE(=prod)/P_TGT(=main tip, 1.0.1)
+  P_FX="$TMP7/$1"; P_REMOTE="$TMP7/$1.git"
+  git init -q --bare "$P_REMOTE" && git clone -q "$P_REMOTE" "$P_FX" 2>/dev/null
+  git -C "$P_FX" config user.email t@t && git -C "$P_FX" config user.name t
+  mkdir -p "$P_FX/ops/lib" "$P_FX/backend/src/kg"
+  cp "$REL" "$P_FX/ops/release.sh"; cp "$WORKSPACE/ops/lib/release_tags.sh" "$P_FX/ops/lib/"
+  P_BASE="$(p_commit "$P_FX" 1.0.0 base)"; git -C "$P_FX" branch -M main
+  P_TGT="$(p_commit "$P_FX" 1.0.1 bump)"
+  git -C "$P_FX" push -q origin main "$P_BASE:refs/heads/prod"
+  printf '#!/usr/bin/env bash\ncat "%s/checks.json"\n' "$P_FX" > "$P_FX/checks.sh"; chmod +x "$P_FX/checks.sh"
+  printf '%s' "$P_OK" > "$P_FX/checks.json"
+}
+p_run() {  # $@=release.sh args → P_OUT/P_RC
+  P_RC=0; P_OUT="$(KG_CHECKS_CMD="$P_FX/checks.sh" bash "$P_FX/ops/release.sh" promote backend "$@" 2>&1)" || P_RC=$?
+}
+p_prod() { git --git-dir="$P_REMOTE" rev-parse refs/heads/prod; }
+
+mk_promote_fx happy
+p_run "$P_TGT"
+[[ $P_RC -eq 0 && "$(p_prod)" == "$P_BASE" && "$P_OUT" == *"dry-run"* && "$P_OUT" == *"$P_TGT"* ]] \
+  && ok "promote dry-run prints plan and pushes nothing" || fail_t "promote dry-run wrong (rc=$P_RC): $P_OUT"
+p_run "${P_TGT:0:12}"
+[[ $P_RC -ne 0 && "$(p_prod)" == "$P_BASE" ]] && ok "promote refuses abbreviated SHA" || fail_t "abbreviated SHA accepted: $P_OUT"
+p_run "$P_TGT" --yes
+[[ $P_RC -eq 0 && "$(p_prod)" == "$P_TGT" && "$P_OUT" == *"/api/system/info"* ]] \
+  && ok "promote --yes fast-forwards origin/prod and prints verification" || fail_t "promote --yes failed (rc=$P_RC): $P_OUT"
+
+mk_promote_fx notmain
+git -C "$P_FX" checkout -q -b side
+P_SIDE="$(p_commit "$P_FX" 1.0.2 unmerged)"
+p_run "$P_SIDE" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"origin/main"* && "$(p_prod)" == "$P_BASE" ]] \
+  && ok "promote refuses SHA not on live origin/main" || fail_t "non-main SHA accepted (rc=$P_RC): $P_OUT"
+
+mk_promote_fx nonff
+git -C "$P_FX" checkout -q -b fork "$P_BASE"
+P_FORK="$(p_commit "$P_FX" 1.0.9 fork)"; git -C "$P_FX" push -q origin "$P_FORK:refs/heads/prod" --force
+p_run "$P_TGT" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"fast-forward"* && "$(p_prod)" == "$P_FORK" ]] \
+  && ok "promote refuses non-fast-forward (never forces)" || fail_t "non-FF accepted (rc=$P_RC): $P_OUT"
+
+mk_promote_fx sameversion
+git -C "$P_FX" push -q origin "$P_TGT:refs/heads/prod"
+P_DOC="$(p_commit "$P_FX" 1.0.1 docs-only)"; git -C "$P_FX" push -q origin main
+p_run "$P_DOC" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"版本"* && "$(p_prod)" == "$P_TGT" ]] \
+  && ok "promote refuses un-bumped backend version" || fail_t "un-bumped version accepted (rc=$P_RC): $P_OUT"
+p_run "$P_DOC" --same-version
+[[ $P_RC -ne 0 ]] && ok "promote --same-version requires a reason" || fail_t "--same-version without reason accepted"
+p_run "$P_DOC" --same-version "redeploy after rollback" --yes
+[[ $P_RC -eq 0 && "$(p_prod)" == "$P_DOC" ]] \
+  && ok "promote --same-version <reason> allows redeploy" || fail_t "same-version redeploy failed (rc=$P_RC): $P_OUT"
+
+mk_promote_fx red
+printf '%s' "$P_RED" > "$P_FX/checks.json"; p_run "$P_TGT" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"backend-quality"* && "$(p_prod)" == "$P_BASE" ]] \
+  && ok "promote refuses red backend-quality" || fail_t "red CI accepted (rc=$P_RC): $P_OUT"
+printf '%s' "$P_NONE" > "$P_FX/checks.json"; p_run "$P_TGT" --yes
+[[ $P_RC -ne 0 && "$(p_prod)" == "$P_BASE" ]] && ok "promote refuses missing backend-quality evidence" || fail_t "missing CI accepted: $P_OUT"
+printf 'not json' > "$P_FX/checks.json"; p_run "$P_TGT" --yes
+[[ $P_RC -ne 0 && "$(p_prod)" == "$P_BASE" ]] && ok "promote refuses unreadable check-runs" || fail_t "garbage CI accepted: $P_OUT"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
