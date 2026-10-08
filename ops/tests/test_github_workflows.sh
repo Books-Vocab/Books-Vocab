@@ -207,6 +207,33 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     fail "merge-group required gate must run the backend suite inline, not import backend-quality"
   fi
   # Backend suite runs inline, but only behind the fail-closed scope router.
+  # The required check must not be able to pass vacuously: the router step and
+  # the pytest step may not be skipped, softened or masked, so assert on the
+  # step blocks themselves rather than on the pytest `if:` alone.
+  merge_group_step_containing() {
+    awk -v needle="$1" '
+      /^      - / { if (in_step && hit) { printf "%s", buf; done=1; exit } in_step=1; hit=0; buf="" }
+      in_step { buf = buf $0 "\n" }
+      index($0, needle) { hit=1 }
+      END { if (!done && in_step && hit) printf "%s", buf }
+    ' <<<"$merge_group_required_block"
+  }
+  # A step must run unconditionally and fail closed: no step-level if/continue-on-error,
+  # no `||` fallback masking a non-zero exit, and errexit enabled in its script.
+  merge_group_assert_unmasked_step() {
+    local label="$1" block="$2" allow_if="$3"
+    if [[ "$allow_if" != "yes" ]] && grep -Eq '^        if:' <<<"$block"; then
+      fail "merge-group ${label} step is conditional (if:) and can be skipped"
+    fi
+    if grep -Eq '^[[:space:]]*continue-on-error:' <<<"$block"; then
+      fail "merge-group ${label} step sets continue-on-error"
+    fi
+    if grep -Fq '||' <<<"$block"; then
+      fail "merge-group ${label} step masks failures with a || fallback"
+    fi
+    grep -Fq 'set -euo pipefail' <<<"$block" \
+      || fail "merge-group ${label} step does not run with set -euo pipefail"
+  }
   scope_step_id="$(awk '
     /^      - name:/ { id="" }
     /^        id:/ { id=$2 }
@@ -214,17 +241,30 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   ' <<<"$merge_group_required_block")"
   [[ -n "$scope_step_id" ]] \
     || fail "merge-group required gate has no id'd step running ci_scope_router.sh --format github-output"
-  backend_pytest_step="$(awk '
-    /^      - / { if (in_step && has_pytest) { printf "%s", buf; exit } in_step=1; has_pytest=0; buf="" }
-    in_step { buf = buf $0 "\n" }
-    /uv run python -m pytest -q -rs --skip-allowlist=tests\/skip_allowlist\.json/ { has_pytest=1 }
-    END { if (in_step && has_pytest) printf "%s", buf }
-  ' <<<"$merge_group_required_block")"
+  scope_router_step="$(merge_group_step_containing 'ci_scope_router.sh --base')"
+  [[ -n "$scope_router_step" ]] \
+    || fail "merge-group required gate has no scope router step block"
+  merge_group_assert_unmasked_step "scope router" "$scope_router_step" no
+  if grep -Eq '^    continue-on-error:' <<<"$merge_group_required_block"; then
+    fail "merge-group required job sets job-level continue-on-error"
+  fi
+  backend_pytest_step="$(merge_group_step_containing 'uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json')"
   [[ -n "$backend_pytest_step" ]] \
     || fail "merge-group required gate does not run the backend pytest suite"
   # Anchored to a live step-level key: a commented-out `# if: ...` must not pass.
   grep -Eq "^        if: steps\.${scope_step_id}\.outputs\.backend == 'true'\$" <<<"$backend_pytest_step" \
     || fail "merge-group backend pytest step is not guarded by the router backend output"
+  merge_group_assert_unmasked_step "backend pytest" "$backend_pytest_step" yes
+  ffmpeg_step="$(merge_group_step_containing 'install -y --no-install-recommends ffmpeg')"
+  [[ -n "$ffmpeg_step" ]] \
+    || fail "merge-group required gate has no ffmpeg install step"
+  grep -Eq "^        if: steps\.${scope_step_id}\.outputs\.backend == 'true'\$" <<<"$ffmpeg_step" \
+    || fail "merge-group ffmpeg step is not guarded by the router backend output"
+  merge_group_assert_unmasked_step "ffmpeg" "$ffmpeg_step" yes
+  ffmpeg_line="$(grep -n 'install -y --no-install-recommends ffmpeg' <<<"$merge_group_required_block" | head -n 1 | cut -d: -f1)"
+  pytest_line="$(grep -n 'uv run python -m pytest' <<<"$merge_group_required_block" | head -n 1 | cut -d: -f1)"
+  { [[ -n "$ffmpeg_line" && -n "$pytest_line" ]] && (( ffmpeg_line < pytest_line )); } \
+    || fail "merge-group ffmpeg step is not ordered before the backend pytest step"
   grep -Fq 'working-directory: backend' <<<"$backend_pytest_step" \
     || fail "merge-group backend pytest step does not run in backend/"
   grep -Fq 'uv sync --locked' <<<"$backend_pytest_step" \
