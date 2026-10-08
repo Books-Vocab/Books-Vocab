@@ -208,9 +208,10 @@ def main() -> int:
             "# Regenerate after a sanctioned sweep:  bash ops/tap_a11y_lint.sh --baseline",
             "# Zero tolerance: every .onTapGesture must use Button / declare a trait or action /",
             "# be accessibilityHidden / carry // a11y-allow: <reason> — do not add keys here.",
-            "",
         ]
-        BASELINE_FILE.write_text("\n".join(header + keys) + "\n", encoding="utf-8")
+        # Blank separator only when keys follow, so an empty baseline has no EOF blank line.
+        body = header + ([""] + keys if keys else [])
+        BASELINE_FILE.write_text("\n".join(body) + "\n", encoding="utf-8")
         print(f"[tap_a11y_lint] wrote baseline: {len(keys)} findings → {BASELINE_FILE}")
         return 0
 

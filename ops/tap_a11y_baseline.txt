@@ -3,4 +3,3 @@
 # Regenerate after a sanctioned sweep:  bash ops/tap_a11y_lint.sh --baseline
 # Zero tolerance: every .onTapGesture must use Button / declare a trait or action /
 # be accessibilityHidden / carry // a11y-allow: <reason> — do not add keys here.
-
