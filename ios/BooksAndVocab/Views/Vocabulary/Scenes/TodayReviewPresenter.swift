@@ -64,6 +64,8 @@ struct TodayReviewPresenter: View {
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State var frozenSwipeIntensity: Double = 0
     @State var swipeOffset: CGFloat = 0
+    /// 本次手勢的標記峰值（#2045）。僅 UITest 進程累計與暴露，正式進程恆 `.zero`。
+    @State var swipeMarkerPeak = TodayReviewSwipeMarkerPeak.zero
     @State var containerWidth: CGFloat = 393
     @State var dismissPhase: DismissPhase = .idle
     /// 這一次被擋下的滑動手勢是否已提示過（每次手勢只提示一次，手勢結束重置；#2046）。

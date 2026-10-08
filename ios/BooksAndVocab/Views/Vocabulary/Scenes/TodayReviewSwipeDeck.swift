@@ -2,6 +2,10 @@ import SwiftUI
 
 private let flingSafetyNetTimeout: Duration = .milliseconds(800)
 
+/// 方向標記只在 UITest 進程暴露進 a11y 樹（#2045）：id + 強度值供 UITest 斷言「放開後歸 0」；
+/// 正式進程維持純裝飾（評分語意由下方按鈕承載，VoiceOver 不重複朗讀）。進程內不變 → 常數。
+private let swipeMarkersExposedToUITest = AppRuntimeOptions.isUITesting()
+
 // MARK: - Swipe Deck (resident card slots + swipe gesture)
 
 extension TodayReviewPresenter {
@@ -181,27 +185,63 @@ extension TodayReviewPresenter {
     /// 「記得 / 忘記」方向標記（#2045）。兩個標記常駐、不透明度連續由 swipeOffset 推導
     /// （`TodayReviewFling.markerOpacity`），無 if/else 結構切換：拖動漸入、回彈沿 snap-back
     /// spring 淡出、fling（swipe 或按鈕）沿同一條 fling spring 漸入、settle no-anim 同幀歸 0。
-    /// 純裝飾：不吃命中、不進 a11y（評分語意由下方按鈕承載）。
+    /// 純裝飾：不吃命中；正式進程不進 a11y，UITest 進程以 id + 強度值暴露
+    /// （`TodayReviewSwipeMarkerKind`，值 = 當下不透明度，`%.2f`）。
     func swipeMarkers(swipeOffset: CGFloat) -> some View {
         let threshold = TodayReviewMetrics.swipeThreshold
+        let remembered = TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: 1)
+        let forgot = TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: -1)
         return HStack(alignment: .top, spacing: 0) {
             swipeMarker(
                 title: L10n.string("記得"),
                 tint: appSkin.palette.success,
                 tilt: -TodayReviewMetrics.swipeMarkerTilt
             )
-            .opacity(TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: 1))
+            .opacity(remembered)
+            .accessibilityIdentifier(TodayReviewSwipeMarkerKind.remembered.accessibilityID)
+            .accessibilityValue(TodayReviewSwipeMarkerKind.accessibilityValue(opacity: remembered))
             Spacer(minLength: 0)
             swipeMarker(
                 title: L10n.string("忘記"),
                 tint: appSkin.palette.destructive,
                 tilt: TodayReviewMetrics.swipeMarkerTilt
             )
-            .opacity(TodayReviewFling.markerOpacity(swipeOffset: swipeOffset, threshold: threshold, direction: -1))
+            .opacity(forgot)
+            .accessibilityIdentifier(TodayReviewSwipeMarkerKind.forgot.accessibilityID)
+            .accessibilityValue(TodayReviewSwipeMarkerKind.accessibilityValue(opacity: forgot))
         }
         .padding(TodayReviewMetrics.swipeMarkerInset)
+        .background { swipeMarkerPeakProbes() }
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        .accessibilityHidden(!swipeMarkersExposedToUITest)
+    }
+
+    /// 累計手勢峰值（見 `TodayReviewSwipeMarkerPeak`）。非 UITest 進程直接返回，不增加 body 失效。
+    private func recordSwipeMarkerPeak(to newOffset: CGFloat) {
+        guard swipeMarkersExposedToUITest else { return }
+        let next = swipeMarkerPeak.recording(
+            from: swipeOffset,
+            to: newOffset,
+            threshold: TodayReviewMetrics.swipeThreshold
+        )
+        if next != swipeMarkerPeak { swipeMarkerPeak = next }
+    }
+
+    /// UITest-only 峰值探針：1pt 透明元素，id + 值（`%.2f`）。以 background 掛在標記 HStack 上，
+    /// 不影響 layout；因峰值住在 presenter（不隨 slot 輪替），卡片飛出推進後仍可讀。
+    @ViewBuilder
+    private func swipeMarkerPeakProbes() -> some View {
+        if swipeMarkersExposedToUITest {
+            VStack(spacing: 0) {
+                ForEach(TodayReviewSwipeMarkerKind.allCases, id: \.self) { kind in
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier(kind.peakAccessibilityID)
+                        .accessibilityValue(TodayReviewSwipeMarkerKind.accessibilityValue(opacity: swipeMarkerPeak.value(for: kind)))
+                }
+            }
+        }
     }
 
     private func swipeMarker(title: String, tint: Color, tilt: Double) -> some View {
@@ -308,6 +348,7 @@ extension TodayReviewPresenter {
                     return
                 }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                recordSwipeMarkerPeak(to: value.translation.width)
                 withAnimation(AppMotion.swipeTrackingSpring) {
                     swipeOffset = value.translation.width
                 }
@@ -355,6 +396,7 @@ extension TodayReviewPresenter {
             threshold: TodayReviewMetrics.swipeThreshold,
             baseDuration: Double(DesignTokens.Motion.Spring.SwipeFling.response)
         )
+        recordSwipeMarkerPeak(to: plan.targetOffset)
         dismissPhase = .animatingOut
         frozenSwipeIntensity = plan.frozenIntensity
         flingHapticTrigger += 1
