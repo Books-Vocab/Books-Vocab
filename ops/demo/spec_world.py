@@ -76,31 +76,42 @@ _VALID_MODES = {"recognition", "production"}
 _LINK_LABELS = {"shares_usage": "相關", "contrasts_with": "對比"}
 
 # ---- bounded deterministic selection constants ------------------------------
-_TODAY_SESSION_MAX = 12      # todayReview 一場 session 的卡數上限
-_DECK_MULTI_MAX = 3          # reviewDeck.phaseMulti
-_STATS_ENTRIES_MAX = 8       # statsPopulated / shellNavigation entries
-_SYNCING_MAX = 5             # vocabListSyncing
-_PENDING_MIXED_MAX = 4       # syncPendingMixed
-_HISTORY_PER_CARD_MAX = 40   # 每卡合成事件上限（防指數回推溢位）
-_HISTORY_DENSE_MAX = 3000    # reviewCalendarDense 全域事件上限（fixture 體積）
-_HISTORY_STATS_MAX = 3000    # statsPopulated（敘事底稿：全 active 卡事件，勿截舊日）
-_HISTORY_SHELL_MAX = 200     # shellNavigation
-_INTERVAL_GROWTH = 1.7       # 對齊 demo_review_synth 的往過去回推成長係數
+_TODAY_SESSION_MAX = 12  # todayReview 一場 session 的卡數上限
+_DECK_MULTI_MAX = 3  # reviewDeck.phaseMulti
+_STATS_ENTRIES_MAX = 8  # statsPopulated / shellNavigation entries
+_SYNCING_MAX = 5  # vocabListSyncing
+_PENDING_MIXED_MAX = 4  # syncPendingMixed
+_HISTORY_PER_CARD_MAX = 40  # 每卡合成事件上限（防指數回推溢位）
+_HISTORY_DENSE_MAX = 3000  # reviewCalendarDense 全域事件上限（fixture 體積）
+_HISTORY_STATS_MAX = 3000  # statsPopulated（敘事底稿：全 active 卡事件，勿截舊日）
+_HISTORY_SHELL_MAX = 200  # shellNavigation
+_INTERVAL_GROWTH = 1.7  # 對齊 demo_review_synth 的往過去回推成長係數
 _MIN_RECENT_GAP_HOURS = 8.0
-_MAX_GAP_HOURS = 24.0 * 30   # 單段間隔上限（30 天）
-_DATE_ADDED_LEAD_HOURS = 24.0  # dateAdded 至少早於最早 review 錨點 24h（卡先加入才被複習）
+_MAX_GAP_HOURS = 24.0 * 30  # 單段間隔上限（30 天）
+_DATE_ADDED_LEAD_HOURS = (
+    24.0  # dateAdded 至少早於最早 review 錨點 24h（卡先加入才被複習）
+)
 _DATE_ADDED_FALLBACK_ANCHOR = "2026-01-01T00:00:00Z"  # spec 全無日期素材時的固定錨點
 
 # reader passage 投影（scenarioContext.readerPassage）：hero 卡 + 幾張同 notebook
 # 真實卡的 example 拼成閱讀頁；highlight 詞只取「單 token」的 **marker**，確保 iOS
 # ReaderProseTokenizer（以空白切詞、標點 trim）能真正命中並上高亮帶。
-_READER_SUPPORTING_MAX = 4     # hero 之外的 vocab-highlight 卡上限
-_READER_PARAGRAPH_COUNT = 2    # 段落數（對齊現行 ReaderScenarioProse 2 段版型）
+_READER_SUPPORTING_MAX = 4  # hero 之外的 vocab-highlight 卡上限
+_READER_PARAGRAPH_COUNT = 2  # 段落數（對齊現行 ReaderScenarioProse 2 段版型）
 # reader passage 欄位契約（SoT；emit_ios / ui_world_manifest 驗證此鍵集）。
-READER_PASSAGE_KEYS = frozenset({
-    "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
-    "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
-})
+READER_PASSAGE_KEYS = frozenset(
+    {
+        "bookTitle",
+        "activeWord",
+        "activePartOfSpeech",
+        "activeTranslation",
+        "activeExplanation",
+        "activeContext",
+        "paragraphs",
+        "vocabWords",
+        "activeWords",
+    }
+)
 _MARKER_RE = re.compile(r"\*\*(.+?)\*\*")
 # ReaderProseTokenizer.matchTrim 的鏡像（ReaderViewPresenter+Preview.swift:143）：
 # 命中比對時 trim 的標點；投影端 marker/token 用同一組 trim 才能雙端一致。
@@ -226,7 +237,9 @@ def load_seed_spec(path: Path) -> dict[str, Any]:
             raise SpecWorldError(f"cards[{i}] ({content!r}) notebook {nb!r} 未宣告")
         mode = card.get("mode") or "recognition"
         if mode not in _VALID_MODES:
-            raise SpecWorldError(f"cards[{i}] ({content!r}) mode {mode!r} 不在 {_VALID_MODES}")
+            raise SpecWorldError(
+                f"cards[{i}] ({content!r}) mode {mode!r} 不在 {_VALID_MODES}"
+            )
         contents_by_nb.setdefault(nb, set()).add(content)
 
     for i, link in enumerate(links):
@@ -261,17 +274,19 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
     """spec → 去重 / 編 id / 正規化 datetime 的內部 world 模型。"""
     notebooks: list[dict[str, Any]] = []
     for i, nb in enumerate(spec["notebooks"]):
-        notebooks.append({
-            "index": i,
-            "remote_id": f"spec-nb-{i + 1}",
-            "name": str(nb["name"]),
-            "color": nb.get("color"),
-            "cover_pattern": nb.get("cover_pattern"),
-            "sort_order": int(nb.get("sort_order") or 0),
-            "is_default": _normalize_bool(
-                nb.get("is_default", _MISSING), owner=f"notebooks[{i}].is_default"
-            ),
-        })
+        notebooks.append(
+            {
+                "index": i,
+                "remote_id": f"spec-nb-{i + 1}",
+                "name": str(nb["name"]),
+                "color": nb.get("color"),
+                "cover_pattern": nb.get("cover_pattern"),
+                "sort_order": int(nb.get("sort_order") or 0),
+                "is_default": _normalize_bool(
+                    nb.get("is_default", _MISSING), owner=f"notebooks[{i}].is_default"
+                ),
+            }
+        )
 
     nb_by_name = {nb["name"]: nb for nb in notebooks}
     cards_by_nb: dict[str, list[dict[str, Any]]] = {nb["name"]: [] for nb in notebooks}
@@ -285,35 +300,45 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         review = card.get("review") or {}
         owner = f"card {content!r}"
         feedback = review.get("last_review_feedback")
-        cards_by_nb[nb_name].append({
-            "word": content,
-            "translation": str(card["meaning"]),
-            "pos": card.get("pos"),
-            "note": card.get("note"),
-            "examples": _str_list(card.get("examples"), owner=f"{owner}.examples"),
-            "collocations": _str_list(card.get("collocations"), owner=f"{owner}.collocations"),
-            "root_form": card.get("root_form"),
-            "inflections": _str_list(card.get("inflections"), owner=f"{owner}.inflections"),
-            "mode": card.get("mode") or "recognition",
-            "is_archived": _normalize_bool(
-                card.get("is_archived", _MISSING), owner=f"cards[{i}].is_archived"
-            ),
-            "difficulty_tier": _difficulty_tier(card.get("difficulty")),
-            "kg_card_id": f"spec-nb{nb_by_name[nb_name]['index'] + 1}-card{len(cards_by_nb[nb_name]) + 1}",
-            "review_count": int(review.get("review_count") or 0),
-            "review_streak": int(review.get("review_streak") or 0),
-            "lapse_count": int(review.get("lapse_count") or 0),
-            "review_interval_hours": float(review.get("review_interval_hours") or 12.0),
-            "next_review_at": _norm_ts(review.get("next_review_at"), owner=f"{owner}.next_review_at"),
-            "last_reviewed_at": _norm_ts(review.get("last_reviewed_at"), owner=f"{owner}.last_reviewed_at"),
-            "last_review_feedback": int(feedback) if feedback is not None else -1,
-            "links": [],  # from-side links，下面回填
-        })
+        cards_by_nb[nb_name].append(
+            {
+                "word": content,
+                "translation": str(card["meaning"]),
+                "pos": card.get("pos"),
+                "note": card.get("note"),
+                "examples": _str_list(card.get("examples"), owner=f"{owner}.examples"),
+                "collocations": _str_list(
+                    card.get("collocations"), owner=f"{owner}.collocations"
+                ),
+                "root_form": card.get("root_form"),
+                "inflections": _str_list(
+                    card.get("inflections"), owner=f"{owner}.inflections"
+                ),
+                "mode": card.get("mode") or "recognition",
+                "is_archived": _normalize_bool(
+                    card.get("is_archived", _MISSING), owner=f"cards[{i}].is_archived"
+                ),
+                "difficulty_tier": _difficulty_tier(card.get("difficulty")),
+                "kg_card_id": f"spec-nb{nb_by_name[nb_name]['index'] + 1}-card{len(cards_by_nb[nb_name]) + 1}",
+                "review_count": int(review.get("review_count") or 0),
+                "review_streak": int(review.get("review_streak") or 0),
+                "lapse_count": int(review.get("lapse_count") or 0),
+                "review_interval_hours": float(
+                    review.get("review_interval_hours") or 12.0
+                ),
+                "next_review_at": _norm_ts(
+                    review.get("next_review_at"), owner=f"{owner}.next_review_at"
+                ),
+                "last_reviewed_at": _norm_ts(
+                    review.get("last_reviewed_at"), owner=f"{owner}.last_reviewed_at"
+                ),
+                "last_review_feedback": int(feedback) if feedback is not None else -1,
+                "links": [],  # from-side links，下面回填
+            }
+        )
 
     card_index: dict[tuple[str, str], dict[str, Any]] = {
-        (nb_name, c["word"]): c
-        for nb_name, cards in cards_by_nb.items()
-        for c in cards
+        (nb_name, c["word"]): c for nb_name, cards in cards_by_nb.items() for c in cards
     }
     link_seq: dict[str, int] = {nb["name"]: 0 for nb in notebooks}
     for link in spec.get("links", []):
@@ -321,19 +346,22 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         source = card_index[(nb_name, link["from"])]
         target = card_index[(nb_name, link["to"])]
         link_seq[nb_name] += 1
-        source["links"].append({
-            "id": f"spec-link-nb{nb_by_name[nb_name]['index'] + 1}-{link_seq[nb_name]}",
-            "cardId": target["kg_card_id"],
-            "word": target["word"],
-            "kind": link["kind"],
-            "label": _LINK_LABELS[link["kind"]],
-            "confidence": float(link["confidence"]),
-            # export 面明確容許 reason=""（DB link 無 reason），但 todayReview link
-            # validator 要求非空字串——確定式 fallback 到 kind label，避免合法 spec
-            # 在「該卡剛好落在 session current/next」時才位置依賴地炸。
-            "reason": str(link.get("reason") or "").strip() or _LINK_LABELS[link["kind"]],
-            "hidden": False,
-        })
+        source["links"].append(
+            {
+                "id": f"spec-link-nb{nb_by_name[nb_name]['index'] + 1}-{link_seq[nb_name]}",
+                "cardId": target["kg_card_id"],
+                "word": target["word"],
+                "kind": link["kind"],
+                "label": _LINK_LABELS[link["kind"]],
+                "confidence": float(link["confidence"]),
+                # export 面明確容許 reason=""（DB link 無 reason），但 todayReview link
+                # validator 要求非空字串——確定式 fallback 到 kind label，避免合法 spec
+                # 在「該卡剛好落在 session current/next」時才位置依賴地炸。
+                "reason": str(link.get("reason") or "").strip()
+                or _LINK_LABELS[link["kind"]],
+                "hidden": False,
+            }
+        )
 
     # primary = active 卡最多的 notebook（tie-break: is_default、再 spec 順序）。
     # 不能只看 is_default:真實帳號的預設單字本（user-create 建的「我的單字本」）
@@ -369,7 +397,9 @@ def _even_positions(span: int, count: int) -> list[int]:
     return sorted({(2 * i + 1) * span // (2 * count) for i in range(count)})
 
 
-def _feedback_sequence(n: int, lapses: int, streak: int, last_feedback: int) -> list[int]:
+def _feedback_sequence(
+    n: int, lapses: int, streak: int, last_feedback: int
+) -> list[int]:
     """長度 n 的 0/1 序列（index 0 最舊）；語意同 demo_review_synth._feedback_sequence。"""
     streak = max(0, min(streak, n))
     pre_len = n - streak
@@ -411,7 +441,9 @@ def _card_history(card: dict[str, Any]) -> list[dict[str, Any]]:
     fb = _feedback_sequence(
         n, card["lapse_count"], card["review_streak"], card["last_review_feedback"]
     )
-    base_gap = max(card["review_interval_hours"] / _INTERVAL_GROWTH, _MIN_RECENT_GAP_HOURS)
+    base_gap = max(
+        card["review_interval_hours"] / _INTERVAL_GROWTH, _MIN_RECENT_GAP_HOURS
+    )
     cum = [0.0]
     for k in range(1, n):
         gap = min(base_gap * (_INTERVAL_GROWTH ** (k - 1)), _MAX_GAP_HOURS)
@@ -459,9 +491,15 @@ def _history_for(cards: list[dict[str, Any]], *, cap: int) -> list[dict[str, Any
 # --------------------------------------------------------------------------- #
 # entry / seed builders
 # --------------------------------------------------------------------------- #
-def _entry(card: dict[str, Any], *, nb_name: str, sync_status: int = 1,
-           action_type: str = "add", reviewed_mode: str | None = None,
-           allowed_words: set[str] | None = None) -> dict[str, Any]:
+def _entry(
+    card: dict[str, Any],
+    *,
+    nb_name: str,
+    sync_status: int = 1,
+    action_type: str = "add",
+    reviewed_mode: str | None = None,
+    allowed_words: set[str] | None = None,
+) -> dict[str, Any]:
     """卡 → UI_WORLD_ENTRY_KEYS 全鍵明示的 vocabulary/reviewDeck entry。
 
     `allowed_words`：seed 子集的 word 集合。vocabulary/reviewDeck seed 是自足
@@ -511,20 +549,28 @@ def _links_by_kind(
     return {kind: buckets[kind] for kind in sorted(buckets)}
 
 
-def _vocab_seed(primary: dict[str, Any], entries: list[dict[str, Any]],
-                history: list[dict[str, Any]] | None = None,
-                *, notebook_sync: int = 1) -> dict[str, Any]:
+def _vocab_seed(
+    primary: dict[str, Any],
+    entries: list[dict[str, Any]],
+    history: list[dict[str, Any]] | None = None,
+    *,
+    notebook_sync: int = 1,
+) -> dict[str, Any]:
     return {
         "notebookRemoteId": primary["remote_id"],
         "notebookName": primary["name"],
         "notebookSyncStatus": notebook_sync,
-        "bookTitle": primary["name"],  # spec 無書籍來源；validator 要求非空 → 用 notebook 名
+        "bookTitle": primary[
+            "name"
+        ],  # spec 無書籍來源；validator 要求非空 → 用 notebook 名
         "entries": entries,
         "reviewHistory": history or [],
     }
 
 
-def _deck_seed(primary: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+def _deck_seed(
+    primary: dict[str, Any], entries: list[dict[str, Any]]
+) -> dict[str, Any]:
     return {
         "notebookRemoteId": primary["remote_id"],
         "notebookName": primary["name"],
@@ -570,8 +616,9 @@ def _notebook_row(nb: dict[str, Any], cards: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def _today_card(card: dict[str, Any], *, nb_name: str,
-                reviewed_mode: str | None = None) -> dict[str, Any]:
+def _today_card(
+    card: dict[str, Any], *, nb_name: str, reviewed_mode: str | None = None
+) -> dict[str, Any]:
     return {
         "word": card["word"],
         "translation": card["translation"],
@@ -590,9 +637,16 @@ def _today_card(card: dict[str, Any], *, nb_name: str,
     }
 
 
-def _today_session(queue: list[dict[str, Any]], *, nb_name: str, stage: str,
-                   completed: bool = False, autoplaying: bool = False,
-                   paused: bool = False, force_mode: str | None = None) -> dict[str, Any]:
+def _today_session(
+    queue: list[dict[str, Any]],
+    *,
+    nb_name: str,
+    stage: str,
+    completed: bool = False,
+    autoplaying: bool = False,
+    paused: bool = False,
+    force_mode: str | None = None,
+) -> dict[str, Any]:
     total = len(queue)
     if completed:
         done, current, nxt = total, None, None
@@ -601,7 +655,8 @@ def _today_session(queue: list[dict[str, Any]], *, nb_name: str, stage: str,
         current = _today_card(queue[done], nb_name=nb_name, reviewed_mode=force_mode)
         nxt = (
             _today_card(queue[done + 1], nb_name=nb_name, reviewed_mode=force_mode)
-            if done + 1 < total else None
+            if done + 1 < total
+            else None
         )
     forgot = done // 3
     return {
@@ -672,7 +727,12 @@ def _reader_candidates(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _hero_rank(card: dict[str, Any]) -> tuple[Any, ...]:
     """Scenario 主卡的內容驅動排序 key（取 max）：有 graph link 者優先、去標記
     example 越長越前、review_streak 高者優先、word 昇冪 tie-break。非硬編某字。"""
-    return (bool(card["links"]), len(card["_prose"]), card["review_streak"], card["word"])
+    return (
+        bool(card["links"]),
+        len(card["_prose"]),
+        card["review_streak"],
+        card["word"],
+    )
 
 
 def _scenario_hero(world: dict[str, Any]) -> dict[str, Any]:
@@ -710,7 +770,9 @@ def derive_reader_passage(spec: dict[str, Any]) -> dict[str, Any]:
     primary = world["primary"]
     candidates = _reader_candidates(world["cards_by_nb"][primary["name"]])
     hero = _scenario_hero(world)  # 與 wordDetail 共用同一主字
-    supporting = [c for c in candidates if c["word"] != hero["word"]][:_READER_SUPPORTING_MAX]
+    supporting = [c for c in candidates if c["word"] != hero["word"]][
+        :_READER_SUPPORTING_MAX
+    ]
 
     ordered = [hero, *supporting]
     # 段落切分：把 ordered 的去標記 example 平均分進 _READER_PARAGRAPH_COUNT 段，
@@ -742,11 +804,14 @@ def derive_reader_passage(spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _seed_entries(cards: list[dict[str, Any]], primary: dict[str, Any],
-                  **kw: Any) -> list[dict[str, Any]]:
+def _seed_entries(
+    cards: list[dict[str, Any]], primary: dict[str, Any], **kw: Any
+) -> list[dict[str, Any]]:
     """cards → 自足 vocabulary/reviewDeck entries（graphLinksByKind 只留 in-seed target）。"""
     allowed = {c["word"] for c in cards}
-    return [_entry(c, nb_name=primary["name"], allowed_words=allowed, **kw) for c in cards]
+    return [
+        _entry(c, nb_name=primary["name"], allowed_words=allowed, **kw) for c in cards
+    ]
 
 
 def derive_word_detail(spec: dict[str, Any]) -> dict[str, Any]:
@@ -761,7 +826,8 @@ def derive_word_detail(spec: dict[str, Any]) -> dict[str, Any]:
     active = [c for c in world["cards_by_nb"][primary["name"]] if not c["is_archived"]]
     if not active:
         raise SpecWorldError(
-            f"primary notebook {primary['name']!r} 沒有 active 卡，無法投影 wordDetail")
+            f"primary notebook {primary['name']!r} 沒有 active 卡，無法投影 wordDetail"
+        )
     by_word = {c["word"]: c for c in active}
     candidates = _reader_candidates(world["cards_by_nb"][primary["name"]])
     if candidates:  # 與 derive_reader_passage 同一 hero → 跨 shot 一致
@@ -769,9 +835,16 @@ def derive_word_detail(spec: dict[str, Any]) -> dict[str, Any]:
     else:
         linked = [c for c in active if c["links"]]
         hero_word = (
-            max(linked, key=lambda c: (
-                len(c["examples"][0]) if c["examples"] else 0, c["review_streak"], c["word"]))["word"]
-            if linked else active[0]["word"]
+            max(
+                linked,
+                key=lambda c: (
+                    len(c["examples"][0]) if c["examples"] else 0,
+                    c["review_streak"],
+                    c["word"],
+                ),
+            )["word"]
+            if linked
+            else active[0]["word"]
         )
     hero = by_word[hero_word]  # 原始卡（帶完整 links）
     linked_words = [lnk["word"] for lnk in hero["links"] if lnk["word"] in by_word]
@@ -787,7 +860,9 @@ def derive_word_detail(spec: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # public API
 # --------------------------------------------------------------------------- #
-def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+def derive_domains(
+    spec: dict[str, Any],
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """seed spec → (四 domain 的 spec-derived fixture seeds, 統計)。
 
     回傳的 domain dict 只含 spec-derived fixture id；emit_ios 以
@@ -825,8 +900,12 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
     syncing_split = (len(syncing) * 3) // 5
     syncing_words = {c["word"] for c in syncing}
     syncing_entries = [
-        _entry(c, nb_name=primary["name"], sync_status=1 if i < syncing_split else 0,
-               allowed_words=syncing_words)
+        _entry(
+            c,
+            nb_name=primary["name"],
+            sync_status=1 if i < syncing_split else 0,
+            allowed_words=syncing_words,
+        )
         for i, c in enumerate(syncing)
     ]
     # SyncViewScenarios mixed 釘「pending>1 且同時含 add+delete」→ delete 排第二，
@@ -835,9 +914,13 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
     mixed_cards = active[:_PENDING_MIXED_MAX]
     mixed_words = {c["word"] for c in mixed_cards}
     mixed_entries = [
-        _entry(c, nb_name=primary["name"], sync_status=0,
-               action_type=mixed_actions[i % len(mixed_actions)],
-               allowed_words=mixed_words)
+        _entry(
+            c,
+            nb_name=primary["name"],
+            sync_status=0,
+            action_type=mixed_actions[i % len(mixed_actions)],
+            allowed_words=mixed_words,
+        )
         for i, c in enumerate(mixed_cards)
     ]
 
@@ -858,7 +941,8 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         "vocabListEmpty": _vocab_seed(primary, []),
         "vocabListSyncing": _vocab_seed(primary, syncing_entries),
         "syncPendingSingle": _vocab_seed(
-            primary, entries(active[:1], sync_status=0), notebook_sync=0),
+            primary, entries(active[:1], sync_status=0), notebook_sync=0
+        ),
         "syncPendingMixed": _vocab_seed(primary, mixed_entries, notebook_sync=0),
         "syncEmpty": _vocab_seed(primary, []),
         "archivedEmpty": _vocab_seed(primary, []),
@@ -880,7 +964,9 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
             "editStates": [],
         },
         "populated": {
-            "notebooks": [_notebook_row(nb, cards_by_nb[nb["name"]]) for nb in notebooks],
+            "notebooks": [
+                _notebook_row(nb, cards_by_nb[nb["name"]]) for nb in notebooks
+            ],
             "editStates": [],
         },
     }
@@ -893,8 +979,18 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         "phaseMulti": _deck_seed(primary, entries(due[:_DECK_MULTI_MAX])),
         "phaseLongContent": _deck_seed(
             primary,
-            entries([max(active, key=lambda c: (len(c["translation"]) + len(
-                c["examples"][0] if c["examples"] else ""), c["word"]))]),
+            entries(
+                [
+                    max(
+                        active,
+                        key=lambda c: (
+                            len(c["translation"])
+                            + len(c["examples"][0] if c["examples"] else ""),
+                            c["word"],
+                        ),
+                    )
+                ]
+            ),
         ),
     }
 
@@ -902,14 +998,21 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
     today_review = {
         "front": _today_session(session, nb_name=nb_name, stage="front"),
         "back": _today_session(session, nb_name=nb_name, stage="back"),
-        "completed": _today_session(session, nb_name=nb_name, stage="front", completed=True),
-        "autoplay": _today_session(session, nb_name=nb_name, stage="back", autoplaying=True),
+        "completed": _today_session(
+            session, nb_name=nb_name, stage="front", completed=True
+        ),
+        "autoplay": _today_session(
+            session, nb_name=nb_name, stage="back", autoplaying=True
+        ),
         "autoplayPaused": _today_session(
-            session, nb_name=nb_name, stage="back", autoplaying=True, paused=True),
+            session, nb_name=nb_name, stage="back", autoplaying=True, paused=True
+        ),
         "productionFront": _today_session(
-            production_session, nb_name=nb_name, stage="front", force_mode=force_mode),
+            production_session, nb_name=nb_name, stage="front", force_mode=force_mode
+        ),
         "productionBack": _today_session(
-            production_session, nb_name=nb_name, stage="back", force_mode=force_mode),
+            production_session, nb_name=nb_name, stage="back", force_mode=force_mode
+        ),
     }
 
     stats = {
