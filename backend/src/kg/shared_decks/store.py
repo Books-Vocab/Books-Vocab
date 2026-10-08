@@ -428,16 +428,6 @@ class SharedDeckStore:
                 return False
             return True
 
-    def increment_download_count(self, deck_id: str) -> None:
-        """Atomic ``SET download_count = download_count + 1`` — never a Python
-        get-then-set, so concurrent copies can't lose an increment."""
-        with Session(self.engine) as session:
-            session.connection().exec_driver_sql(
-                "UPDATE shared_deck SET download_count = download_count + 1 WHERE id = ?",
-                (deck_id,),
-            )
-            session.commit()
-
     def finalize_copy_download(self, copier_id: str, idempotency_key: str, deck_id: str) -> bool:
         """Count one committed copy exactly once.
 

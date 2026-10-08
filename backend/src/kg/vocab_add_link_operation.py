@@ -309,11 +309,6 @@ def _update(
         conn.commit()
 
 
-def _next_sequence(operation_id: str) -> int:
-    record = _get_by_id(operation_id)
-    return (record["sequence"] + 1) if record else 0
-
-
 def start_operation(operation_id: str) -> None:
     record = _get_by_id(operation_id)
     if record is not None and record["status"] not in _TERMINAL_STATUSES:

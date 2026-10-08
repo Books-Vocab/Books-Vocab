@@ -61,13 +61,11 @@ class EditError(Exception):
 
 
 class ApplyFn(Protocol):
-    def __call__(self) -> object:
-        ...
+    def __call__(self) -> object: ...
 
 
 class VerifyFn(Protocol):
-    def __call__(self) -> dict[str, object] | None:
-        ...
+    def __call__(self) -> dict[str, object] | None: ...
 
 
 def assert_safe_uid(uid: str) -> None:
@@ -81,16 +79,8 @@ def assert_safe_uid(uid: str) -> None:
     sub(Google 純數字、Apple `NNN.hex`)永不以 `.` 起首,擋掉無誤傷。過長 uid 在
     `Path.exists()` 會丟 OSError,先擋成結構化錯誤。
     """
-    if (
-        not uid
-        or uid in {".", ".."}
-        or ".." in uid
-        or uid.startswith(".")
-        or not _USER_ID_ALLOWED.match(uid)
-    ):
-        raise EditError(
-            f"unsafe user id: {uid!r}(僅允許 [a-zA-Z0-9_.-]、不可為 '.' / '..' 或 '.' 起首)"
-        )
+    if not uid or uid in {".", ".."} or ".." in uid or uid.startswith(".") or not _USER_ID_ALLOWED.match(uid):
+        raise EditError(f"unsafe user id: {uid!r}(僅允許 [a-zA-Z0-9_.-]、不可為 '.' / '..' 或 '.' 起首)")
     if len(uid) > _MAX_UID_LEN:
         raise EditError(f"user id 過長(>{_MAX_UID_LEN} chars):{len(uid)}")
 
@@ -150,23 +140,6 @@ def _user_meta_arc(uid: str, filename: str) -> str:
 
 def _world_meta_arc(filename: str) -> str:
     return f"{_WORLD_ROOT_ARCNAME}/{_META_DIRNAME}/{filename}"
-
-
-def _read_json_member(
-    tar: tarfile.TarFile, arcname: str,
-) -> dict[str, Any] | None:
-    member = tar.getmember(arcname) if arcname in tar.getnames() else None
-    if member is None:
-        return None
-    fileobj = tar.extractfile(member)
-    if fileobj is None:
-        return None
-    try:
-        data = json.loads(fileobj.read().decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        logger.warning("failed to parse JSON tar member %s: %s", arcname, exc)
-        return None
-    return data if isinstance(data, dict) else None
 
 
 def _world_snapshot_members(data_dir: Path) -> list[Path]:
@@ -322,11 +295,13 @@ def list_user_backups(data_dir: Path, uid: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for p in sorted(root.glob(f"{uid}__*.tar.gz"), reverse=True):
         st = p.stat()
-        out.append({
-            "path": str(p),
-            "size": st.st_size,
-            "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(),
-        })
+        out.append(
+            {
+                "path": str(p),
+                "size": st.st_size,
+                "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(),
+            }
+        )
     return out
 
 
@@ -410,9 +385,7 @@ class EditContext:
         self.user_dir = user_dir_for(self.data_dir, uid)
         self._destructive_step_started = False
         if require_user and not self.user_dir.exists():
-            raise EditError(
-                f"user not found: {uid}(在 {self.data_dir}/users/ 下無此目錄)"
-            )
+            raise EditError(f"user not found: {uid}(在 {self.data_dir}/users/ 下無此目錄)")
 
     def mark_destructive(self) -> None:
         """Mark that the apply callback is about to enter a destructive step.
