@@ -967,3 +967,34 @@ def test_startup_lifespan_sweeps_orphan_but_keeps_active(monkeypatch, tmp_path):
 
     assert not orphan.exists(), "startup must reap the stale orphan"
     assert live.exists(), "startup must never reap a running job's input"
+
+
+def test_delete_workspace_busy_returns_409_and_keeps_tree(
+    client, monkeypatch, tmp_path
+):
+    """DELETE must not rmtree under a running job (races the writer)."""
+    ws = tmp_path / "ws_busy"
+    ws.mkdir()
+    (ws / "events.jsonl").write_text("x")
+    monkeypatch.setattr(server, "_resolve_ws", lambda n: ws)
+    monkeypatch.setattr(
+        server, "_active_job_for_ws", lambda n, running=None: {"job_id": "j1"}
+    )
+    resp = client.delete("/api/workspace/ws_busy", params={"confirm": "ws_busy"})
+    assert resp.status_code == 409
+    assert (ws / "events.jsonl").exists()
+
+
+def test_delete_workspace_rmtree_oserror_returns_500(client, monkeypatch, tmp_path):
+    ws = tmp_path / "ws_err"
+    ws.mkdir()
+    monkeypatch.setattr(server, "_resolve_ws", lambda n: ws)
+    monkeypatch.setattr(server, "_active_job_for_ws", lambda n, running=None: None)
+
+    def boom(path):
+        raise OSError(66, "Directory not empty")
+
+    monkeypatch.setattr(server.shutil, "rmtree", boom)
+    resp = client.delete("/api/workspace/ws_err", params={"confirm": "ws_err"})
+    assert resp.status_code == 500
+    assert "ws_err" in resp.json()["detail"]
