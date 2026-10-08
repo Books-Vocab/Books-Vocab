@@ -128,6 +128,9 @@ cd ~/kg-prod && KG_RECON_REPO=~/kg-prod ops/kg_reconcile.sh --dry-run
 # 掛載 / 停用 launchd（跑在 auto-login session）
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.reconcile.plist
 launchctl bootout gui/$(id -u)/com.kg.reconcile
+# 同機的每日 log 修剪 job（不屬於 reconciler；首次先 cp ops/launchd/com.kg.log-retention.plist 到 ~/Library/LaunchAgents/，見 host_topology.md）
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.log-retention.plist
+launchctl bootout gui/$(id -u)/com.kg.log-retention
 ```
 單元測試：`bash ops/tests/test_kg_reconcile.sh`（全離線、mock git/compose/curl/infra_health）。
 
