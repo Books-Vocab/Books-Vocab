@@ -52,6 +52,10 @@ class SourceUnavailableError(ValueError):
     """The source card vanished, was archived, or left the notebook."""
 
 
+class NotebookUnavailableError(ValueError):
+    """The notebook was deleted while the operation was in flight."""
+
+
 class TargetArchivedError(ValueError):
     """The word being linked to exists only as an archived card."""
 
@@ -565,6 +569,8 @@ def _error_code(step_id: str, exc: BaseException) -> str:
         return "quota_exhausted"
     if isinstance(exc, SourceUnavailableError):
         return "source_unavailable"
+    if isinstance(exc, NotebookUnavailableError):
+        return "notebook_unavailable"
     if isinstance(exc, TargetArchivedError):
         return "target_archived"
     if isinstance(exc, TargetIsSourceError):
@@ -577,6 +583,16 @@ def _error_code(step_id: str, exc: BaseException) -> str:
         "create_card": "card_creation_failed",
         "create_link": "link_creation_failed",
     }.get(step_id, "operation_failed")
+
+
+def _ensure_notebook_alive(notebook_store_factory: Callable | None, user: dict[str, Any], notebook_id: str) -> None:
+    """Fail the operation if its notebook was deleted after admission (#2268)."""
+    if notebook_store_factory is None:
+        return
+    from .notebook import DEFAULT_NOTEBOOK_ID
+
+    if notebook_id != DEFAULT_NOTEBOOK_ID and not notebook_store_factory(user["dir"]).exists(notebook_id):
+        raise NotebookUnavailableError("notebook unavailable")
 
 
 async def _maybe_await(value: Any) -> Any:
@@ -595,6 +611,7 @@ async def run_add_link_operation(
     translate_fn: Callable[..., Awaitable[Any]] | None = None,
     enrich_fn: Callable[..., Awaitable[None]] | None = None,
     link_fn: Callable[..., Any] | None = None,
+    notebook_store_factory: Callable | None = None,
 ) -> None:
     """Run one operation with at-least-once, read-after-write reconciliation."""
     record = _get_by_id(operation_id)
@@ -652,6 +669,8 @@ async def run_add_link_operation(
                     update_step(operation_id, current_step, status="done", current=1, detail_code="completed")
 
                 current_step = "create_card"
+                # Cheap early exit: avoid creating a card in a notebook deleted during translation.
+                _ensure_notebook_alive(notebook_store_factory, user, record["notebook_id"])
                 concurrent_target = cards.find_by_content(target_word, notebook_id=record["notebook_id"])
                 if concurrent_target is not None:
                     if concurrent_target.is_archived:
@@ -674,6 +693,12 @@ async def run_add_link_operation(
                         notebook_id=record["notebook_id"],
                         source=source_json,
                     )
+                    try:
+                        # Residual window: a delete cascade may have swept before this write.
+                        _ensure_notebook_alive(notebook_store_factory, user, record["notebook_id"])
+                    except NotebookUnavailableError:
+                        cards.delete(target.id)  # soft delete -> tombstone for sync pull
+                        raise
                     set_target_card(operation_id, target.id)
                     update_step(operation_id, current_step, status="done", current=1, detail_code="created")
 

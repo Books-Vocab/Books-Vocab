@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from typing import Any
 
 from .api_models import VocabAddResponse, VocabEntry
@@ -84,6 +85,7 @@ def add_vocab_entries(
     graph: Any,
     logger: logging.Logger,
     notebook_id: str = "default",
+    notebook_check: Callable[[], None] | None = None,
 ) -> VocabAddResponse:
     if len(entries) > MAX_BATCH_SIZE:
         raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
@@ -98,6 +100,7 @@ def add_vocab_entries(
 
     created = 0
     skipped = 0
+    new_card_ids: list[str] = []
     # Response 對外的 duplicates/cardIds 用 client 送出的『原始』word 當 key,讓 iOS sync
     # 能以 entry.word 字面配對回 pending queue 並出列 —— 後端清洗(_clean_content)會改寫
     # word(strip 尾標點 / 首字小寫),若回傳清洗後的 key,client 拿原始 "chateau," 永遠查
@@ -131,11 +134,22 @@ def add_vocab_entries(
             notebook_id=notebook_id,
             source=entry.source.model_dump_json() if entry.source else None,
         )
+        new_card_ids.append(card.id)
         card_ids[word] = card.id
         response_card_ids[entry.word] = card.id
         existing.add(norm)
         existing_by_norm[norm] = card
         created += 1
+
+    if created > 0 and notebook_check is not None:
+        # The notebook may have been deleted after admission (#2268): tombstone
+        # what this call created (soft delete, so sync pulls see it) and fail.
+        try:
+            notebook_check()
+        except Exception:
+            for card_id in new_card_ids:
+                cards.delete(card_id)
+            raise
 
     if created > 0:
         embed_and_link_new_cards(
