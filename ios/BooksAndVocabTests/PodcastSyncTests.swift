@@ -98,7 +98,9 @@ struct PodcastSyncTests {
             await probe.run(id)
         }
 
-        #expect(await probe.maxActiveCount() == 2)
+        let peak = await probe.maxActiveCount()
+        #expect(peak <= 2)  // the bound
+        #expect(peak == 2)  // barrier releases only once two runs overlap
         #expect(await probe.completedCount() == 5)
     }
 
@@ -121,7 +123,13 @@ private actor CoverCacheConcurrencyProbe {
         _ = id
         active += 1
         maxActive = max(maxActive, active)
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        // Rendezvous: hold until two runs have overlapped (bounded ~2s), so the
+        // peak does not depend on scheduler start timing.
+        var polls = 0
+        while maxActive < 2, polls < 400 {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+            polls += 1
+        }
         active -= 1
         completed += 1
     }
