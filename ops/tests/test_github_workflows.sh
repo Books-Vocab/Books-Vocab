@@ -186,6 +186,12 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   ' "$MERGE_GROUP_REQUIRED")"
   grep -q 'timeout-minutes: 15' <<<"$merge_group_required_block" \
     || fail "merge-group required gate is not hard-bounded to fifteen minutes"
+  # ubuntu-latest is a moving label; the apt ffmpeg series follows the image and
+  # the podcast preview skip allowlist turns a changed series into a red queue.
+  grep -Eq '^    runs-on: ubuntu-24\.04$' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not pinned to ubuntu-24.04"
+  grep -Fq "version: '0.8.23'" <<<"$merge_group_required_block" \
+    || fail "merge-group required gate does not pin uv to the backend-quality version"
   grep -q 'github.event.merge_group.base_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required gate does not use the merge-group base SHA"
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
