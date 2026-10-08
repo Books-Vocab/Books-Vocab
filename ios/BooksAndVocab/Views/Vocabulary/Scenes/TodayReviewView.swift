@@ -470,11 +470,19 @@ struct TodayReviewView: View {
             return true
 
         default:
-            return state.performReviewIntent(
+            let handled = state.performReviewIntent(
                 intent,
                 container: modelContext.container,
                 reviewSettings: reviewSettingsStore.settings
             )
+            // 自動播放中評分 / 洗牌不是壞掉，是被擋（#2046）：說出原因，不要靜默無反應。
+            if !handled, state.autoplayBlocks(intent) {
+                toastCoordinator.warning(
+                    L10n.string("todayReview.autoplay.blockedHint"),
+                    key: TodayReviewState.autoplayBlockedNoticeKey
+                )
+            }
+            return handled
         }
     }
 

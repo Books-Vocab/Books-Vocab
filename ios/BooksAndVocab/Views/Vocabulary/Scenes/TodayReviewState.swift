@@ -382,6 +382,25 @@ final class TodayReviewState {
         modelContext.safeSave()
     }
 
+    /// 自動播放中會被擋掉的操作（#2046）：評分與洗牌要等使用者先暫停。單一真相 ——
+    /// `performReviewIntent` 的守衛與 view 層「為何沒反應」的 pill 提示都問它，
+    /// 兩邊不會對「哪些操作被擋」各說各話。
+    static func autoplayBlocks(_ intent: ReviewIntent, isAutoPlaying: Bool) -> Bool {
+        guard isAutoPlaying else { return false }
+        switch intent {
+        case .forgot, .remembered, .shuffle: return true
+        default: return false
+        }
+    }
+
+    /// 「自動播放中請先暫停」pill 的事件鍵：按鈕 / 鍵盤 / 滑動三個入口共用同一個 key，
+    /// 連點取代而非堆疊（pill 規範見 docs/sop/ui-design.md「暫時性提示」）。
+    static let autoplayBlockedNoticeKey = "todayReview.autoplayBlocked"
+
+    func autoplayBlocks(_ intent: ReviewIntent) -> Bool {
+        Self.autoplayBlocks(intent, isAutoPlaying: isAutoPlaying)
+    }
+
     @discardableResult
     func performReviewIntent(
         _ intent: ReviewIntent,
@@ -404,12 +423,12 @@ final class TodayReviewState {
             return true
 
         case .forgot:
-            guard !isAutoPlaying, currentEntry != nil else { return false }
+            guard !autoplayBlocks(.forgot), currentEntry != nil else { return false }
             submit(.forgot, container: container, reviewSettings: reviewSettings)
             return true
 
         case .remembered:
-            guard !isAutoPlaying, currentEntry != nil else { return false }
+            guard !autoplayBlocks(.remembered), currentEntry != nil else { return false }
             submit(.remembered, container: container, reviewSettings: reviewSettings)
             return true
 
@@ -424,7 +443,7 @@ final class TodayReviewState {
             return true
 
         case .shuffle:
-            guard !isAutoPlaying, queue.count - currentIndex > 1 else { return false }
+            guard !autoplayBlocks(.shuffle), queue.count - currentIndex > 1 else { return false }
             shuffleQueue()
             return true
 

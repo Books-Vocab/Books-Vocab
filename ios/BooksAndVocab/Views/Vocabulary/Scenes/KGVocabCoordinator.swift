@@ -24,7 +24,7 @@ import SwiftUI
 final class KGVocabCoordinator: KGVocabCoordinating {
     var isLoading = false
     /// 錯誤 banner 的單一真相；`errorMessage` 由它衍生（保持 protocol / 既有讀者不變）。
-    /// banner 呈現交給純函式 `KGVocabBanner.make`，依實際 error 型別決定文案 / glyph / 可否重試。
+    /// 呈現交給純函式 `KGVocabBanner.panel` / `.pill`，依實際 error 型別決定文案 / glyph / 可否重試。
     var bannerError: KGVocabBannerError?
     var refreshSuccessMessage: String?
     /// 每次操作寫下終態結果（成功／失敗）就 +1。頂端 pill 是「事件」不是「狀態」：

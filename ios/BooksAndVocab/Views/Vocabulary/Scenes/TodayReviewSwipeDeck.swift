@@ -303,13 +303,17 @@ extension TodayReviewPresenter {
     var swipeDragGesture: some Gesture {
         DragGesture(minimumDistance: 15, coordinateSpace: .local)
             .onChanged { value in
-                guard swipeEnabled else { return }
+                guard swipeEnabled else {
+                    hintAutoplayBlockedSwipe(translation: value.translation)
+                    return
+                }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 withAnimation(AppMotion.swipeTrackingSpring) {
                     swipeOffset = value.translation.width
                 }
             }
             .onEnded { value in
+                if autoplayBlockedHintShown { autoplayBlockedHintShown = false }
                 guard swipeEnabled else { return }
                 let threshold = TodayReviewMetrics.swipeThreshold
                 if value.translation.width < -threshold {
@@ -322,6 +326,20 @@ extension TodayReviewPresenter {
                     }
                 }
             }
+    }
+
+    /// 自動播放中水平滑動被 `swipeEnabled` 擋下時說出原因（#2046）：每次手勢一次、
+    /// 水平主導才算（垂直捲動不提示）。被擋時 `swipeOffset` 從不寫入，卡片不會位移；
+    /// 事件鍵與按鈕 / 鍵盤入口共用，連續操作取代而非堆疊。
+    private func hintAutoplayBlockedSwipe(translation: CGSize) {
+        guard state.isAutoPlaying,
+              !autoplayBlockedHintShown,
+              abs(translation.width) > abs(translation.height) else { return }
+        autoplayBlockedHintShown = true
+        toastCoordinator.warning(
+            L10n.string("todayReview.autoplay.blockedHint"),
+            key: TodayReviewState.autoplayBlockedNoticeKey
+        )
     }
 
     /// 統一的甩出動畫 — swipe 放手、按鈕、ReviewProbe 共用**同一條過渡**（#2027）：

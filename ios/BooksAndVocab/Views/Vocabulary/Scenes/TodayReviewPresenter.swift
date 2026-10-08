@@ -55,6 +55,8 @@ struct TodayReviewPresenter: View {
     @Environment(\.appSkin) var appSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.speechService) var speechService
+    /// 自動播放中滑動被擋時的 pill 提示（#2046）。只在手勢 closure 內呼叫，不在 body 讀取。
+    @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.reviewCardLayoutStore) var reviewCardLayoutStore
     // 自主量測 probe（-reviewProbe）— 一般啟動恆為 nil，.task 直接 return。
     @Environment(\.reviewProbeDriver) private var reviewProbeDriver
@@ -64,6 +66,8 @@ struct TodayReviewPresenter: View {
     @State var swipeOffset: CGFloat = 0
     @State var containerWidth: CGFloat = 393
     @State var dismissPhase: DismissPhase = .idle
+    /// 這一次被擋下的滑動手勢是否已提示過（每次手勢只提示一次，手勢結束重置；#2046）。
+    @State var autoplayBlockedHintShown = false
     // 首插入升起動畫（取代舊 `.reviewCardPromote` insertion transition）：
     // 0 = promote 起始姿態（scale 0.96 / yOff 22），1 = identity。只屬於
     // active role；onAppear 以 spring 推到 1，之後恆 1（slot 常駐不再插入）。

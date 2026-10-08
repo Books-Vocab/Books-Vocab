@@ -957,6 +957,7 @@
 "todayReview.card.notebook.default" = "默认单字本";
 "todayReview.card.notebook.unnamed" = "未命名单字本";
 "todayReview.saveFailure" = "复习结果未存档，请稍后再试";
+"todayReview.autoplay.blockedHint" = "自动播放中，请先暂停";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "导出失败";

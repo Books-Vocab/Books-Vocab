@@ -965,6 +965,7 @@
 "todayReview.card.notebook.default" = "預設單字本";
 "todayReview.card.notebook.unnamed" = "未命名單字本";
 "todayReview.saveFailure" = "複習結果未存檔，請稍後再試";
+"todayReview.autoplay.blockedHint" = "自動播放中，請先暫停";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "匯出失敗";
