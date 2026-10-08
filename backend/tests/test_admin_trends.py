@@ -5,6 +5,7 @@ sets up the per-log SQLite paths via monkeypatch on DATA_DIR. This file
 focuses on the date-window math and the empty-DB shape invariants that
 the renderer relies on.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -23,6 +24,7 @@ from kg.admin_trends import (
 )
 
 # ---- _date_range -----------------------------------------------------------
+
 
 def test_date_range_length_matches_window_days():
     assert len(_date_range(30)) == 30
@@ -67,6 +69,7 @@ def test_count_by_day_filters_fixed_offset_rows_by_utc_instant():
 
 
 # ---- collect_trends shape on empty DB --------------------------------------
+
 
 @pytest.fixture()
 def empty_log_dbs(tmp_path, monkeypatch):

@@ -4,6 +4,7 @@ Records every admin grant / revoke / quota mutation so that operator actions
 on user accounts are auditable after the fact. Read back via the
 ``/api/admin/audit`` endpoint.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,8 +36,8 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _initialize_schema(conn: sqlite3.Connection) -> None:
-        conn.execute(
-            """
+    conn.execute(
+        """
             CREATE TABLE IF NOT EXISTS admin_audit_log (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 admin_uid    TEXT NOT NULL,
@@ -46,14 +47,9 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 created_at   TEXT NOT NULL
             )
             """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_log(created_at)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_audit_target ON admin_audit_log(target_uid, created_at)"
-        )
-
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_log(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_target ON admin_audit_log(target_uid, created_at)")
 
 
 def _reset() -> None:
@@ -80,7 +76,7 @@ def record_audit(
         act = (action or "").strip()
         if not act:
             return
-        target = (target_uid or None)
+        target = target_uid or None
         if target is not None:
             target = target.strip() or None
         payload_str = None
@@ -108,9 +104,7 @@ def record_audit(
         return
 
 
-def list_audit(
-    *, since: str | None = None, limit: int = 100, action: str | None = None
-) -> list[dict[str, Any]]:
+def list_audit(*, since: str | None = None, limit: int = 100, action: str | None = None) -> list[dict[str, Any]]:
     """Return audit rows newest-first.
 
     ``since`` is an ISO-8601 timestamp (inclusive lower bound). ``limit``
