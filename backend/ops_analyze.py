@@ -42,6 +42,49 @@ def _bar(n: int, max_width: int = 40) -> str:
 # ── Level 1: 快速健檢 ────────────────────────────────────────
 
 
+def _link_status(link: dict) -> str:
+    return link.get("status", "active")
+
+
+def _active_links(links: list[dict]) -> list[dict]:
+    """只保留 status=="active"（舊資料無 status 欄視為 active）。"""
+    return [link for link in links if _link_status(link) == "active"]
+
+
+def _notebook_ids(cards_db: Path) -> list[str]:
+    """active 卡片出現過的 notebook；舊 DB 無 notebook_id 欄 → ['default']。"""
+    if not cards_db.exists():
+        return ["default"]
+    conn = connect_ro(cards_db)
+    try:
+        rows = conn.execute("SELECT DISTINCT notebook_id FROM card WHERE is_deleted=0").fetchall()
+    except sqlite3.OperationalError:
+        return ["default"]
+    finally:
+        conn.close()
+    return sorted(r[0] or "default" for r in rows) or ["default"]
+
+
+def _active_card_ids(cards_db: Path, nb: str, legacy: bool) -> set[str]:
+    conn = connect_ro(cards_db)
+    try:
+        if legacy:
+            rows = conn.execute("SELECT id FROM card WHERE is_deleted=0")
+        else:
+            rows = conn.execute("SELECT id FROM card WHERE is_deleted=0 AND COALESCE(notebook_id,'default')=?", (nb,))
+        return {r[0] for r in rows}
+    finally:
+        conn.close()
+
+
+def _has_notebook_column(cards_db: Path) -> bool:
+    conn = connect_ro(cards_db)
+    try:
+        return any(r[1] == "notebook_id" for r in conn.execute("PRAGMA table_info(card)"))
+    finally:
+        conn.close()
+
+
 def level_1(uid: str, udir: Path) -> None:
     _section("Level 1: 快速健檢")
 
@@ -83,7 +126,10 @@ def level_1(uid: str, udir: Path) -> None:
     graph_path = notebook_files(udir)["graph"]
     if graph_path.exists():
         links = json.loads(graph_path.read_text())
-        print(f"  連結: {len(links)}")
+        by_status = Counter(_link_status(link) for link in links)
+        print(f"  active links: {by_status['active']}")
+        print(f"  deprecated links: {by_status['deprecated']}")
+        print(f"  hidden links: {by_status['hidden']}")
     else:
         print("  (graph_default.json 不存在)")
 
@@ -170,7 +216,7 @@ def level_2(uid: str, udir: Path) -> None:
 def _load_graph_and_cards(udir: Path):
     graph_path = notebook_files(udir)["graph"]
     cards_db = udir / "cards.db"
-    links = json.loads(graph_path.read_text()) if graph_path.exists() else []
+    links = _active_links(json.loads(graph_path.read_text())) if graph_path.exists() else []
     cards = {}
     if cards_db.exists():
         conn = connect_ro(cards_db)
@@ -328,33 +374,37 @@ def level_4(uid: str, udir: Path) -> None:
 def level_5(uid: str, udir: Path) -> None:
     _section("Level 5: 嵌入分析 + 閾值掃描")
 
-    emb_path = notebook_files(udir)["embeddings"]
-    ids_path = notebook_files(udir)["card_ids"]
     cards_db = udir / "cards.db"
-
-    if not emb_path.exists() or not ids_path.exists():
-        print("  (embeddings 不存在)")
-        return
-
     try:
         import numpy as np
     except ImportError:
         print("  (numpy 不可用)")
         return
 
-    embeddings = np.load(str(emb_path))
-    card_ids = json.loads(ids_path.read_text())
+    legacy = cards_db.exists() and not _has_notebook_column(cards_db)
+    found = False
+    for nb in _notebook_ids(cards_db):
+        files = notebook_files(udir, nb)
+        if not files["embeddings"].exists() or not files["card_ids"].exists():
+            continue
+        found = True
+        _level_5_notebook(np, nb, files, cards_db, legacy)
+    if not found:
+        print("  (embeddings 不存在)")
+
+
+def _level_5_notebook(np, nb: str, files: dict[str, Path], cards_db: Path, legacy: bool) -> None:
+    embeddings = np.load(str(files["embeddings"]))
+    card_ids = json.loads(files["card_ids"].read_text())
     n = len(card_ids)
+    n_active = len(_active_card_ids(cards_db, nb, legacy)) if cards_db.exists() else 0
 
-    # Active cards count
-    n_active = 0
-    if cards_db.exists():
-        conn = connect_ro(cards_db)
-        n_active = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0").fetchone()[0]
-        conn.close()
-
+    print(f"\n  [{nb} notebook]")
     print(f"  嵌入: {n} vectors, dim={embeddings.shape[1]}")
     print(f"  覆蓋: {n}/{n_active} active cards ({n / n_active * 100:.0f}%)" if n_active else f"  覆蓋: {n} vectors")
+    if n < 2:
+        print("  (vectors < 2，略過相似度分析)")
+        return
 
     # Cosine similarity matrix
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
@@ -433,22 +483,22 @@ def level_6(uid: str, udir: Path) -> None:
         if self_links:
             issues.append(f"  ⚠ {len(self_links)} 條自連結")
 
-    # 4. 缺 embedding
-    emb_ids_path = notebook_files(udir)["card_ids"]
-    if emb_ids_path.exists() and cards:
-        emb_ids = set(json.loads(emb_ids_path.read_text()))
-        active_ids = set(cards.keys())
-        missing = active_ids - emb_ids
-        if missing:
-            issues.append(f"  ⚠ {len(missing)} 張 active 卡片缺 embedding")
-
-    # 5. 已刪除卡片仍有 embedding
-    if emb_ids_path.exists() and cards_db_path.exists():
-        emb_ids = set(json.loads(emb_ids_path.read_text()))
-        active_ids = set(cards.keys())
-        stale = emb_ids - active_ids
-        if stale:
-            issues.append(f"  ⚠ {len(stale)} 張已刪除卡片仍佔 embedding")
+    # 4/5. 缺 embedding／已刪除卡片仍有 embedding（逐 notebook 比對）
+    if cards_db_path.exists():
+        legacy = not _has_notebook_column(cards_db_path)
+        for nb in _notebook_ids(cards_db_path):
+            emb_ids_path = notebook_files(udir, nb)["card_ids"]
+            if not emb_ids_path.exists():
+                continue
+            emb_ids = set(json.loads(emb_ids_path.read_text()))
+            active_ids = _active_card_ids(cards_db_path, nb, legacy)
+            if active_ids:
+                missing = active_ids - emb_ids
+                if missing:
+                    issues.append(f"  ⚠ {len(missing)} 張 active 卡片缺 embedding ({nb} notebook)")
+            stale = emb_ids - active_ids
+            if stale:
+                issues.append(f"  ⚠ {len(stale)} 張已刪除卡片仍佔 embedding ({nb} notebook)")
 
     # 6. 待處理候選
     cand_path = notebook_files(udir)["candidates"]
