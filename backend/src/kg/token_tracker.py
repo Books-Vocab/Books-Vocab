@@ -37,6 +37,7 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 call_type TEXT NOT NULL,
                 input_tokens INTEGER NOT NULL DEFAULT 0,
                 output_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_input_tokens INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 provider TEXT,
                 model TEXT
@@ -45,7 +46,11 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
     # Migrate pre-existing DBs: provider/model were added so each row
     # carries the truth used to price it. Older rows stay NULL and fall
     # back to the currently-routed provider in token_cost_usd().
-    ensure_columns(conn, "token_usage", {"provider": "TEXT", "model": "TEXT"})
+    ensure_columns(
+        conn,
+        "token_usage",
+        {"provider": "TEXT", "model": "TEXT", "cached_input_tokens": "INTEGER NOT NULL DEFAULT 0"},
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
     # Bare created_at index for the retention pruner's
@@ -66,6 +71,7 @@ def record(
     input_tokens: int,
     output_tokens: int,
     *,
+    cached_input_tokens: int = 0,
     provider: str | None = None,
     model: str | None = None,
 ) -> None:
@@ -74,6 +80,8 @@ def record(
     ``provider`` / ``model`` pin the LLM that produced this row so cost can
     later be priced from the row itself, not from whatever is routed now.
     Both are optional; omitting them writes NULL (legacy / unknown callers).
+    ``cached_input_tokens`` is the prompt-cache-hit subset of ``input_tokens``
+    (priced at the provider's cache rate); 0 when the provider reports none.
     """
     if not user_id:
         return
@@ -82,9 +90,18 @@ def record(
         conn = _get_conn()
         conn.execute(
             "INSERT INTO token_usage "
-            "(user_id, call_type, input_tokens, output_tokens, created_at, provider, model) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, call_type, int(input_tokens or 0), int(output_tokens or 0), now, provider, model),
+            "(user_id, call_type, input_tokens, output_tokens, cached_input_tokens, created_at, provider, model) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                call_type,
+                int(input_tokens or 0),
+                int(output_tokens or 0),
+                int(cached_input_tokens or 0),
+                now,
+                provider,
+                model,
+            ),
         )
         conn.commit()
 
@@ -103,12 +120,13 @@ def get_all_stats() -> dict[str, dict]:
             SELECT user_id, call_type, provider,
                    SUM(input_tokens) as total_input,
                    SUM(output_tokens) as total_output,
+                   SUM(cached_input_tokens) as total_cached,
                    COUNT(*) as calls
             FROM token_usage
             GROUP BY user_id, call_type, provider
         """).fetchall()
     stats: dict[str, dict] = {}
-    for user_id, call_type, provider, total_input, total_output, calls in rows:
+    for user_id, call_type, provider, total_input, total_output, total_cached, calls in rows:
         bucket = stats.setdefault(user_id, {}).setdefault(
             call_type,
             {"input_tokens": 0, "output_tokens": 0, "calls": 0, "cost_usd": 0.0},
@@ -118,5 +136,5 @@ def get_all_stats() -> dict[str, dict]:
         bucket["input_tokens"] += t_in
         bucket["output_tokens"] += t_out
         bucket["calls"] += calls
-        bucket["cost_usd"] += token_cost_usd(call_type, t_in, t_out, provider=provider)
+        bucket["cost_usd"] += token_cost_usd(call_type, t_in, t_out, provider=provider, cached_tokens=total_cached or 0)
     return stats

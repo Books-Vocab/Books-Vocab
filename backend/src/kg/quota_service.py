@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -79,8 +80,13 @@ def token_cost_usd(
     output_tokens: int,
     *,
     provider: str | None = None,
+    cached_tokens: int = 0,
 ) -> float:
     """USD cost of a recorded call.
+
+    ``cached_tokens`` (prompt-cache hits, a subset of ``input_tokens``) are
+    priced at the provider's cache rate, clamped to ``[0, input_tokens]``;
+    embeddings ignore it.
 
     When ``provider`` is given (the per-row value from token_usage), cost
     is priced at that provider's rates — so a Gemini→DeepSeek switch does
@@ -94,7 +100,12 @@ def token_cost_usd(
     p = _pricing_provider(call_type, provider)
     if call_type == "embed":
         return (input_tokens / 1_000_000) * p.embed_price_per_m
-    return (input_tokens / 1_000_000) * p.input_price_per_m + (output_tokens / 1_000_000) * p.output_price_per_m
+    cached = min(max(int(cached_tokens or 0), 0), input_tokens)
+    return (
+        ((input_tokens - cached) / 1_000_000) * p.input_price_per_m
+        + (cached / 1_000_000) * p.cache_price_per_m
+        + (output_tokens / 1_000_000) * p.output_price_per_m
+    )
 
 
 # Conservative per-call cost estimate (USD) held as an in-flight reservation
@@ -225,10 +236,29 @@ def clear_reservations() -> None:
             _reservation_version += 1
 
 
-def _row_cost(call_type: str, provider: str | None, total_in: int | None, total_out: int | None) -> float:
+def _row_cost(
+    call_type: str,
+    provider: str | None,
+    total_in: int | None,
+    total_out: int | None,
+    total_cached: int | None = 0,
+) -> float:
     """USD cost of one ``GROUP BY call_type, provider`` row, normalising NULL
     token sums (no rows in window) to 0."""
-    return token_cost_usd(call_type, int(total_in or 0), int(total_out or 0), provider=provider)
+    return token_cost_usd(
+        call_type,
+        int(total_in or 0),
+        int(total_out or 0),
+        provider=provider,
+        cached_tokens=int(total_cached or 0),
+    )
+
+
+def _cached_sum(conn: sqlite3.Connection) -> str:
+    """``SUM`` expression over cached_input_tokens, 0 for a legacy table lacking it."""
+    from .ops_shared import column_expr
+
+    return f"SUM(COALESCE({column_expr(conn, 'token_usage', 'cached_input_tokens')}, 0))"
 
 
 def _window_cutoff_iso() -> str:
@@ -264,7 +294,8 @@ def _recorded_usd(user_id: str) -> float:
         rows = conn.execute(
             f"""
             SELECT call_type, provider,
-                   SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out
+                   SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out,
+                   {_cached_sum(conn)} AS total_cached
             FROM token_usage
             WHERE user_id = ? AND {_utc_instant_predicate("created_at")}
             GROUP BY call_type, provider
@@ -273,8 +304,8 @@ def _recorded_usd(user_id: str) -> float:
         ).fetchall()
 
     total = 0.0
-    for call_type, provider, total_in, total_out in rows:
-        total += _row_cost(call_type, provider, total_in, total_out)
+    for call_type, provider, total_in, total_out, total_cached in rows:
+        total += _row_cost(call_type, provider, total_in, total_out, total_cached)
     return total
 
 
@@ -335,7 +366,8 @@ def get_all_quota_usage(*, is_pro_by_user: dict[str, bool] | None = None) -> dic
             SELECT user_id, call_type, provider,
                    COUNT(*) AS cnt,
                    SUM(input_tokens) AS total_in,
-                   SUM(output_tokens) AS total_out
+                   SUM(output_tokens) AS total_out,
+                   {_cached_sum(conn)} AS total_cached
             FROM token_usage
             WHERE {_utc_instant_predicate("created_at")}
             GROUP BY user_id, call_type, provider
@@ -346,11 +378,11 @@ def get_all_quota_usage(*, is_pro_by_user: dict[str, bool] | None = None) -> dic
     result: dict[str, dict] = {}
     # call_type is split across providers by GROUP BY; fold each provider's
     # slice back into one per-call_type bucket, priced at its own provider.
-    for user_id, call_type, provider, cnt, total_in, total_out in rows:
+    for user_id, call_type, provider, cnt, total_in, total_out, total_cached in rows:
         if user_id not in result:
             limit = _daily_limit(pro_by_user.get(user_id, False))
             result[user_id] = {"used_usd": 0.0, "limit_usd": limit, "calls": {}}
-        cost = _row_cost(call_type, provider, total_in, total_out)
+        cost = _row_cost(call_type, provider, total_in, total_out, total_cached)
         result[user_id]["used_usd"] += cost
         bucket = result[user_id]["calls"].setdefault(call_type, {"count": 0, "cost_usd": 0.0})
         bucket["count"] += cnt
@@ -386,7 +418,8 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
             SELECT call_type, provider,
                    COUNT(*)          AS cnt,
                    SUM(input_tokens) AS total_in,
-                   SUM(output_tokens) AS total_out
+                   SUM(output_tokens) AS total_out,
+                   {_cached_sum(conn)} AS total_cached
             FROM token_usage
             {where}
             GROUP BY call_type, provider
@@ -400,10 +433,10 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     total_calls = 0
     # GROUP BY splits each call_type per provider; fold the slices back into
     # one per-call_type bucket, each priced at its own provider's rate.
-    for call_type, provider, cnt, total_in, total_out in rows:
+    for call_type, provider, cnt, total_in, total_out, total_cached in rows:
         ti = int(total_in or 0)
         to = int(total_out or 0)
-        cost = _row_cost(call_type, provider, ti, to)
+        cost = _row_cost(call_type, provider, ti, to, total_cached)
         cbucket = calls.setdefault(call_type, {"count": 0, "cost_usd": 0.0})
         cbucket["count"] += int(cnt)
         cbucket["cost_usd"] = round(cbucket["cost_usd"] + cost, 6)
