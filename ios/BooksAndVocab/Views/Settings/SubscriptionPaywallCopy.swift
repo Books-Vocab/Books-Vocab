@@ -13,16 +13,8 @@ import Foundation
 
 enum SubscriptionPaywallCopy {
 
-    /// 後端未回傳 trial_days 時的預設試用天數。
-    static let defaultTrialDays = 7
-
     static func isAdminGranted(_ status: KGSubscriptionStatus) -> Bool {
         status.is_active && status.source == "admin"
-    }
-
-    /// 有效試用天數（後端 entitlements 優先，否則回退預設）。
-    static func trialDays(_ status: KGSubscriptionStatus) -> Int {
-        status.trial_days ?? defaultTrialDays
     }
 
     static func activeSummary(_ status: KGSubscriptionStatus) -> String {
@@ -54,31 +46,31 @@ enum SubscriptionPaywallCopy {
         return L10n.string("載入 App Store 價格中…")
     }
 
-    /// 試用資訊（次要位置，字級小於帳單金額）。admin 或 0 天 → nil。
-    static func trialInfo(_ status: KGSubscriptionStatus) -> String? {
+    /// 試用資訊（次要位置，字級小於帳單金額）。`introTrialDays` 僅來自 StoreKit
+    /// 對「此使用者」有資格的免費試用 intro offer（見 PaywallIntroOffer）；
+    /// 後端 trial_days 不參與試用宣稱。admin、無資格、無 offer 或 <=0 → nil。
+    static func trialInfo(_ status: KGSubscriptionStatus, introTrialDays: Int?) -> String? {
         guard !isAdminGranted(status) else { return nil }
-        let days = trialDays(status)
-        guard days > 0 else { return nil }
+        guard let days = introTrialDays, days > 0 else { return nil }
         return L10n.format("包含 %@ 天免費試用", "\(days)")
     }
 
     /// 已啟用狀態使用的完整價格行（金額 · 試用）。
-    static func priceLine(_ status: KGSubscriptionStatus, productDisplayPrice: String?) -> String {
+    static func priceLine(_ status: KGSubscriptionStatus, productDisplayPrice: String?, introTrialDays: Int?) -> String {
         let amount = billedAmount(status, productDisplayPrice: productDisplayPrice)
         if isAdminGranted(status) {
             return amount
         }
-        if let trialLine = trialInfo(status) {
+        if let trialLine = trialInfo(status, introTrialDays: introTrialDays) {
             return "\(amount) · \(trialLine)"
         }
         return amount
     }
 
     /// CTA 按鈕標題（包含價格 — 3.1.2(c) 合規）。productDisplayPrice nil → 中性「訂閱」。
-    static func ctaButtonTitle(_ status: KGSubscriptionStatus, productDisplayPrice: String?) -> String {
+    static func ctaButtonTitle(_ status: KGSubscriptionStatus, productDisplayPrice: String?, introTrialDays: Int?) -> String {
         if let price = productDisplayPrice {
-            let days = trialDays(status)
-            if days > 0 {
+            if let days = introTrialDays, days > 0 {
                 return L10n.format("免費試用 %@ 天，之後 %@/月", "\(days)", price)
             }
             return L10n.format("訂閱 — %@/月", price)

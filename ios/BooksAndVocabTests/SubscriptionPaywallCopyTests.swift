@@ -52,17 +52,32 @@ struct SubscriptionPaywallCopyTests {
         #expect(adminActive != appstore)
     }
 
-    // MARK: - Trial days
+    // MARK: - Trial info (StoreKit intro offer is the only source)
 
-    @Test func trialDays_fallsBackToDefault() {
-        #expect(SubscriptionPaywallCopy.trialDays(status(trialDays: nil)) == SubscriptionPaywallCopy.defaultTrialDays)
-        #expect(SubscriptionPaywallCopy.trialDays(status(trialDays: 14)) == 14)
+    @Test func trialInfo_usesOfferDaysIgnoringBackendTrialDays() {
+        for backend in [nil, 14, 0] as [Int?] {
+            let s = status(trialDays: backend)
+            #expect(SubscriptionPaywallCopy.trialInfo(s, introTrialDays: 7)?.contains("7") == true)
+            #expect(SubscriptionPaywallCopy.trialInfo(s, introTrialDays: 3)?.contains("3") == true)
+            #expect(SubscriptionPaywallCopy.trialInfo(s, introTrialDays: 3)?.contains("14") == false)
+        }
     }
 
-    @Test func trialInfo_nilForAdminOrZeroDays() {
-        #expect(SubscriptionPaywallCopy.trialInfo(status(isActive: true, source: "admin")) == nil)
-        #expect(SubscriptionPaywallCopy.trialInfo(status(trialDays: 0)) == nil)
-        #expect(SubscriptionPaywallCopy.trialInfo(status(trialDays: 7))?.contains("7") == true)
+    @Test func trialInfo_nilWhenIneligibleNoOfferZeroOrAdmin() {
+        #expect(SubscriptionPaywallCopy.trialInfo(status(trialDays: 7), introTrialDays: nil) == nil)
+        #expect(SubscriptionPaywallCopy.trialInfo(status(trialDays: 7), introTrialDays: 0) == nil)
+        #expect(SubscriptionPaywallCopy.trialInfo(status(isActive: true, source: "admin"), introTrialDays: 7) == nil)
+    }
+
+    // MARK: - Intro offer period -> days
+
+    @Test func introTrialDays_mapsPeriodUnits() {
+        #expect(PaywallIntroOffer.days(unit: .day, value: 3) == 3)
+        #expect(PaywallIntroOffer.days(unit: .week, value: 1) == 7)
+        #expect(PaywallIntroOffer.days(unit: .week, value: 2) == 14)
+        #expect(PaywallIntroOffer.days(unit: .month, value: 1) == 30)
+        #expect(PaywallIntroOffer.days(unit: .year, value: 1) == 365)
+        #expect(PaywallIntroOffer.days(unit: .day, value: 0) == nil)
     }
 
     // MARK: - Billed amount precedence
@@ -94,31 +109,50 @@ struct SubscriptionPaywallCopyTests {
 
     // MARK: - CTA title price embedding
 
-    @Test func ctaButtonTitle_embedsPriceAndTrial() {
-        let withTrial = SubscriptionPaywallCopy.ctaButtonTitle(status(trialDays: 7), productDisplayPrice: "$4.99")
+    @Test func ctaButtonTitle_embedsPriceAndOfferTrial() {
+        let withTrial = SubscriptionPaywallCopy.ctaButtonTitle(status(trialDays: 14), productDisplayPrice: "$4.99", introTrialDays: 3)
         #expect(withTrial.contains("$4.99"))
-        #expect(withTrial.contains("7"))
+        #expect(withTrial.contains("3"))
+        #expect(!withTrial.contains("14"))
 
-        let noTrial = SubscriptionPaywallCopy.ctaButtonTitle(status(trialDays: 0), productDisplayPrice: "$4.99")
-        #expect(noTrial.contains("$4.99"))
-        #expect(!noTrial.contains("7"))
+        // Ineligible / no offer: neutral subscribe CTA, backend trial_days ignored.
+        for backend in [nil, 7] as [Int?] {
+            let neutral = SubscriptionPaywallCopy.ctaButtonTitle(status(trialDays: backend), productDisplayPrice: "$4.99", introTrialDays: nil)
+            #expect(neutral.contains("$4.99"))
+            #expect(!neutral.contains("免費試用"))
+            #expect(!neutral.contains("7"))
+        }
 
         // No product price → neutral fallback, no price/trial embedded.
-        let noPrice = SubscriptionPaywallCopy.ctaButtonTitle(status(trialDays: 7), productDisplayPrice: nil)
+        let noPrice = SubscriptionPaywallCopy.ctaButtonTitle(status(trialDays: 7), productDisplayPrice: nil, introTrialDays: 7)
         #expect(!noPrice.contains("$"))
     }
 
     // MARK: - priceLine composition
 
-    @Test func priceLine_appendsTrialWhenPresent() {
+    @Test func priceLine_appendsTrialOnlyForOffer() {
         let s = status(trialDays: 7, priceDisplay: "NT$170")
-        let line = SubscriptionPaywallCopy.priceLine(s, productDisplayPrice: nil)
+        let line = SubscriptionPaywallCopy.priceLine(s, productDisplayPrice: nil, introTrialDays: 7)
         #expect(line.contains("NT$170"))
         #expect(line.contains("·"))   // amount · trial
 
+        let ineligible = SubscriptionPaywallCopy.priceLine(s, productDisplayPrice: nil, introTrialDays: nil)
+        #expect(ineligible == "NT$170")
+        #expect(!ineligible.contains("免費試用"))
+
         // Admin path never appends trial.
-        let admin = SubscriptionPaywallCopy.priceLine(status(isActive: true, source: "admin"), productDisplayPrice: nil)
+        let admin = SubscriptionPaywallCopy.priceLine(status(isActive: true, source: "admin"), productDisplayPrice: nil, introTrialDays: 7)
         #expect(!admin.contains("·"))
+    }
+
+    // MARK: - SubscriptionPresentation has no backend-derived trial claim
+
+    @Test func presentation_detailAndCtaMakeNoTrialClaim() {
+        let s = status(trialDays: 14, priceDisplay: "NT$170")
+        let detail = SubscriptionPresentation.detail(for: s, proProduct: nil)
+        #expect(!detail.contains("14"))
+        #expect(!detail.contains("免費試用"))
+        #expect(!SubscriptionPresentation.ctaTitle(for: s).contains("免費試用"))
     }
 }
 #endif
