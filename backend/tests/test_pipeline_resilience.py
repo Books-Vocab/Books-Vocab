@@ -89,6 +89,7 @@ class _CardsNeedEnrich:
                 content="evoke",
                 pos=None,
                 note=None,
+                enrich_attempts=0,
                 difficulty=None,
                 is_deleted=False,
                 notebook_id="default",
@@ -988,7 +989,7 @@ class _CardsRecordingUpdates:
         self._fail = fail
 
     def all(self, include_deleted: bool = False, notebook_id: str | None = None):
-        return [SimpleNamespace(id="c1", content="evoke", pos=None, note=None)]
+        return [SimpleNamespace(id="c1", content="evoke", pos=None, note=None, enrich_attempts=0)]
 
     def batch_update(self, updates):
         if self._fail is not None:
@@ -1124,9 +1125,90 @@ def test_step_enrich_matches_nfc_and_whitespace_variants(monkeypatch):
 
     monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
     cards = _CardsRecordingUpdates()
-    cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None)]
+    cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None, enrich_attempts=0)]
     updated = asyncio.run(_run_step_enrich("u_nfc", cards, _RecLogger()))
     assert updated == 1
+
+
+def test_step_enrich_stops_rebilling_cards_the_llm_never_returns(monkeypatch, tmp_path):
+    """A card the LLM never matches must stop being a target after the attempt cap."""
+    import kg.enrich as enrich_mod
+    from kg.cards import CardStore
+    from kg.pipeline_service.steps import ENRICH_MAX_ATTEMPTS
+
+    seen: list[int] = []
+
+    async def fake_stream(llm, targets, **kwargs):
+        seen.append(len(targets))
+        yield {
+            "status": "running",
+            "card_ids": [t.id for t in targets],
+            "results": [{"word": "unrelated", "pos": "n.", "note": "n"}],
+        }
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    store = CardStore(path=tmp_path / "cards.db")
+    store.add("ghostword", "meaning")
+    for _ in range(ENRICH_MAX_ATTEMPTS + 2):
+        asyncio.run(_run_step_enrich("u_cap", store, _RecLogger()))
+    assert seen == [1] * ENRICH_MAX_ATTEMPTS
+    # force still re-enriches regardless of the counter
+    asyncio.run(_step_enrich_force(store))
+    assert seen[-1] == 1 and len(seen) == ENRICH_MAX_ATTEMPTS + 1
+
+
+def test_step_enrich_empty_results_success_batch_still_consumes_an_attempt(monkeypatch, tmp_path):
+    """A billed success batch answering with results == [] must still stop re-billing at the cap."""
+    import kg.enrich as enrich_mod
+    from kg.cards import CardStore
+    from kg.pipeline_service.steps import ENRICH_MAX_ATTEMPTS
+
+    seen: list[int] = []
+
+    async def fake_stream(llm, targets, **kwargs):
+        seen.append(len(targets))
+        yield {"status": "running", "card_ids": [t.id for t in targets], "results": []}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    store = CardStore(path=tmp_path / "cards.db")
+    store.add("emptyword", "meaning")
+    for _ in range(ENRICH_MAX_ATTEMPTS + 2):
+        asyncio.run(_run_step_enrich("u_empty", store, _RecLogger()))
+    assert seen == [1] * ENRICH_MAX_ATTEMPTS
+
+
+def test_step_enrich_failed_batch_does_not_consume_an_attempt(monkeypatch, tmp_path):
+    """Only cards in a batch that answered (success terminal) lose an attempt; errored batches don't."""
+    import kg.enrich as enrich_mod
+    from kg.cards import CardStore
+
+    store = CardStore(path=tmp_path / "cards.db")
+    answered = store.add("answered", "meaning")
+    errored = store.add("errored", "meaning")
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {
+            "status": "running",
+            "card_ids": [answered.id],
+            "results": [{"word": "unrelated", "pos": "n.", "note": "n"}],
+        }
+        yield {"status": "error", "detail": "provider 5xx", "results": []}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    asyncio.run(_run_step_enrich("u_partial", store, _RecLogger()))
+    attempts = {c.id: c.enrich_attempts for c in store.all()}
+    assert attempts == {answered.id: 1, errored.id: 0}
+
+
+async def _step_enrich_force(store) -> int:
+    return await _step_enrich(
+        "u_cap",
+        {"id": "u_cap", "dir": Path("/tmp/u_cap"), "config": {}},
+        card_store_factory=lambda d: store,
+        client_factory=lambda provider: None,
+        logger=_RecLogger(),
+        force=True,
+    )
 
 
 def test_judge_abort_salvages_completed_futures_after_failing_card():

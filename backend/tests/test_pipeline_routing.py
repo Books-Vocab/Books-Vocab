@@ -71,6 +71,7 @@ def _card(cid, content, *, pos="v.", note="note"):
         meaning=f"meaning-{content}",
         pos=pos,
         note=note,
+        enrich_attempts=0,
         difficulty=None,
         examples=[],
         is_deleted=False,
@@ -92,6 +93,9 @@ class _EnrichCards:
 
     def batch_update(self, updates):
         return len(updates)
+
+    def bump_enrich_attempts(self, card_ids):
+        return len(card_ids)
 
 
 def _run_enrich(client_factory):

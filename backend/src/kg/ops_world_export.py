@@ -190,6 +190,7 @@ EXPORT_IGNORED_CARD_COLUMNS: dict[str, str] = {
     "updated_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
     "is_deleted": "查詢過濾條件，非可重放值（軟刪卡不進 payload）",
     "content_nfc_lower": "content 的衍生索引，由寫面自動維護",
+    "enrich_attempts": "server-only enrich 重試計數器，不同步、不屬世界內容面",
 }
 
 
@@ -269,16 +270,11 @@ def _canonical_source(raw: Any, content: str, warnings: list[str]) -> dict[str, 
         return VocabSource(**parsed).model_dump(exclude_none=True)
     except (TypeError, ValueError) as exc:  # pydantic ValidationError ⊂ ValueError
         reason = str(exc).splitlines()[0]
-        warnings.append(
-            f"card {content!r} 的 source 不符 VocabSource schema（seed 重放會被拒）"
-            f"，略過該欄位：{reason}"
-        )
+        warnings.append(f"card {content!r} 的 source 不符 VocabSource schema（seed 重放會被拒），略過該欄位：{reason}")
         return None
 
 
-def _card_entry(
-    row: dict[str, Any], notebook_name: str, warnings: list[str] | None = None
-) -> dict[str, Any]:
+def _card_entry(row: dict[str, Any], notebook_name: str, warnings: list[str] | None = None) -> dict[str, Any]:
     """單張卡 → payload entry。`warnings` 省略時丟棄警告（僅供直呼 helper 的單元
     測試；正式路徑一律由 `export_seed_spec` 傳入，警告要走到 stderr）。"""
     feedback = row.get("last_review_feedback")
@@ -316,8 +312,7 @@ def _card_entry(
     # source（VocabSource）同樣 omit-if-null：無 source 的 spec 不得多出 null 鍵，
     # 否則既有世界的 byte-equal roundtrip 破功（§1.1）。值本身的正規化與壞資料
     # 取捨見 `_canonical_source`。
-    source = _canonical_source(row.get("source"), str(row.get("content")),
-                               warnings if warnings is not None else [])
+    source = _canonical_source(row.get("source"), str(row.get("content")), warnings if warnings is not None else [])
     if source is not None:
         entry["source"] = source
     return entry
@@ -349,18 +344,18 @@ def _export_links(
             to_content = card_content_by_id.get(str(link.get("to_id")))
             kind = link.get("kind")
             if from_content is None or to_content is None or kind not in _LINK_KINDS:
-                warnings.append(
-                    f"link {link.get('id')!r}({path.name})端點卡不在導出集或 kind 非法，略過"
-                )
+                warnings.append(f"link {link.get('id')!r}({path.name})端點卡不在導出集或 kind 非法，略過")
                 continue
-            links.append({
-                "from": from_content,
-                "to": to_content,
-                "kind": kind,
-                "confidence": float(link.get("confidence") or 0.0),
-                "reason": link.get("reason") or "",
-                "notebook": nb_name,
-            })
+            links.append(
+                {
+                    "from": from_content,
+                    "to": to_content,
+                    "kind": kind,
+                    "confidence": float(link.get("confidence") or 0.0),
+                    "reason": link.get("reason") or "",
+                    "notebook": nb_name,
+                }
+            )
     links.sort(key=lambda lk: (lk["notebook"], lk["from"], lk["to"], lk["kind"]))
     # app 語意：一對卡至多一條 active link（vocab_graph_ops.add_link 對既存 pair
     # 拋 ConflictError）。legacy graph 可能同 pair 存雙向多條——照導會產出

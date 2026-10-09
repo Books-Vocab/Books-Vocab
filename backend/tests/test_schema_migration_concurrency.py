@@ -80,12 +80,14 @@ def _create_legacy_card_db(path: Path) -> None:
     # Bootstrap auxiliary SQLModel tables once.  The contract below targets
     # migrations, not SQLAlchemy's concurrent create_all catalogue walk.
     store = CardStore(path)
+    store.add("legacyword", "meaning")  # pre-existing row: must come out of ALTER with enrich_attempts == 0
     store.close()
     with closing(sqlite3.connect(path)) as conn:
         conn.execute("DROP INDEX IF EXISTS ix_card_content_nfc_lower")
         for column in (
             "source_shared_card_guid",
             "content_nfc_lower",
+            "enrich_attempts",
         ):
             conn.execute(f"ALTER TABLE card DROP COLUMN {column}")
         for column, definition in (
@@ -143,7 +145,10 @@ def test_card_legacy_migration_is_safe_with_two_independent_stores(tmp_path: Pat
             "last_review_feedback",
             "source_shared_card_guid",
             "content_nfc_lower",
+            "enrich_attempts",
         } <= columns
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute("SELECT enrich_attempts FROM card").fetchall() == [(0,)]
         assert {
             "card_role",
             "review_eligible",
