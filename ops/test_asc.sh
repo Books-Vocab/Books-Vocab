@@ -615,8 +615,10 @@ for args in "build" "create-version" "build 2.0.1 13 x" "create-version 2.0.1 13
     && ok "'$args' -> usage (no unbound variable)" || fail_t "'$args' bad usage handling (got: $o)"
 done
 # 18l2. 其餘吃 "${ARGS[@]}" 的子命令無參數 → 不得 unbound variable（bash 3.2 + set -u）
+# hermetic：uvx 換成秒失敗的 stub，避免無快取環境（CI／空 HOME）真去下載 codemagic 而卡住
+mkdir -p "$cv/nouvx"; printf '#!/usr/bin/env bash\nexit 1\n' >"$cv/nouvx/uvx"; chmod +x "$cv/nouvx/uvx"
 for sub in reviews reply-review set-sub-name set-sub-desc set-sub-review-note set-sub-price set set-review set-appinfo set-eula set-content-rights set-category set-rating submissions sub-offers set-release-type phased; do
-  o="$(ASC_GET_BIN=/usr/bin/false ASC_KEY_DIR="$fake/keys" /bin/bash "$ASC" "$sub" 2>&1 </dev/null || true)"
+  o="$(PATH="$cv/nouvx:$PATH" ASC_GET_BIN=/usr/bin/false ASC_KEY_DIR="$fake/keys" /bin/bash "$ASC" "$sub" 2>&1 </dev/null || true)"
   ! hasmi "$o" 'unbound variable' \
     && ok "'$sub' no args -> no unbound variable" || fail_t "'$sub' no args hit unbound variable (got: $o)"
 done

@@ -553,9 +553,9 @@ cmd_set_rating() {
 
 # ---- 評論讀：最新用戶評論 + 回覆狀態（customerReviews，raw API） ----
 cmd_reviews() {
-  require_key
   local lim="${1:-20}"
   [[ "$lim" =~ ^[0-9]+$ ]] || err "reviews 的 N 需為數字（給的是：${lim}）"
+  require_key   # 金鑰只在純參數驗證之後、確定要打 API 前才需要
   echo "# 最新用戶評論（territory · rating · 暱稱 · 日期 · id）；app 未上架時通常為空："
   raw "/v1/apps/$APP_ID/customerReviews?sort=-createdDate&limit=$lim&include=response" \
     | jq -r 'if has("_httpError") then "（讀取失敗：HTTP \(._httpError)）"
@@ -794,6 +794,9 @@ cmd_set_release_type() {  # PATCH appStoreVersions.releaseType（+ SCHEDULED 帶
 
 cmd_phased() {  # 分階段發布：start=POST / pause|resume|complete=PATCH state / cancel=DELETE
   local action="${1:-}"
+  case "$action" in start|pause|resume|complete|cancel) ;;
+    *) err "用法：asc.sh phased <start|pause|resume|complete|cancel>（start=啟動7天ramp；complete=立即全量；cancel=刪除計畫）" ;;
+  esac
   require_key
   local ver; ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
   local pid state old body
@@ -827,7 +830,6 @@ cmd_phased() {  # 分階段發布：start=POST / pause|resume|complete=PATCH sta
         "/v1/appStoreVersionPhasedReleases/$pid" "" \
         './ops/asc.sh phased cancel --yes'
       ;;
-    *) err "用法：asc.sh phased <start|pause|resume|complete|cancel>（start=啟動7天ramp；complete=立即全量；cancel=刪除計畫）" ;;
   esac
 }
 
