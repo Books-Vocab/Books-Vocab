@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -46,5 +47,44 @@ struct HealthSnapshotTests {
         let b = makeHealth(status: "ok", cards: 636, lastModified: nil).snapshot
         // 有無 lastModified 對映射結果完全無差別
         #expect(a == b)
+    }
+}
+
+// MARK: - #2714 healthCheck must not log out while the keychain token is still loading
+
+@MainActor
+private final class PendingTokenAuthSession: AuthSessionProviding {
+    let isLoggedIn = true
+    let token: String? = nil
+}
+
+@MainActor
+private final class RecordingInvalidator: SessionInvalidating {
+    private(set) var logoutReasons: [String] = []
+    func logout(modelContainer: ModelContainer?, reason: String) { logoutReasons.append(reason) }
+    func waitForPendingLocalDataCleanup() async {}
+}
+
+private final class UnreachableTransport: KGHTTPTransport, @unchecked Sendable {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        throw URLError(.notConnectedToInternet)
+    }
+}
+
+@MainActor
+struct HealthCheckPendingTokenTests {
+    /// applyPersistedSession 先設 isLoggedIn=true、keychain token 稍後才到；
+    /// 這個空窗內的探活不可被當成 401 而登出使用者。
+    @Test func healthCheckWithPendingTokenDoesNotLogOut() async {
+        let invalidator = RecordingInvalidator()
+        let service = KGService(
+            authSession: PendingTokenAuthSession(),
+            sessionInvalidator: invalidator,
+            transport: UnreachableTransport(),
+            connectivityGate: FixedConnectivityGate(isConnected: true)
+        )
+        await service.healthCheck()
+        #expect(invalidator.logoutReasons.isEmpty)
+        #expect(service.isConnected == false)
     }
 }

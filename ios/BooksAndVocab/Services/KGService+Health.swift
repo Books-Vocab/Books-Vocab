@@ -17,6 +17,12 @@ extension KGService {
             isConnected = false
             return
         }
+        // applyPersistedSession 先設 isLoggedIn、keychain token 稍後才到；空窗內不探活，
+        // 否則 nil token 會被當 401 而登出使用者（#2714）。
+        guard await authSession.token != nil else {
+            isConnected = false
+            return
+        }
         do {
             let (data, httpResponse) = try await authenticatedRequest(path: "api/health")
 

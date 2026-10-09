@@ -49,7 +49,8 @@ extension KGService {
             path: "api/graph/links",
             method: "POST",
             queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
-            body: body
+            body: body,
+            retryPolicy: .none // POST 無 Idempotency-Key：逾時重送可能建立重複連結
         )
     }
 
