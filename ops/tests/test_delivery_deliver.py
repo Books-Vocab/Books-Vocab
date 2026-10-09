@@ -266,6 +266,19 @@ class FakeWorld:
                     **extra,
                 }
                 return ok(json.dumps({"data": {"repository": {"pullRequest": node}}}))
+            if cmd[1] == "api" and "/pulls?state=closed" in cmd[-1]:
+                closed = [
+                    {
+                        "number": number,
+                        "merged_at": "2026-10-09T00:00:00Z",
+                        "head": {"ref": branch, "sha": self.head},
+                    }
+                    for branch, number in self.merged_prs.items()
+                ]
+                closed.append(  # closed without merging: never a gc candidate
+                    {"number": 5, "merged_at": None, "head": {"ref": "feat/open"}}
+                )
+                return ok(json.dumps([closed]))
             if cmd[1] == "api" and "/check-runs?" in cmd[-1]:
                 runs = self.review_runs
                 batch = runs.pop(0) if len(runs) > 1 else runs[0]
@@ -1124,17 +1137,37 @@ def test_the_review_bots_are_read_from_the_workflow() -> None:
 # ---- gc -------------------------------------------------------------------
 
 
-def _gc_world(tmp_path: Path) -> FakeWorld:
+def _gc_world(tmp_path: Path, **state: Any) -> FakeWorld:
     gone = tmp_path / "gone"
     present = tmp_path / "present"
     present.mkdir()
-    world = FakeWorld(merged_prs={"feat/merged": 41})
+    world = FakeWorld(merged_prs={"feat/merged": 41, "feat/live": 42}, **state)
     records = [
-        {"branch": "feat/merged", "status": "published", "path": str(gone)},
+        {
+            "branch": "feat/merged",
+            "status": "published",
+            "path": str(gone),
+            "handed_back_sha": HEAD,
+        },
         {"branch": "feat/open", "status": "published", "path": str(gone)},
-        {"branch": "feat/live", "status": "published", "path": str(present)},
+        # merged, but the worktree still exists (#2419)
+        {
+            "branch": "feat/live",
+            "status": "published",
+            "path": str(present),
+            "handed_back_sha": HEAD,
+        },
+        # never published, so only the merged PR proves it is done
         {"branch": "feat/active", "status": "active", "path": str(gone)},
+        {
+            "branch": "feat/old",
+            "status": "merged",
+            "path": str(gone),
+            "handed_back_sha": HEAD,
+        },
     ]
+    world.merged_prs["feat/old"] = 43
+    world.merged_prs["feat/active"] = 44
     world.record = None
     original = world.__call__
 
@@ -1148,25 +1181,44 @@ def _gc_world(tmp_path: Path) -> FakeWorld:
     return world
 
 
-def test_gc_retires_only_published_lanes_whose_pr_merged(tmp_path: Path) -> None:
-    world = _gc_world(tmp_path)
+def _gc(world: FakeWorld, *, dry_run: bool = False) -> dict[str, Any]:
     import argparse
 
-    result = deliver.gc(
-        argparse.Namespace(dry_run=False), lambda cmd, cwd: world.__call__(cmd, cwd)
+    return deliver.gc(
+        argparse.Namespace(dry_run=dry_run), lambda cmd, cwd: world.__call__(cmd, cwd)
     )
-    assert result["retired"] == [{"branch": "feat/merged", "pr": 41, "applied": True}]
-    assert [k["branch"] for k in result["kept"]] == ["feat/open"]
+
+
+def test_gc_retires_every_live_lane_whose_pr_merged_even_with_its_worktree(
+    tmp_path: Path,
+) -> None:
+    world = _gc_world(tmp_path)
+    result = _gc(world)
+    assert result["retired"] == [
+        {"branch": "feat/merged", "pr": 41, "applied": True},
+        {"branch": "feat/live", "pr": 42, "applied": True},
+    ]
+    assert [k["branch"] for k in result["kept"]] == ["feat/open", "feat/active"]
+
+
+def test_gc_asks_github_once_however_many_records_there_are(tmp_path: Path) -> None:
+    world = _gc_world(tmp_path)
+    _gc(world)
+    assert [c for c in world.calls if c[1:3] == ["pr", "list"]] == []
+    assert len([c for c in world.calls if c[1] == "api"]) == 1
+
+
+def test_gc_keeps_a_lane_whose_head_is_not_in_the_merged_pr(tmp_path: Path) -> None:
+    world = _gc_world(tmp_path, old_is_ancestor=False, head="b" * 40)
+    result = _gc(world)
+    assert result["retired"] == []
+    assert {k["branch"] for k in result["kept"]} >= {"feat/merged", "feat/live"}
 
 
 def test_gc_dry_run_changes_nothing(tmp_path: Path) -> None:
     world = _gc_world(tmp_path)
-    import argparse
-
-    result = deliver.gc(
-        argparse.Namespace(dry_run=True), lambda cmd, cwd: world.__call__(cmd, cwd)
-    )
-    assert result["retired"] == [{"branch": "feat/merged", "pr": 41, "applied": False}]
+    result = _gc(world, dry_run=True)
+    assert [r["applied"] for r in result["retired"]] == [False, False]
     assert "cleanup-merged" not in world.names()
 
 

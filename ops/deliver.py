@@ -31,7 +31,8 @@ prints its last lines to stderr; the failure JSON lists the checks with their
 ``log`` paths.  Logs hold raw test output, never the environment.  There is no way to pass an outcome in by hand.
 
 ``deliver.py gc`` retires lanes whose PR is already merged (the ghost claims
-`doctor.py` reports) via `delivery.py cleanup-merged`.
+`doctor.py` reports) via `delivery.py cleanup-merged`, worktree present or not,
+after one REST read of the closed PRs.
 
 ``deliver.py redeliver --branch <published-lane-branch> --worktree <fixed-tip>
 [--lane <new-lane>] --check ... [--merge]`` replaces a published PR after review
@@ -1507,6 +1508,44 @@ def redeliver(
 # --- gc ---------------------------------------------------------------------
 
 
+# A lane that still owns its Scope; merged/abandoned records are history.
+GC_STATUSES = frozenset({"active", "published", "cleanup_pending"})
+
+
+def _merged_pulls(
+    runner: Runner, repo: str, canon: Path
+) -> dict[str, list[tuple[int, str]]]:
+    """Head branch -> [(PR number, head sha)] of merged PRs, in one REST read.
+
+    One paginated core-quota call replaces a GraphQL ``gh pr list`` per record
+    (#2419), which exhausted the shared GraphQL quota on a large registry.
+    """
+    out = must(
+        runner,
+        ["gh", "api", "--paginate", "--slurp"]
+        + [f"repos/{repo}/pulls?state=closed&per_page=100"],
+        canon,
+        "list closed PRs",
+    ).stdout
+    merged: dict[str, list[tuple[int, str]]] = {}
+    for page in json.loads(out or "[]"):
+        for pr in page:
+            head = pr.get("head") or {}
+            if pr.get("merged_at") and head.get("ref"):
+                merged.setdefault(str(head["ref"]), []).append(
+                    (int(pr["number"]), str(head.get("sha") or ""))
+                )
+    return merged
+
+
+def _worktree_head(runner: Runner, rec: dict[str, Any]) -> str:
+    path = Path(str(rec.get("path", "")))
+    if not path.is_dir():
+        return ""
+    found = runner(["git", "rev-parse", "HEAD"], path)
+    return found.stdout.strip() if found.returncode == 0 else ""
+
+
 def gc(
     args: argparse.Namespace, runner: Runner, lock: LockWait | None = None
 ) -> dict[str, Any]:
@@ -1530,56 +1569,59 @@ def gc(
         ).stdout
     )
     records = data["records"] if isinstance(data, dict) else data
-    retired, kept = [], []
+    merged = _merged_pulls(runner, repo, canon)
+    retired, kept, seen = [], [], set()
     for rec in records:
-        if rec.get("status") != "published" or Path(str(rec.get("path", ""))).exists():
+        if rec.get("status") not in GC_STATUSES:
             continue
-        found = runner(
-            [
-                "gh",
-                "pr",
-                "list",
-                "--repo",
-                repo,
-                "--head",
-                str(rec["branch"]),
-                "--state",
-                "merged",
-                "--json",
-                "number",
-                "-q",
-                ".[0].number",
-            ],
-            canon,
-        ).stdout.strip()
-        if not found:
+        branch = str(rec["branch"])
+        candidates = merged.get(branch, [])
+        if not candidates:
+            if rec.get("status") == "published":
+                kept.append({"branch": branch, "why": "published, PR not merged"})
+            continue
+        lane_head = str(rec.get("handed_back_sha") or "") or _worktree_head(runner, rec)
+        found = next(
+            (
+                number
+                for number, pr_head in candidates
+                if lane_head
+                and (
+                    lane_head == pr_head
+                    or runner(
+                        ["git", "merge-base", "--is-ancestor", lane_head, pr_head],
+                        canon,
+                    ).returncode
+                    == 0
+                )
+            ),
+            None,
+        )
+        if found is None:
             kept.append(
-                {
-                    "branch": rec["branch"],
-                    "why": "published, worktree gone, PR not merged",
-                }
+                {"branch": branch, "why": "merged PR does not contain the lane HEAD"}
             )
             continue
         if args.dry_run:
-            retired.append(
-                {"branch": rec["branch"], "pr": int(found), "applied": False}
-            )
+            retired.append({"branch": branch, "pr": found, "applied": False})
             continue
-        must(
-            runner,
-            [
-                str(canon / "ops" / "delivery.py"),
-                "--repo",
-                str(canon),
+        if found not in seen:  # two records for one PR: one cleanup
+            seen.add(found)
+            must(
+                runner,
+                [
+                    str(canon / "ops" / "delivery.py"),
+                    "--repo",
+                    str(canon),
+                    "cleanup-merged",
+                    "--pr",
+                    str(found),
+                ],
+                canon,
                 "cleanup-merged",
-                "--pr",
-                found,
-            ],
-            canon,
-            "cleanup-merged",
-            lock,
-        )
-        retired.append({"branch": rec["branch"], "pr": int(found), "applied": True})
+                lock,
+            )
+        retired.append({"branch": branch, "pr": found, "applied": True})
     return {"schema": SCHEMA, "retired": retired, "kept": kept}
 
 
@@ -1672,7 +1714,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--branch", help="resume a published lane whose worktree is already gone"
     )
     sub = parser.add_subparsers(dest="command")
-    clean = sub.add_parser("gc", help="retire published lanes whose PR already merged")
+    clean = sub.add_parser("gc", help="retire lanes whose PR already merged")
     clean.add_argument("--dry-run", action="store_true")
     again = sub.add_parser(
         "redeliver",
