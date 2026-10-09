@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -79,6 +82,82 @@ async def system_info(response: Response) -> SystemInfoResponse:
         migration_version=migration_version,
         sentry=sentry_init.is_active(),
     )
+
+
+# Files the process itself creates at startup (worker lock in lifespan,
+# pipeline_runs.db via the orphan-run reaper). If the data dir is deleted or
+# swapped under a running process they vanish, which is exactly the 2026-10-09
+# failure: /api/system/info kept answering 200 while every DB-backed call 500ed.
+_READY_STARTUP_FILES: tuple[tuple[str, str], ...] = (
+    (".worker.lock", "worker_lock_missing"),
+    ("pipeline_runs.db", "pipeline_db_missing"),
+)
+
+
+def readiness_failures(data_dir: Path) -> list[str]:
+    """Machine-readable reasons the data dir is unusable; empty means ready.
+
+    Only stat/open/unlink: no DB queries. Reasons never embed host paths.
+    """
+    if not data_dir.is_dir():
+        return ["data_dir_missing"]
+    reasons: list[str] = []
+    if not (data_dir / "users").is_dir():
+        reasons.append("users_dir_missing")
+    probe = data_dir / f".ready-probe-{uuid.uuid4().hex}"
+    try:
+        fd = os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+    except OSError:
+        reasons.append("data_dir_not_writable")
+    finally:
+        # Also covers a failure between create and close: never leave a probe behind.
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            if "data_dir_not_writable" not in reasons:
+                reasons.append("data_dir_not_writable")
+    for name, reason in _READY_STARTUP_FILES:
+        if not (data_dir / name).is_file():
+            reasons.append(reason)
+    return reasons
+
+
+# The endpoint is unauthenticated and rate-limit exempt, so every hit would
+# otherwise create+unlink a file. Cache the verdict briefly (per data dir).
+_READY_CACHE_TTL_SECONDS = 2.0
+_ready_cache: tuple[float, str, list[str]] | None = None
+
+
+def _ready_clock() -> float:
+    return time.monotonic()
+
+
+def _reset_ready_cache() -> None:
+    global _ready_cache
+    _ready_cache = None
+
+
+# NOTE: lives under /api/system/info/ on purpose: the rate-limit middleware
+# exempts by prefix "/api/system/info", so this inherits the exemption without
+# touching app_middleware. Do not move it to a sibling path without also adding
+# the path to `rate_limit_exempt_prefixes` (the exemption test will fail).
+@router.get("/api/system/info/ready", include_in_schema=False)
+async def system_ready(request: Request) -> JSONResponse:
+    """Unauthenticated fail-closed readiness: 200 only if storage is usable."""
+    data_dir = Path(request.app.state.kg_settings.data_dir)
+    global _ready_cache
+    now = _ready_clock()
+    cached = _ready_cache
+    if cached is not None and cached[1] == str(data_dir) and 0 <= now - cached[0] < _READY_CACHE_TTL_SECONDS:
+        reasons = list(cached[2])
+    else:
+        reasons = await run_in_threadpool(readiness_failures, data_dir)
+        _ready_cache = (now, str(data_dir), list(reasons))
+    headers = {"Cache-Control": "no-store"}
+    if reasons:
+        return JSONResponse({"ready": False, "reasons": reasons}, status_code=503, headers=headers)
+    return JSONResponse({"ready": True}, headers=headers)
 
 
 @router.get("/api/system/sentry-test", include_in_schema=False)
