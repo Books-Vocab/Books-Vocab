@@ -32,7 +32,7 @@ enum ExplicitSync {
         // 不需 toast 打斷下拉手勢）。對齊自動同步 trigger 的 guard。
         guard isLoggedIn, !isDemoMode else { return }
 
-        await kgService.backgroundSync(container: container)
+        let outcome = await kgService.backgroundSync(container: container, progress: nil)
 
         // 使用者中途離開（下拉刷新的 task 被取消）：那一輪並未跑完，既不該報成功也
         // 不該報失敗——直接閉嘴。少了這道檢查，被取消的同步會因為
@@ -46,6 +46,10 @@ enum ExplicitSync {
         if let error = kgService.lastBackgroundSyncError {
             kgService.lastBackgroundSyncError = nil  // read-then-clear（見上）
             toastCoordinator.warning(error)
+        } else if outcome == .didNotRun {
+            // 另一輪（scenePhase / Settings）佔著 claim 而本輪未執行：error 為 nil 不代表成功。
+            // 先檢查 error（離線的 .didNotRun 會帶 error），此處無 error 即靜默。
+            AppLog.kg.info("ExplicitSync did not run — suppressing success toast")
         } else {
             toastCoordinator.success("同步完成".localized)
         }
