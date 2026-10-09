@@ -2223,6 +2223,11 @@ git -C "$P_FX" push -q --force origin "$P_BASE:refs/heads/prod"
 t_run api 1.0.1 --commit "$P_TGT" --yes
 [[ $P_RC -ne 0 && "$P_OUT" == *"不是 live origin/prod"* && -z "$(git -C "$P_FX" tag -l)" ]] \
   && ok "tag api --commit refuses a commit that is not an ancestor of origin/prod" || fail_t "non-prod commit accepted (rc=$P_RC): $P_OUT"
+git -C "$P_FX" remote set-url origin "$P_FX/no-such-remote"
+t_run api 1.0.0 --commit "$P_BASE" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"ls-remote origin 失敗"* && -z "$(git -C "$P_FX" tag -l)" ]] \
+  && ok "tag api --commit fail-closes when origin is unreachable (ls-remote error is not 'no tag')" || fail_t "unreachable origin read as no remote tag (rc=$P_RC): $P_OUT"
+git -C "$P_FX" remote set-url origin "$P_REMOTE"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
