@@ -56,9 +56,9 @@
     "audio": {
       "atomic_habits_ep1_flash_playable": {
         "sourcePath": "ops/fixtures/assets/podcast_demo_long.mp3",
-        "sha256": "115da1279fc1c53c965801da9c27b3ef448e8308eb46ad87f4c3ecbac2e4b0a1",
+        "sha256": "49335dc19eaa45de7ee01499ea1a8a1736fb903fabfb5e61912dc2c69bf61994",
         "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
-        "byteSize": 75121,
+        "byteSize": 120286,
         "contentType": "audio/mpeg"
       },
       "atomic_habits_ep1_flash_auth": {
@@ -2822,13 +2822,13 @@
       "color": "sunset",
       "coverPattern": "waves",
       "sortOrder": -10000,
-      "durationSec": 1034.6,
+      "durationSec": 120.0,
       "episodes": [
         {
           "remoteId": "ui-playable-series_ep_01",
           "episodeNumber": 1,
           "title": "Actual Lab Episode",
-          "durationSec": 1034.6,
+          "durationSec": 120.0,
           "audioAvailable": true,
           "previewAvailable": true,
           "previewDurationSec": 180,

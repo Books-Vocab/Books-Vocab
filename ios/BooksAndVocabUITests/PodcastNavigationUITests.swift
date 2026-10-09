@@ -9,8 +9,8 @@
 //  stack 為 path-bound，path 在重評間保留。
 //  本 test 點集數後斷言集數列表仍在或已進入 player（不 pop 回根）。
 //  Podcast data 由 UI World + explicit fixture seed 提供；缺資料即失敗，不允許
-//  ambient simulator state 接管。Player 走 Pro entitlement 播放本機 bundled 音檔
-//  （full，非 preview），測試不依賴網路。
+//  ambient simulator state 接管。Player 走 Pro entitlement 播放 fixture 種入 app
+//  container 的本機音檔（full，非 preview），測試不依賴網路。
 //
 
 import XCTest
