@@ -23,7 +23,7 @@ LINUX_GROUPS=(
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
   release ios-release sim-pool-disposable review-probe
   sentry-tool
-  worktree-extended ios-ui-review review-preflight lab-podcast
+  worktree-extended ios-ui-review review-preflight lab-podcast asc
 )
 
 # Groups intentionally executed by ci_expected_fail_exclusions.sh on Linux to
@@ -187,7 +187,7 @@ fi
 
 # ── Full reachability (Issue #2065) ─────────────────────────────────────────
 # Every tracked test file matched below must be executed by the case arm of a
-# declared group (DEFAULT_TESTS or OPTIONAL_TESTS) in ops/test_ops.sh, or sit
+# declared DEFAULT_TESTS group in ops/test_ops.sh (OPTIONAL_TESTS never run in CI and do not count, #2764), or sit
 # in UNROUTED_TESTS with the reason it cannot run yet.  An arm reaches a file by
 # naming it or through a glob it expands at run time (ops/tests/test_delivery_*.py);
 # a path that only appears in a comment, or in the arm of an undeclared group,
@@ -236,7 +236,7 @@ trap 'rm -f "$mutant"; rm -rf "$scan_tmp"' EXIT
 # group executes and that UNROUTED_TESTS does not explain.
 scan_reachability() {
   local dispatcher="$1" declared_list group token entry path reason count rc=0 t="$scan_tmp"
-  declared_list="$(declared_groups "$dispatcher" DEFAULT_TESTS; declared_groups "$dispatcher" OPTIONAL_TESTS)"
+  declared_list="$(declared_groups "$dispatcher" DEFAULT_TESTS)"
   git ls-files -- "${REACHABILITY_PATHSPECS[@]}" >"$t/tracked.raw" \
     || { echo "✗ cannot list tracked test files" >&2; return 1; }
   grep -vFx 'ops/test_ops.sh' "$t/tracked.raw" | LC_ALL=C sort -u >"$t/tracked" || true
