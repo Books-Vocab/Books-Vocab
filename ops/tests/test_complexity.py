@@ -39,18 +39,13 @@ def _git_repo(tmp_path: Path, files: dict[str, str]) -> Path:
 # ---- the repository itself must honour its budget (this is the teeth) ----------
 
 
-def test_the_repository_is_within_its_complexity_budget() -> None:
-    budget = complexity.load_budget(REPO / complexity.BUDGET_FILE)
-    over = [
-        row
-        for row in complexity.evaluate(complexity.measure(REPO), budget)
-        if row["over"]
-    ]
-    assert not over, (
-        "over the complexity budget: "
-        + ", ".join(f"{r['area']} {r['lines']:,} > {r['ceiling']:,}" for r in over)
-        + f". Delete something, or raise the ceiling in {complexity.BUDGET_FILE} in this PR and say why."
-    )
+def test_the_repository_is_within_its_complexity_budget(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Same entry the operator runs: delta-aware on PRs, absolute on push to main."""
+    code = complexity.main(["check", *complexity.ci_args()], repo=REPO)
+    captured = capsys.readouterr()
+    assert code == 0, captured.out + captured.err
 
 
 # ---- measuring -----------------------------------------------------------------
@@ -231,7 +226,7 @@ def _over_base_repo(tmp_path: Path) -> Path:
 
 def test_evaluate_is_over_only_when_the_change_grew_the_area() -> None:
     measured = {**MEASURED, "ops": 1001}
-    grew = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 3})}
+    grew = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 51})}
     flat = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 0})}
     shrank = {
         r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": -2})
@@ -251,7 +246,7 @@ def test_check_passes_when_the_base_is_already_over_and_the_change_adds_nothing(
 
 def test_check_fails_when_a_change_grows_an_area_that_is_over(tmp_path: Path) -> None:
     repo = _over_base_repo(tmp_path)
-    (repo / "ops" / "b.py").write_text("1\n")
+    (repo / "ops" / "b.py").write_text("1\n" * 51)
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
 
@@ -281,3 +276,61 @@ def test_delta_ignores_data_files_like_measure_does(tmp_path: Path) -> None:
         "docs": 0,
         "workflows": 0,
     }
+
+
+# ---- review fixes (#2679): lane gate is delta-vs-slack, CI goes through the same entry ----
+
+
+def test_two_lanes_that_each_fit_the_headroom_both_pass_once_siblings_consumed_it() -> (
+    None
+):
+    # siblings already consumed the headroom (main is red); each lane adds 60 <= slack 100
+    budget = _budget()
+    budget["slack"]["ops"] = 100
+    red = {**MEASURED, "ops": 1090}
+    a = complexity.evaluate(red, budget, {"ops": 60})
+    b = complexity.evaluate({**red, "ops": 1150}, budget, {"ops": 60})
+    assert not any(r["over"] for r in a + b)
+    assert [r["inherited"] for r in a if r["area"] == "ops"] == [True]
+
+
+def test_a_lane_whose_own_delta_exceeds_the_slack_still_fails_with_the_remedy(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _over_base_repo(tmp_path)
+    (repo / "ops" / "big.py").write_text("1\n" * 60)  # slack ops=50
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
+    assert "raise the ceiling" in capsys.readouterr().err
+
+
+def test_no_usable_base_falls_back_to_absolute_and_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _git_repo(tmp_path, {"ops/a.py": "1\n" * 30, "ios/a.swift": "1\n"})
+    path = repo / complexity.BUDGET_FILE
+    path.write_text(json.dumps(_budget(ops=10)))
+    assert complexity.main(["check"], repo=repo) == 1
+    assert "absolute" in capsys.readouterr().err
+
+
+def test_ci_entry_is_strict_on_push_and_delta_aware_on_pull_request() -> None:
+    assert complexity.ci_args({"GITHUB_EVENT_NAME": "push"}) == ["--strict"]
+    assert complexity.ci_args({"GITHUB_EVENT_NAME": "pull_request"}) == []
+    assert complexity.ci_args({}) == []
+
+
+def test_the_ci_test_uses_the_check_entry_point_with_a_red_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _over_base_repo(tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    assert (
+        complexity.main(["check", "--base", "HEAD", *complexity.ci_args()], repo=repo)
+        == 0
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    assert (
+        complexity.main(["check", "--base", "HEAD", *complexity.ci_args()], repo=repo)
+        == 1
+    )

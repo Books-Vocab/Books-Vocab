@@ -13,10 +13,12 @@ ceiling in the budget file so a reviewer sees the number and the reason.  The
 ceiling is therefore a decision, not a side effect.  ``ratchet`` only moves it
 down, so deletions are banked and cannot be spent again silently.
 
-A red base must not block a change that adds nothing: an area over its ceiling only fails
-``check`` when this change grew it versus the merge-base (``origin/main``, else ``main``);
-otherwise it is reported as ``inherited``.  ``--strict`` ignores the delta (use it on
-``main`` itself so a red trunk is still caught); ``--base REF`` overrides the base.
+A lane gate judges the change, not the trunk: an area over its ceiling only fails ``check`` when
+this change grew it by more than that area's ``slack`` versus the merge-base (``origin/main``,
+else ``main``); otherwise it is reported as ``inherited``.  Sibling lanes that each fit therefore
+all deliver without racing on a ceiling bump.  The absolute judgement belongs to ``--strict``
+(CI runs it on push to ``main``, see ``ci_args``), so a red trunk is still caught;
+``--base REF`` overrides the base.  With no usable base the absolute judgement applies, loudly.
 
 Exit code: 0 within budget, 1 over budget, 2 usage or unreadable budget.
 """
@@ -63,6 +65,14 @@ def count_lines(repo: Path, prefix: str) -> int:
         if path.suffix in COUNTED_SUFFIXES and path.is_file() and not path.is_symlink():
             total += path.read_bytes().count(b"\n")
     return total
+
+
+def ci_args(env: dict[str, str] | None = None) -> list[str]:
+    """Extra ``check`` flags for the CI entry: absolute on push to main, delta-aware on PRs."""
+    import os
+
+    event = (os.environ if env is None else env).get("GITHUB_EVENT_NAME")
+    return ["--strict"] if event == "push" else []
 
 
 def merge_base(repo: Path, base: str | None) -> str | None:
@@ -129,13 +139,13 @@ def evaluate(
     deltas: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """``deltas`` (lines this change added per area) lets an already-red area pass
-    unless the change grew it; without it the judgement is absolute."""
+    unless the change grew it by more than its slack; without it the judgement is absolute."""
     rows = []
     for name in AREAS:
         ceiling = int(budget["ceilings"][name])
         now = measured[name]
         beyond = now > ceiling
-        grew = deltas is None or deltas.get(name, 0) > 0
+        grew = deltas is None or deltas.get(name, 0) > int(budget["slack"][name])
         rows.append(
             {
                 "area": name,
@@ -172,7 +182,7 @@ def render(rows: list[dict[str, Any]], measured: dict[str, int]) -> str:
     for row in rows:
         mark = "OVER" if row["over"] else "base" if row["inherited"] else "ok  "
         note = (
-            "  inherited: over at base, this change adds none"
+            "  inherited: over at base, this change adds within slack"
             if row["inherited"]
             else ""
         )
@@ -218,8 +228,16 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
         if base:
             try:
                 deltas = line_deltas(root, base)
-            except subprocess.CalledProcessError:
-                deltas = None
+            except subprocess.CalledProcessError as exc:
+                print(
+                    f"complexity: diff failed ({exc}); judging absolute",
+                    file=sys.stderr,
+                )
+        else:
+            print(
+                "complexity: no merge-base (origin/main or main); judging absolute",
+                file=sys.stderr,
+            )
     rows = evaluate(measured, budget, deltas)
 
     if args.command == "ratchet":
