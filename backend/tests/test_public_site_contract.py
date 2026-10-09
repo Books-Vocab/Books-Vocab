@@ -98,3 +98,14 @@ def test_support_page_is_zh_hant_consistent() -> None:
     html = _read(ROOT / "support.html")
     assert "Reply within" not in html
     assert "1–3 個工作日" in html
+
+
+def test_privacy_discloses_translate_log_retention_and_icloud_mirroring() -> None:
+    from kg.log_retention import DEFAULT_DAYS_TRANSLATE
+
+    html = _read(ROOT / "privacy.html")
+    assert f"{DEFAULT_DAYS_TRANSLATE} 天" in html
+    assert "300 字元" in html
+    assert "iCloud" in html and "CloudKit" in html
+    assert "書庫" in html and "播客進度" in html
+    assert "本地資料永久保留在您的裝置，直到您刪除應用程式" not in html

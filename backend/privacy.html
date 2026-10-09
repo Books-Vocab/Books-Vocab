@@ -63,7 +63,7 @@
 
     <p class="page-eyebrow">Privacy Policy</p>
     <h1>隱私政策</h1>
-    <p class="page-lead">最後更新：2026 年 6 月</p>
+    <p class="page-lead">最後更新：2026 年 10 月</p>
 
     <section class="section">
       <p>Books &amp; Vocab 尊重並保護使用者的隱私。本政策說明我們如何收集、使用與保護您的資訊。</p>
@@ -100,6 +100,16 @@
             <td>API 請求計數、錯誤日誌、當機診斷（Sentry）</td>
             <td>改善服務品質與穩定性，不追蹤個人行為、不用於廣告</td>
           </tr>
+          <tr>
+            <td>翻譯查詢紀錄</td>
+            <td>您查詢的單字、其上下文片段（約 300 字元）與 AI 回應，連結至您的帳戶</td>
+            <td>快取與問題排查；伺服器保留約 14 天後自動刪除</td>
+          </tr>
+          <tr>
+            <td>iCloud 同步資料</td>
+            <td>書庫（書籍中繼資料）與播客進度</td>
+            <td>透過 Apple CloudKit 同步至您的私人 iCloud 資料庫，跨裝置使用；我們的伺服器不存取</td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -118,7 +128,9 @@
     <section class="section">
       <h2>資料保留</h2>
       <ul class="plain-list">
-        <li>本地資料永久保留在您的裝置，直到您刪除應用程式</li>
+        <li>詞彙等本地資料保留在您的裝置，直到您刪除應用程式</li>
+        <li>翻譯查詢紀錄（單字、上下文片段與 AI 回應）在伺服器保留約 14 天後自動刪除；刪除帳戶時一併移除</li>
+        <li>書庫與播客進度同步於您的私人 iCloud（CloudKit）資料庫，刪除應用程式後仍會保留，需至 iPhone「設定」&gt; Apple ID &gt; iCloud &gt; 管理儲存空間中移除</li>
         <li>伺服器同步資料可隨時要求刪除</li>
         <li>帳戶刪除後，主要伺服器資料會立即移除</li>
       </ul>
