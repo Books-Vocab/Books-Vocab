@@ -181,6 +181,25 @@ class TestParseEnrichResponse:
         with pytest.raises(json.JSONDecodeError):
             _parse_enrich_response("not json at all {{{")
 
+    def test_malformed_items_are_skipped_not_raised(self):
+        data = [
+            5,
+            "x",
+            {"word": None},
+            {"word": ""},
+            {"word": "bad_pos", "pos": ["n."], "note": 3, "meaning_fix": [], "collocations": "x"},
+            {"word": "ok", "pos": "n.", "collocations": ["a b", 7]},
+        ]
+        result = _parse_enrich_response(json.dumps(data))
+        assert result == [
+            {"word": "bad_pos"},
+            {"word": "ok", "pos": "n.", "collocations": ["a b"]},
+        ]
+
+    def test_non_list_results_value_returns_empty(self):
+        assert _parse_enrich_response(json.dumps({"results": 7})) == []
+        assert _parse_enrich_response(json.dumps({"results": {"word": "x"}})) == []
+
     def test_dict_no_list_values(self):
         result = _parse_enrich_response('{"status": "ok"}')
         assert result == []

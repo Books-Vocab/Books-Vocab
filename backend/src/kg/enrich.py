@@ -7,14 +7,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from collections.abc import AsyncIterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from .cards import Card
 from .exceptions import QuotaExceededError
 from .retry import llm_retryable_exceptions, sync_retry
 from .sentry_init import capture_handled
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
 - word: 原詞
@@ -66,22 +70,56 @@ def _build_prompt(
     )
 
 
+def sanitize_enrich_item(item: Any) -> dict | None:
+    """Return a type-safe copy of one LLM enrichment item, or None to skip it.
+
+    LLM JSON is untrusted: the item must be a dict with a non-empty str
+    ``word``. Optional fields with the wrong type are dropped (not raised on):
+    ``pos`` / ``note`` / ``meaning_fix`` must be str, ``collocations`` a list
+    (non-str entries are filtered out).
+    """
+    if not isinstance(item, dict):
+        return None
+    word = item.get("word")
+    if not isinstance(word, str) or not word.strip():
+        return None
+    clean = dict(item)
+    for key in ("pos", "note", "meaning_fix"):
+        if key in clean and not isinstance(clean[key], str):
+            del clean[key]
+    if "collocations" in clean:
+        colls = clean["collocations"]
+        if isinstance(colls, list):
+            clean["collocations"] = [c for c in colls if isinstance(c, str)]
+        else:
+            del clean["collocations"]
+    return clean
+
+
 def _parse_enrich_response(raw_content: str) -> list[dict]:
-    """Parse LLM response into enrichment results list."""
+    """Parse LLM response into a list of valid enrichment items.
+
+    Malformed items are skipped with a warning instead of raising, so one bad
+    element cannot discard an already-billed batch.
+    """
     data = json.loads(raw_content or "{}")
+    items: Any = []
     if isinstance(data, list):
-        return data
+        items = data
     # First-line defense: a top-level scalar/null (e.g. `"x"`, `5`, `null`)
     # is not a container — `.values()` on it would raise AttributeError.
     # Treat any non-dict shape as "no enrichments".
-    if not isinstance(data, dict):
+    elif isinstance(data, dict):
+        if "results" in data:
+            items = data["results"]
+        else:
+            items = next((v for v in data.values() if isinstance(v, list)), [])
+    if not isinstance(items, list):
         return []
-    if "results" in data:
-        return data["results"]
-    for v in data.values():
-        if isinstance(v, list):
-            return v
-    return []
+    cleaned = [c for c in (sanitize_enrich_item(i) for i in items) if c is not None]
+    if len(cleaned) != len(items):
+        logger.warning("Skipped %d malformed enrichment items", len(items) - len(cleaned))
+    return cleaned
 
 
 def _call_enrich_llm(

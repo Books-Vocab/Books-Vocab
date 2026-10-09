@@ -991,6 +991,30 @@ def test_step_enrich_skips_malformed_llm_items(monkeypatch):
     assert "[u_malformed] Skipped 4 malformed enrichment items" in logger.warning_messages
 
 
+def test_step_enrich_survives_mistyped_optional_fields(monkeypatch):
+    """pos as a list / mistyped meaning_fix must not abort the step
+    (``_normalize_pos`` would call ``.strip()`` on a list); valid fields of the
+    same item still land and mistyped collocations entries are filtered."""
+    import kg.enrich as enrich_mod
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {
+            "status": "running",
+            "results": [
+                {"word": "Evoke", "pos": ["v."], "note": "n", "meaning_fix": 5, "collocations": ["a b", 3]},
+            ],
+        }
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    cards = _CardsRecordingUpdates()
+    logger = _RecLogger()
+
+    updated = asyncio.run(_run_step_enrich("u_mistyped", cards, logger))
+
+    assert updated == 1
+    assert cards.updates == [[("c1", {"note": "n", "collocations": ["a b"]})]]
+
+
 def test_step_enrich_skips_non_list_results(monkeypatch):
     """`_parse_enrich_response` returns `data["results"]` verbatim, so a batch's
     results can be any JSON value; a non-iterable one must not crash the step."""

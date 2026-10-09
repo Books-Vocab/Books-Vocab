@@ -96,13 +96,16 @@ def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
     """
     if not isinstance(results, list):
         return {}, 1
+    from ..enrich import sanitize_enrich_item
+
     result_map: dict[str, dict] = {}
     skipped = 0
     for item in results:
-        if isinstance(item, dict) and isinstance(item.get("word"), str):
-            result_map[item["word"].lower()] = item
-        else:
+        clean = sanitize_enrich_item(item)
+        if clean is None:
             skipped += 1
+        else:
+            result_map[clean["word"].lower()] = clean
     return result_map, skipped
 
 
