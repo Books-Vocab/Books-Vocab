@@ -2,7 +2,7 @@
 # test_ops.sh — aggregate ops regression tests.
 #
 # Usage:
-#   ./ops/test_ops.sh          # run the full non-ASC ops suite
+#   ./ops/test_ops.sh          # run the full ops suite (incl. ASC offline tests)
 #   ./ops/test_ops.sh --list   # list available test groups
 #   ./ops/test_ops.sh release backup-verify
 #   ./ops/test_ops.sh asc      # run App Store Connect offline surface tests
@@ -91,6 +91,8 @@ DEFAULT_TESTS=(
   review-preflight
   # Issue #2064：lab/podcast 單元測試（pipeline／publish／synthesize／saga／monitor）。
   lab-podcast
+  # Issue #2764: asc 離線測試原僅在 OPTIONAL，無 workflow 跑它；納入預設與 CI。
+  asc
 )
 
 # Host-wide slot limiter (ops/lib/heavy_slots.sh): only these groups claim a slot
@@ -106,7 +108,6 @@ HEAVY_TESTS=(
 source "$ROOT/ops/lib/heavy_slots.sh"
 
 OPTIONAL_TESTS=(
-  asc
   release-surfaces
 )
 
