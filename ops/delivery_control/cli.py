@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from .adapters.operation_lock import OperationLock
+from .adapters.operation_lock import WAIT_SECONDS_ENV, OperationLock
 from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
 from .controller.metrics import measure_merge_cadence
@@ -74,7 +74,25 @@ MUTATING_COMMANDS = frozenset(
 # never hold it.  _run_command_serialized hands them a per-section lease on the
 # same lock path.  queue writes only GitHub, guarded there by expected head,
 # base and body readback; cleanup sections are resumable from cleanup_pending.
-SCOPED_LEASE_COMMANDS = frozenset({"queue", "cleanup-merged", "release-published"})
+SCOPED_LEASE_COMMANDS = frozenset(
+    {"queue", "cleanup-merged", "release-published", "publish"}
+)
+
+
+# cleanup-merged is the observed starvation case (#2463): it follows a merge
+# and must not be refused just because another delivery briefly holds the lease.
+DEFAULT_LOCK_WAIT_SECONDS = {"cleanup-merged": 120.0}
+
+
+def lock_wait_seconds(args: argparse.Namespace) -> float | None:
+    """Flag > env var (resolved by OperationLock) > per-command default."""
+
+    explicit = getattr(args, "lock_timeout", None)
+    if explicit is not None:
+        return explicit
+    if os.environ.get(WAIT_SECONDS_ENV):
+        return None
+    return DEFAULT_LOCK_WAIT_SECONDS.get(args.command)
 
 
 def _jsonable(value: object) -> object:
@@ -121,6 +139,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--runtime-status-file", type=Path)
+    parser.add_argument(
+        "--lock-timeout",
+        type=float,
+        metavar="SECONDS",
+        help=(
+            "wait up to SECONDS (capped at 3600) for the delivery mutation lease "
+            "instead of refusing at once; overrides KG_DELIVERY_LOCK_WAIT_SECONDS "
+            "(cleanup-merged waits 120s by default)"
+        ),
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     inspect = commands.add_parser("inspect", help="classify every known delivery lane")
@@ -716,6 +744,7 @@ def run_command(
             title=args.title,
             closes=args.closes,
             refs=args.refs,
+            operation_lease=operation_lease,
         )
     if args.command == "record-published-base":
         return application.record_published_base(args.pr)
@@ -890,13 +919,16 @@ def _run_command_serialized(
         # repository.  Real applications always expose the canonical path.
         return run_command(args, application)
     canonical = Path(repo)
+    wait = lock_wait_seconds(args)
     if args.command in SCOPED_LEASE_COMMANDS:
         return run_command(
             args,
             application,
-            operation_lease=lambda section: OperationLock(canonical, command=section),
+            operation_lease=lambda section: OperationLock(
+                canonical, command=section, wait_seconds=wait
+            ),
         )
-    with OperationLock(canonical, command=args.command):
+    with OperationLock(canonical, command=args.command, wait_seconds=wait):
         return run_command(args, application)
 
 

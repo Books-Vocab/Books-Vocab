@@ -2047,6 +2047,16 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="GitHub-native local worktree coordinator"
     )
+    parser.add_argument(
+        "--lock-timeout",
+        type=float,
+        metavar="SECONDS",
+        help=(
+            "wait up to SECONDS (capped at 3600) for the delivery mutation "
+            "lease; overrides KG_DELIVERY_LOCK_WAIT_SECONDS (place before the "
+            "subcommand)"
+        ),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(p: argparse.ArgumentParser) -> None:
@@ -2218,13 +2228,16 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    lock_timeout = getattr(args, "lock_timeout", None)
     needs_lock = args.command in MUTATING_COMMANDS and not (
         args.command == "freeze" and args.action == "status"
     )
     if not needs_lock:
         return int(args.func(args))
     anchor = registry.common_anchor(ROOT)
-    with OperationLock(anchor, command=f"worktree:{args.command}"):
+    with OperationLock(
+        anchor, command=f"worktree:{args.command}", wait_seconds=lock_timeout
+    ):
         return int(args.func(args))
 
 

@@ -745,6 +745,7 @@ class DeliveryApplication:
         title: str,
         closes: Sequence[int] | None = None,
         refs: Sequence[int] | None = None,
+        operation_lease: cleanup.OperationLease | None = None,
     ) -> object:
         receipt, record = self._receipt_and_record(lane_id)
         publication = PublishService(
@@ -765,13 +766,15 @@ class DeliveryApplication:
             else None,
             default_issues=IssueLinks.from_external_ids(record.external_ids),
         )
-        published_base = self.record_published_base(publication.pull_request.number)
+        published_base = self.record_published_base(
+            publication.pull_request.number, operation_lease=operation_lease
+        )
         warnings = self._operation_telemetry().after_publish(
             receipt=receipt,
             record=record,
             publication=publication,
         )
-        release = self._cleanup().release_after_publish(
+        release = self._cleanup(operation_lease).release_after_publish(
             receipt=receipt,
             pull_request_number=publication.pull_request.number,
         )
@@ -783,7 +786,12 @@ class DeliveryApplication:
             "telemetry_warnings": warnings,
         }
 
-    def record_published_base(self, pull_request_number: int) -> object:
+    def record_published_base(
+        self,
+        pull_request_number: int,
+        *,
+        operation_lease: cleanup.OperationLease | None = None,
+    ) -> object:
         """Persist the exact PR target OID without rewriting handback provenance."""
 
         before = self.github.get_pull_request(pull_request_number)
@@ -843,15 +851,22 @@ class DeliveryApplication:
             raise errors.PolicyViolation(
                 "published PR tuple changed before base recording"
             )
-        self.registry.record_published_base(
-            lane_id=receipt.lane_id,
-            expected_claim_generation=receipt.claim_generation,
-            expected_branch=receipt.branch,
-            expected_path=receipt.worktree_path,
-            expected_head_sha=receipt.head_sha,
-            expected_handback_base_sha=receipt.base_sha,
-            published_base_sha=before.base_sha,
-        )
+        # Registry CAS re-validates lane generation, branch and HEAD on
+        # re-entry, so only this write needs the cross-process lease (#2463).
+        with (
+            nullcontext()
+            if operation_lease is None
+            else operation_lease("publish:record-published-base")
+        ):
+            self.registry.record_published_base(
+                lane_id=receipt.lane_id,
+                expected_claim_generation=receipt.claim_generation,
+                expected_branch=receipt.branch,
+                expected_path=receipt.worktree_path,
+                expected_head_sha=receipt.head_sha,
+                expected_handback_base_sha=receipt.base_sha,
+                published_base_sha=before.base_sha,
+            )
         after = self.github.get_pull_request(pull_request_number)
         final_record = self.registry.find_exact_claim(
             lane_id=receipt.lane_id,

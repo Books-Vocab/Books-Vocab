@@ -45,15 +45,27 @@ LOCK_DIR_ENV = "KG_DELIVERY_LOCK_DIR"
 # Opt-in bounded wait: unset, invalid, or <= 0 keeps the single fail-fast try.
 WAIT_SECONDS_ENV = "KG_DELIVERY_LOCK_WAIT_SECONDS"
 _POLL_INTERVAL = 0.1
+# Absurd values (inf, 1e400) must not park a process forever (#2463).
+MAX_WAIT_SECONDS = 3600.0
 
 
-def _wait_seconds() -> float:
+def clamp_wait_seconds(seconds: float) -> float:
+    """Normalize a requested wait: NaN/<=0 -> 0, never above MAX_WAIT_SECONDS."""
+
+    # NaN fails the comparison, so it also falls back to 0.
+    return min(seconds, MAX_WAIT_SECONDS) if seconds > 0 else 0.0
+
+
+def _wait_seconds(override: float | None = None) -> float:
+    """Explicit ``--lock-timeout`` beats the env var; both are clamped."""
+
+    if override is not None:
+        return clamp_wait_seconds(override)
     try:
         seconds = float(os.environ.get(WAIT_SECONDS_ENV, ""))
     except ValueError:
         return 0.0
-    # NaN fails the comparison, so it also falls back to 0.
-    return seconds if seconds > 0 else 0.0
+    return clamp_wait_seconds(seconds)
 
 
 def _lock_path(repo: Path) -> Path:
@@ -67,7 +79,10 @@ def _lock_path(repo: Path) -> Path:
 class OperationLock:
     """Acquire one non-blocking mutation lease for a canonical repository."""
 
-    def __init__(self, repo: Path, *, command: str) -> None:
+    def __init__(
+        self, repo: Path, *, command: str, wait_seconds: float | None = None
+    ) -> None:
+        self.wait_seconds = wait_seconds
         self.repo = repo.expanduser().resolve()
         self.command = command
         self.path = _lock_path(self.repo)
@@ -83,25 +98,28 @@ class OperationLock:
             return self
 
         handle = self.path.open("a+")
-        deadline = time.monotonic() + _wait_seconds()
-        while True:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError as error:
-                if error.errno in {errno.EACCES, errno.EAGAIN}:
-                    remaining = deadline - time.monotonic()
-                    if remaining > 0:
-                        time.sleep(min(_POLL_INTERVAL, remaining))
-                        continue
-                    handle.close()
-                    raise DeliverySourceError(
-                        "delivery mutation already in progress; "
-                        f"command={self.command}; "
-                        "retry after the active operation exits"
-                    ) from error
-                handle.close()
-                raise
+        deadline = time.monotonic() + _wait_seconds(self.wait_seconds)
+        try:
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as error:
+                    if error.errno in {errno.EACCES, errno.EAGAIN}:
+                        remaining = deadline - time.monotonic()
+                        if remaining > 0:
+                            time.sleep(min(_POLL_INTERVAL, remaining))
+                            continue
+                        raise DeliverySourceError(
+                            "delivery mutation already in progress; "
+                            f"command={self.command}; "
+                            "retry after the active operation exits"
+                        ) from error
+                    raise
+        except BaseException:
+            # Includes KeyboardInterrupt during the wait loop: never leak the fd.
+            handle.close()
+            raise
         _HELD_LOCKS[self.path] = (handle, 1)
         self._handle = handle
         return self
@@ -130,4 +148,9 @@ class OperationLock:
         return False
 
 
-__all__ = ["OperationLock"]
+__all__ = [
+    "MAX_WAIT_SECONDS",
+    "WAIT_SECONDS_ENV",
+    "OperationLock",
+    "clamp_wait_seconds",
+]

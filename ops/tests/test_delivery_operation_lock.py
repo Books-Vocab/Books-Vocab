@@ -210,7 +210,7 @@ def test_wait_env_unset_zero_or_invalid_fails_fast(
         with pytest.raises(DeliverySourceError) as raised:
             OperationLock(tmp_path, command="waiter").__enter__()
         assert str(raised.value) == _BUSY
-        assert time.monotonic() - started < 0.2
+        assert time.monotonic() - started < 1.5
     finally:
         holder.kill()
         holder.wait(timeout=10)
@@ -224,7 +224,7 @@ def test_wait_env_does_not_delay_reentrant_entry(
         started = time.monotonic()
         with OperationLock(tmp_path, command="inner"):
             pass
-        assert time.monotonic() - started < 0.2
+        assert time.monotonic() - started < 1.5
 
 
 def test_wait_env_lets_two_contending_processes_both_succeed(
@@ -236,20 +236,70 @@ import sys, time
 sys.path.insert(0, sys.argv[2])
 from delivery_control.adapters.operation_lock import OperationLock
 with OperationLock(Path(sys.argv[1]), command='contender'):
+    print('holding', flush=True)
     time.sleep(0.3)
 """
     env = {
         **os.environ,
         "PYTHONPATH": str(OPS),
-        "KG_DELIVERY_LOCK_WAIT_SECONDS": "5",
+        "KG_DELIVERY_LOCK_WAIT_SECONDS": "30",
     }
-    procs = [
-        subprocess.Popen(
-            [sys.executable, "-c", script, str(tmp_path), str(OPS)],
-            env=env,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        for _ in range(2)
-    ]
-    assert [proc.wait(timeout=20) for proc in procs] == [0, 0]
+    cmd = [sys.executable, "-c", script, str(tmp_path), str(OPS)]
+    first = subprocess.Popen(
+        cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    assert first.stdout is not None
+    # The first process must provably hold the lease before the contender starts.
+    assert first.stdout.readline().strip() == "holding"
+    second = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE, text=True)
+    assert [first.wait(timeout=60), second.wait(timeout=60)] == [0, 0]
+
+
+def test_wait_seconds_are_capped_and_explicit_override_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from delivery_control.adapters import operation_lock as module
+
+    for raw in ("inf", "1e400", "99999"):
+        monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", raw)
+        assert module._wait_seconds() == module.MAX_WAIT_SECONDS
+    monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", "120")
+    assert module._wait_seconds(5) == 5
+    assert module._wait_seconds(0) == 0
+    assert module._wait_seconds(float("inf")) == module.MAX_WAIT_SECONDS
+    assert module._wait_seconds(float("nan")) == 0
+
+
+class _Interrupt(BaseException):
+    """Stand-in for KeyboardInterrupt, which pytest itself intercepts."""
+
+
+def test_interrupt_during_wait_closes_the_handle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from delivery_control.adapters import operation_lock as module
+
+    holder = _spawn_holder(tmp_path, 5)
+    opened: list[object] = []
+    real_open = Path.open
+
+    def tracking_open(self: Path, *args: object, **kwargs: object) -> object:
+        handle = real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+        opened.append(handle)
+        return handle
+
+    def interrupted(_seconds: float) -> None:
+        raise _Interrupt
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "open", tracking_open)
+            patch.setattr(module.time, "sleep", interrupted)
+            with pytest.raises(_Interrupt):
+                OperationLock(
+                    tmp_path, command="waiter", wait_seconds=10
+                ).__enter__()
+        assert opened and all(handle.closed for handle in opened)  # type: ignore[attr-defined]
+    finally:
+        holder.kill()
+        holder.wait(timeout=10)

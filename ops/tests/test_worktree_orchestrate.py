@@ -51,10 +51,14 @@ def test_mutating_worktree_command_uses_shared_operation_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[tuple[str, object]] = []
+    waits: list[float | None] = []
 
     class FakeLock:
-        def __init__(self, repo: Path, *, command: str) -> None:
+        def __init__(
+            self, repo: Path, *, command: str, wait_seconds: float | None = None
+        ) -> None:
             events.append(("init", (repo, command)))
+            waits.append(wait_seconds)
 
         def __enter__(self) -> Self:
             events.append(("enter", None))
@@ -70,6 +74,13 @@ def test_mutating_worktree_command_uses_shared_operation_lock(
     assert events[0][0] == "init"
     assert events[0][1][1] == "worktree:open"  # type: ignore[index]
     assert [item[0] for item in events] == ["init", "enter", "exit"]
+    assert waits == [None]
+
+    events.clear()
+    waits.clear()
+    argv = ["--lock-timeout", "45", "open", "--intent", "test", "--slug", "lock"]
+    assert coordinator.main(argv) == 0
+    assert waits == [45.0]
 
     events.clear()
     monkeypatch.setattr(coordinator, "cmd_preflight", lambda args: 0)

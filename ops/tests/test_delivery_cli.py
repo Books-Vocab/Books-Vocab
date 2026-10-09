@@ -1413,7 +1413,9 @@ def test_cli_serializes_remote_orphan_discard_with_operation_lock(
     lock_calls: list[tuple[object, ...]] = []
 
     class FakeLock:
-        def __init__(self, repo: Path, *, command: str) -> None:
+        def __init__(
+            self, repo: Path, *, command: str, wait_seconds: float | None = None
+        ) -> None:
             lock_calls.append(("init", repo, command))
 
         def __enter__(self) -> Self:
