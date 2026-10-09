@@ -174,6 +174,7 @@ struct AddLinkCreationP1CoordinatorTests {
         #expect(await CreationFixtures.eventually { coordinator.phase == .failed })
         #expect(coordinator.failure?.kind == .interrupted)
         #expect(coordinator.failure?.isRetryable == true)
+        #expect(coordinator.fraction < 1.0)
         #expect(coordinator.operationTerminal)
 
         P1Fixtures.start(coordinator, source: source, service: service, container: container)
@@ -215,6 +216,7 @@ struct AddLinkCreationP1CoordinatorTests {
         P1Fixtures.start(coordinator, source: source, service: service, container: container)
         #expect(await CreationFixtures.eventually { coordinator.phase == .failed })
         #expect(coordinator.failure?.kind == .timedOut)
+        #expect(coordinator.fraction < 1.0)
         #expect(coordinator.failure?.isRetryable == true)
         // Polls at t=30 s and t=60 s; the wake-up at t=90 s hits the deadline.
         #expect(service.fetchedOperationIds == ["op-1", "op-1"])
