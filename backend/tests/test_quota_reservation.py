@@ -17,8 +17,10 @@ DB isolation mirrors test_quota_service.py: patch `_get_conn`/`_lock`.
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
@@ -140,62 +142,109 @@ def test_concurrent_translate_requests_overspend_without_reservation(mock_db):
     assert len(passed) == 10, "expected the unguarded gate to leak all requests"
 
 
-def test_concurrent_translate_requests_converge_with_reservation(mock_db):
-    """With reservation: a burst of 10 concurrent same-user TrackedLLM calls
-    through the production gate (`reserve(enforce=True)`) admits exactly the
-    Free budget, not 10.
-
-    Each admitted call blocks inside the client until all 10 admission
-    decisions are made, so admitted reservations are held for the whole burst
-    and the count does not depend on thread scheduling.
-    """
-    from kg.exceptions import QuotaExceededError
+def test_concurrent_translate_requests_queue_behind_reservation(mock_db):
+    """A burst of 10 concurrent same-user TrackedLLM calls through the
+    production gate (`reserve(enforce=True)`) never has more than the Free
+    budget in flight (2), yet every call is eventually admitted: in-flight-only
+    contention waits instead of raising a false quota exhaustion (#2243)."""
     from kg.tracked_llm import TrackedLLM
 
     burst = 10
-    # $0.03 / $0.012 = 2.5 → the 3rd in-flight reservation would exceed.
     assert qs.FREE_DAILY_LIMIT_USD == pytest.approx(0.03)
     assert qs.estimate_call_cost("translate") == pytest.approx(0.012)
-    expected_admitted = 2
 
-    decided = threading.Condition()
-    release = threading.Event()
-    admitted: list[bool] = []
-    rejected: list[bool] = []
+    guard = threading.Lock()
+    state = {"now": 0, "peak": 0, "done": 0}
 
-    class _HoldingClient:
+    class _Client:
         class chat:  # noqa: N801
             class completions:  # noqa: N801
                 @staticmethod
                 def create(**_kwargs):
-                    with decided:
-                        admitted.append(True)
-                        decided.notify_all()
-                    assert release.wait(timeout=5), "burst was never released"
-                    return _FakeResp(100, 50)
+                    with guard:
+                        state["now"] += 1
+                        state["peak"] = max(state["peak"], state["now"])
+                    time.sleep(0.02)
+                    with guard:
+                        state["now"] -= 1
+                        state["done"] += 1
+                    return _FakeResp(0, 0)
 
     def request():
-        llm = TrackedLLM(_HoldingClient(), "u1", enforce_quota=True, is_pro=False)
-        try:
-            llm.chat("translate")
-        except QuotaExceededError:
-            with decided:
-                rejected.append(True)
-                decided.notify_all()
+        TrackedLLM(_Client(), "u1", enforce_quota=True, is_pro=False).chat("translate")
 
     with ThreadPoolExecutor(max_workers=burst) as ex:
-        futs = [ex.submit(request) for _ in range(burst)]
-        try:
-            with decided:
-                all_decided = decided.wait_for(lambda: len(admitted) + len(rejected) == burst, timeout=5)
-        finally:
-            release.set()
-        for f in futs:
-            f.result()
+        for f in [ex.submit(request) for _ in range(burst)]:
+            f.result(timeout=30)
 
-    assert all_decided, f"only {len(admitted) + len(rejected)}/{burst} requests reached a decision"
-    assert len(admitted) == expected_admitted, f"expected {expected_admitted} admissions, got {len(admitted)}"
-    assert len(rejected) == burst - expected_admitted
+    assert state["done"] == burst
+    assert state["peak"] <= 2
+    assert qs._reserved_usd("u1") == 0.0
+
+
+def test_reserve_waits_for_inflight_release_then_admits(mock_db):
+    admitted = threading.Event()
+
+    def contender():
+        with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+            admitted.set()
+
+    with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+        with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+            t = threading.Thread(target=contender)
+            t.start()
+            assert not admitted.wait(0.2), "must wait while two reservations are in flight"
+    t.join(timeout=5)
+    assert admitted.is_set()
+    assert qs._reserved_usd("u1") == 0.0
+
+
+def test_reserve_real_exhaustion_raises_without_waiting(mock_db, monkeypatch):
+    from kg.exceptions import QuotaExceededError
+
+    monkeypatch.setattr(qs, "_recorded_usd", lambda _uid: 0.025)
+    started = time.monotonic()
+    with pytest.raises(QuotaExceededError):
+        with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+            pass
+    assert time.monotonic() - started < 1.0
+
+
+def test_reserve_inflight_wait_is_bounded(mock_db, monkeypatch):
+    from kg.exceptions import QuotaExceededError
+
+    monkeypatch.setattr(qs, "_ADMISSION_WAIT_SECONDS", 0.1)
+    with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+        with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+            with pytest.raises(QuotaExceededError):
+                with qs.reserve("u1", 0.012, enforce=True, is_pro=False):
+                    pass
+    assert qs._reserved_usd("u1") == 0.0
+
+
+def test_third_concurrent_async_chat_is_not_rejected(mock_db):
+    """Free user's 3rd concurrent async call (translate path) waits, no 429."""
+    from kg.tracked_llm import TrackedLLM
+
+    state = {"now": 0, "peak": 0}
+
+    class _Client:
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                async def create(**_kwargs):
+                    state["now"] += 1
+                    state["peak"] = max(state["peak"], state["now"])
+                    await asyncio.sleep(0.02)
+                    state["now"] -= 1
+                    return _FakeResp(0, 0)
+
+    async def main():
+        llm = TrackedLLM(_Client(), "u1", enforce_quota=True, is_pro=False)
+        return await asyncio.gather(*[llm.chat_async("translate") for _ in range(4)])
+
+    assert len(asyncio.run(main())) == 4
+    assert state["peak"] <= 2
     assert qs._reserved_usd("u1") == 0.0
 
 
@@ -365,6 +414,7 @@ def test_enforced_reservation_retries_on_equal_sum_reservation_swap(mock_db, mon
         return 0.02
 
     monkeypatch.setattr(qs, "_recorded_usd", recorded)
+    monkeypatch.setattr(qs, "_ADMISSION_WAIT_SECONDS", 0.0)
 
     with pytest.raises(QuotaExceededError):
         with qs.reserve("u1", 0.015, enforce=True, is_pro=False):

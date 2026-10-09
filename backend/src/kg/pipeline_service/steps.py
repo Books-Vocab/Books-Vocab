@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from openai import OpenAIError
 
+from ..exceptions import QuotaExceededError
 from ..ops_cli_shared import _normalize_persisted_bool
 from ..types import UserRecord
 from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
@@ -517,10 +518,18 @@ async def _judge_pending(
         except Exception:
             logger.warning("[%s] Failed to write degree_cap judge_log", uid, exc_info=True)
 
-    processed = 0
+    consumed: list[str] = []
+    quota_error: QuotaExceededError | None = None
     try:
         for card_id, fut in futures:
-            results = await fut
+            try:
+                results = await fut
+            except QuotaExceededError as exc:
+                # Real exhaustion rejected this one call. Keep collecting: the
+                # other calls already ran, were billed and wrote accepted
+                # judge_log rows, so their links must be applied, not orphaned.
+                quota_error = quota_error or exc
+                continue
             # NOTE: do NOT `break` on from-cap — we still need to walk
             # remaining results so over-cap accepted candidates get
             # logged as degree_cap rejects (audit trail).
@@ -547,25 +556,28 @@ async def _judge_pending(
                 )
                 from_link_counts[card_id] += 1
                 to_link_counts[other_id] += 1
-            # Increment ONLY after a card's results are FULLY consumed.
+            # Record ONLY after a card's results are FULLY consumed.
             # If an exception fires inside the inner loop above (e.g.
-            # `link_kind_enum` rejects an illegal enum value), `processed`
-            # still points at the failing card so `futures[processed:]`
-            # re-includes it for requeue. Phase 2a's `graph.has_link`
-            # check then skips any links this card already persisted, so
-            # the re-judge neither double-links nor double-counts.
-            processed += 1
+            # `link_kind_enum` rejects an illegal enum value), the card is
+            # not in `consumed`, so it is requeued. Phase 2a's
+            # `graph.has_link` check then skips any links this card already
+            # persisted, so the re-judge neither double-links nor
+            # double-counts.
+            consumed.append(card_id)
+        if quota_error is not None:
+            raise quota_error
     except BaseException:
-        # Exception or cancellation mid-loop. `processed` is incremented only
-        # AFTER a card's results are fully consumed, so on failure it still
-        # points to the card that failed — whether the failure was in `await
-        # fut` or mid result-consumption — and `futures[processed:]` includes
-        # it. Persist the fully consumed cards' links and ack exactly those;
+        # Exception or cancellation mid-loop. A card enters `consumed` only
+        # AFTER its results are fully consumed, so a card that failed — in
+        # `await fut`, on quota rejection, or mid result-consumption — is
+        # absent. Persist the consumed cards' links and ack exactly those;
         # the caller requeues everything else still claimed (including these
         # cards if their links never reached disk).
-        unprocessed_ids = [cid for cid, _ in futures[processed:]]
+        consumed_set = set(consumed)
+        remaining = [(cid, fut) for cid, fut in futures if cid not in consumed_set]
+        unprocessed_ids = [cid for cid, _ in remaining]
         logger.warning(
-            "[%s] Judge interrupted at %d/%d, requeueing %d", uid, processed, len(futures), len(unprocessed_ids)
+            "[%s] Judge interrupted at %d/%d, requeueing %d", uid, len(consumed), len(futures), len(unprocessed_ids)
         )
         # Wrap the persistence: a failure here must NOT mask the original
         # judge-loop exception that we're about to re-raise.
@@ -573,14 +585,14 @@ async def _judge_pending(
             if all_links:
                 graph.batch_add_links(all_links)
                 _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
-            claim.ack([cid for cid, _ in futures[:processed]])
+            claim.ack(consumed)
         except Exception:
             logger.warning("[%s] Failed to persist partial links/touch", uid, exc_info=True)
         # Drain in-flight futures: their exceptions are unobserved otherwise,
         # and asyncio logs "Future exception was never retrieved" at ERROR
         # level on GC. We're already aborting; cancel pending and silently
         # consume any exception already raised.
-        for _cid, fut in futures[processed:]:
+        for _cid, fut in remaining:
             if not fut.done():
                 fut.cancel()
                 continue

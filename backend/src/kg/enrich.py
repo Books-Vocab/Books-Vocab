@@ -141,6 +141,7 @@ async def enrich_cards_stream(
     # cancelled, GC'd). From then on nothing drains the queue and the loop may
     # be closed, so workers and loop callbacks must stop touching either.
     closed = threading.Event()
+    exhausted = threading.Event()
 
     def _process_batch_with_retry(batch: list[Card], loop: asyncio.AbstractEventLoop, queue: asyncio.Queue):
         """Worker function that handles retries and pushes progress to the async queue.
@@ -217,6 +218,13 @@ async def enrich_cards_stream(
             _call_on_loop(_put_hint, {"type": "retry", "detail": _retry_detail(wait_time)})
             return float(wait_time)
 
+        if exhausted.is_set():
+            # Another batch hit real quota exhaustion: don't start (and bill)
+            # more LLM calls, but still deliver a terminal so the consumer's
+            # accounting reaches zero and in-flight batches get drained.
+            _put_terminal({"type": "skipped"})
+            return
+
         try:
             # Retry only explicit transient provider failures; non-retryable
             # 4xx errors fail this batch on the first call.
@@ -235,6 +243,7 @@ async def enrich_cards_stream(
             results = _parse_enrich_response(response.choices[0].message.content)
             _put_terminal({"type": "success", "results": results, "count": len(batch)})
         except QuotaExceededError as e:
+            exhausted.set()
             _put_terminal(
                 {
                     "type": "quota_exhausted",
@@ -272,6 +281,7 @@ async def enrich_cards_stream(
 
         # Await results as they come in
         tasks_remaining = len(batches)
+        quota_error: QuotaExceededError | None = None
 
         while tasks_remaining > 0:
             msg = await queue.get()
@@ -304,8 +314,16 @@ async def enrich_cards_stream(
                     "results": [],
                 }
                 # Optional: We could break here, but allowing other batches to finish is more robust
+            elif msg["type"] == "skipped":
+                tasks_remaining -= 1
             elif msg["type"] == "quota_exhausted":
-                raise QuotaExceededError(msg["reset_seconds"], headers=msg.get("headers"))
+                # Keep draining: batches admitted (and billed) before the
+                # exhaustion still deliver results that must be persisted.
+                tasks_remaining -= 1
+                if quota_error is None:
+                    quota_error = QuotaExceededError(msg["reset_seconds"], headers=msg.get("headers"))
+        if quota_error is not None:
+            raise quota_error
     finally:
         closed.set()
         # Never blocks the loop: batches not yet started are cancelled, and
