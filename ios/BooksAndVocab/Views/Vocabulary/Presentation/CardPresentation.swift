@@ -47,10 +47,13 @@ struct CardPresentation {
     /// - Parameter pendingLinks: placeholders for links still being created.
     ///   `nil` reads the app-wide `PendingLinkProjection`; tests and previews pass
     ///   an explicit list to stay deterministic.
+    /// - Parameter peerLookup: locally known peers by `kgCardId`. A link whose peer is
+    ///   archived or queued for delete is dropped (#2535); unknown peers are kept.
     init(
         entry: VocabularyEntry,
         linkOrdering: [String] = Self.defaultLinkOrdering,
-        pendingLinks: [KGCardLinkSummary]? = nil
+        pendingLinks: [KGCardLinkSummary]? = nil,
+        peerLookup: [String: VocabularyEntry] = [:]
     ) {
         kgCardId = entry.kgCardId
         notebookId = entry.notebookId
@@ -70,7 +73,12 @@ struct CardPresentation {
 
         forms = (entry.rootForm.map { [$0] } ?? []) + entry.inflections.filter { $0 != entry.rootForm }
 
-        var grouped = entry.graphLinksByKind
+        var grouped = entry.graphLinksByKind.mapValues { links in
+            links.filter { link in
+                guard let peer = peerLookup[link.cardId] else { return true }
+                return !peer.isArchived && peer.syncAction != .delete
+            }
+        }
         let pending = pendingLinks ?? PendingLinkProjection.shared.links(forSourceCardID: entry.kgCardId)
         for placeholder in pending {
             // Pending items lead their group so they are never the ones pushed
@@ -132,7 +140,7 @@ struct CardPresentation {
     private static func computeShowsSourceContext(sourceContext: String, examples: [String], bookTitle: String) -> Bool {
         let trimmed = sourceContext.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        return examples.first != trimmed || bookTitle != "Knowledge Graph"
+        return examples.first?.trimmingCharacters(in: .whitespacesAndNewlines) != trimmed || bookTitle != "Knowledge Graph"
     }
 
     static let defaultLinkOrdering = ["contrasts_with", "shares_usage"]

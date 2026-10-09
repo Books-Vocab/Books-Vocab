@@ -7,8 +7,8 @@ enum WordDetailPresentation {
         lookup: [String: VocabularyEntry]? = nil,
         now: Date? = nil
     ) -> WordDetailPresenter.State {
-        let card = entry.cardPresentation
         let effectiveLookup = lookup ?? VocabularyEntry.buildCardIdLookup(from: allEntries)
+        let card = CardPresentation(entry: entry, peerLookup: effectiveLookup)
         let reviewReferenceDate = now ?? ReviewSettingsStore.shared.settings.reviewReferenceDate()
 
         return WordDetailPresenter.State(
