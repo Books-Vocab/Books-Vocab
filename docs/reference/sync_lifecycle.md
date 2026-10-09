@@ -61,7 +61,7 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 
 ### 本地新增上傳成功（`pending + add` → `synced + add`）
 
-1. `SyncCoordinator` 批次上傳 → `POST /api/vocab` 回 `VocabAddResponse{ cardIds, duplicates, ... }`
+1. `SyncCoordinator` 批次上傳 → `POST /api/vocab` 回 `VocabAddResponse{ cardIds, duplicates, rejected, ... }`（逐筆驗證：無效項進 `rejected[{index, word, reason}]`，其餘照常建立，不再整批 422；非 list body 或超過 500 筆仍 422；現行 iOS client 的 `KGAddResponse` 尚無 `rejected` 欄位：被拒項因無 cardId 續留 pending 每次 sync 重試，但不再阻擋其他字；解析 `rejected` 並出列為待辦 iOS 後續）
 2. **`cardIds` 以 client 送出的『原始』word 為 key**（非後端清洗後的 word），`created` 與 `duplicate`（已存在）兩種情況都回填對應 card id
 3. 對每筆 entry：`response.cardIds[entry.word]` 命中即回填 `kgCardId` 並 `markSynced()` 直接出列
 4. **不變式**：收斂依據是回傳的 cardId（= 卡片確實存在 server，權威確認），**不**靠 pull-merge 用 content 字面比對——後端 `_clean_content` 會 strip 尾標點 / 首字小寫（如 `"chateau,"`→`"chateau"`），content 比對跨此邊界必然 miss，曾導致該類 entry 永久卡在 `pending + add` 重送（修復見 vocab_intake：response key 改回原始 word）

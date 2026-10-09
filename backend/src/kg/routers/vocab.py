@@ -27,7 +27,7 @@ from ..api_models import (
     ReviewStatePushResponse,
     VocabAddResponse,
     VocabContentUpdateRequest,
-    VocabEntry,
+    parse_vocab_batch,
 )
 from ..deps import (
     CurrentUser,
@@ -71,6 +71,7 @@ from ..vocab_handlers import (
     update_word_content_response,
     update_word_preferences_response,
 )
+from ..vocab_shared import _clean_content
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
@@ -471,14 +472,19 @@ def add_vocab(
     # max_length=500) so an oversized list is rejected at request validation
     # before being deserialized — bounds LLM/DB amplification. The handler keeps
     # its own MAX_BATCH_SIZE guard as defense-in-depth.
-    entries: Annotated[list[VocabEntry], Field(max_length=500)],
+    entries: Annotated[list[Any], Field(max_length=500)],
     response: Response,
     user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     quota = _check_quota(user, "vocab_add", response)
+    # Per-item validation (#2248): invalid items come back in `rejected`; valid ones proceed.
+    valid_entries, rejected = parse_vocab_batch(entries, clean=_clean_content)
+    if not valid_entries:
+        _apply_quota_headers(response, quota)
+        return VocabAddResponse(created=0, skipped=0, rejected=rejected, duplicates=[], cardIds={})
     result = add_vocab_response(
-        entries,
+        valid_entries,
         user,
         card_store_factory=_card_store,
         embedding_store_factory=_embedding_store,
@@ -488,5 +494,6 @@ def add_vocab(
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
+    result.rejected = rejected
     _apply_quota_headers(response, quota)
     return result
