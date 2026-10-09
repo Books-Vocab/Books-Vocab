@@ -26,7 +26,9 @@ class Card(SQLModel, table=True):
     difficulty: float | None = None  # Zipf frequency score (higher = more common)
     mode: str = "recognition"  # recognition: 英→中, production: 中→英
     root_form: str | None = None  # lemma (e.g. "laid" → "lay")
-    inflections: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # all inflected forms from dictionary
+    inflections: list[str] = SQLField(
+        default_factory=list, sa_column=Column(JSON)
+    )  # all inflected forms from dictionary
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     notebook_id: str = SQLField(default="default")
