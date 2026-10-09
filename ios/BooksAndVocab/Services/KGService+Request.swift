@@ -125,10 +125,10 @@ extension KGService {
                     )
                     if attempt < retryPolicy.maxAttempts {
                         // 429: 優先使用伺服器的 Retry-After header（秒數格式，cap 60s）
-                        if httpResponse.statusCode == 429,
-                           let retryAfterValue = httpResponse.value(forHTTPHeaderField: "Retry-After"),
-                           let seconds = TimeInterval(retryAfterValue) {
-                            retryAfterOverride = min(seconds, 60)
+                        if httpResponse.statusCode == 429 {
+                            retryAfterOverride = Self.retryAfterDelay(
+                                from: httpResponse.value(forHTTPHeaderField: "Retry-After")
+                            )
                         }
                         continue
                     }
@@ -259,5 +259,11 @@ extension KGService {
                 detail: String(data: data, encoding: .utf8) ?? "\(method) \(path) failed"
             )
         }
+    }
+
+    /// 429 的 Retry-After（秒數格式）→ 重試延遲；上限 60s。
+    static func retryAfterDelay(from header: String?) -> TimeInterval? {
+        guard let header, let seconds = TimeInterval(header), seconds.isFinite, seconds >= 0 else { return nil }
+        return min(seconds, 60)
     }
 }

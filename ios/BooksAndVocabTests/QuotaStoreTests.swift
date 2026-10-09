@@ -180,4 +180,31 @@ struct QuotaStoreTests {
         #expect(store.resetSeconds == 60)
         #expect(store.level == .critical)
     }
+
+    // MARK: - #2722 epoch guard: in-flight responses from a previous account
+
+    @Test func stale_update_after_reset_is_dropped() {
+        let store = QuotaStore()
+        let captured = store.epoch
+        store.reset()
+        store.update(fraction: 0.05, resetSeconds: 60, ifEpoch: captured)
+        #expect(store.fraction == 1.0)
+        #expect(store.resetSeconds == 0)
+    }
+
+    @Test func stale_response_after_reset_is_dropped() {
+        let store = QuotaStore()
+        let captured = store.epoch
+        store.reset()
+        store.update(from: makeResponse(headers: ["X-Quota-Fraction": "0.0", "X-Quota-Reset": "900"]), ifEpoch: captured)
+        #expect(store.fraction == 1.0)
+        #expect(store.resetSeconds == 0)
+    }
+
+    @Test func current_epoch_update_is_applied() {
+        let store = QuotaStore()
+        store.update(fraction: 0.4, resetSeconds: 30, ifEpoch: store.epoch)
+        #expect(store.fraction == 0.4)
+        #expect(store.resetSeconds == 30)
+    }
 }

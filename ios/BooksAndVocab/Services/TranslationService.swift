@@ -280,6 +280,7 @@ final class TranslationService: Translating {
         request.httpBody = try JSONEncoder().encode(body)
         let requestID = RequestObservation.attachRequestID(to: &request)
 
+        let quotaEpoch = quotaStore.epoch
         let (data, response) = try await sharedURLSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -289,7 +290,7 @@ final class TranslationService: Translating {
 
         // Update quota from response headers (before status check).
         // QuotaStore is @Observable (non-isolated) and drives SwiftUI — mutate on main.
-        await MainActor.run { quotaStore.update(from: httpResponse) }
+        await MainActor.run { quotaStore.update(from: httpResponse, ifEpoch: quotaEpoch) }
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -102,6 +103,21 @@ struct KGServiceTests {
         #expect(TimeInterval("not-a-number") == nil)
         #expect(TimeInterval("") == nil)
         #expect(TimeInterval("30") == 30)
+    }
+
+    /// #2716: 負值 / NaN / inf 會讓 `UInt64(delay * 1e9)` trap；必須視為不可用並回退指數退避。
+    @Test func retry_after_delay_rejects_non_finite_and_negative() {
+        #expect(KGService.retryAfterDelay(from: "-1") == nil)
+        #expect(KGService.retryAfterDelay(from: "nan") == nil)
+        #expect(KGService.retryAfterDelay(from: "inf") == nil)
+        #expect(KGService.retryAfterDelay(from: nil) == nil)
+        #expect(KGService.retryAfterDelay(from: "abc") == nil)
+    }
+
+    @Test func retry_after_delay_parses_and_caps() {
+        #expect(KGService.retryAfterDelay(from: "0") == 0)
+        #expect(KGService.retryAfterDelay(from: "5") == 5)
+        #expect(KGService.retryAfterDelay(from: "120") == 60)
     }
 
     // MARK: - JSON decoding: KGHealthResponse (healthCheck path)
@@ -575,5 +591,44 @@ struct KGServiceTests {
         )
         #expect(total == 1)
         #expect(calls == 1)
+    }
+}
+
+// MARK: - #2718 createManualLink 不可自動重試（POST 無 Idempotency-Key）
+
+private final class CountingTimeoutTransport: KGHTTPTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var attempts: Int { lock.withLock { count } }
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        lock.withLock { count += 1 }
+        throw URLError(.timedOut)
+    }
+}
+
+@MainActor
+private final class ManualLinkAuthSession: AuthSessionProviding {
+    let isLoggedIn = true
+    let token: String? = "header.eyJleHAiOjQxMzg2Njg0MDB9.signature"
+}
+
+@MainActor
+private final class ManualLinkInvalidator: SessionInvalidating {
+    func logout(modelContainer: ModelContainer?, reason: String) {}
+    func waitForPendingLocalDataCleanup() async {}
+}
+
+@MainActor
+struct CreateManualLinkRetryTests {
+    @Test func createManualLinkPostsExactlyOnceOnTimeout() async {
+        let transport = CountingTimeoutTransport()
+        let service = KGService(
+            authSession: ManualLinkAuthSession(),
+            sessionInvalidator: ManualLinkInvalidator(),
+            transport: transport,
+            connectivityGate: FixedConnectivityGate(isConnected: true)
+        )
+        _ = try? await service.createManualLink(fromId: "a", toId: "b", notebookId: "n")
+        #expect(transport.attempts == 1)
     }
 }
