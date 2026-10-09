@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, delete, exists, func, or_, tuple_
+from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, delete, event, exists, func, or_, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
@@ -261,6 +261,15 @@ class SharedDeckStore:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.engine = make_sqlite_engine(self.path)
+
+        # SQLite's builtin lower() folds ASCII only, so 'École' would never match
+        # 'école'; search uses this Unicode-aware function for publisher/tags.
+        @event.listens_for(self.engine, "connect")
+        def _register_unicode_lower(dbapi_conn, _record) -> None:
+            dbapi_conn.create_function(
+                "kg_lower", 1, lambda v: None if v is None else normalize_nfc_lower(str(v)), deterministic=True
+            )
+
         # Explicit table list (not a bare ``metadata.create_all``): the shared
         # SQLModel registry also holds Card/Notebook/... — only ours here.
         SQLModel.metadata.create_all(self.engine, tables=_SHARED_DECK_TABLES, checkfirst=True)
@@ -330,11 +339,11 @@ class SharedDeckStore:
                 stmt = stmt.where(
                     or_(
                         SharedDeck.title_nfc_lower.like(pattern, escape="\\"),
-                        func.lower(cast(SharedDeck.publisher_display_name, String)).like(pattern, escape="\\"),
+                        func.kg_lower(cast(SharedDeck.publisher_display_name, String)).like(pattern, escape="\\"),
                         exists(
                             select(1)
                             .select_from(tag_values)
-                            .where(func.lower(cast(tag_values.c.value, String)).like(pattern, escape="\\"))
+                            .where(func.kg_lower(cast(tag_values.c.value, String)).like(pattern, escape="\\"))
                         ),
                     )
                 )
