@@ -269,9 +269,11 @@ final class TodayReviewState {
         cardCache.rebuild(for: entry)
     }
 
-    /// Pending link creation changed this card's strip: update its links in place
-    /// and keep its measurements (see `TodayReviewCardCache.refreshLinks`).
-    func refreshPendingLinksForEntry(_ entry: VocabularyEntry) {
+    /// The card's link set changed (pending link created/failed/resolved, or AddLink
+    /// succeeded): update its links in place and keep its measurements (see
+    /// `TodayReviewCardCache.refreshLinks`). Use `rebuildCacheForEntry` only when the
+    /// card content itself changed.
+    func refreshLinksForEntry(_ entry: VocabularyEntry) {
         cardCache.refreshLinks(for: entry)
     }
 

@@ -225,7 +225,7 @@ struct TodayReviewView: View {
             // Light update, not a rebuild: a full rebuild resets the card's measured
             // heights and the open card would jump for a frame (#2133).
             for entry in state.queue where entry.kgCardId.map(dirty.contains) == true {
-                state.refreshPendingLinksForEntry(entry)
+                state.refreshLinksForEntry(entry)
             }
         }
         .task {
@@ -272,7 +272,9 @@ struct TodayReviewView: View {
                 // 連結目標只能在來源同一本（`AddLinkCoordinator.isEligibleTarget`）；
                 // 多單字本入口要明講，免得使用者以為能搜所有單字本。
                 notebookScopeName: notebookBadges[request.sourceEntry.notebookId]?.name,
-                onLinked: { state.rebuildCacheForEntry(request.sourceEntry) }
+                // #2408: 成功只新增一列連結、不是新卡；保留 measurementCache。
+                // link 集合改變時僅 graph-links 段重新量測（見 TodayReviewCardCache.refreshLinks）。
+                onLinked: { state.refreshLinksForEntry(request.sourceEntry) }
             )
         }
         .toastSheet(item: $pendingLinkDetail) { request in
