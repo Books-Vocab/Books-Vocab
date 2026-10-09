@@ -130,7 +130,11 @@ struct ReviewCardTemporaryDetailTests {
 
     @Test func toggleNeverWritesThePersistedLayoutProfile() {
         let key = ReviewCardLayoutStore.storageKey
-        let before = UserDefaults.standard.string(forKey: key)
+        func snapshot() -> [String: String] {
+            let all = UserDefaults.standard.dictionaryRepresentation()
+            return all.filter { $0.key.hasSuffix(key) }.compactMapValues { $0 as? String }
+        }
+        let before = snapshot()
         let entries = Self.makeEntries(count: 2)
         let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
 
@@ -138,7 +142,7 @@ struct ReviewCardTemporaryDetailTests {
         state.toggleTemporaryDetail()
         state.toggleTemporaryDetail()
 
-        #expect(UserDefaults.standard.string(forKey: key) == before, "the override is session memory, not a setting")
+        #expect(snapshot() == before, "the override is session memory, not a setting")
     }
 
     @Test func aNewSessionStartsCompact() {

@@ -333,12 +333,11 @@ final class ReviewCardLayoutStore {
     }
 
     /// Hide the previous account's layout during an account boundary without
-    /// deleting its namespaced state; the raw guest key is removed locally.
+    /// deleting anything: the pre-account raw key must survive until legacy
+    /// migration has adopted it, and the write guard prevents leakage.
     func suspendForAccountBoundary() {
-        guard let defaults else { return }
         isAccountBoundarySuspended = true
         accountID = nil
-        defaults.removeObject(forKey: Self.storageKey)
         profile = .default
         resolvedUpdatedAt = nil
     }

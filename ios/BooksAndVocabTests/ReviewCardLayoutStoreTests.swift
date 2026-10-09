@@ -549,7 +549,7 @@ struct ReviewCardLayoutStoreAccountScopeTests {
         #expect(store.profile == custom)
     }
 
-    @Test func suspendedStoreIgnoresWritesAndClearsRawLocalKey() {
+    @Test func suspendedStoreIgnoresWritesAndKeepsRawLocalKey() {
         let defaults = makeDefaults()
         let cloud = ReviewCardLayoutCloudSpy()
         let store = makeStore(defaults, cloud)
@@ -557,7 +557,7 @@ struct ReviewCardLayoutStoreAccountScopeTests {
         #expect(defaults.string(forKey: rawKey) != nil)
 
         store.suspendForAccountBoundary()
-        #expect(defaults.string(forKey: rawKey) == nil)
+        #expect(defaults.string(forKey: rawKey) != nil)
         let writes = cloud.setCalls.count
         store.update(ReviewCardLayoutProfile(recognition: .compact, production: .compact))
         #expect(cloud.setCalls.count == writes)
@@ -572,6 +572,21 @@ struct ReviewCardLayoutStoreAccountScopeTests {
         legacy.update(custom)
 
         let store = makeStore(defaults, cloud)
+        store.activateAccount("account-a")
+        #expect(store.profile == custom)
+        store.activateAccount("account-b")
+        #expect(store.profile == .default)
+    }
+
+    @Test func suspendBeforeActivationStillMigratesLegacyRawLayout() {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let custom = ReviewCardLayoutProfile(recognition: .compact, production: .standard)
+        makeStore(defaults, cloud).update(custom)
+
+        let store = makeStore(defaults, cloud)
+        store.suspendForAccountBoundary()
+        #expect(store.profile == .default)
         store.activateAccount("account-a")
         #expect(store.profile == custom)
         store.activateAccount("account-b")
