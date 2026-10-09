@@ -3443,3 +3443,85 @@ def test_readopt_leaves_the_claim_when_the_retire_is_refused(
     assert rc != coordinator.EXIT_OK
     [record] = coordinator.registry.load_state(state_path)["records"]
     assert record["status"] == "active"
+
+
+def test_retire_ghosts_dry_run_then_apply_abandons_only_the_ghost(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    scope = {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": "ops/ghost_scope.py", "operation": "modify"}],
+    }
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+
+    def lane(branch: str, path: Path) -> dict:
+        return {
+            "branch": branch,
+            "path": str(path),
+            "intent": "fix",
+            "base": "origin/main",
+            "status": "active",
+            "external_ids": [],
+            "scope": scope if "ghost" in branch else None,
+            "claim_generation": 0,
+            "handed_back_at": None,
+            "handed_back_sha": None,
+        }
+
+    state_file = tmp_path / "registry.json"
+    coordinator.registry.save_state(
+        state_file,
+        {
+            "schema": coordinator.registry.SCHEMA,
+            "records": [
+                lane("debug/ghost-2771", tmp_path / "gone"),
+                lane("debug/live-2771", live_dir),
+            ],
+        },
+    )
+
+    class NoLock:
+        def __init__(self, *a: object, **k: object) -> None: ...
+        def __enter__(self) -> "NoLock":
+            return self
+
+        def __exit__(self, *a: object) -> bool:
+            return False
+
+    monkeypatch.setattr(coordinator, "OperationLock", NoLock)
+    state = ["--state", str(state_file), "--json"]
+
+    assert coordinator.main(["preflight", *state]) == 0
+    listed = json.loads(capsys.readouterr().out)["ghosts"]
+    assert [g["branch"] for g in listed] == ["debug/ghost-2771"]
+
+    assert coordinator.main(["retire-ghosts", *state]) == 0
+    assert not json.loads(capsys.readouterr().out)["retired"]
+    statuses = {
+        r["branch"]: r["status"]
+        for r in coordinator.registry.load_state(state_file)["records"]
+    }
+    assert statuses == {"debug/ghost-2771": "active", "debug/live-2771": "active"}
+
+    assert coordinator.main(["retire-ghosts", "--apply", *state]) == 0
+    assert len(json.loads(capsys.readouterr().out)["retired"]) == 1
+    statuses = {
+        r["branch"]: r["status"]
+        for r in coordinator.registry.load_state(state_file)["records"]
+    }
+    assert statuses == {"debug/ghost-2771": "abandoned", "debug/live-2771": "active"}
+
+    new_state = coordinator.registry.load_state(state_file)
+    rc, _ = coordinator.registry._register_record(
+        new_state,
+        branch="debug/new-2771",
+        path=str(tmp_path / "new"),
+        intent="fix",
+        base="main",
+        external_ids=[],
+        scope=scope,
+    )
+    assert rc == coordinator.registry.EXIT_OK

@@ -11,7 +11,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry  # noqa: E402
-from worktree_registry_core import environment  # noqa: E402
+from worktree_registry_core import environment, maintenance  # noqa: E402
 from lib import executables  # noqa: E402
 
 
@@ -1048,3 +1048,58 @@ def test_sweep_commit_is_read_only_and_requires_exact_per_record_transition(
 
     assert rc == registry.EXIT_USAGE
     assert registry.load_state(state_path)["records"][0]["status"] == "active"
+
+
+def _lane(branch: str, path: Path, scope_path: str) -> dict:
+    return {
+        "branch": branch,
+        "path": str(path),
+        "intent": "fix",
+        "base": "origin/main",
+        "status": "active",
+        "external_ids": [],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": scope_path, "operation": "modify"}],
+        },
+        "claim_generation": 0,
+        "handed_back_at": None,
+        "handed_back_sha": None,
+    }
+
+
+def test_scope_refusal_names_ghost_owner_and_sweep_lists_it(tmp_path: Path) -> None:
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+    ghost = _lane("debug/ghost-2771", tmp_path / "gone", "ops/a.py")
+    live = _lane("debug/live-2771", live_dir, "ops/b.py")
+    state = {"schema": registry.SCHEMA, "records": [ghost, live]}
+
+    rc, refused = registry._register_record(
+        state,
+        branch="debug/new-2771",
+        path=str(tmp_path / "new"),
+        intent="fix",
+        base="main",
+        external_ids=[],
+        scope={
+            "schema": "kg.worktree.scope.v1",
+            "files": [
+                {"path": "ops/a.py", "operation": "modify"},
+                {"path": "ops/b.py", "operation": "modify"},
+            ],
+        },
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    by_branch = {o["branch"]: o for o in refused["owners"]}
+    assert by_branch["debug/ghost-2771"]["ghost"] is True
+    assert by_branch["debug/live-2771"]["ghost"] is False
+    assert "debug/ghost-2771" in refused["reason"]
+
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, state)
+    # Only the record whose worktree is gone is a ghost candidate.
+    assert [
+        g["branch"] for g in (maintenance.ghost_facts(r) for r in state["records"]) if g
+    ] == ["debug/ghost-2771"]

@@ -18,7 +18,9 @@ state, or release state.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -50,6 +52,7 @@ from worktree_reanchor_core import git_ops as reanchor_git_ops
 from worktree_reanchor_core import registry_ops as reanchor_registry_ops
 from worktree_reanchor_core.domain import commit_sha as reanchor_commit_sha
 from worktree_reanchor_core.errors import ReanchorRefused
+from worktree_registry_core.maintenance import ghost_facts
 
 SCHEMA = "kg.worktree.orchestrate.v2"
 GATE_SCHEMA = "kg.worktree.gate.v2"
@@ -76,6 +79,7 @@ MUTATING_COMMANDS = frozenset(
         "recover-published-remote",
         "hand-back",
         "resolve",
+        "retire-ghosts",
         "freeze",
     }
 )
@@ -1936,13 +1940,77 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         "registry": str(state_path),
         "active_worktrees": len(active),
         "worktrees": _git(["worktree", "list"], ROOT)[1],
+        "ghosts": _ghosts(state),
     }
+    ghost_note = (
+        f"; {len(payload['ghosts'])} ghost lane(s) retirable (retire-ghosts --apply)"
+        if payload["ghosts"]
+        else ""
+    )
     _emit(
         payload,
         as_json=args.json,
-        human=f"✓ preflight: {len(active)} active local worktree(s)",
+        human=f"✓ preflight: {len(active)} active local worktree(s){ghost_note}",
     )
     return EXIT_OK
+
+
+def _ghosts(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        facts
+        for record in registry._active_records(state)
+        if (facts := ghost_facts(record))
+    ]
+
+
+def cmd_retire_ghosts(args: argparse.Namespace) -> int:
+    """Abandon ghost lanes (active, worktree gone, no commits) with exact CAS (#2771)."""
+    state_file = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
+    ghosts = _ghosts(registry.load_state(state_file))
+    retired: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for ghost in ghosts if args.apply else []:
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = registry.main(
+                [
+                    "resolve",
+                    "--branch",
+                    str(ghost["branch"]),
+                    "--path",
+                    str(ghost["path"]),
+                    "--status",
+                    "abandoned",
+                    "--expected-generation",
+                    str(ghost["claim_generation"]),
+                    "--expected-head-sha",
+                    str(ghost["expected_head_sha"]),
+                    "--state",
+                    str(state_file),
+                ],
+                acquire_lock=False,
+            )
+        (retired if rc == EXIT_OK else failed).append(ghost)
+    _emit(
+        {
+            "schema": SCHEMA,
+            "action": "retire-ghosts",
+            "apply": bool(args.apply),
+            "ghosts": ghosts,
+            "retired": retired,
+            "failed": failed,
+        },
+        as_json=args.json,
+        human=(
+            f"✓ retired {len(retired)} ghost lane(s)"
+            if args.apply
+            else f"{len(ghosts)} ghost lane(s) retirable; rerun with --apply"
+        ),
+    )
+    return EXIT_BLOCK if failed else EXIT_OK
 
 
 def cmd_freeze(args: argparse.Namespace) -> int:
@@ -2136,6 +2204,16 @@ def _parser() -> argparse.ArgumentParser:
     pre.add_argument("--base")
     pre.add_argument("--incoming-main")
     pre.set_defaults(func=cmd_preflight)
+
+    ghosts_cmd = sub.add_parser(
+        "retire-ghosts",
+        help="abandon active lanes whose worktree is gone and carry no commits",
+    )
+    common(ghosts_cmd)
+    ghosts_cmd.add_argument(
+        "--apply", action="store_true", help="retire (default: dry-run)"
+    )
+    ghosts_cmd.set_defaults(func=cmd_retire_ghosts)
 
     op = sub.add_parser(
         "open",

@@ -14,6 +14,7 @@ from .admission import ownership_conflicts, select_owner_record
 from .constants import EXIT_CLAIMED, EXIT_OK, EXIT_USAGE
 from .environment import load_state, repo_root, resolve_now, state_path
 from .handback import advance_claim
+from .maintenance import ghost_facts
 from .records import (
     SCHEMA,
     STATUS_ACTIVE,
@@ -102,8 +103,19 @@ def register_record(
         excluded_record=selected_record,
     )
     if owners:
+        owner_records = {(r.get("branch"), r.get("path")): r for r in state["records"]}
+        for owner in owners:
+            record = owner_records.get((owner["branch"], owner["path"]))
+            owner["ghost"] = bool(record and ghost_facts(record))
+        ghosts = [o["branch"] for o in owners if o["ghost"]]
         return EXIT_CLAIMED, {
-            "reason": "external reference or Scope is already owned",
+            "reason": "external reference or Scope is already owned"
+            + (
+                f"; ghost lane(s) {', '.join(map(str, ghosts))} can be retired"
+                " with `worktree_orchestrate.py retire-ghosts --apply`"
+                if ghosts
+                else ""
+            ),
             "owners": owners,
         }
     _, now_iso = resolve_now(at)
