@@ -154,6 +154,24 @@ def notebook_files(user_dir: str | Path, nb: str = "default") -> dict[str, Path]
     return {kind: ud / tmpl.format(nb=nb) for kind, (tmpl, _) in NOTEBOOK_FILE_SPECS.items()}
 
 
+def remove_notebook_artifacts(user_dir: str | Path, nb: str) -> None:
+    """刪除某 notebook 的所有 per-notebook 檔並 evict 快取 store(API 與 ops CLI 共用)。
+
+    檔名來自 NOTEBOOK_FILE_SPECS SoT,新增 artifact 種類不會漏刪。連同 .bak/.tmp/.lock
+    與 graph/links.py 的 ``<file>.pair-*`` sibling 一併清除;全部 idempotent。
+    """
+    import glob
+
+    from .service_factories import evict_notebook_cache
+
+    for path in notebook_files(user_dir, nb).values():
+        for suffix in ("", ".bak", ".tmp", ".lock"):
+            path.with_name(path.name + suffix).unlink(missing_ok=True)
+        for pair_lock in path.parent.glob(glob.escape(path.name) + ".pair-*"):
+            pair_lock.unlink(missing_ok=True)
+    evict_notebook_cache(user_dir, nb)
+
+
 def print_table(headers: list[str], rows: list[list]) -> None:
     """格式化輸出對齊表格。空 rows 印 "(no data)"。"""
     if not rows:

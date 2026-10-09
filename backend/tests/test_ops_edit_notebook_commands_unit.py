@@ -1,4 +1,5 @@
 """Unit tests for kg.ops_edit_notebook_commands — direct function calls."""
+
 from __future__ import annotations
 
 import argparse
@@ -140,9 +141,7 @@ class TestNotebookUpdate:
         _setup_user(tmp_path)
         nbid = self._seed_nb(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        rc = nb_cmd.cmd_notebook_update(
-            _make_args(notebook=nbid, name="NewName", commit=True)
-        )
+        rc = nb_cmd.cmd_notebook_update(_make_args(notebook=nbid, name="NewName", commit=True))
         assert rc == 0
         store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
         try:
@@ -157,6 +156,7 @@ class TestNotebookUpdate:
         nbid = self._seed_nb(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             nb_cmd.cmd_notebook_update(_make_args(notebook=nbid, name=None))
 
@@ -194,10 +194,30 @@ class TestNotebookDelete:
         finally:
             store.close()
 
+    def test_commit_delete_removes_artifacts(self, tmp_path, monkeypatch):
+        """#2708: CLI 刪本須與 API 一致清除 per-notebook 檔(含 .bak/.lock/.pair-*)。"""
+        from kg.ops_shared import notebook_files
+
+        _setup_user(tmp_path)
+        nbid = self._seed_nb(tmp_path)
+        user_dir = tmp_path / "users" / "u1"
+        victims = []
+        for path in notebook_files(user_dir, nbid).values():
+            path.write_text("x")
+            bak = path.with_name(path.name + ".bak")
+            bak.write_text("x")
+            pair = path.with_name(path.name + ".pair-abc.lock")
+            pair.write_text("x")
+            victims += [path, bak, pair]
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        assert nb_cmd.cmd_notebook_delete(_make_args(notebook=nbid, commit=True)) == 0
+        assert [p for p in victims if p.exists()] == []
+
     def test_default_not_deletable(self, tmp_path, monkeypatch):
         _setup_user(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             nb_cmd.cmd_notebook_delete(_make_args(notebook="default"))
 
@@ -211,6 +231,7 @@ class TestNotebookDelete:
             store.close()
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         from kg.ops_edit_support import EditError
+
         with pytest.raises(EditError):
             nb_cmd.cmd_notebook_delete(_make_args(notebook=nbid))
 
