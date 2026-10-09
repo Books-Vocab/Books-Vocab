@@ -37,9 +37,7 @@ class _TimeoutRequest(google_requests.Request):
     def __call__(self, url, method="GET", body=None, headers=None, timeout=None, **kwargs):
         if timeout is None:
             timeout = _REQUEST_TIMEOUT_SECONDS
-        return super().__call__(
-            url, method=method, body=body, headers=headers, timeout=timeout, **kwargs
-        )
+        return super().__call__(url, method=method, body=body, headers=headers, timeout=timeout, **kwargs)
 
 
 def _build_request_adapter(session: _requests.Session | None = None) -> _TimeoutRequest:
@@ -83,20 +81,17 @@ async def verify_google_token(token: str, client_id: str) -> VerifiedIdentity:
         # rather than a bool. bool("false") is truthy in Python, so we
         # cannot rely on plain bool() coercion — normalize explicitly.
         raw_verified = idinfo.get("email_verified", False)
-        email_verified = (
-            raw_verified.strip().lower() == "true"
-            if isinstance(raw_verified, str)
-            else bool(raw_verified)
-        )
+        email_verified = raw_verified.strip().lower() == "true" if isinstance(raw_verified, str) else bool(raw_verified)
 
         return VerifiedIdentity(str(sub), email, email_verified)
 
     except ValueError as e:
         # Invalid token signature or claims
-        logger.warning("Google token validation failed: %s", e)
+        # Log the type only: google-auth messages can embed the raw token (#2712).
+        logger.warning("Google token validation failed: %s", type(e).__name__)
         raise HTTPException(status_code=401, detail="Invalid token") from e
     except (GoogleAuthError, OSError) as e:
         # Client-side token issue (expired / malformed / network during verify).
         # Mirrors the JWT validation branch above — not a server error.
-        logger.warning("Google token verification error: %s", e)
+        logger.warning("Google token verification error: %s", type(e).__name__)
         raise HTTPException(status_code=401, detail="Google authentication failed") from e

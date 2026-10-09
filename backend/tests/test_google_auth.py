@@ -80,9 +80,7 @@ class TestVerifyGoogleToken:
                 "email": "spoof@evil.example",
                 "email_verified": False,
             }
-            sub, email, verified = await google_auth.verify_google_token(
-                "unverified.token", CLIENT_ID
-            )
+            sub, email, verified = await google_auth.verify_google_token("unverified.token", CLIENT_ID)
             assert sub == "google-unverified-1"
             assert email == "spoof@evil.example"
             # CRITICAL: must report unverified so caller refuses to link.
@@ -97,9 +95,7 @@ class TestVerifyGoogleToken:
                 "email": "user@example.com",
                 # email_verified intentionally absent
             }
-            _, _, verified = await google_auth.verify_google_token(
-                "no-flag.token", CLIENT_ID
-            )
+            _, _, verified = await google_auth.verify_google_token("no-flag.token", CLIENT_ID)
             assert verified is False
 
     @pytest.mark.asyncio
@@ -122,9 +118,7 @@ class TestVerifyGoogleToken:
         surface 401 cleanly rather than 500.
         """
         with patch("kg.google_auth.id_token.verify_oauth2_token") as mock_verify:
-            mock_verify.side_effect = ValueError(
-                "Token used too early, iat is in the future"
-            )
+            mock_verify.side_effect = ValueError("Token used too early, iat is in the future")
             with pytest.raises(HTTPException) as exc_info:
                 await google_auth.verify_google_token("future-iat.token", CLIENT_ID)
             assert exc_info.value.status_code == 401
@@ -142,9 +136,7 @@ class TestVerifyGoogleToken:
                 "email": "",
                 "email_verified": True,
             }
-            _, email, _ = await google_auth.verify_google_token(
-                "empty.token", CLIENT_ID
-            )
+            _, email, _ = await google_auth.verify_google_token("empty.token", CLIENT_ID)
             assert email is None
 
     @pytest.mark.asyncio
@@ -161,9 +153,7 @@ class TestVerifyGoogleToken:
                 "email": "u@example.com",
                 "email_verified": "false",  # string false — must not become True
             }
-            _, _, verified = await google_auth.verify_google_token(
-                "strflag.token", CLIENT_ID
-            )
+            _, _, verified = await google_auth.verify_google_token("strflag.token", CLIENT_ID)
             assert verified is False
 
 
@@ -202,12 +192,8 @@ class TestGoogleAuthTransportTimeout:
         # WITHOUT passing timeout — the adapter must supply its own.
         adapter("https://oauth2.googleapis.com/certs", method="GET")
 
-        assert captured["timeout"] is not None, (
-            "transport adapter forwarded no timeout — request can hang forever"
-        )
-        assert captured["timeout"] <= 30, (
-            f"timeout {captured['timeout']}s too large; must be a small bound"
-        )
+        assert captured["timeout"] is not None, "transport adapter forwarded no timeout — request can hang forever"
+        assert captured["timeout"] <= 30, f"timeout {captured['timeout']}s too large; must be a small bound"
 
     def test_session_has_no_dead_timeout_attribute(self):
         """The module must not rely on the no-op ``Session.timeout`` attr.
@@ -269,6 +255,21 @@ class TestGoogleTokenNonBlocking:
             await tick_task
 
         # If verify blocked the loop, the ticker could not have progressed.
-        assert len(ticks) >= 10, (
-            f"event loop stalled — only {len(ticks)} ticks during blocking verify"
-        )
+        assert len(ticks) >= 10, f"event loop stalled — only {len(ticks)} ticks during blocking verify"
+
+
+class TestTokenNotLogged:
+    """The raw ID token must never reach logs (#2712)."""
+
+    SECRET = "eyJSECRET-token-bytes.payload.signature"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("exc_type", [ValueError, GoogleAuthError, OSError])
+    async def test_failure_log_omits_token(self, caplog, exc_type):
+        caplog.set_level("DEBUG")
+        with patch("kg.google_auth.id_token.verify_oauth2_token") as mock_verify:
+            mock_verify.side_effect = exc_type(f"Can't parse segment: b'{self.SECRET}'")
+            with pytest.raises(HTTPException):
+                await google_auth.verify_google_token(self.SECRET, CLIENT_ID)
+        assert caplog.records
+        assert all("SECRET" not in r.getMessage() for r in caplog.records)
