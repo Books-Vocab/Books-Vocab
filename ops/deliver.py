@@ -118,7 +118,9 @@ Runner = Callable[[list[str], Path | None], Proc]
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> Proc:
-    done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+    )
     return Proc(done.returncode, done.stdout, done.stderr)
 
 

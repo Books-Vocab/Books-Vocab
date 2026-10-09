@@ -2360,3 +2360,12 @@ def test_a_merged_pr_without_closes_reads_no_issue() -> None:
     code, _ = ship(world, "--merge")
     assert code == 0
     assert _issue_views(world) == []
+
+
+def test_run_survives_non_utf8_output(tmp_path: Path) -> None:
+    """A check that prints invalid UTF-8 must not crash the delivery (#2770)."""
+    cmd = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'ok \\xff\\xfe bad')"]
+    done = deliver.run(cmd, tmp_path)
+    assert done.returncode == 0
+    assert done.stdout.startswith("ok ")
+    assert "bad" in done.stdout
