@@ -14,9 +14,10 @@ ceiling is therefore a decision, not a side effect.  ``ratchet`` only moves it
 down, so deletions are banked and cannot be spent again silently.
 
 A lane gate judges the change, not the trunk: an area over its ceiling only fails ``check`` when
-this change grew it by more than that area's ``slack`` versus the merge-base (``origin/main``,
-else ``main``); otherwise it is reported as ``inherited``.  Sibling lanes that each fit therefore
-all deliver without racing on a ceiling bump.  The absolute judgement belongs to ``--strict``
+this change added more than the headroom the area had at the merge-base (``origin/main``, else
+``main``), i.e. a base that is already red tolerates only a change that adds nothing; otherwise it
+is reported as ``inherited``.  A lane that rebases onto a sibling's red base must delete or raise
+the ceiling in its own PR.  The absolute judgement belongs to ``--strict``
 (CI runs it on push to ``main``, see ``ci_args``), so a red trunk is still caught;
 ``--base REF`` overrides the base.  With no usable base the absolute judgement applies, loudly.
 
@@ -138,14 +139,20 @@ def evaluate(
     budget: dict[str, Any],
     deltas: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """``deltas`` (lines this change added per area) lets an already-red area pass
-    unless the change grew it by more than its slack; without it the judgement is absolute."""
+    """``deltas`` (lines this change added per area) judges the change against the headroom the
+    area had at the merge-base: an area over its ceiling only fails when the change added more
+    than that headroom (so an already-red base tolerates only delta <= 0).  ``slack`` is the
+    ratchet's reset margin and plays no part here.  Without ``deltas`` the judgement is absolute."""
     rows = []
     for name in AREAS:
         ceiling = int(budget["ceilings"][name])
         now = measured[name]
         beyond = now > ceiling
-        grew = deltas is None or deltas.get(name, 0) > int(budget["slack"][name])
+        if deltas is None:
+            grew = True
+        else:
+            delta = deltas.get(name, 0)
+            grew = delta > max(0, ceiling - (now - delta))
         rows.append(
             {
                 "area": name,
@@ -182,7 +189,7 @@ def render(rows: list[dict[str, Any]], measured: dict[str, int]) -> str:
     for row in rows:
         mark = "OVER" if row["over"] else "base" if row["inherited"] else "ok  "
         note = (
-            "  inherited: over at base, this change adds within slack"
+            "  inherited: over at base, this change adds nothing"
             if row["inherited"]
             else ""
         )

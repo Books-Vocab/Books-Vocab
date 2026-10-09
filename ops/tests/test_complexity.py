@@ -281,27 +281,46 @@ def test_delta_ignores_data_files_like_measure_does(tmp_path: Path) -> None:
 # ---- review fixes (#2679): lane gate is delta-vs-slack, CI goes through the same entry ----
 
 
-def test_two_lanes_that_each_fit_the_headroom_both_pass_once_siblings_consumed_it() -> (
-    None
-):
-    # siblings already consumed the headroom (main is red); each lane adds 60 <= slack 100
-    budget = _budget()
-    budget["slack"]["ops"] = 100
-    red = {**MEASURED, "ops": 1090}
-    a = complexity.evaluate(red, budget, {"ops": 60})
-    b = complexity.evaluate({**red, "ops": 1150}, budget, {"ops": 60})
-    assert not any(r["over"] for r in a + b)
-    assert [r["inherited"] for r in a if r["area"] == "ops"] == [True]
+def _headroom_repo(tmp_path: Path) -> Path:
+    # base ops=30 lines, ceiling 40 (headroom 10), slack 50 (deliberately larger than the headroom)
+    repo = _git_repo(tmp_path, {"ops/a.py": "1\n" * 30, "ios/a.swift": "1\n"})
+    (repo / complexity.BUDGET_FILE).write_text(json.dumps(_budget(ops=40)))
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    _commit(repo, "base")
+    return repo
 
 
-def test_a_lane_whose_own_delta_exceeds_the_slack_still_fails_with_the_remedy(
+def test_a_lane_adding_more_than_the_headroom_fails_even_when_under_slack(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    repo = _over_base_repo(tmp_path)
-    (repo / "ops" / "big.py").write_text("1\n" * 60)  # slack ops=50
+    repo = _headroom_repo(tmp_path)
+    (repo / "ops" / "big.py").write_text("1\n" * 20)  # 20 > headroom 10, < slack 50
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
     assert "raise the ceiling" in capsys.readouterr().err
+
+
+def test_a_lane_adding_within_the_headroom_passes(tmp_path: Path) -> None:
+    repo = _headroom_repo(tmp_path)
+    (repo / "ops" / "small.py").write_text("1\n" * 10)  # exactly the headroom
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
+
+
+def test_sequential_lanes_the_one_rebased_onto_a_red_base_must_raise_the_ceiling(
+    tmp_path: Path,
+) -> None:
+    # Chosen tolerance rule: headroom at the merge-base, no slack and no sibling grace.
+    # Lane A fits the headroom and merges; lane B also fits the ORIGINAL headroom, but once rebased
+    # onto A's (now full) base it has none left, so it fails until it deletes or raises the ceiling.
+    repo = _headroom_repo(tmp_path)
+    (repo / "ops" / "a_lane.py").write_text("1\n" * 10)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
+    _commit(repo, "lane A merged")  # base is now exactly at the ceiling (40)
+    (repo / "ops" / "b_lane.py").write_text("1\n" * 5)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
 
 
 def test_no_usable_base_falls_back_to_absolute_and_says_so(
