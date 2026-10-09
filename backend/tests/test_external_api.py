@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -21,7 +22,15 @@ from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
 from kg.api_models.external_api import ExternalCardReviewRequest
 from kg.external_api_keys import list_api_keys
-from kg.external_api_rate_limit import ExternalRateLimiter, enrich_limiter, read_limiter, write_limiter
+from kg.external_api_rate_limit import (
+    ExternalRateLimiter,
+    auth_failure_limiter,
+    enrich_limiter,
+    read_limiter,
+    user_enrich_limiter,
+    user_write_limiter,
+    write_limiter,
+)
 from kg.settings import KGSettings
 
 
@@ -58,7 +67,14 @@ def external_api(tmp_path):
         )
     )
     external_router._OPERATIONS.clear()
-    for limiter in (read_limiter, write_limiter, enrich_limiter):
+    for limiter in (
+        read_limiter,
+        write_limiter,
+        enrich_limiter,
+        user_write_limiter,
+        user_enrich_limiter,
+        auth_failure_limiter,
+    ):
         limiter.reset()
 
     client = TestClient(app, raise_server_exceptions=False)
@@ -975,3 +991,83 @@ def test_operation_lookup_finds_runs_older_than_the_newest_10000(external_api, e
     assert oldest.json()["operationId"] == "oldestrun"
     assert oldest.json()["status"] == "succeeded"
     assert other.status_code == 404, other.text
+
+
+def _create_extra_key(ctx) -> tuple[str, str]:
+    response = ctx.client.post("/api/v1/api-keys", json={"label": "extra"}, headers=ctx.jwt_headers)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    return body["apiKey"], body["keyId"]
+
+
+def test_external_write_budget_is_shared_across_a_users_keys_issue_2805(external_api, monkeypatch):
+    """Create-use-revoke cycling must not mint a fresh write budget per key."""
+    key_limiter = ExternalRateLimiter(limit=100, window_seconds=60)
+    user_limiter = ExternalRateLimiter(limit=3, window_seconds=60)
+    monkeypatch.setattr(external_router, "write_limiter", key_limiter)
+    monkeypatch.setattr(external_router, "user_write_limiter", user_limiter)
+
+    statuses = []
+    for index in range(5):
+        api_key, key_id = _create_extra_key(external_api)
+        response = external_api.client.post(
+            "/api/v1/cards",
+            json={"content": f"cycle {index}", "meaning": "循環"},
+            headers={"X-KG-API-Key": api_key},
+        )
+        statuses.append(response.status_code)
+        revoked = external_api.client.delete(f"/api/v1/api-keys/{key_id}", headers=external_api.jwt_headers)
+        assert revoked.status_code == 200, revoked.text
+
+    assert statuses == [201, 201, 201, 429, 429]
+
+
+def test_external_enrich_budget_is_shared_across_a_users_keys_issue_2805(external_api, monkeypatch):
+    key_limiter = ExternalRateLimiter(limit=100, window_seconds=60)
+    user_limiter = ExternalRateLimiter(limit=1, window_seconds=60)
+    monkeypatch.setattr(external_router, "enrich_limiter", key_limiter)
+    monkeypatch.setattr(external_router, "user_enrich_limiter", user_limiter)
+
+    async def run():
+        user = {"id": external_api.user_id, "external_api_key_id": "k1"}
+        other = {"id": external_api.user_id, "external_api_key_id": "k2"}
+        stranger = {"id": "someone-else", "external_api_key_id": "k3"}
+        out = []
+        for u in (user, other, stranger):
+            try:
+                await external_router._admit_external(Response(), u, external_router.enrich_limiter)
+                out.append(True)
+            except HTTPException as exc:
+                assert exc.status_code == 429
+                out.append(False)
+        return out
+
+    assert asyncio.run(run()) == [True, False, True]
+
+
+def test_invalid_key_flood_is_throttled_per_ip_issue_2803(external_api, monkeypatch):
+    monkeypatch.setattr(external_router, "auth_failure_limiter", ExternalRateLimiter(limit=3, window_seconds=60))
+    bogus = "kg_" + "ab" * 16 + ".secret"
+    flood_ip = {"X-Forwarded-For": "203.0.113.9"}
+
+    codes = [
+        external_api.client.get("/api/v1/cards", headers={"X-KG-API-Key": bogus, **flood_ip}).status_code
+        for _ in range(5)
+    ]
+    assert codes == [401, 401, 401, 429, 429]
+
+    # Other clients and their valid keys keep working.
+    api_key = _create_key(external_api)
+    ok = external_api.client.get("/api/v1/cards", headers={"X-KG-API-Key": api_key, "X-Forwarded-For": "203.0.113.10"})
+    assert ok.status_code == 200, ok.text
+
+
+def test_valid_key_does_not_consume_auth_failure_budget_issue_2803(external_api, monkeypatch):
+    limiter = ExternalRateLimiter(limit=1, window_seconds=60)
+    monkeypatch.setattr(external_router, "auth_failure_limiter", limiter)
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key, "X-Forwarded-For": "203.0.113.11"}
+
+    codes = [external_api.client.get("/api/v1/cards", headers=headers).status_code for _ in range(4)]
+
+    assert codes == [200, 200, 200, 200]
