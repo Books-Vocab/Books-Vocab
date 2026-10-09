@@ -120,11 +120,17 @@ struct AddLinkSheet: View {
 
                 if coordinator.actionPhase == .failed, !showsCreationProgress {
                     let actionError = coordinator.actionError ?? .existingLinkFailed
-                    AppBanner(
-                        message: actionError.message,
-                        systemImage: "exclamationmark.triangle",
-                        onRetry: coordinator.canRetryLastAction ? { coordinator.retryLastAction() } : nil
-                    )
+                    VocabStateMessageCard(
+                        title: actionError.message,
+                        systemImage: "exclamationmark.triangle"
+                    ) {
+                        if coordinator.canRetryLastAction {
+                            Button(L10n.string("banner.action.retry")) { coordinator.retryLastAction() }
+                                .buttonStyle(.appCompactAction(.primary))
+                                .accessibilityIdentifier("addLink.error.retry")
+                        }
+                    }
+                    .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("addLink.error.reason")
                     .accessibilityValue(actionError.reason)
@@ -143,7 +149,8 @@ struct AddLinkSheet: View {
                 } else {
                     if creationCoordinator.phase == .blocked,
                        let message = creationCoordinator.message {
-                        AppBanner(message: message, systemImage: "exclamationmark.triangle")
+                        VocabStateMessageCard(title: message, systemImage: "exclamationmark.triangle")
+                            .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                     }
 
                     searchField(returnBehavior, in: snapshot)

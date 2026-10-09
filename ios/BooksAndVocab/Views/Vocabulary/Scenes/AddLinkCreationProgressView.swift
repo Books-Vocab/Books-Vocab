@@ -28,7 +28,7 @@ struct AddLinkCreationProgressView: View {
         VStack(alignment: .leading, spacing: appSkin.spacing.tinyGap) {
             if let message = coordinator.message {
                 if coordinator.phase == .failed || coordinator.phase == .succeededWithWarnings {
-                    AppBanner(message: message, systemImage: bannerSystemImage)
+                    VocabStateMessageCard(title: message, systemImage: bannerSystemImage)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier(
                             coordinator.phase == .succeededWithWarnings
@@ -36,7 +36,12 @@ struct AddLinkCreationProgressView: View {
                                 : "addLink.creation.error"
                         )
                 } else {
-                    AppBanner(message: message, systemImage: bannerSystemImage)
+                    // In-flight status: the progress panel below owns the lifecycle, so the
+                    // line is plain status text, not a banner.
+                    Text(message)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if isFailed, let failure = coordinator.failure {
                     Color.clear
