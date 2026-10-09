@@ -17,6 +17,7 @@
 睡眠超過 timeout 的 batch 驗證：函式必須在 timeout 內回收、把卡住的 batch 標為
 stuck 並 raise，而非等到睡眠結束。
 """
+
 import time
 
 import pytest
@@ -31,8 +32,17 @@ def _batch(text: str):
 def test_stuck_batch_fails_within_wallclock(monkeypatch):
     monkeypatch.setattr(synthesize, "TTS_BATCH_TIMEOUT", 1)
 
-    def stub(client, speech_config, prompt, index, total,
-             batch_words, turns_count, cache_path, episode_label):
+    def stub(
+        client,
+        speech_config,
+        prompt,
+        index,
+        total,
+        batch_words,
+        turns_count,
+        cache_path,
+        episode_label,
+    ):
         if index == 2:
             time.sleep(8)  # >> timeout：模擬卡死的 Gemini 呼叫
         return index, object()
@@ -63,8 +73,17 @@ def test_timeout_is_episode_wide_not_per_batch(monkeypatch):
     monkeypatch.setattr(synthesize, "TTS_BATCH_TIMEOUT", 2)
     monkeypatch.setattr(synthesize, "TTS_MAX_CONCURRENT", 1)
 
-    def stub(client, speech_config, prompt, index, total,
-             batch_words, turns_count, cache_path, episode_label):
+    def stub(
+        client,
+        speech_config,
+        prompt,
+        index,
+        total,
+        batch_words,
+        turns_count,
+        cache_path,
+        episode_label,
+    ):
         time.sleep(1.2)  # 單 batch < timeout，三個串行 3.6s > 2s
         return index, object()
 
