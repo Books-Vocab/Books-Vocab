@@ -13,11 +13,17 @@ that are otherwise easy to regress:
 from __future__ import annotations
 
 import logging
+from contextlib import closing
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+from sqlalchemy import text as sa_text
+from sqlmodel import Session
+
 from kg.api_models import ReviewStateEntry
+from kg.cards import CardStore
 from kg.vocab_review import push_review_states
 
 
@@ -489,3 +495,95 @@ class TestPushReviewStatesFakes:
         assert updated.review_streak == 4
         assert updated.last_review_feedback == 1
         assert updated.last_reviewed_at == newer_last
+
+
+class TestPushReviewStatesRealStore:
+    """Real CardStore: the CAS guard must not depend on stored timestamp text."""
+
+    @pytest.mark.parametrize(
+        "stored",
+        ["2026-01-01 00:00:00", "2026-01-01T00:00:00.500000", "2026-01-01 00:00:00.000000+00:00"],
+    )
+    def test_client_newer_push_lands_for_non_canonical_stored_text(self, tmp_path, stored):
+        with closing(CardStore(tmp_path / "cards.db")) as store:
+            card = store.add("run", meaning="x")
+            with Session(store.engine) as session:
+                session.exec(
+                    sa_text("UPDATE card SET last_reviewed_at = :v, review_count = 3 WHERE id = :i").bindparams(
+                        v=stored, i=card.id
+                    )
+                )
+                session.commit()
+            result = push_review_states(
+                [
+                    _entry(
+                        word="run",
+                        card_id=card.id,
+                        last_reviewed_at=_iso(datetime.now(UTC) - timedelta(minutes=1)),
+                        review_count=4,
+                    )
+                ],
+                cards_store=store,
+                logger=logging.getLogger(),
+            )
+            assert result == {"updated": 1, "skipped": 0}
+            assert store.get(card.id).review_count == 4
+
+    def test_skew_shift_against_real_store(self, tmp_path):
+        with closing(CardStore(tmp_path / "cards.db")) as store:
+            card = store.add("run", meaning="x")
+            skew = timedelta(days=1)
+            now = datetime.now(UTC)
+            push_review_states(
+                [
+                    _entry(
+                        word="run",
+                        card_id=card.id,
+                        last_reviewed_at=_iso(now + skew),
+                        next_review_at=_iso(now + skew + timedelta(hours=24)),
+                    )
+                ],
+                cards_store=store,
+                logger=logging.getLogger(),
+            )
+            nxt = store.get(card.id).next_review_at.replace(tzinfo=UTC)
+            assert abs(nxt - (now + timedelta(hours=24))) < timedelta(seconds=30)
+
+
+class TestPushReviewStatesEdgeCases:
+    def test_absurd_skew_overflow_sets_next_review_none(self):
+        card = _ReviewCard(id="c1", content="run", next_review_at=datetime.now(UTC))
+        store = _FakeCardsStore([card])
+        push_review_states(
+            [
+                _entry(
+                    word="run",
+                    card_id="c1",
+                    last_reviewed_at="9999-12-31T00:00:00+00:00",
+                    next_review_at="0001-01-02T00:00:00+00:00",
+                )
+            ],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+        assert card.next_review_at is None
+        assert card.review_count == 1
+
+    def test_conflict_on_every_attempt_skips_and_warns(self, caplog):
+        card = _ReviewCard(id="c1", content="run")
+        store = _FakeCardsStore([card])
+        real = store.batch_update_if_unchanged
+
+        def racing(updates):
+            card.review_count += 1  # a concurrent writer wins before every CAS
+            return real(updates)
+
+        store.batch_update_if_unchanged = racing
+        with caplog.at_level(logging.WARNING):
+            result = push_review_states(
+                [_entry(word="run", card_id="c1", last_reviewed_at=_iso(datetime.now(UTC)), review_count=1)],
+                cards_store=store,
+                logger=logging.getLogger("t"),
+            )
+        assert result == {"updated": 0, "skipped": 1}
+        assert "kept conflicting" in caplog.text

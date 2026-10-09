@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc, normalize_nfc_lower
 from .model import Card
+from .query import _epoch_microseconds, _stored_timestamp_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -412,6 +413,9 @@ class CardMutationMixin:
         a concurrent writer that changed any guarded column makes it a no-op.
         Returns the ids that were not written (conflicted, deleted or missing)
         so the caller can re-read and re-merge instead of clobbering.
+
+        ``updated_at`` (the pull-sync cursor) is always bumped, so callers must
+        pass only effective changes.
         """
         if not updates:
             return []
@@ -422,7 +426,14 @@ class CardMutationMixin:
                 conditions = [Card.id == card_id, Card.is_deleted.is_(False)]
                 for column, value in expected.items():
                     attr = getattr(Card, column)
-                    conditions.append(attr.is_(None) if value is None else attr == value)
+                    if value is None:
+                        conditions.append(attr.is_(None))
+                    elif isinstance(value, datetime):
+                        # Compare by UTC instant: stored text may lack microseconds,
+                        # use a T separator or carry an offset.
+                        conditions.append(_stored_timestamp_key(attr) == _epoch_microseconds(value))
+                    else:
+                        conditions.append(attr == value)
                 result = session.exec(sa_update(Card).where(*conditions).values(**kw, updated_at=now))
                 if result.rowcount == 0:
                     rejected.append(card_id)
