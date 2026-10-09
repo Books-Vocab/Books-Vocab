@@ -281,7 +281,7 @@ cmd_env_drift() {
   local remote_real_dir
   remote_real_dir=$(run_remote "cd $REMOTE_DIR >/dev/null 2>&1 && pwd")
   "$DEVOPS_SCRIPT_DIR/ops/env_drift.py" \
-    "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "/app" "$SERVER"
+    "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$remote_real_dir" "$SERVER"
 }
 
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
@@ -333,7 +333,10 @@ cmd_deploy() {
   # json-file log（`docker-logs` 查得到的範圍）；游標對齊餵著 smoke gate 與 Sentry release，
   # 值這個價。ops/kg_reconcile.sh 的同一條命令另有取捨與一個已知缺口，見 IMP-0056。
   section "重新編譯並啟動容器"
-  run_remote "cd $REMOTE_DIR && docker compose up -d --build --force-recreate 2>&1 | tail -20"
+  # 不可寫成 `... 2>&1 | tail -20`：遠端 shell 無 pipefail，退出碼會變成 tail 的 0，build 失敗被吞、
+  # 舊容器照常 200（#2278）。先捕獲輸出與 rc，印尾 20 行，再以 compose 的 rc 退出。
+  run_remote "cd $REMOTE_DIR && { out=\$(docker compose up -d --build --force-recreate 2>&1); rc=\$?; printf '%s\\n' \"\$out\" | tail -20; exit \$rc; }" \
+    || err "docker compose up --build 失敗（舊容器可能仍在服務），中止部署；未記錄 deploy.log／Sentry release"
 
   # ── Step 3: 健康驗證（直連 standby localhost）──
   section "健康驗證"
@@ -364,20 +367,21 @@ cmd_deploy() {
   if [[ "$reported_version" == "$deploy_sha" ]]; then
     ok "Sentry release = kg-backend@${deploy_sha} (api/system/info 對齊)"
   else
-    echo "⚠ /api/system/info 回報 version=${reported_version:-unknown} 但部署 sha=${deploy_sha}" >&2
+    # 致命（含 KG_SKIP_SMOKE=1）：版本不符＝舊容器仍在服務，不可記成已部署（#2278）。
+    err "/api/system/info 回報 version=${reported_version:-unknown} 但部署 sha=${deploy_sha}：容器未換成新版，中止（不記 deploy.log／Sentry）"
   fi
   if [[ "$sentry_on" != "true" ]]; then
     echo "⚠⚠ 生產 backend Sentry 未啟用（sentry=${sentry_on:-unknown}）：backend crash 不會被看到。" >&2
     echo "   修法：felix ~/kg-prod/backend/.env 加 SENTRY_DSN=<backend project DSN>，再 docker compose up -d --build --force-recreate（docs/sop/deploy.md §Sentry）" >&2
   fi
 
-  # ── 記錄部署日誌 ──
+  # ── 部署後 smoke verify（外部視角，確認 CF→tunnel→standby 全鏈路 + 版本對齊）──
+  verify_post_deploy "$deploy_sha"
+
+  # ── 記錄部署日誌（驗證通過後才記，#2278）──
   mkdir -p "$BACKUP_DIR"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$deploy_sha user=$(whoami)" >> "$deploy_log"
   info "部署記錄已追加至 $deploy_log"
-
-  # ── 部署後 smoke verify（外部視角，確認 CF→tunnel→standby 全鏈路 + 版本對齊）──
-  verify_post_deploy "$deploy_sha"
 
   # ── Sentry release + deploy 紀錄（best-effort；smoke 通過才走到這裡）──
   section "Sentry release 紀錄"
