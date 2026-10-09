@@ -1121,6 +1121,65 @@ echo "$cl_new" | grep -q 'dark app icon' && ok "feat(ios) title counted as New" 
 echo "$cl_d" | grep -q 'tidy the reader margins' && ok "path-only ios commit counted" || fail_t "path-only ios commit missed: $cl_d"
 echo "$cl_d" | grep -q '^## Unreleased' && ok "--draft prints an Unreleased section" || fail_t "no Unreleased header: $cl_d"
 
+# 真 merge-commit 路徑：merge body 首行常是 PR 最後一個 commit 主旨（#2411 body=test(...) 實為 entitlement 修復）。
+section "changelog: real PR titles, needs-curation list, word boundaries, bad input"
+fx_cm="$TMP5/changelog-api"
+mkdir -p "$fx_cm/ops/lib" "$fx_cm/backend/src/kg"
+cp "$CHANGELOG" "$fx_cm/ops/"
+[[ ! -f "$TAGLIB" ]] || cp "$TAGLIB" "$fx_cm/ops/lib/"
+git init -q -b main "$fx_cm"
+git -C "$fx_cm" config user.name "Release Test"
+git -C "$fx_cm" config user.email "release-test@example.invalid"
+echo 0 > "$fx_cm/backend/src/kg/billing.py"
+git -C "$fx_cm" add -A && git -C "$fx_cm" commit -q -m "chore: seed"
+cm_run() { KG_PR_TITLES_FILE="${CM_TITLES:-/dev/null}" bash "$fx_cm/ops/release_changelog.sh" "$@"; }
+cm_empty="$(cm_run api 2>&1)"
+echo "$cm_empty" | grep -q '自 initial' && echo "$cm_empty" | grep -q 'seed' \
+  && ok "no tag: whole history is the range ('initial')" || fail_t "no-tag range wrong: $cm_empty"
+git -C "$fx_cm" tag api/1.0.0
+cm_empty="$(cm_run api --draft 2>&1)" && cm_rc=0 || cm_rc=$?
+echo "$cm_empty" | grep -q '無變更（自 api/1.0.0' && [ "$cm_rc" = 0 ] \
+  && ok "empty range prints 無變更 and exits 0" || fail_t "empty range wrong rc=$cm_rc: $cm_empty"
+cm_pr() {  # <n> <branch> <file-content> <commit-subject> ：在 branch 上改 billing.py 後 --no-ff 合併，body 首行 = commit 主旨
+  git -C "$fx_cm" checkout -q -b "$2"
+  echo "$3" >> "$fx_cm/backend/src/kg/billing.py"
+  git -C "$fx_cm" commit -q -am "$4"
+  git -C "$fx_cm" checkout -q main
+  git -C "$fx_cm" merge -q --no-ff -m "Merge pull request #$1 from Books-Vocab/$2" -m "$4" "$2"
+}
+cm_pr 2411 lane-grace x1 "test(billing): grace-period entitlement fixture"
+cm_pr 2412 lane-cache x2 "speed up the latest cache lookups"
+cm_pr 2413 lane-zh x3 "新增 發票匯出"
+printf '2411\tfix(billing): bound grace-period entitlement by grace_period_expires_at\n2413\t新增 發票匯出\n' > "$TMP5/cm_titles.tsv"
+cm_off="$(cm_run api --draft 2>&1)"
+echo "$cm_off" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'grace-period entitlement fixture' \
+  && fail_t "offline fallback should keep the (misleading) body title as internal: $cm_off" \
+  || ok "without a real title the test(...) body stays internal"
+echo "$cm_off" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'grace-period entitlement fixture' \
+  && ok "source-touching internal merge is listed under needs-curation" || fail_t "needs-curation list missing it: $cm_off"
+cm_on="$(CM_TITLES="$TMP5/cm_titles.tsv" cm_run api --draft 2>&1)"
+echo "$cm_on" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'bound grace-period entitlement.*#2411' \
+  && ok "real PR title (seam) classifies #2411 as Fixed, with the PR number appended" || fail_t "real title ignored: $cm_on"
+echo "$cm_on" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'grace' \
+  && fail_t "classified-correctly merge still listed as needs-curation: $cm_on" || ok "correctly classified merge is not in needs-curation"
+echo "$cm_on" | awk '/^#### Improved/{f=1;next} /^#/{f=0} f' | grep -q 'latest cache' \
+  && ok "'latest' does not match the test keyword (word boundary)" || fail_t "'speed up the latest cache' misclassified: $cm_on"
+echo "$cm_on" | awk '/^### Internal/{f=1;next} /^###/{f=0} f' | grep -q '共 0 項' \
+  && ok "no merge counted internal once real titles apply" || fail_t "internal count wrong: $cm_on"
+echo "$cm_on" | grep -q '新增 發票匯出' \
+  && ok "non-ASCII PR title survives the title map and classifier" || fail_t "non-ASCII title lost: $cm_on"
+echo "$cm_on" | awk '/^#### New/{f=1;next} /^#/{f=0} f' | grep -q '新增 發票匯出' \
+  && ok "新增 title is classified New" || fail_t "新增 title misclassified: $cm_on"
+cm_bad="$(cm_run api --draft no-such-ref 2>&1 >/dev/null)" && cm_rc=0 || cm_rc=$?
+{ [ "$cm_rc" -ne 0 ] && echo "$cm_bad" | grep -q 'no-such-ref'; } \
+  && ok "invalid since-ref: clear stderr message and non-zero exit" || fail_t "invalid ref rc=$cm_rc: $cm_bad"
+cm_bad="$(cm_run api --drat 2>&1 >/dev/null)" && cm_rc=0 || cm_rc=$?
+{ [ "$cm_rc" -ne 0 ] && echo "$cm_bad" | grep -q '用法'; } \
+  && ok "unknown second argument rejected with usage" || fail_t "--drat accepted rc=$cm_rc: $cm_bad"
+cm_bad="$(cm_run api --draft api/1.0.0 extra 2>&1 >/dev/null)" && cm_rc=0 || cm_rc=$?
+[ "$cm_rc" -ne 0 ] && ok "extra trailing argument rejected" || fail_t "trailing arg accepted: $cm_bad"
+git -C "$fx_cm" checkout -q main
+
 # ── 19. shipped ios：驗證式物化上架 tag（非背書式） ─────────────────────────
 # 「哪顆 build 上架了」的 owner 是 ASC，「哪顆 commit 產生它」的 owner 是 repo。
 # shipped 做的是這兩者的 join，而且只在確認上架後才物化成 ios/<x.y.z>。

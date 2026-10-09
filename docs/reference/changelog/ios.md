@@ -5,16 +5,16 @@ update_trigger: release-change
 scope:
   - ios/BooksAndVocab/
   - ops/release_changelog.sh
-verified_against: ef8865009fe67511d8722f49873722fd4024f02a
+verified_against: 3d929f414bfb4b61aec283aea70f40db7acf739c
 -->
 # iOS changelog
 
 最新在上，一版一節。每節：zh-Hant 使用者說明（商店在地化語言）＋ en 短版 → Changes（New／Improved／Fixed，只列使用者看得到的）→ Internal 一行 → Builds 表。zh-Hant／en 區塊同時是 App Store「What's New」來源，各 ≤ 4000 字元，貼進 ASC 前不得含條目編號或內部用語。
 
-維護契約：每個合併進 main 的使用者可見變更，發版 agent 在發版前用 `./ops/release_changelog.sh ios --draft [<since-ref>]` 產生草稿、策展後貼進 `## Unreleased`。`./ops/release.sh release ios <ver>` 必須在**候選 commit 內**把 `## Unreleased` 改名為 `## <ver>` 並補日期與 Builds 表，再重開空的 `## Unreleased`（release.sh 由另一條 lane 擁有，目前尚未自動化這一步，由發版 agent 手動在同一候選 commit 完成）。不列：test／fixture／chore／ci／refactor／docs／ops、被 feature flag 關閉的功能（Release 的 podcast 為 off，見 `KGFeatureFlags.swift`）、同一週期內加了又撤回的功能（淨額為零）。
+維護契約：每個合併進 main 的使用者可見變更，發版 agent 在發版前用 `./ops/release_changelog.sh ios --draft <since-ref>` 產生草稿（`<since-ref>` 必須明確帶：預設起點是最近的 released tag `ios/x.y.z`，而 `ios/2.0.1` 尚未物化〔上架狀態待 ASC 確認〕，預設會錨在 `ios/2.0.0` 而重複列出 2.0.1 的變更。起點取「最近一個實際上傳／送審的 build tag」，現為 `ios/2.0.1+12`；待 `./ops/release.sh shipped ios` 物化 `ios/2.0.1` 後，起點改用該 tag，或省略即可）、策展後貼進 `## Unreleased`。`./ops/release.sh release ios <ver>` 必須在**候選 commit 內**把 `## Unreleased` 改名為 `## <ver>` 並補日期與 Builds 表，再重開空的 `## Unreleased`（release.sh 由另一條 lane 擁有，目前尚未自動化這一步，由發版 agent 手動在同一候選 commit 完成）。不列：test／fixture／chore／ci／refactor／docs／ops、被 feature flag 關閉的功能（Release 的 podcast 為 off，見 `KGFeatureFlags.swift`）、同一週期內加了又撤回的功能（淨額為零）。
 
 ## Unreleased
-（自 `ios/2.0.1+12`，截至 main `ef8865009`，2026-10-09）
+（自 `ios/2.0.1+12`，截至 main `3d929f414`，2026-10-09）
 
 ### 使用者說明（zh-Hant）
 新增連結（Add Link）全面改版：手動建立單字連結更穩、取消時立即移除待處理項目。閱讀器字級與標註控制統一、可調範圍有界。匯入 TXT 支援 GB18030／Big5 並正確處理特殊字元；同步、單字本與統計多處修正，包括跨帳號切換、刪除單字本、遠端改名與排序不穩。CSV 匯出已防範試算表公式注入；登入失敗時會顯示離線原因。更多介面字串補齊本地化。
@@ -26,7 +26,7 @@ Add Link is rebuilt: manual links are more reliable and cancelling clears the pe
 #### New
 - Add Link 整合（S1–S5）：警告可見且可重試、建立可重試、取消手動連結立即移除待處理佔位 (#2036, #2196)
 - 閱讀器字級與標註控制統一，字級顯示精確到 0.125 級
-- 複習牌組整合（#2025 #2045 #2046 #2047）；Explore 離線時顯示離線說明 (#2108)
+- 複習牌組整合（#2025 #2045 #2046 #2047）
 - TXT 匯入支援 GB18030／Big5，並清除 XML 不合法字元
 
 #### Improved
@@ -43,6 +43,7 @@ Add Link is rebuilt: manual links are more reliable and cancelling clears the pe
 - 書籍匯入：取消、失敗或被取代的匯入不再留下孤兒檔；刪除書籍時一併刪除 TXT／MD 原檔；取消檔案選擇器不再報錯
 - 圖譜：範圍限定在目前單字本、節點身分穩定、重新點擊會開啟詳情、力導向滑桿可歸零
 - 付費：訂閱商品載入狀態與取消不再誤報失敗；載入中停用管理訂閱按鈕
+- Explore：離線時正確顯示離線說明（先前 `KGError.offline` 與被包裝的 `URLError` 未被判為離線）；離線說明本身 2.0.1 已有 (#2108)
 - CSV 匯出防範公式注入；Markdown 底線強調依 CommonMark 規則；解釋重試只重跑解釋
 
 ### Internal

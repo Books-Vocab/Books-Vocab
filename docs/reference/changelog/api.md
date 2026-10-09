@@ -6,22 +6,22 @@ scope:
   - backend/src/kg/api.py
   - backend/src/kg/routers/
   - ops/release_changelog.sh
-verified_against: ef8865009fe67511d8722f49873722fd4024f02a
+verified_against: 3d929f414bfb4b61aec283aea70f40db7acf739c
 -->
 # API changelog
 
 最新在上，一版一節；版號即 `backend/src/kg/api.py` 的 FastAPI `version`，對應 tag `api/x.y.z`。每節：zh-Hant 與 en 的 API 使用者（iOS app、Pro 外部整合）可感知摘要 → Changes（New／Improved／Fixed，只列 client 看得到的行為）→ Internal 一行。
 
-維護契約：每個合併進 main 的 client 可見後端變更，發版 agent 用 `./ops/release_changelog.sh api --draft [<since-ref>]` 產生草稿、策展後貼進 `## Unreleased`。`./ops/release.sh release backend <ver>` 必須在**候選 commit 內**把 `## Unreleased` 改名為 `## <ver>`、補日期，再重開空的 `## Unreleased`（release.sh 由另一條 lane 擁有，目前尚未自動化這一步，由發版 agent 手動在同一候選 commit 完成）。不列：test／ci／refactor／docs／ops／純格式化，以及同一週期內加了又撤回的功能。「Unreleased」的定義是 `origin/prod..origin/main`（prod 即線上版本）。
+維護契約：每個合併進 main 的 client 可見後端變更，發版 agent 用 `./ops/release_changelog.sh api --draft origin/prod` 產生草稿（api 一律明確帶 `origin/prod`：預設起點是最近的 `api/x.y.z` tag，而 `api/2.0.4` 缺漏，預設會錨在 `api/2.0.3` 而重複列出 2.0.4 已出貨的變更）、策展後貼進 `## Unreleased`。`./ops/release.sh release backend <ver>` 必須在**候選 commit 內**把 `## Unreleased` 改名為 `## <ver>`、補日期，再重開空的 `## Unreleased`（release.sh 由另一條 lane 擁有，目前尚未自動化這一步，由發版 agent 手動在同一候選 commit 完成）。不列：test／ci／refactor／docs／ops／純格式化，以及同一週期內加了又撤回的功能。「Unreleased」的定義是 `origin/prod..origin/main`（prod 即線上版本）。
 
 ## Unreleased
-（`origin/prod` `91dc4d4ea` 之後，截至 main `ef8865009`，2026-10-09）
+（`origin/prod` `91dc4d4ea` 之後，截至 main `3d929f414`，2026-10-09）
 
 ### 摘要（zh-Hant）
-超出範圍或非有限數值的輸入現在回 400／422，而非 500；新增靜態頁 HEAD、robots.txt、sitemap.xml 與 favicon。共享牌組複製的卡片會被增量同步拉到，封存／刪除單字會讓相連單字同步更新。帳號刪除會清除全域日誌與訂閱索引。
+超出範圍或非有限數值的輸入現在回 400／422，而非 500；新增靜態頁 HEAD、robots.txt、sitemap.xml 與 favicon。共享牌組複製的卡片會被增量同步拉到，封存／刪除單字會讓相連單字同步更新。帳號刪除會清除全域日誌與訂閱索引。寬限期（billing grace period）訂閱的權限改以 Apple 提供的寬限到期時間為界，不再無限期保留。
 
 ### Summary (en)
-Out-of-range and non-finite inputs now return 400/422 instead of 500; static pages answer HEAD and robots.txt, sitemap.xml and favicon.ico are served. Copied shared-deck cards reach incremental pulls, archiving or deleting a word refreshes its linked peers, and account deletion also purges global log stores and the subscription index.
+Out-of-range and non-finite inputs now return 400/422 instead of 500; static pages answer HEAD and robots.txt, sitemap.xml and favicon.ico are served. Copied shared-deck cards reach incremental pulls, archiving or deleting a word refreshes its linked peers, and account deletion also purges global log stores and the subscription index. Billing-grace-period entitlement is now bounded by Apple's grace expiry instead of lasting indefinitely.
 
 ### Changes
 #### New
@@ -30,12 +30,15 @@ Out-of-range and non-finite inputs now return 400/422 instead of 500; static pag
 - 卡片回應帶出 reader／review 偏好；翻譯結果快取前先驗證型別；LLM 供應商路由於啟動時驗證
 - 手動連結先經 judge 再解除封鎖，刪除已棄用連結會被拒絕；連結變更的 reconcile 只掃被改的一對
 - 計費：embedding 與 chat prompt-cache 價格校正；已驗證的同步／對帳可通過通知水位
+- review-event 增量拉取改走索引（`ingested_at` 一次性遷移為標準 UTC 格式），順序不變 (#2387)
 #### Fixed
 - 輸入：審查事件時間戳超出範圍回 400；非有限驗證輸入回 422；review counter 上限 int32、notebook sort_order 超界回 422；`DeckCopyRequest.notebookName` ≤ 100 字；單字 root_form 與 source 欄位有長度上限
 - 同步：共享牌組複製的卡片在揭示時重新戳記；封存／取消封存／刪除單字會觸碰相連卡片的 `updated_at`；ops 連結操作與卡片搬移同理；筆記本於請求中途被刪除時卡片改寫入墓碑
+- 計費：寬限期（`grace_period`）權限以 `grace_period_expires_at`（Apple 的 `gracePeriodExpiresDate`）為界；舊資料無此欄位時退回 `expires_at` + 16 天，兩者皆無則視為無權限（先前寬限期內的訂閱永遠視為有效）(#2411，修復 commit `699171fca`)
 - 單字：混合大小寫字詞不再被 `_clean_content` 破壞；與靜態 PATCH 路徑同名的單字內容編輯可轉發；客戶端 highlight 保留、範例單字依邊界比對
 - 帳號：連結帳號的 email 變更時保留 canonical；自刪帳號會清訂閱索引，且只解析仍存在的擁有者；清除全域日誌；管理員授權的 `expires_at` 須為合法值，避免髒資料變成永久 Pro
-- 安全／可觀測：`X-KG-API-Key` 自 Sentry 事件清除；`X-Request-ID` 淨化；5xx 錯誤保留上游狀態
+- Podcast：`series_id` 上限 64 字元；找不到音訊格式的請求回 404，不再預設為 m4a；音訊格式快取有上限 (#2396)
+- 安全／可觀測：網站回應現在確實帶 HSTS（TLS 終止於 Cloudflare，原本以 request scheme 判斷而恆不送，改依設定的公開 https 網址）(#2399)；`X-KG-API-Key` 自 Sentry 事件清除；`X-Request-ID` 淨化；5xx 錯誤保留上游狀態
 
 ### Internal
 embedding store 檔案鎖與 SQLite 路徑統一走鎖定的 data root、pytest 每程序獨立 KG_DATA_DIR、pipeline 錯誤隔離、死碼移除與 ruff 格式化。
