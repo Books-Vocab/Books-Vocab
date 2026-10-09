@@ -355,7 +355,7 @@ def review_bots(workflow: str) -> tuple[str, ...]:
     return tuple(bots)
 
 
-BOT_DOWN_MARKERS = ("review unavailable", "usage limit")
+QUOTA_MARKER = "usage limit"
 
 
 def review_verdict(runs: list[dict[str, Any]]) -> str | None:
@@ -382,18 +382,35 @@ def review_verdict(runs: list[dict[str, Any]]) -> str | None:
     return next((v for v in ("success", "neutral") if v in verdicts), None)
 
 
-def bot_down(runs: list[dict[str, Any]]) -> bool:
-    """Whether a completed neutral `agent-review` run says the bot never answered.
+def quota_text(text: Any) -> bool:
+    return QUOTA_MARKER in str(text or "").lower()
 
-    agent-review.yml posts neutral "Independent agent review unavailable" when
-    no exact-head review arrived; a quota reply ("usage limits") reads the same.
+
+def bot_down(runs: list[dict[str, Any]]) -> bool:
+    """Whether a completed neutral `agent-review` run itself reports a quota stop.
+
+    The workflow's own neutral title ("review unavailable") is posted on every
+    neutral, so it is no evidence: the bot may still review later.
     """
-    for run in runs:
-        if run.get("status") != "completed" or run.get("conclusion") != "neutral":
-            continue
-        out = run.get("output") or {}
-        text = f"{out.get('title') or ''} {out.get('summary') or ''}".lower()
-        if any(m in text for m in BOT_DOWN_MARKERS):
+    return any(
+        quota_text(
+            f"{(r.get('output') or {}).get('title')} {(r.get('output') or {}).get('summary')}"
+        )
+        for r in runs
+        if r.get("status") == "completed" and r.get("conclusion") == "neutral"
+    )
+
+
+def quota_reply(items: list[dict[str, Any]], since: str, bots: tuple[str, ...]) -> bool:
+    """A comment/review by the review bot saying it is out of quota, at or after ``since``."""
+    for item in items:
+        posted = str(item.get("created_at") or item.get("submitted_at") or "")
+        if (
+            (item.get("user") or {}).get("login") in bots
+            and quota_text(item.get("body"))
+            and since
+            and posted >= since
+        ):
             return True
     return False
 
@@ -1022,6 +1039,31 @@ class Delivery:
                 mine.append(run)
         return mine
 
+    def bot_out_of_quota(
+        self, repo: str, number: int, head: str, bots: tuple[str, ...]
+    ) -> bool:
+        """Positive evidence the review bot refused for quota after this head existed."""
+        since = must(
+            self.runner,
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{head}",
+                "--jq",
+                ".commit.committer.date",
+            ],
+            self.home,
+            "read head commit date",
+        ).stdout.strip()
+        return any(
+            quota_reply(
+                self.gh_pages(f"repos/{repo}/{kind}/{number}/{leaf}?per_page=100"),
+                since,
+                bots,
+            )
+            for kind, leaf in (("issues", "comments"), ("pulls", "reviews"))
+        )
+
     def review_gate(self, repo: str, number: int) -> dict[str, Any]:
         """Settle `agent-review` on the PR's exact head before it may be queued."""
         view = json.loads(
@@ -1052,7 +1094,11 @@ class Delivery:
             mine = self.runs_of_pr(repo, number, head_ref, listed, owners)
             foreign[0] = sum(r.get("name") == REVIEW_CHECK for r in listed) - len(mine)
             seen[0] = review_verdict(mine)
-            if seen[0] == "neutral" and (no_review or bot_down(mine)):
+            if seen[0] == "neutral" and (
+                no_review
+                or bot_down(mine)
+                or self.bot_out_of_quota(repo, number, head, bots)
+            ):
                 return "neutral"  # settled for good: do not wait out --timeout
             return seen[0] if seen[0] in ("success", "failure") else None
 
