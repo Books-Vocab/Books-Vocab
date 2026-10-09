@@ -121,4 +121,50 @@ grep -F 'release_build_lock' <<<"$rebuild_body" >/dev/null \
 grep -F 'return "$preflight_rc"' <<<"$rebuild_body" >/dev/null \
   || fail "ios_test disk-budget block does not propagate the preflight exit (75 temporary / 77 structural)"
 
+# ── --clean-cache must honour the build lock and active-consumer liveness (#2819) ──
+clean_root="$tmp/clean-cache"
+clean_lock="$tmp/clean.lock"
+mkdir -p "$clean_root"
+run_clean() {
+  KG_IOS_TEST_CACHE_ROOT="$clean_root" KG_IOS_BUILD_LOCK_FILE="$clean_lock" "$TEST" --clean-cache --timeout 2
+}
+clean_dd="$(KG_IOS_TEST_CACHE_ROOT="$clean_root" KG_IOS_BUILD_LOCK_FILE="$clean_lock" "$TEST" --cache-status --json 2>/dev/null \
+  | sed -n 's/.*"derivedDataRoot": "\(.*\)".*/\1/p' | head -1)"
+[[ -n "$clean_dd" && "$clean_dd" == "$clean_root"/* ]] || fail "could not resolve hermetic derived-data root for clean-cache test"
+
+# fresh liveness touch (active consumer) -> refuse, directory survives
+mkdir -p "$clean_dd/Build"
+touch "$clean_dd"
+if run_clean >"$tmp/clean-live.out" 2>"$tmp/clean-live.err"; then
+  fail "--clean-cache deleted a key with a fresh liveness touch"
+fi
+[[ -d "$clean_dd/Build" ]] || fail "--clean-cache removed an actively used cache key"
+grep -F 'active consumer' "$tmp/clean-live.err" >/dev/null \
+  || fail "--clean-cache refusal is not actionable"
+
+# held build lock -> clean waits, times out non-zero, directory survives
+if command -v shlock >/dev/null 2>&1; then
+  touch -t 200001010000 "$clean_dd"
+  sleep 60 &
+  lock_holder=$!
+  shlock -f "$clean_lock" -p "$lock_holder" || fail "could not take hermetic build lock"
+  if run_clean >"$tmp/clean-lock.out" 2>"$tmp/clean-lock.err"; then
+    kill "$lock_holder" 2>/dev/null || true
+    fail "--clean-cache deleted a key while the build lock was held"
+  fi
+  kill "$lock_holder" 2>/dev/null || true
+  wait "$lock_holder" 2>/dev/null || true
+  rm -f "$clean_lock"
+  [[ -d "$clean_dd/Build" ]] || fail "--clean-cache removed the cache while the build lock was held"
+fi
+
+# idle key (stale touch, no lock) -> clean succeeds; fresh touch + force -> also succeeds
+touch -t 200001010000 "$clean_dd"
+run_clean >"$tmp/clean-idle.out" 2>&1 || fail "--clean-cache refused an idle key"
+[[ ! -e "$clean_dd" ]] || fail "--clean-cache left an idle key behind"
+mkdir -p "$clean_dd/Build"
+touch "$clean_dd"
+KG_IOS_CLEAN_CACHE_FORCE=1 run_clean >"$tmp/clean-force.out" 2>&1 || fail "forced --clean-cache failed"
+[[ ! -e "$clean_dd" ]] || fail "forced --clean-cache left the key behind"
+
 echo "PASS: ios build cache lifecycle"
