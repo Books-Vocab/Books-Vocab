@@ -37,6 +37,8 @@ EXIT_USAGE=64
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOCS_IMPACT="${KG_DOCS_IMPACT_BIN:-$SCRIPT_DIR/docs_impact.py}"
 cd "$(git rev-parse --show-toplevel)"
+LINT_TMP="$(mktemp -d "${TMPDIR:-/tmp}/kg_docs_lint.XXXXXX")"
+trap 'rm -rf "$LINT_TMP"' EXIT
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
 MODE="gate"
 SINCE_REV=""
@@ -104,9 +106,9 @@ emit_generated_diff() {
   id="$1"
   path="$2"
   generator="$3"
-  expected_tmp="/tmp/kg_docs_expected.$$"
-  actual_tmp="/tmp/kg_docs_actual.$$"
-  diff_tmp="/tmp/kg_docs_diff.$$"
+  expected_tmp="$LINT_TMP/expected"
+  actual_tmp="$LINT_TMP/actual"
+  diff_tmp="$LINT_TMP/diff"
   rm -f "$expected_tmp" "$actual_tmp"
   if sh -c "$generator" </dev/null >"$expected_tmp" 2>/dev/null && cat "$path" >"$actual_tmp"; then
     if diff -u "$expected_tmp" "$actual_tmp" >"$diff_tmp"; then
@@ -129,8 +131,8 @@ emit_generated_diff() {
 # (including exit 0 with no summary), is a tool failure, never a silent pass.
 validate_registry_sources() {
   reg="$1"
-  src_out="/tmp/kg_docs_sources.$$"
-  src_err="/tmp/kg_docs_sources_err.$$"
+  src_out="$LINT_TMP/sources"
+  src_err="$LINT_TMP/sources_err"
   set +e
   "$DOCS_IMPACT" --check-sources --registry "$reg" </dev/null >"$src_out" 2>"$src_err"
   src_rc=$?
@@ -165,7 +167,7 @@ validate_registry() {
     errors=$((errors+1))
     return
   fi
-  entries_tmp="/tmp/kg_docs_entries.$$"
+  entries_tmp="$LINT_TMP/entries"
   awk '
     function flush() { if (id != "") print "ENTRY\t" id "\t" path "\t" kind "\t" generator "\t" check }
     /^  - id:/ {
@@ -285,7 +287,7 @@ select_docs() {
 
 validate_conflict_markers() {
   file="$1"
-  hits="/tmp/kg_docs_conflict_hits.$$"
+  hits="$LINT_TMP/conflict_hits"
   if grep -nE '^<<<<<<< |^>>>>>>> ' "$file" >"$hits" 2>/dev/null; then
     echo "ERROR $file — 衝突標記殘留:"
     sed 's/^/    /' "$hits"
