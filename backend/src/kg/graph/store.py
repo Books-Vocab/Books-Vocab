@@ -237,7 +237,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             if links_snapshot is not None:
                 snap_store = self._resolve_snapshot_store()
                 if snap_store is not None:
-                    snap_store.maybe_save_periodic(self._event_notebook_id, links_snapshot)
+                    # #2689: 呼叫端的 links_snapshot 是 flush/emit 之前捕獲的,期間
+                    # 別的 mutation 可能已寫入;拿它蓋「現在」會讓 replay 漏掉那些
+                    # 事件。改成先取時間戳、再於鎖內重新捕獲,保證
+                    # ``ingested_at <= taken_at`` 的事件都已反映在 snapshot 內。
+                    taken_at = datetime.now(UTC)
+                    with self._lock:
+                        fresh = [lk.model_dump(mode="json") for lk in self._links.values()]
+                    snap_store.maybe_save_periodic(self._event_notebook_id, fresh, taken_at=taken_at)
         except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
             logger.warning(
                 "graph event emit failed (%d drafts, first=%s)",
