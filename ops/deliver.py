@@ -57,6 +57,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from delivery_control.adapters.operation_lock import OperationLock
+from delivery_control.domain.check_states import FAILURE_STATES, SUCCESS_STATES
 from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.services.pr_contract import (
     parse_body_holds,
@@ -119,7 +120,13 @@ Runner = Callable[[list[str], Path | None], Proc]
 
 def run(cmd: list[str], cwd: Path | None = None) -> Proc:
     done = subprocess.run(
-        cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
     return Proc(done.returncode, done.stdout, done.stderr)
 
@@ -1057,9 +1064,9 @@ class Delivery:
             "read checks",
         ).stdout
         state = required_state(json.loads(out or "[]"))
-        if state == "SUCCESS":
+        if state in SUCCESS_STATES:
             return state
-        if state in ("FAILURE", "ERROR", "CANCELLED"):
+        if state in FAILURE_STATES:
             raise DeliverError(f"required check is {state} on #{number}; see the PR")
         return None
 

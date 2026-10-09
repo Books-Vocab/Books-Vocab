@@ -2364,8 +2364,28 @@ def test_a_merged_pr_without_closes_reads_no_issue() -> None:
 
 def test_run_survives_non_utf8_output(tmp_path: Path) -> None:
     """A check that prints invalid UTF-8 must not crash the delivery (#2770)."""
-    cmd = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'ok \\xff\\xfe bad')"]
+    cmd = [
+        sys.executable,
+        "-c",
+        "import sys; sys.stdout.buffer.write(b'ok \\xff\\xfe bad')",
+    ]
     done = deliver.run(cmd, tmp_path)
     assert done.returncode == 0
     assert done.stdout.startswith("ok ")
     assert "bad" in done.stdout
+
+
+@pytest.mark.parametrize("state", ["TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"])
+def test_every_red_required_state_fails_the_run(state: str) -> None:
+    """A terminal-red required check must fail fast, not poll to timeout (#2447)."""
+    world = FakeWorld(checks=[[{"name": "required", "state": state}]])
+    code, result = ship(world, "--check", "u=good")
+    assert code == 1
+    assert state in result["error"]
+
+
+@pytest.mark.parametrize("state", ["SKIPPED", "NEUTRAL"])
+def test_a_skipped_or_neutral_required_check_passes(state: str) -> None:
+    world = FakeWorld(checks=[[{"name": "required", "state": state}]])
+    code, _ = ship(world, "--check", "u=good")
+    assert code == 0
