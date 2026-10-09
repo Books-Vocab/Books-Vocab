@@ -283,6 +283,123 @@ class TestLinkSameNotebook:
         assert json.loads(rm.stdout)["result"]["purged_count"] == 1
         assert len(_graph_links(tmp_path, uid, src_id)) == 0
 
+    def test_card_move_dry_run_previews_purge_and_writes_nothing(self, tmp_path):
+        """#2706:dry-run 列出將硬刪的 link,且不動資料。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Src")
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert (
+                _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--notebook", "Src", "--commit").returncode
+                == 0
+            )
+        link_args = ("link-add", uid, "ml", "nl", "--kind", "shares_usage", "--confidence", "0.7")
+        r = _edit(str(tmp_path), *link_args, "--reason", "r", "--notebook", "Src", "--commit", "--json")
+        assert r.returncode == 0, r.stderr
+        src_id = next(n["id"] for n in _notebook_rows(tmp_path, uid) if n["name"] == "Src")
+        link_id = _graph_links(tmp_path, uid, src_id)[0]["id"]
+
+        rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+        assert rd.returncode == 0, rd.stderr
+        plan = json.loads(rd.stdout)["plan"]
+        assert plan["purge_link_ids"] == [link_id]
+        assert plan["purge_count"] == 1
+        assert len(_graph_links(tmp_path, uid, src_id)) == 1
+        assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_id
+
+    def test_card_move_dry_run_does_not_touch_disk_even_with_legacy_graph(self, tmp_path):
+        """#2706 CR P2:dry-run 掃 link 不可觸發 legacy graph.json 遷移,目錄與 mtime 皆不變。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        link_args = ("link-add", uid, "ml", "nl", "--kind", "shares_usage", "--confidence", "0.7")
+        assert _edit(str(tmp_path), *link_args, "--reason", "r", "--commit").returncode == 0
+        ud = _user_dir(tmp_path, uid)
+        link_id = _graph_links(tmp_path, uid)[0]["id"]
+
+        def snapshot():
+            # sqlite 的 -wal/-shm 是連線開關時的 housekeeping,不是資料寫入,不納入比對
+            return {
+                p.name: (p.stat().st_mtime_ns, p.stat().st_size)
+                for p in ud.iterdir()
+                if not p.name.endswith(("-wal", "-shm"))
+            }
+
+        for legacy in (False, True):
+            if legacy:  # 還原成 pre-migration 佈局:只有 graph.json
+                (ud / "graph_default.json").rename(ud / "graph.json")
+            before = snapshot()
+            rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+            assert rd.returncode == 0, rd.stderr
+            assert json.loads(rd.stdout)["plan"]["purge_link_ids"] == [link_id]
+            assert snapshot() == before
+        assert (ud / "graph.json").exists() and not (ud / "graph_default.json").exists()
+
+    def _preview_vs_commit(self, tmp_path, graph_payload):
+        """寫入手工 graph 檔,回傳 (dry-run 預覽的 purge ids, commit 實際 purged ids)。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        ml, nl = _card_by_content(tmp_path, uid, "ml")["id"], _card_by_content(tmp_path, uid, "nl")["id"]
+
+        def row(lid, a, b):
+            return {"id": lid, "from_id": a, "to_id": b, "kind": "shares_usage", "confidence": 0.5, "reason": "r"}
+
+        (_user_dir(tmp_path, uid) / "graph_default.json").write_text(json.dumps(graph_payload(row, ml, nl)))
+        rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+        assert rd.returncode == 0, rd.stderr
+        preview = json.loads(rd.stdout)["plan"]["purge_link_ids"]
+        rc = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--commit", "--json")
+        assert rc.returncode == 0, rc.stderr
+        return preview, json.loads(rc.stdout)["result"]["purged_links"]
+
+    def test_card_move_dry_run_preview_dedupes_duplicate_pair_like_commit(self, tmp_path):
+        """#2706 CR:同 pair 兩條 active → store 載入只留第一條,預覽必須相同。"""
+        preview, purged = self._preview_vs_commit(tmp_path, lambda row, ml, nl: [row("l1", ml, nl), row("l2", nl, ml)])
+        assert purged == ["l1"]
+        assert preview == purged
+
+    def test_card_move_dry_run_preview_ignores_dict_format_like_commit(self, tmp_path):
+        """#2706 CR:store 只認 list 格式;dict 檔載入為空,預覽不得列出其中的 link。"""
+        preview, purged = self._preview_vs_commit(tmp_path, lambda row, ml, nl: {"l9": row("l9", ml, nl)})
+        assert purged == []
+        assert preview == purged
+
+    @pytest.mark.parametrize(
+        "bad_row",
+        [
+            lambda ml, nl: {
+                "id": "b1",
+                "from_id": ml,
+                "to_id": nl,
+                "kind": "no_such_kind",
+                "confidence": 0.5,
+                "reason": "r",
+            },
+            lambda ml, nl: {"id": "b2", "to_id": nl, "status": "rejected"},
+        ],
+        ids=["unknown-kind", "rejected-without-from_id"],
+    )
+    def test_card_move_dry_run_fails_like_commit_on_invalid_link_row(self, tmp_path, bad_row):
+        """#2706 CR P2:store 載入遇壞 row 會拋錯;dry-run 必須同樣失敗,不可綠燈放行到 commit 半途崩潰。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        ml, nl = _card_by_content(tmp_path, uid, "ml")["id"], _card_by_content(tmp_path, uid, "nl")["id"]
+        (_user_dir(tmp_path, uid) / "graph_default.json").write_text(json.dumps([bad_row(ml, nl)]))
+        src_nb = _card_by_content(tmp_path, uid, "ml")["notebook_id"]
+
+        rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+        assert rd.returncode != 0
+        assert "link row" in (rd.stdout + rd.stderr)
+
+        rc = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--commit", "--json")
+        assert rc.returncode != 0
+        assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_nb
+
 
 class TestNotebookDeleteCascade:
     def test_rejects_nonempty_without_cascade(self, tmp_path):

@@ -327,6 +327,26 @@ def cmd_card_import(args: argparse.Namespace) -> int:
     return ctx.run(action="card-import", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
 
+def _preview_link_ids(user_dir: Path, notebook_id: str, card_id: str) -> list[str]:
+    """dry-run 專用:唯讀列出 notebook graph 中涉及此卡的 active/hidden link id。
+
+    不經 ``create_graph_store``:它對 default 本會把 legacy ``graph.json`` rename 成
+    ``graph_default.json``(遷移)並可能回寫,違反 dry-run 零磁碟寫入契約。這裡只讀檔,
+    default 本在新檔不存在時直接讀 legacy ``graph.json``。解析規則與 store 載入共用
+    ``kg.graph.store.parse_link_rows``(去重、retired kind、rejected、list 格式限定)。
+    """
+    from kg.graph.store import read_card_links
+
+    path = user_dir / f"graph_{notebook_id}.json"
+    if notebook_id == "default" and not path.exists():
+        path = user_dir / "graph.json"
+    try:
+        links = read_card_links(path, card_id)
+    except (ValueError, KeyError, TypeError) as exc:  # pydantic ValidationError 亦為 ValueError
+        raise EditError(f"graph {path} 含無法解析的 link row，commit 亦會失敗") from exc
+    return [lk.id for lk in links]
+
+
 def cmd_card_move(args: argparse.Namespace) -> int:
     """把卡移到別的筆記本 —— 修正 card-add 誤存 name 的孤兒卡(dogfood A LOW-4)。
 
@@ -341,17 +361,36 @@ def cmd_card_move(args: argparse.Namespace) -> int:
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
     target_nb = _resolve_notebook_id_for_command(ctx.user_dir, args.to_notebook)
-    plan = {"card_ref": args.card, "to_notebook": target_nb}
+    plan: dict[str, Any] = {"card_ref": args.card, "to_notebook": target_nb}
     state: dict[str, Any] = {}
+
+    def check_move(store: Any) -> Any:
+        card = _resolve_card_id(store, args.card)
+        if card.notebook_id == target_nb:
+            raise EditError(f"卡已在 notebook {target_nb},無需移動")
+        clash = store.find_by_content(card.content, notebook_id=target_nb)
+        if clash is not None and clash.id != card.id:
+            raise EditError(f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}")
+        return card
+
+    if not ctx.commit:
+        # dry-run 不會呼叫 apply_fn:唯讀部分(解析卡、同本/clash 檢查、link 掃描)在此預演,
+        # 讓 preview 與 --commit 同樣失敗,並列出將被硬刪的 link(#2706)。
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = check_move(store)
+        purge_ids: list[str] = []
+        with closing(_notebook_store(ctx.user_dir)) as nb_store:
+            all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
+        for gnb in sorted(all_nb_ids):
+            purge_ids.extend(_preview_link_ids(ctx.user_dir, gnb, card.id))
+        plan["card_id"] = card.id
+        plan["purge_link_ids"] = purge_ids
+        plan["purge_count"] = len(purge_ids)
+        plan["purge_note"] = "commit 會硬刪這些 link 並封鎖該 pair 重新 judge(搬本後必跨本)"
 
     def apply_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:
-            card = _resolve_card_id(store, args.card)
-            if card.notebook_id == target_nb:
-                raise EditError(f"卡已在 notebook {target_nb},無需移動")
-            clash = store.find_by_content(card.content, notebook_id=target_nb)
-            if clash is not None and clash.id != card.id:
-                raise EditError(f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}")
+            card = check_move(store)
             moved_id = card.id
             # 搬本前先硬刪所有 notebook graph 中涉及此卡的 link(搬後必跨本)。掃全部本
             # (default + 所有既存)的 graph,找 from/to == moved_id 的 link 刪除。

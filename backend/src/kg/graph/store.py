@@ -21,6 +21,69 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_RETIRED_LINK_KINDS: frozenset[str] = frozenset({"confusable"})
+
+
+def _normalize_pair(a: str, b: str) -> tuple[str, str]:
+    return tuple(sorted([a, b]))  # type: ignore[return-value]
+
+
+def parse_link_rows(
+    rows: list, *, source: Path | None = None
+) -> tuple[dict[str, GraphLink], set[tuple[str, str]], set[str], bool]:
+    """Parse persisted link rows -> (links, rejected pairs, duplicate ids, dirty).
+
+    Pure (no store, no disk): the single definition of how a graph file's rows
+    become links, shared by ``GraphStore`` and read-only previews (#2706).
+    """
+    links: dict[str, GraphLink] = {}
+    rejected_pairs: set[tuple[str, str]] = set()
+    duplicate_ids: set[str] = set()
+    dirty = False
+    loaded_pairs: set[tuple[str, str]] = set()
+    for lk in rows:
+        if not isinstance(lk, dict):
+            logger.warning(
+                "graph: skipping malformed link row in %s: %s",
+                source,
+                type(lk).__name__,
+            )
+            continue
+        if lk.get("kind") in _RETIRED_LINK_KINDS:
+            dirty = True
+            continue
+        # Migrate rejected -> blocked
+        if lk.get("status") == "rejected":
+            dirty = True
+            rejected_pairs.add(_normalize_pair(lk["from_id"], lk["to_id"]))
+            continue
+        link = GraphLink.model_validate(lk)
+        if link.status in ("active", "hidden"):
+            pair = _normalize_pair(link.from_id, link.to_id)
+            if pair in loaded_pairs:
+                # A previous TOCTOU race may have left duplicate active
+                # rows on disk. Keep the first persisted row as the
+                # deterministic winner and let _save_links remove the
+                # later row during the normal atomic flush.
+                dirty = True
+                duplicate_ids.add(link.id)
+                continue
+            loaded_pairs.add(pair)
+        links[link.id] = link
+    return links, rejected_pairs, duplicate_ids, dirty
+
+
+def read_card_links(links_path: Path, card_id: str) -> list[GraphLink]:
+    """Read-only: active/hidden links touching ``card_id`` as ``get_links_for`` would return them.
+
+    Reads ``links_path`` directly (no store construction, no legacy migration, no
+    rewrite), with the same row rules as a store load. An unparseable row raises
+    (ValueError/KeyError/TypeError), exactly as a store load does, so a preview
+    fails where the commit would fail.
+    """
+    links = parse_link_rows(_PersistenceMixin._read_json_list(links_path), source=links_path)[0]
+    return [lk for lk in links.values() if lk.status in ("active", "hidden") and card_id in (lk.from_id, lk.to_id)]
+
 
 class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     """JSON-based graph storage.
@@ -293,11 +356,9 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         )
 
     # Link kinds removed from the enum; silently drop on load.
-    _RETIRED_KINDS: ClassVar[frozenset[str]] = frozenset({"confusable"})
+    _RETIRED_KINDS: ClassVar[frozenset[str]] = _RETIRED_LINK_KINDS
 
-    @staticmethod
-    def _normalize_pair(a: str, b: str) -> tuple[str, str]:
-        return tuple(sorted([a, b]))  # type: ignore[return-value]
+    _normalize_pair = staticmethod(_normalize_pair)
 
     def _parse_link_rows(self, rows: list) -> tuple[dict[str, GraphLink], set[tuple[str, str]], set[str], bool]:
         """Parse persisted link rows -> (links, rejected pairs, duplicate ids, dirty).
@@ -305,41 +366,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         Shared by ``_load`` and the stale-instance adoption path so both read
         the file the same way. ``dirty`` means the rows need a rewrite.
         """
-        links: dict[str, GraphLink] = {}
-        rejected_pairs: set[tuple[str, str]] = set()
-        duplicate_ids: set[str] = set()
-        dirty = False
-        loaded_pairs: set[tuple[str, str]] = set()
-        for lk in rows:
-            if not isinstance(lk, dict):
-                logger.warning(
-                    "graph: skipping malformed link row in %s: %s",
-                    self.links_path,
-                    type(lk).__name__,
-                )
-                continue
-            if lk.get("kind") in self._RETIRED_KINDS:
-                dirty = True
-                continue
-            # Migrate rejected -> blocked
-            if lk.get("status") == "rejected":
-                dirty = True
-                rejected_pairs.add(self._normalize_pair(lk["from_id"], lk["to_id"]))
-                continue
-            link = GraphLink.model_validate(lk)
-            if link.status in ("active", "hidden"):
-                pair = self._normalize_pair(link.from_id, link.to_id)
-                if pair in loaded_pairs:
-                    # A previous TOCTOU race may have left duplicate active
-                    # rows on disk. Keep the first persisted row as the
-                    # deterministic winner and let _save_links remove the
-                    # later row during the normal atomic flush.
-                    dirty = True
-                    duplicate_ids.add(link.id)
-                    continue
-                loaded_pairs.add(pair)
-            links[link.id] = link
-        return links, rejected_pairs, duplicate_ids, dirty
+        return parse_link_rows(rows, source=self.links_path)
 
     def _load(self) -> None:
         # Each signature is taken *before* its unlocked read: a write racing

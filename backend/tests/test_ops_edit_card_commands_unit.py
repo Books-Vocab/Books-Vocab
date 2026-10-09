@@ -16,6 +16,7 @@ import pytest
 import kg.ops_edit_card_commands as cards_cmd
 from kg.cards import CardStore
 from kg.notebook import NotebookStore
+from kg.ops_edit_support import EditError
 
 
 def _setup_user(tmp_path: Path, uid: str = "u1") -> Path:
@@ -426,6 +427,65 @@ class TestCmdCardMove:
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         rc = cards_cmd.cmd_card_move(_make_args(card=c.id, to_notebook="default", commit=True))
         assert rc == 1
+
+
+class TestCmdCardMoveDryRunPreview:
+    """#2706:dry-run 須預演唯讀驗證與 link purge,不再假綠。"""
+
+    def test_dry_run_rejects_content_clash(self, tmp_path, monkeypatch):
+        _setup_user(tmp_path)
+        store = CardStore(tmp_path / "users" / "u1" / "cards.db")
+        nb_store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
+        try:
+            nb = nb_store.create(name="DestNB")
+            c = store.add(content="apple", meaning="蘋果", notebook_id="default")
+            store.add(content="apple", meaning="x", notebook_id=nb.id)
+        finally:
+            store.close()
+            nb_store.close()
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        with pytest.raises(EditError):
+            cards_cmd.cmd_card_move(_make_args(card=c.id, to_notebook=nb.id))
+
+    def test_dry_run_rejects_missing_card(self, tmp_path, monkeypatch):
+        _setup_user(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        with pytest.raises(EditError):
+            cards_cmd.cmd_card_move(_make_args(card="ghost", to_notebook="default"))
+
+    def test_dry_run_lists_links_to_purge(self, tmp_path, monkeypatch, capsys):
+        _setup_user(tmp_path)
+        store = CardStore(tmp_path / "users" / "u1" / "cards.db")
+        nb_store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
+        try:
+            nb = nb_store.create(name="DestNB")
+            c = store.add(content="apple", meaning="蘋果", notebook_id="default")
+        finally:
+            store.close()
+            nb_store.close()
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        ud = tmp_path / "users" / "u1"
+
+        def row(lid, status="active"):
+            return {
+                "id": lid,
+                "from_id": c.id,
+                "to_id": f"peer-{lid}",
+                "kind": "shares_usage",
+                "confidence": 0.5,
+                "reason": "r",
+                "status": status,
+            }
+
+        (ud / "graph_default.json").write_text(json.dumps([row("l1"), row("gone", "deprecated")]))
+        (ud / f"graph_{nb.id}.json").write_text(json.dumps([row("l2"), {**row("x"), "from_id": "a", "to_id": "b"}]))
+        capsys.readouterr()
+        assert cards_cmd.cmd_card_move(_make_args(card=c.id, to_notebook=nb.id, json=True)) == 0
+        plan = json.loads(capsys.readouterr().out)["plan"]
+        assert plan["purge_count"] == 2  # default + DestNB 各一條;deprecated 與無關 link 不算
+        assert sorted(plan["purge_link_ids"]) == ["l1", "l2"]
+        assert plan["card_id"] == c.id
 
 
 class TestCmdCardMoveDestructiveReporting:
