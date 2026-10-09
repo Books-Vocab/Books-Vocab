@@ -286,4 +286,41 @@ struct PodcastReconcileTests {
         let progs = try ctx.fetch(FetchDescriptor<PodcastProgress>())
         #expect(progs.count == 1, "progress must survive transient empty detail")
     }
+
+    // MARK: - Fetch failure (#2795)
+
+    @Test func reconcile_progress_survives_when_episode_fetch_fails() throws {
+        let ctx = try makeContext()
+        let s = makeSeries("a"); ctx.insert(s)
+        ctx.insert(makeEpisode("a_ep_01", in: s))
+        ctx.insert(makeProgress("a_ep_01", Date(), 50))
+        try ctx.save()
+
+        PodcastSyncService.reconcileLocalState(
+            serverSummaries: [summary("a")],
+            fetchedDetails: [:],
+            context: ctx,
+            fetch: PodcastLocalFetch(shouldFail: { $0 == PodcastEpisode.self })
+        )
+        try ctx.save()
+
+        #expect(try ctx.fetch(FetchDescriptor<PodcastProgress>()).count == 1,
+                "failed episode fetch must not read as empty liveIds")
+    }
+
+    @Test func reconcile_skips_tombstones_when_series_fetch_fails() throws {
+        let ctx = try makeContext()
+        ctx.insert(makeSeries("a")); ctx.insert(makeSeries("gone"))
+        try ctx.save()
+
+        PodcastSyncService.reconcileLocalState(
+            serverSummaries: [summary("a")],
+            fetchedDetails: [:],
+            context: ctx,
+            fetch: PodcastLocalFetch(shouldFail: { $0 == PodcastSeries.self })
+        )
+
+        let gone = try ctx.fetch(FetchDescriptor<PodcastSeries>()).first { $0.remoteId == "gone" }
+        #expect(gone?.isSoftDeleted == false)
+    }
 }

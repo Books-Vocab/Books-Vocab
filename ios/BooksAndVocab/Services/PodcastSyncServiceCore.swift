@@ -503,15 +503,26 @@ final class PodcastSyncService {
     }
 
     @MainActor
-    static func upsertSeries(detail: PodcastSeriesDetail, context: ModelContext) {
+    static func upsertSeries(
+        detail: PodcastSeriesDetail,
+        context: ModelContext,
+        fetch: PodcastLocalFetch = .live
+    ) {
         let seriesId = detail.id
         let descriptor = FetchDescriptor<PodcastSeries>(
             predicate: #Predicate { $0.remoteId == seriesId }
         )
-        let existing = try? context.fetch(descriptor)
+        // A failed lookup is not "absent": inserting here would duplicate the
+        // series/episodes already on disk. Bail before any mutation (the
+        // fingerprint is not written, so the next sync retries) (#2795).
+        let epDescriptor = FetchDescriptor<PodcastEpisode>(
+            predicate: #Predicate { $0.series?.remoteId == seriesId }
+        )
+        guard let existing = try? fetch.fetch(descriptor, in: context),
+              let localEpisodes = try? fetch.fetch(epDescriptor, in: context) else { return }
         let series: PodcastSeries
 
-        if let found = existing?.first {
+        if let found = existing.first {
             series = found
         } else {
             series = PodcastSeries(
@@ -548,11 +559,8 @@ final class PodcastSyncService {
         // Single fetch + in-memory index instead of one fetch per episode.
         // Mirrors reconcileLocalState's approach — the old per-episode fetch was
         // O(N) @MainActor SwiftData calls, painful at 1000+ episodes.
-        let epDescriptor = FetchDescriptor<PodcastEpisode>(
-            predicate: #Predicate { $0.series?.remoteId == seriesId }
-        )
         let existingByRemoteId = Dictionary(
-            ((try? context.fetch(epDescriptor)) ?? []).map { ($0.remoteId, $0) },
+            localEpisodes.map { ($0.remoteId, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -605,12 +613,28 @@ final class PodcastSyncService {
     static func reconcileLocalState(
         serverSummaries: [PodcastSeriesSummary],
         fetchedDetails: [String: PodcastSeriesDetail],
-        context: ModelContext
+        context: ModelContext,
+        fetch: PodcastLocalFetch = .live
     ) {
         PodcastCatalogReconciler.reconcile(
             serverSummaries: serverSummaries,
             fetchedDetails: fetchedDetails,
-            context: context
+            context: context,
+            fetch: fetch
         )
+    }
+}
+
+/// Local SwiftData fetch seam. A failed fetch must surface as an error so
+/// callers skip destructive/insert paths instead of reading it as "empty" (#2795).
+struct PodcastLocalFetch {
+    var shouldFail: (Any.Type) -> Bool = { _ in false }
+
+    static let live = PodcastLocalFetch()
+
+    @MainActor
+    func fetch<T: PersistentModel>(_ descriptor: FetchDescriptor<T>, in context: ModelContext) throws -> [T] {
+        if shouldFail(T.self) { throw CocoaError(.fileReadUnknown) }
+        return try context.fetch(descriptor)
     }
 }

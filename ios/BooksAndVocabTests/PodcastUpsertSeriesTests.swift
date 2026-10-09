@@ -163,4 +163,31 @@ struct PodcastUpsertSeriesTests {
         #expect(series.count == 1)
         #expect(series.first?.title == "New", "series title must update in place")
     }
+
+    @Test func upsert_does_not_duplicate_when_series_fetch_fails() throws {
+        let ctx = try makeContext()
+        PodcastSyncService.upsertSeries(detail: detail("a", episodes: [1]), context: ctx)
+        try ctx.save()
+
+        PodcastSyncService.upsertSeries(
+            detail: detail("a", episodes: [1, 2]), context: ctx,
+            fetch: PodcastLocalFetch(shouldFail: { $0 == PodcastSeries.self }))
+        try ctx.save()
+
+        #expect(try ctx.fetch(FetchDescriptor<PodcastSeries>()).count == 1)
+        #expect(try ctx.fetch(FetchDescriptor<PodcastEpisode>()).count == 1)
+    }
+
+    @Test func upsert_does_not_duplicate_episodes_when_episode_fetch_fails() throws {
+        let ctx = try makeContext()
+        PodcastSyncService.upsertSeries(detail: detail("a", episodes: [1]), context: ctx)
+        try ctx.save()
+
+        PodcastSyncService.upsertSeries(
+            detail: detail("a", episodes: [1]), context: ctx,
+            fetch: PodcastLocalFetch(shouldFail: { $0 == PodcastEpisode.self }))
+        try ctx.save()
+
+        #expect(try ctx.fetch(FetchDescriptor<PodcastEpisode>()).count == 1)
+    }
 }
