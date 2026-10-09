@@ -471,6 +471,33 @@ class TestMigrateCandidatesToPending:
         # Old candidates should be cleared after migration
         assert store.candidate_count() == 0
 
+    def test_crash_between_saves_keeps_migration_rerunnable(self, tmp_path, monkeypatch):
+        """pending_judge must persist before candidates clear (#2812)."""
+        cand_path = tmp_path / "candidates.json"
+        pj_path = tmp_path / "pending_judge.json"
+        cand_path.write_text(
+            json.dumps(
+                [{"from_id": "card_a", "to_id": "card_b", "similarity": 0.85, "created_at": "2026-01-01T00:00:00Z"}]
+            )
+        )
+        paths = {
+            "links_path": tmp_path / "links.json",
+            "candidates_path": cand_path,
+            "blocked_path": tmp_path / "blocked.json",
+            "pending_judge_path": pj_path,
+        }
+
+        def boom(self):
+            raise RuntimeError("crash")
+
+        with monkeypatch.context() as m:
+            m.setattr(GraphStore, "_save_pending_judge", boom)
+            with pytest.raises(RuntimeError):
+                GraphStore(**paths)
+
+        store = GraphStore(**paths)
+        assert set(store.pop_pending_judge()) == {"card_a"}
+
     def test_no_migration_without_pending_judge_path(self, tmp_path):
         """Without pending_judge_path, candidates stay as-is."""
         cand_path = tmp_path / "candidates.json"
