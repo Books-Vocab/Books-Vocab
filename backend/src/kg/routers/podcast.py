@@ -263,6 +263,7 @@ def _serve_audio_from_s3(
         is_s3_not_found_fn=_is_s3_not_found,
         iter_s3_body=_iter_s3_body,
         logger_=logger,
+        fmt_cache=_S3_AUDIO_FMT_CACHE,
     )
 
 
