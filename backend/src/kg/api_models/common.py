@@ -43,3 +43,7 @@ class VocabSource(BaseModel):
     title: str | None = Field(default=None, max_length=500)
     url: Annotated[str, AfterValidator(_validate_http_url)] | None = None  # web only
     chapter: str | None = Field(default=None, max_length=500)  # book only
+
+
+# Single shared word-length cap: VocabEntry, batch word lists, /api/translate and vocab intake.
+MAX_WORD_LENGTH = 200

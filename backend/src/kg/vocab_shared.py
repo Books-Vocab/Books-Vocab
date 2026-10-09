@@ -14,12 +14,12 @@ from .api_models import (
     CardResponse,
     VocabSource,
 )
+from .api_models.common import MAX_WORD_LENGTH as MAX_WORD_LENGTH
 from .text_utils import normalize_nfc_lower
 
 logger = logging.getLogger(__name__)
 
 MAX_BATCH_SIZE = 500
-MAX_WORD_LENGTH = 200
 
 
 class VocabCard(Protocol):

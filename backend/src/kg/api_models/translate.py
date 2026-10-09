@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from kg.api_models.common import _normalize_context
+from kg.api_models.common import MAX_WORD_LENGTH, _normalize_context
 from kg.languages import SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
 
 
@@ -32,7 +32,7 @@ class TranslationLanguageConfig(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    word: str = Field(min_length=1, max_length=500)
+    word: str = Field(min_length=1, max_length=MAX_WORD_LENGTH)
     context: str = Field(default="", max_length=1000)
     source_lang: str | None = None
     target_lang: str | None = None

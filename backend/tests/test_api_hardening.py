@@ -148,17 +148,20 @@ class TestInputValidation:
         assert "[REDACTED]" in caplog.text
         assert r.json()["detail"][0]["input"] == "[REDACTED]"
 
-    def test_vocab_rejected_reason_never_echoes_secret_input(self, client_env):
+    def test_validation_error_log_redacts_camel_case_secret_body_fields(self, client_env, caplog):
         client, _user_id, headers, _ = client_env
+
+        caplog.set_level(logging.WARNING, logger="kg.api")
         r = client.post(
             "/api/vocab",
-            json=[{"word": "x" * 201, "translation": "test", "accessToken": "secret-access-token"}],
+            json=[{"word": "w0", "translation": "test", "accessToken": "secret-access-token"}]
+            + [{"word": f"w{i}", "translation": "t"} for i in range(1, 501)],
             headers=headers,
         )
 
-        assert r.status_code == 200, r.text
-        assert len(r.json()["rejected"]) == 1
-        assert "secret-access-token" not in r.text
+        assert r.status_code == 422, r.text
+        assert "secret-access-token" not in caplog.text
+        assert "[REDACTED]" in caplog.text
 
     def test_validation_error_redacts_camel_case_secret_error_input(self):
         redacted = api_mod._redact_validation_payload(
@@ -223,11 +226,11 @@ class TestInputValidation:
         assert r.status_code != 422, r.text
 
     def test_translate_word_at_limit_accepted(self, client_env):
-        """Exactly 500 chars should pass Pydantic validation (not 422)."""
+        """Exactly 200 chars should pass Pydantic validation (not 422)."""
         client, user_id, headers, _ = client_env
         r = client.post(
             "/api/translate/quick",
-            json={"word": "x" * 500, "context": "some context"},
+            json={"word": "x" * 200, "context": "some context"},
             headers=headers,
         )
         # Any status other than 422 means Pydantic accepted the input
@@ -241,7 +244,8 @@ class TestInputValidation:
             headers=headers,
         )
         assert r.status_code == 200, r.text
-        assert len(r.json()["rejected"]) == 1
+        assert r.json()["created"] == 0
+        assert [x["index"] for x in r.json()["rejected"]] == [0]
 
     def test_vocab_translation_too_long_is_rejected(self, client_env):
         client, user_id, headers, _ = client_env
@@ -251,7 +255,8 @@ class TestInputValidation:
             headers=headers,
         )
         assert r.status_code == 200, r.text
-        assert len(r.json()["rejected"]) == 1
+        assert r.json()["created"] == 0
+        assert [x["index"] for x in r.json()["rejected"]] == [0]
 
     def test_vocab_context_too_long_is_rejected(self, client_env):
         client, user_id, headers, _ = client_env
@@ -261,7 +266,8 @@ class TestInputValidation:
             headers=headers,
         )
         assert r.status_code == 200, r.text
-        assert len(r.json()["rejected"]) == 1
+        assert r.json()["created"] == 0
+        assert [x["index"] for x in r.json()["rejected"]] == [0]
 
 
 # ============================================================================
@@ -402,3 +408,67 @@ class TestVocabIntakeBatchCap:
                 if inner_len is not None:
                     max_lengths.append(inner_len)
         assert 500 in max_lengths, f"entries field must carry max_length=500, metadata={metadata!r}"
+
+
+class TestVocabPartialBatch:
+    """#2248: POST /api/vocab validates per item; bad items land in `rejected`."""
+
+    def _post(self, client_env, items):
+        client, _user_id, headers, _ = client_env
+        r = client.post("/api/vocab", json=items, headers=headers)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def _stored_words(self, client_env):
+        client, _user_id, headers, _ = client_env
+        r = client.get("/api/vocab", headers=headers)
+        return r.text
+
+    def test_valid_plus_blank_translation(self, client_env):
+        body = self._post(client_env, [{"word": "apple", "translation": "x"}, {"word": "pear", "translation": ""}])
+        assert body["created"] == 1
+        assert list(body["cardIds"]) == ["apple"]
+        assert [(r["index"], r["word"]) for r in body["rejected"]] == [(1, "pear")]
+
+    def test_valid_plus_overlong_word(self, client_env):
+        body = self._post(client_env, [{"word": "x" * 250, "translation": "t"}, {"word": "apple", "translation": "t"}])
+        assert body["created"] == 1
+        assert list(body["cardIds"]) == ["apple"]
+        assert [r["index"] for r in body["rejected"]] == [0]
+
+    def test_all_invalid_persists_nothing(self, client_env):
+        body = self._post(client_env, [{"word": "", "translation": "t"}, {"word": "a", "translation": ""}])
+        assert body["created"] == 0
+        assert body["cardIds"] == {}
+        assert [r["index"] for r in body["rejected"]] == [0, 1]
+        assert "apple" not in self._stored_words(client_env)
+
+    def test_clean_to_empty_is_rejected_with_original_index(self, client_env):
+        items = [
+            {"word": "ok", "translation": "t"},
+            {"word": "", "translation": "t"},
+            {"word": "...", "translation": "t"},
+        ]
+        body = self._post(client_env, items)
+        assert body["created"] == 1
+        assert [(r["index"], r["word"]) for r in body["rejected"]] == [(1, ""), (2, "...")]
+
+    def test_clean_to_empty_only(self, client_env):
+        body = self._post(client_env, [{"word": "...", "translation": "t"}])
+        assert body["created"] == 0
+        assert [r["index"] for r in body["rejected"]] == [0]
+
+    def test_non_dict_item(self, client_env):
+        body = self._post(client_env, ["oops", {"word": "apple", "translation": "t"}])
+        assert body["created"] == 1
+        assert [(r["index"], r["word"]) for r in body["rejected"]] == [(0, None)]
+
+    def test_word_length_limit_shared_across_models(self):
+        from kg.api_models.common import MAX_WORD_LENGTH
+        from kg.api_models.translate import TranslateRequest
+        from kg.api_models.vocab import MAX_BATCH_WORD_LENGTH, VocabEntry
+        from kg.vocab_shared import MAX_WORD_LENGTH as SHARED_MAX
+
+        assert MAX_BATCH_WORD_LENGTH == SHARED_MAX == MAX_WORD_LENGTH
+        for model in (VocabEntry, TranslateRequest):
+            assert any(getattr(m, "max_length", None) == MAX_WORD_LENGTH for m in model.model_fields["word"].metadata)

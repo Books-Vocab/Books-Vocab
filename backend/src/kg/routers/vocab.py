@@ -71,6 +71,7 @@ from ..vocab_handlers import (
     update_word_content_response,
     update_word_preferences_response,
 )
+from ..vocab_shared import _clean_content
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
@@ -478,7 +479,7 @@ def add_vocab(
 ):
     quota = _check_quota(user, "vocab_add", response)
     # Per-item validation (#2248): invalid items come back in `rejected`; valid ones proceed.
-    valid_entries, rejected = parse_vocab_batch(entries)
+    valid_entries, rejected = parse_vocab_batch(entries, clean=_clean_content)
     if not valid_entries:
         _apply_quota_headers(response, quota)
         return VocabAddResponse(created=0, skipped=0, rejected=rejected, duplicates=[], cardIds={})

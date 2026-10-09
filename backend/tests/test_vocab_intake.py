@@ -21,6 +21,7 @@ import pytest
 
 import test_notebook_api
 from kg.api_models import VocabEntry, VocabSource
+from kg.exceptions import ValidationError
 from kg.vocab_intake import _build_example, _derive_inflections, add_vocab_entries
 
 isolated_api = test_notebook_api.isolated_api  # reuse the real-app fixture
@@ -269,14 +270,15 @@ class TestAddVocabEntries:
         embeddings = _IntakeEmbeddings()
         graph = _IntakeGraph()
 
-        result = add_vocab_entries(
-            [VocabEntry(word=word, translation="ignored", context="")],
-            **self._kwargs(cards=store, embeddings=embeddings, graph=graph),
-        )
+        with pytest.raises(ValidationError) as exc_info:
+            add_vocab_entries(
+                [VocabEntry(word=word, translation="ignored", context="")],
+                **self._kwargs(cards=store, embeddings=embeddings, graph=graph),
+            )
 
-        assert result.created == 0
-        assert [(r.index, r.word) for r in result.rejected] == [(0, word)]
+        assert exc_info.value.status_code == 422
         assert store.add_calls == []
+        assert store.all_calls == []
         assert store._cards == []
         assert embeddings.added == []
         assert graph.pending == []

@@ -8,7 +8,7 @@ import unicodedata
 from collections.abc import Callable
 from typing import Any
 
-from .api_models import RejectedVocabItem, VocabAddResponse, VocabEntry
+from .api_models import VocabAddResponse, VocabEntry
 from .exceptions import ValidationError
 from .vocab_graph import embed_and_link_new_cards
 from .vocab_shared import (
@@ -90,15 +90,8 @@ def add_vocab_entries(
     if len(entries) > MAX_BATCH_SIZE:
         raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
     cleaned_words = [_clean_content(entry.word) for entry in entries]
-    # A word that cleans to empty is rejected per item (#2248), not as a batch 422.
-    rejected = [
-        RejectedVocabItem(index=i, word=entry.word, reason="word: cannot be empty after cleaning")
-        for i, (entry, word) in enumerate(zip(entries, cleaned_words, strict=True))
-        if not word
-    ]
-    kept = [(entry, word) for entry, word in zip(entries, cleaned_words, strict=True) if word]
-    entries = [entry for entry, _ in kept]
-    cleaned_words = [word for _, word in kept]
+    if any(not word for word in cleaned_words):
+        raise ValidationError("Word cannot be empty")
     # Build content→card dict once; eliminates per-duplicate find_by_content() DB
     # call. Shares the same normalized lookup as the batch CRUD paths
     # (cards.all() defaults to include_deleted=False, matching _build_content_lookup).
@@ -171,7 +164,6 @@ def add_vocab_entries(
     return VocabAddResponse(
         created=created,
         skipped=skipped,
-        rejected=rejected,
         duplicates=duplicates,
         cardIds=response_card_ids,
     )

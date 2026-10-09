@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
-from kg.api_models.common import VocabSource, _normalize_context
+from kg.api_models.common import MAX_WORD_LENGTH, VocabSource, _normalize_context
 
-MAX_BATCH_WORD_LENGTH = 200
+MAX_BATCH_WORD_LENGTH = MAX_WORD_LENGTH
 
 
 class VocabEntry(BaseModel):
     """A vocabulary entry from BooksAndVocab."""
 
-    word: str = Field(min_length=1, max_length=200)
+    word: str = Field(min_length=1, max_length=MAX_WORD_LENGTH)
     translation: str = Field(min_length=1, max_length=1000)
     context: str = Field(default="", max_length=5000)
     root_form: str | None = Field(default=None, max_length=200)  # AI-determined lemma from translate/quick
@@ -158,15 +159,28 @@ def _validate_batch_words(words: list[str]) -> None:
 _ENTRY_ADAPTER: TypeAdapter[VocabEntry] = TypeAdapter(VocabEntry)
 
 
-def parse_vocab_batch(raw: list[Any]) -> tuple[list[VocabEntry], list[RejectedVocabItem]]:
-    """Validate each item independently so one bad item doesn't 422 the batch."""
+def parse_vocab_batch(
+    raw: list[Any], *, clean: Callable[[str], str] | None = None
+) -> tuple[list[VocabEntry], list[RejectedVocabItem]]:
+    """Validate each item independently so one bad item doesn't 422 the batch.
+
+    `clean` (the intake word normalizer) additionally rejects words that clean to empty.
+    Every `index` refers to the position in the original submitted array.
+    """
     entries: list[VocabEntry] = []
     rejected: list[RejectedVocabItem] = []
     for index, item in enumerate(raw):
         try:
-            entries.append(_ENTRY_ADAPTER.validate_python(item))
+            entry = _ENTRY_ADAPTER.validate_python(item)
         except ValidationError as exc:
             reason = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
             word = item.get("word") if isinstance(item, dict) else None
             rejected.append(RejectedVocabItem(index=index, word=word if isinstance(word, str) else None, reason=reason))
+            continue
+        if clean is not None and not clean(entry.word):
+            rejected.append(
+                RejectedVocabItem(index=index, word=entry.word, reason="word: cannot be empty after cleaning")
+            )
+            continue
+        entries.append(entry)
     return entries, rejected
