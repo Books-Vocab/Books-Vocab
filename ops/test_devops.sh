@@ -149,6 +149,52 @@ else
 fi
 rm -rf "$_bk_sandbox"
 
+# #2757：rsync 成功但 sqlite integrity_check 失敗 → 不得產出 tar/sha256（會被當成
+# 可信備份），目錄標 .INCOMPLETE、exit 非零；下一次增量基準也不可選到它。
+_bk_sandbox=$(mktemp -d)
+mkdir -p "$_bk_sandbox/bin" "$_bk_sandbox/backups"
+cat > "$_bk_sandbox/bin/rsync" <<'STUB'
+#!/bin/bash
+[[ "${1:-}" == "--version" ]] && { echo "rsync  version 3.3.0  protocol version 31"; exit 0; }
+for last; do :; done
+[[ -n "${RSYNC_LOG:-}" ]] && echo "$*" > "$RSYNC_LOG"
+: > "${last}x.db"
+exit 0
+STUB
+cat > "$_bk_sandbox/bin/sqlite3" <<'STUB'
+#!/bin/bash
+echo "*** in database main *** Page 2: btree corrupt"
+STUB
+chmod +x "$_bk_sandbox/bin/rsync" "$_bk_sandbox/bin/sqlite3"
+{
+  echo 'set -euo pipefail'
+  printf 'DEVOPS_SOURCE_ONLY=1 KG_SSH_CMD=/usr/bin/true source %q\n' "$KG"
+  echo "BACKUP_DIR='$_bk_sandbox/backups'; SERVER=stub-host; REMOTE_DATA_DIR=/stub"
+  echo 'cmd_backup'
+} > "$_bk_sandbox/run.sh"
+_bk_rc=0
+PATH="$_bk_sandbox/bin:$PATH" bash "$_bk_sandbox/run.sh" > "$_bk_sandbox/out" 2>&1 || _bk_rc=$?
+if [[ "$_bk_rc" -ne 0 ]] \
+   && [[ -z "$(find "$_bk_sandbox/backups" \( -name '*.tar.gz' -o -name '*.sha256' \) 2>/dev/null)" ]] \
+   && [[ -n "$(find "$_bk_sandbox/backups" -name '.INCOMPLETE' 2>/dev/null)" ]]; then
+  ok "KG backup marks .INCOMPLETE and emits no tar/sha256 when integrity_check fails"
+else
+  fail_t "KG backup marks .INCOMPLETE and emits no tar/sha256 when integrity_check fails (rc=$_bk_rc)"
+fi
+# 同一 sandbox：殘缺目錄（較新）不可當下次的 --link-dest 基準，應退回較舊的完整備份。
+mkdir -p "$_bk_sandbox/backups/data_20200101_0000" "$_bk_sandbox/backups/data_20200102_0000"
+touch -t 202001010000 "$_bk_sandbox/backups/data_20200101_0000"
+touch "$_bk_sandbox/backups/data_20200102_0000/.INCOMPLETE"
+RSYNC_LOG="$_bk_sandbox/rsync.args" PATH="$_bk_sandbox/bin:$PATH" bash "$_bk_sandbox/run.sh" > "$_bk_sandbox/out2" 2>&1 || true
+if grep -qF 'link-dest=' "$_bk_sandbox/rsync.args" \
+   && grep -qF 'data_20200101_0000' "$_bk_sandbox/rsync.args" \
+   && ! grep -qF 'data_20200102_0000' "$_bk_sandbox/rsync.args"; then
+  ok "KG backup never picks an .INCOMPLETE dir as the --link-dest base"
+else
+  fail_t "KG backup never picks an .INCOMPLETE dir as the --link-dest base ($(cat "$_bk_sandbox/rsync.args" 2>/dev/null))"
+fi
+rm -rf "$_bk_sandbox"
+
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
 section "Blocklist (dangerous commands blocked)"
 output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "docker system prune -af" 2>&1 || true)
@@ -182,6 +228,8 @@ declare -a BYPASS=(
   'rm -rf "/home/ubuntu"@quoted path'
   "rm -rf '/'@quoted root"
   'rm -rf /home/ubuntu;@trailing semicolon'
+  'rm -rf /Users/chenliangyu/kg-data@macOS home path'
+  'rm -rf /Users/x@macOS user home'
   'rm -rf /*@root glob wipe'
   'rm -rf /.@root dot wipe'
   'find /* -delete@find root glob'
@@ -209,6 +257,8 @@ done
 declare -a SAFE=(
   'rm -rf ./build@relative build dir'
   'rm -rf /tmp/foo@tmp path'
+  'ls -la /Users/chenliangyu/kg-data@listing macOS home'
+  'rm -f /Users/chenliangyu/single.log@non-recursive macOS file'
   'rm -rf node_modules@relative no-slash'
   'rm -f /home/ubuntu/single.log@non-recursive single file'
   'ls -la /home/ubuntu@listing prod dir'

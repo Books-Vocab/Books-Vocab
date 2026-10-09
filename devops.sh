@@ -519,6 +519,13 @@ cleanup_old_backups() {
   local count dir f
   # 一份備份 = data_<date>/ 目錄 + 同名 .tar.gz + .tar.gz.sha256；
   # 只以目錄計數，否則 tarball／sha256 會讓 keep 實際只剩約 3 份快照。
+  # 帶 .INCOMPLETE 標記的殘缺目錄不占 keep 額度（否則會擠掉好備份），一律清掉。
+  for dir in "$backup_dir"/data_*/; do
+    [ -e "${dir}.INCOMPLETE" ] || continue
+    dir="${dir%/}"
+    echo "  刪除殘缺: $(basename "$dir")"
+    rm -rf "$dir" "$dir.tar.gz" "$dir.tar.gz.sha256"
+  done
   count=$(ls -1d "$backup_dir"/data_*/ 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -gt "$keep" ]; then
     local to_delete=$(( count - keep ))
@@ -581,7 +588,14 @@ cmd_backup() {
 
   # 找最近一份備份目錄當增量基準（未變的 db 走硬連結，只傳當日有寫入的）
   local prev
-  prev=$(ls -1dt "$BACKUP_DIR"/data_*/ 2>/dev/null | grep -vF "/data_${date_str}/" | head -1) || true  # grep 無匹配 exit 1，避免 set -e 在首次（無既有備份）誤殺
+  # 帶 .INCOMPLETE 標記的目錄不可當增量基準（硬連結會把殘缺／損毀的 db 傳染進新備份）。
+  local cand
+  prev=""
+  while IFS= read -r cand; do
+    [[ -e "${cand}.INCOMPLETE" ]] && continue
+    prev="$cand"
+    break
+  done < <(ls -1dt "$BACKUP_DIR"/data_*/ 2>/dev/null | grep -vF "/data_${date_str}/" || true)  # grep 無匹配 exit 1，避免 set -e 在首次（無既有備份）誤殺
   mkdir -p "$dest"
   # 空輸出的防呆帶。下面的陣列若是空的，bash 3.2 對 ${a[*]} 在 set -u 下會直接噴
   # `progress_flags[*]: unbound variable`——又一次拿難懂訊號當失敗訊號。
@@ -640,16 +654,19 @@ cmd_backup() {
     fi
   done < <(find "$dest" -name "*.db" -print0)
 
+  # integrity_check 失敗：不產 tar／sha256（否則損毀快照看起來是有 checksum 的可信備份），
+  # 以 .INCOMPLETE 標記該目錄（同 rsync 失敗路徑；鐵律 7 不 rm -rf），再非零退出。
+  if [[ "$integrity_ok" -eq 0 ]]; then
+    touch "$dest/.INCOMPLETE" 2>/dev/null || true
+    err "備份完整性驗證失敗（已標記 ${dest}/.INCOMPLETE，未產生 tar／checksum），請檢查上方錯誤訊息"
+  fi
+
   # ── 完整性驗證：sha256 checksum ─────────────────────────────────────────
   local tar_file="$BACKUP_DIR/data_${date_str}.tar.gz"
   info "計算備份 checksum → ${tar_file}.sha256"
   tar -czf "$tar_file" -C "$BACKUP_DIR" "data_$date_str"
   sha256sum "$tar_file" > "${tar_file}.sha256"
   ok "checksum: $(cat "${tar_file}.sha256")"
-
-  if [[ "$integrity_ok" -eq 0 ]]; then
-    err "備份完整性驗證失敗，請檢查上方錯誤訊息"
-  fi
 
   ok "備份完成且驗證通過: $dest"
   ls -lh "$BACKUP_DIR" | tail -5

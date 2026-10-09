@@ -60,3 +60,13 @@ run_cleanup "$B3"
 ls "$B3" | grep -q '^data_2025' && fail "orphans remain"
 [[ "$(ls -1 "$B3" | wc -l | tr -d ' ')" == 9 ]] || fail "complete runs were disturbed"
 pass "orphan tar.gz and sha256 are swept"
+
+# .INCOMPLETE 目錄不占 keep 額度（否則殘缺快照會把好備份擠掉），且一併清掉
+B4="$TMP/b4"; mkdir -p "$B4"; make_runs "$B4" 10
+mkdir -p "$B4/data_20260199_000000"; : >"$B4/data_20260199_000000/.INCOMPLETE"
+run_cleanup "$B4"
+for i in 01 02 03 04 05 06 07 08 09 10; do
+  [[ -d "$B4/data_202601${i}_000000" ]] || fail "complete run $i evicted by an INCOMPLETE dir"
+done
+[[ ! -e "$B4/data_20260199_000000" ]] || fail "INCOMPLETE dir not swept"
+pass "INCOMPLETE dirs neither evict good runs nor linger"

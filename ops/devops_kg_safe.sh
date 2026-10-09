@@ -94,7 +94,7 @@ is_blocked_run() {
   # match themselves or any sub-path.
   # Bare `/` includes `*` and `.` in its trailing boundary so `rm -rf /*` and
   # `/.` (machine-wipe equivalents) are caught, not just a lone `rm -rf /`.
-  local prot='(/([[:space:]>*.]|$)|~([[:space:]/>]|$)|\$home([[:space:]/>]|$)|/home/ubuntu([[:space:]/>]|$)|/root([[:space:]/>]|$)|/app/data([[:space:]/>]|$)|knowledge_graph_api|knowledge-graph-api_data)'
+  local prot='(/([[:space:]>*.]|$)|~([[:space:]/>]|$)|\$home([[:space:]/>]|$)|/home/ubuntu([[:space:]/>]|$)|/users(/[^[:space:]/]+)?([[:space:]/>]|$)|/root([[:space:]/>]|$)|/app/data([[:space:]/>]|$)|knowledge_graph_api|knowledge-graph-api_data)'
 
   # Recursive `rm` (any flag order/long form; also /bin/rm) at a protected path.
   if [[ "$cmd" =~ (^|[[:space:]]|/)rm[[:space:]] ]] \
