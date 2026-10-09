@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import math
 import os
 import queue
@@ -73,6 +74,7 @@ def _child_env(env: dict[str, str] | None) -> dict[str, str]:
     resolved["LC_CTYPE"] = CHILD_LC_CTYPE
     return resolved
 
+
 # Identity read retry budget: 20 x 10ms = 200ms worst case in the spawn path.
 _IDENTITY_RETRY_ATTEMPTS = 20
 _IDENTITY_RETRY_DELAY_SECONDS = 0.01
@@ -96,6 +98,10 @@ def _terminate_process_group(
                 proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        # Best-effort group KILL so descendants cannot hold inherited pipes open;
+        # EPERM/ESRCH here mean the group is unreachable or already gone.
+        with contextlib.suppress(PermissionError, ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
         proc.wait()
         return
 
