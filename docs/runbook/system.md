@@ -230,6 +230,23 @@ typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `orig
 
 API、host、資料庫、CloudKit、App Store、TestFlight 與 rollback 依各自 SOP；所有生產寫入都經 `ops/devops_kg_safe.sh`、`ops/release.sh` 或被明確列出的領域入口。GitHub merge 不是 production approval。
 
+### Readiness 探針：儲存層壞掉要 fail closed
+
+`GET /api/system/info/ready`（無需認證；掛在 `/api/system/info` 前綴下，沿用該前綴的 rate-limit 豁免，不需改 `app_middleware.py`；正本 `backend/src/kg/routers/system.py` 的 `readiness_failures`）。只做 `stat`／`open`／`unlink`，不查 DB。全部成立才回 `200 {"ready":true}`，否則 `503 {"ready":false,"reasons":[...]}`，reasons 為固定字串、不含主機路徑：
+
+| reason | 條件 |
+|---|---|
+| `data_dir_missing` | 設定的 data dir 不存在或不是目錄（2026-10-09 事故：`/app/data` 被刪） |
+| `users_dir_missing` | `users/` 子目錄不存在 |
+| `data_dir_not_writable` | 無法建立並刪除唯一命名的 `.ready-probe-<uuid>` |
+| `worker_lock_missing` / `pipeline_db_missing` | 行程啟動時自己建立的 `.worker.lock`／`pipeline_runs.db` 不見了（目錄被換掉或清空） |
+
+`/api/system/info` 與 `/api/health` 都**證明不了**儲存層健康（前者在 data dir 被刪後仍回 200；後者對外為 401、對 reconcile 可能 429），故判活一律看 readiness：
+
+- `ops/kg_reconcile.sh` 健康 gate：localhost readiness 非 200 → `reason=ready` 回滾；外部 smoke 在 info／health 通過後再要求 `…/api/system/info/ready` 回 200，否則判 `bad`（`smoke`）。外部完全無回應仍維持 `unverified`。
+- **noop tick 也探 localhost readiness**（`--dry-run` 不探）：失敗 → stderr `ALERT: readiness 失敗`、stdout `verdict=unhealthy`、exit 1，launchd log 與 felix-status 可見。沒有新增 launchd job。
+- 手動診斷：`curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/api/system/info/ready`（felix 上）。
+
 ### 部署前 env-check 的 backend 啟動規則
 
 `./ops/devops_kg_safe.sh env-check`（`ops/env_drift.py env-check`）在 key 存在與 unsafe 旗標之外，直接呼叫 backend 自己的啟動驗證器判定遠端 `.env`（值先依 Compose env_file 規則解碼，驗證器在隔離的 `os.environ` 內執行；`$VAR` 插值只取 `.env` 內較早的行，不取操作者 shell 環境，未定義即 fail closed。唯一的例外是前段 key 存在／unsafe 旗標檢查，其插值仍可讀 env-check 行程的環境）。不通過的 `.env` 會讓容器啟動即崩潰，所以任一規則 FAIL 即非零退出。

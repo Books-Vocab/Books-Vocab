@@ -67,6 +67,21 @@ for a in "\$@"; do
     url="\$a"
   fi
 done
+# readiness 探針（/api/system/info/ready）：必須先於 SERVED / system/info 分支攔截，
+# 否則 localhost 的 SERVED 分支會對它回一個帶 version 的 200，等於替身比真實依賴仁慈。
+# MOCK_READY_LOCAL / MOCK_READY_EXTERNAL = 該端點回的 HTTP code（預設 200；000 = 連不出去）。
+if [[ "\$url" == */api/system/info/ready ]]; then
+  if [[ "\$url" == *localhost* ]]; then rc_="\${MOCK_READY_LOCAL:-200}"; else rc_="\${MOCK_READY_EXTERNAL:-200}"; fi
+  echo "\$url \$rc_" >> "$dir/ready_calls"
+  if [[ "\$rc_" == "000" ]]; then
+    if [[ "\$want_body_plus_http" == "1" ]]; then printf '\\n000'
+    elif [[ "\$want_http_only" == "1" ]]; then printf '000'; fi
+    exit 6
+  fi
+  if [[ "\$want_body_plus_http" == "1" ]]; then printf '{}\\n%s' "\$rc_";
+  elif [[ "\$want_http_only" == "1" ]]; then printf '%s' "\$rc_"; fi
+  exit 0
+fi
 # 動態 localhost：容器 serving 版本 = SERVED 檔內容（模擬 rebuild 後版本改變）。
 # SERVED 空 → 該檔缺 → 容器視為 down（000/exit 6）。僅套用於 localhost；外部 URL 走 fixture。
 if [[ -n "\$SERVED" && "\$url" == *localhost* ]]; then
@@ -992,6 +1007,68 @@ poison_key_case "7-char short sha" 7 skip
 poison_key_case "12-char short sha" 12 skip
 poison_key_case "other 7-char sha (control)" "deadbee" run
 poison_key_case "6-char prefix is too short" 6 run
+
+section "readiness（fail-closed）：info 200 但 /app/data 壞掉 → 不得判健康（2026-10-09 事故）"
+# 事故：/app/data 被刪後 /api/system/info 仍 200、/api/health 對 reconcile 是 429，
+# 三小時沒人發現。每個斷言都以正控（readiness 200 時綠）為前提，見 noop 與 deployed 段。
+# 前一段留下 set -e；本段刻意讓被測腳本非 0 退出，所以先關掉。
+set +e
+# 1) noop tick 也要探 readiness
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+rm -f "$SC/ready_calls"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+[[ "$(get_verdict "$out")" == "noop" && "$rc" -eq 0 ]] && ok "ready noop 正控: readiness 200 → noop exit 0" || bad "ready noop 正控: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "localhost:8000/api/system/info/ready 200" "$SC/ready_calls" 2>/dev/null && ok "ready noop 正控: noop tick 真的探了 readiness" || bad "ready noop 正控: noop tick 沒探 readiness"
+
+for rcode in 503 000 404; do
+  new_scratch none
+  MOCK_CURL="$(make_mock_curl "" "$SC")"
+  out="$(MOCK_READY_LOCAL=$rcode run_recon --once 2>"$SC/ready.err")"; rc=$?
+  [[ "$(get_verdict "$out")" == "unhealthy" ]] && ok "ready noop[$rcode]: verdict unhealthy" || bad "ready noop[$rcode]: expected unhealthy, got '$(get_verdict "$out")' (out=$out)"
+  [[ "$rc" -ne 0 ]] && ok "ready noop[$rcode]: exit 非 0" || bad "ready noop[$rcode]: exit 0 — 壞掉的儲存層被當成健康"
+  grep -q "ALERT: readiness 失敗" "$SC/ready.err" && ok "ready noop[$rcode]: ALERT 已寫 stderr" || bad "ready noop[$rcode]: 無 ALERT"
+  [[ ! -s "$COMPOSELOG" ]] && ok "ready noop[$rcode]: 不 rebuild" || bad "ready noop[$rcode]: compose 被呼叫"
+done
+
+# dry-run 不探（不產生任何對外呼叫）
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+rm -f "$SC/ready_calls"
+out="$(MOCK_READY_LOCAL=503 run_recon --once --dry-run 2>/dev/null)"; rc=$?
+[[ "$(get_verdict "$out")" == "noop" && "$rc" -eq 0 && ! -e "$SC/ready_calls" ]] && ok "ready dry-run: 不探 readiness" || bad "ready dry-run: verdict=$(get_verdict "$out") rc=$rc calls=$(cat "$SC/ready_calls" 2>/dev/null)"
+
+# 2) deploy gate：localhost readiness 壞 → 回滾 reason=ready
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_READY_LOCAL=503 run_recon --once 2>/dev/null)"; rc=$?
+[[ "$(get_verdict "$out")" == "rolled-back" && "$rc" -ne 0 ]] && ok "ready deploy-local: rolled-back 非 0" || bad "ready deploy-local: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "ROLLED_BACK .*reason=ready" "$DEPLOYLOG" && ok "ready deploy-local: deploy.log reason=ready" || bad "ready deploy-local: deploy.log=$(cat "$DEPLOYLOG" 2>/dev/null)"
+
+# 3) deploy gate：外部 readiness 壞（info 200 + health 401 都綠）→ 回滾 reason=smoke
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_READY_EXTERNAL=503 run_recon --once 2>/dev/null)"; rc=$?
+[[ "$(get_verdict "$out")" == "rolled-back" && "$rc" -ne 0 ]] && ok "ready deploy-external: rolled-back 非 0（info/health 都綠仍不放行）" || bad "ready deploy-external: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "ROLLED_BACK .*reason=smoke" "$DEPLOYLOG" && ok "ready deploy-external: reason=smoke" || bad "ready deploy-external: deploy.log=$(cat "$DEPLOYLOG" 2>/dev/null)"
+
+# 外部 readiness 連不出去（000）而 info 也拿不到任何回應 = 主機斷網，仍走 unverified 不回滾
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_EXTERNAL_FAIL_FIRST=99 MOCK_READY_EXTERNAL=000 run_recon --once 2>/dev/null)"; rc=$?
+[[ "$(get_verdict "$out")" == "deployed" ]] && grep -q '"smoke":"unverified"' <<<"$out" && ok "ready outage: 斷網維持 unverified 落地（不因 readiness 假回滾）" || bad "ready outage: verdict=$(get_verdict "$out") out=$out"
 
 echo ""
 echo "══════════════════════════════"

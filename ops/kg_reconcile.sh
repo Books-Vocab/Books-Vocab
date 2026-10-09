@@ -57,6 +57,10 @@ KG_STATE_FILE="${KG_STATE_FILE:-$KG_RECON_REPO/backups/reconciler.state}"   # po
 KG_DEPLOY_LOG="${KG_DEPLOY_LOG:-$KG_RECON_REPO/backups/deploy.log}"
 KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
 KG_LOCAL_HEALTH_URL="${KG_LOCAL_HEALTH_URL:-http://localhost:8000/api/system/info}"
+# readiness（fail-closed）：資料目錄存在且可寫、users/ 在、啟動時建立的檔案都在。
+# /api/system/info 在 2026-10-09 /app/data 被刪後仍回 200（15:23Z 才被使用者的 500 發現），
+# 所以「info 200」不能當存活證明；readiness 非 200 一律視為 unhealthy。
+KG_LOCAL_READY_URL="${KG_LOCAL_READY_URL:-http://localhost:8000/api/system/info/ready}"
 KG_LOCK_DIR="${KG_LOCK_DIR:-/tmp/kg-deploy.lock}"          # 鎖在 deploy host（felix）本機；devops.sh acquire_deploy_lock 經 SSH 在 felix 取同一把
 KG_GH_TOKEN_ENV="${KG_GH_TOKEN_ENV:-$HOME/.secrets/gh-token.env}"           # GH_TOKEN（私有 repo fetch）
 KG_SENTRY_RELEASE="${KG_SENTRY_RELEASE:-$KG_RECON_REPO/ops/sentry_release.sh}"  # Sentry release recorder
@@ -259,6 +263,25 @@ localhost_health_ok() {
   return 1
 }
 
+# readiness 單發探針：印出 HTTP code（連不出去 → 000）。非 200 一律 unhealthy。
+ready_code() {
+  local code
+  code="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$1" 2>/dev/null || true)"
+  printf '%s' "${code:-000}"
+}
+
+# localhost readiness：與 localhost_health_ok 同旋鈕、同重試語意。
+localhost_ready_ok() {
+  local attempts="$KG_RECON_HEALTH_ATTEMPTS" delay="$KG_RECON_HEALTH_DELAY" i code
+  for (( i=1; i<=attempts; i++ )); do
+    code="$(ready_code "$KG_LOCAL_READY_URL")"
+    [[ "$code" == "200" ]] && return 0
+    log "  localhost ready attempt $i/$attempts: code=$code (want 200)"
+    if (( i < attempts )); then sleep "$delay"; fi
+  done
+  return 1
+}
+
 # 外部 smoke 快子集（CF→tunnel→felix 全鏈）：
 #   /api/system/info 200 且 version==期望 sha；/api/health 401/403/200(存在即可)、
 #   404 跳過、000/500/其他判紅。
@@ -295,7 +318,7 @@ localhost_health_ok() {
 external_smoke_ok() {
   local want="$1" base="$KG_PUBLIC_URL"
   local attempts="$KG_RECON_HEALTH_ATTEMPTS" delay="$KG_RECON_HEALTH_DELAY"
-  local i body code ver hcode
+  local i body code ver hcode hok rcode
   # 「這一輪到底有沒有拿到過任何 HTTP 回應」的見證，是上述三分類的整個支點。
   local saw_response=0
   EXTERNAL_SMOKE_CLASS="unreachable"
@@ -326,11 +349,19 @@ external_smoke_ok() {
         # 這裡刻意**沒有**「hcode != 000 → saw_response=1」：能走到這支探針的唯一條件是
         # 上面 code=="200"，而迴圈開頭那行早已因此把 saw_response 設為 1。那個守衛點不燃，
         # 留著只會讓人誤以為 /api/health 也是見證來源之一（IMP-0061 review D3）。
+        # /api/health 在生產對外只回 401（受 auth 保護）、對 reconcile 還可能 429，
+        # 證明不了儲存層。真正的存活證據是 readiness：非 200（含 404/503/000）一律不 ok，
+        # 此時 saw_response 已為 1，故走 `bad` 而非 `unreachable`。
         case "$hcode" in
-          200|401|403) EXTERNAL_SMOKE_CLASS="ok"; return 0 ;;                          # 存在 → ok
-          404) log "  external /api/health 404 → 跳過（非失敗）"; EXTERNAL_SMOKE_CLASS="ok"; return 0 ;;
-          *)   log "  external attempt $i/$attempts: /api/health HTTP=$hcode" ;;   # 000/500/其他 → 再試
+          200|401|403) hok=1 ;;                                                         # 存在 → ok
+          404) log "  external /api/health 404 → 跳過（非失敗）"; hok=1 ;;
+          *)   log "  external attempt $i/$attempts: /api/health HTTP=$hcode"; hok=0 ;;   # 000/500/其他 → 再試
         esac
+        if (( hok == 1 )); then
+          rcode="$(ready_code "$base/api/system/info/ready")"
+          if [[ "$rcode" == "200" ]]; then EXTERNAL_SMOKE_CLASS="ok"; return 0; fi
+          log "  external attempt $i/$attempts: /api/system/info/ready HTTP=$rcode (expect 200)"
+        fi
       fi
     fi
     if (( i < attempts )); then sleep "$delay"; fi
@@ -407,6 +438,7 @@ infra_crit_is_same_outage() {
 run_health_gate() {
   local new="$1"
   if ! localhost_health_ok "$new"; then HEALTH_FAIL_REASON="health"; return 1; fi
+  if ! localhost_ready_ok; then HEALTH_FAIL_REASON="ready"; return 1; fi
   # 外部 smoke 三分類。注意這裡**只有 `bad` 會擋**——
   # `unreachable` 不回滾的理由不是「寬容」，是「回滾在此刻既無正當性也不可靠」：
   #   ① 無正當性：localhost 剛剛才證明 ${new} healthy 在跑，沒有任何證據指控這份 code；
@@ -695,6 +727,13 @@ main() {
     # 表達這一輪無事可做；只有手動診斷才開 verbose，避免正常輪詢製造磁碟寫入。
     [[ "${KG_RECON_VERBOSE_NOOP:-0}" == "1" ]] && \
       log "已同版（deployed=$DEPLOYED_SHA == origin=${ORIGIN_SHA}），no-op。"
+    # noop tick 也探 readiness（dry-run 不探）：沒有部署事件時，這是唯一會發現
+    # 「容器活著但 /app/data 壞了」的週期性檢查（2026-10-09 事故 3 小時無人察覺）。
+    # 失敗 → verdict=unhealthy + exit 1，launchd err log 與 verdict 都看得到；不動任何狀態。
+    if [[ "$dry_run" != "1" ]] && ! localhost_ready_ok; then
+      alert "readiness 失敗：${KG_LOCAL_READY_URL} 非 200（資料目錄不存在／不可寫／啟動檔案遺失）。服務可能對使用者回 500，需立即人工檢查 /app/data。"
+      emit_verdict "unhealthy"; exit 1
+    fi
     emit_verdict "noop"; exit 0
   fi
 
