@@ -226,6 +226,8 @@ final class ReviewCardLayoutStore {
     @ObservationIgnored private let notificationCenter: NotificationCenter?
     @ObservationIgnored private var cloudObserver: NSObjectProtocol?
     @ObservationIgnored private var resolvedUpdatedAt: TimeInterval?
+    @ObservationIgnored private var accountID: String?
+    private(set) var isAccountBoundarySuspended = false
 
     private(set) var profile: ReviewCardLayoutProfile
 
@@ -238,16 +240,20 @@ final class ReviewCardLayoutStore {
         cloud: CloudKeyValueStore = CloudPreferencesSync.shared,
         now: @escaping () -> Date = Date.init,
         notificationCenter: NotificationCenter = .default,
-        cloudNotificationObject: Any? = NSUbiquitousKeyValueStore.default
+        cloudNotificationObject: Any? = NSUbiquitousKeyValueStore.default,
+        accountID: String? = nil
     ) {
+        let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        if let normalizedAccountID {
+            Self.migrateLegacyPreferences(defaults: defaults, cloud: cloud, accountID: normalizedAccountID)
+        }
+        self.accountID = normalizedAccountID
         self.defaults = defaults
         self.cloud = cloud
         self.now = now
         self.notificationCenter = notificationCenter
 
-        let local = Self.decodeEnvelope(defaults.string(forKey: Self.storageKey))
-        let remote = Self.decodeEnvelope(cloud.string(forKey: Self.storageKey))
-        let resolved = Self.resolve(local: local, cloud: remote)
+        let resolved = Self.readResolved(defaults: defaults, cloud: cloud, key: Self.namespacedKey(accountID: normalizedAccountID))
         self.profile = resolved?.profile ?? .default
         self.resolvedUpdatedAt = resolved?.updatedAt
 
@@ -284,6 +290,7 @@ final class ReviewCardLayoutStore {
     }
 
     func update(_ profile: ReviewCardLayoutProfile) {
+        guard !isAccountBoundarySuspended else { return }
         guard defaults != nil, cloud != nil else {
             self.profile = profile
             return
@@ -293,8 +300,8 @@ final class ReviewCardLayoutStore {
         guard let encoded = Self.encodeEnvelope(profile: profile, updatedAt: timestamp) else {
             return
         }
-        defaults?.set(encoded, forKey: Self.storageKey)
-        cloud?.set(encoded, forKey: Self.storageKey)
+        defaults?.set(encoded, forKey: storageKey)
+        cloud?.set(encoded, forKey: storageKey)
         self.profile = profile
         resolvedUpdatedAt = timestamp
     }
@@ -309,6 +316,57 @@ final class ReviewCardLayoutStore {
         update(.default)
     }
 
+    /// Switch to one authenticated account. Durable local and iCloud state
+    /// lives under the account namespace; the first activation adopts the
+    /// pre-account raw layout once.
+    func activateAccount(_ accountID: String?) {
+        guard let defaults, let cloud else { return }
+        let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        if let normalizedAccountID {
+            Self.migrateLegacyPreferences(defaults: defaults, cloud: cloud, accountID: normalizedAccountID)
+        }
+        self.accountID = normalizedAccountID
+        isAccountBoundarySuspended = false
+        let resolved = Self.readResolved(defaults: defaults, cloud: cloud, key: storageKey)
+        profile = resolved?.profile ?? .default
+        resolvedUpdatedAt = resolved?.updatedAt
+    }
+
+    /// Hide the previous account's layout during an account boundary without
+    /// deleting its namespaced state; the raw guest key is removed locally.
+    func suspendForAccountBoundary() {
+        guard let defaults else { return }
+        isAccountBoundarySuspended = true
+        accountID = nil
+        defaults.removeObject(forKey: Self.storageKey)
+        profile = .default
+        resolvedUpdatedAt = nil
+    }
+
+    private var storageKey: String { Self.namespacedKey(accountID: accountID) }
+
+    private static func namespacedKey(accountID: String?) -> String {
+        AccountPreferenceNamespace.key(storageKey, accountID: accountID)
+    }
+
+    private static func readResolved(defaults: UserDefaults, cloud: CloudKeyValueStore, key: String) -> Envelope? {
+        resolve(
+            local: decodeEnvelope(defaults.string(forKey: key)),
+            cloud: decodeEnvelope(cloud.string(forKey: key))
+        )
+    }
+
+    private static func migrateLegacyPreferences(defaults: UserDefaults, cloud: CloudKeyValueStore, accountID: String) {
+        AccountPreferenceNamespace.migrateLegacyIfNeeded(
+            accountID: accountID,
+            defaults: defaults,
+            feature: "review-card-layout"
+        ) {
+            AccountPreferenceNamespace.copyLegacyObject(storageKey, defaults: defaults, accountID: accountID)
+            AccountPreferenceNamespace.copyLegacyCloudString(storageKey, cloud: cloud, accountID: accountID)
+        }
+    }
+
     private func nextTimestamp() -> TimeInterval {
         let rawCandidate = now().timeIntervalSince1970
         let candidate = Self.isSelfDecodableTimestamp(rawCandidate) ? rawCandidate : 0
@@ -321,9 +379,10 @@ final class ReviewCardLayoutStore {
     }
 
     private func handleCloudChange(_ notification: Notification) {
-        guard let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
-              keys.contains(Self.storageKey),
-              let remote = Self.decodeEnvelope(cloud?.string(forKey: Self.storageKey))
+        guard !isAccountBoundarySuspended,
+              let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
+              keys.contains(storageKey),
+              let remote = Self.decodeEnvelope(cloud?.string(forKey: storageKey))
         else { return }
         if let resolvedUpdatedAt, remote.updatedAt < resolvedUpdatedAt { return }
 

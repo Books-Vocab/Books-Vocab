@@ -510,3 +510,80 @@ private final class ReviewCardLayoutCloudSpy: CloudKeyValueStore {
         setCalls.append(key)
     }
 }
+
+@MainActor
+struct ReviewCardLayoutStoreAccountScopeTests {
+    private let rawKey = ReviewCardLayoutStore.storageKey
+
+    private func makeDefaults() -> UserDefaults {
+        let suite = "test.review-card-layout-account.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    private func makeStore(
+        _ defaults: UserDefaults,
+        _ cloud: ReviewCardLayoutCloudSpy
+    ) -> ReviewCardLayoutStore {
+        ReviewCardLayoutStore(defaults: defaults, cloud: cloud, notificationCenter: NotificationCenter())
+    }
+
+    @Test func accountBStartsWithDefaultAndAccountARestoresOwnLayout() {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let store = makeStore(defaults, cloud)
+        let custom = ReviewCardLayoutProfile(recognition: .compact, production: .compact)
+
+        store.activateAccount("account-a")
+        store.update(custom)
+        #expect(defaults.string(forKey: rawKey) == nil)
+        #expect(cloud.values[rawKey] == nil)
+
+        store.suspendForAccountBoundary()
+        #expect(store.profile == .default)
+        store.activateAccount("account-b")
+        #expect(store.profile == .default)
+
+        store.activateAccount("account-a")
+        #expect(store.profile == custom)
+    }
+
+    @Test func suspendedStoreIgnoresWritesAndClearsRawLocalKey() {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let store = makeStore(defaults, cloud)
+        store.update(ReviewCardLayoutProfile(recognition: .compact, production: .standard))
+        #expect(defaults.string(forKey: rawKey) != nil)
+
+        store.suspendForAccountBoundary()
+        #expect(defaults.string(forKey: rawKey) == nil)
+        let writes = cloud.setCalls.count
+        store.update(ReviewCardLayoutProfile(recognition: .compact, production: .compact))
+        #expect(cloud.setCalls.count == writes)
+        #expect(store.profile == .default)
+    }
+
+    @Test func legacyRawLayoutMigratesOnceIntoFirstAccountOnly() {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let legacy = makeStore(defaults, cloud)
+        let custom = ReviewCardLayoutProfile(recognition: .standard, production: .compact)
+        legacy.update(custom)
+
+        let store = makeStore(defaults, cloud)
+        store.activateAccount("account-a")
+        #expect(store.profile == custom)
+        store.activateAccount("account-b")
+        #expect(store.profile == .default)
+    }
+
+    @Test func coordinatorForwardsToSharedLayoutStore() {
+        let store = makeStore(makeDefaults(), ReviewCardLayoutCloudSpy())
+        let coordinator = AccountPreferenceLifecycleCoordinator(layoutStore: store)
+        coordinator.suspend()
+        #expect(store.isAccountBoundarySuspended)
+        coordinator.activate(accountID: nil)
+        #expect(!store.isAccountBoundarySuspended)
+    }
+}
