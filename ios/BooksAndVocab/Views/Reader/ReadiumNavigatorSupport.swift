@@ -24,6 +24,38 @@ actor GlobalDebouncer {
     }
 }
 
+/// Words awaiting the debounced `markVocabWords` JS emit. Kept outside the
+/// debouncer closure so removal / clear-all can synchronously drop entries
+/// during the debounce window (#2437) instead of racing a stale captured list.
+final class PendingVocabMarks: @unchecked Sendable {
+    /// Shared like `GlobalDebouncer` (single "markVocabWords" debounce key).
+    static let shared = PendingVocabMarks()
+
+    private let lock = NSLock()
+    private var words: [String] = []
+
+    func enqueue(_ new: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        for word in new where !words.contains(word) { words.append(word) }
+    }
+
+    func discard(word: String) {
+        lock.lock(); defer { lock.unlock() }
+        words.removeAll { $0 == word }
+    }
+
+    func discardAll() {
+        lock.lock(); defer { lock.unlock() }
+        words.removeAll()
+    }
+
+    func drain() -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        defer { words.removeAll() }
+        return words
+    }
+}
+
 final class NavigatorHostViewController: UIViewController {
     var onWordSelected: ((String, String) -> Void)?
     var onPhraseSelected: ((String, String) -> Void)?
