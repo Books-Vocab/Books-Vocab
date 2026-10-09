@@ -28,9 +28,6 @@ actor GlobalDebouncer {
 /// debouncer closure so removal / clear-all can synchronously drop entries
 /// during the debounce window (#2437) instead of racing a stale captured list.
 final class PendingVocabMarks: @unchecked Sendable {
-    /// Shared like `GlobalDebouncer` (single "markVocabWords" debounce key).
-    static let shared = PendingVocabMarks()
-
     private let lock = NSLock()
     private var words: [String] = []
 
@@ -41,7 +38,8 @@ final class PendingVocabMarks: @unchecked Sendable {
 
     func discard(word: String) {
         lock.lock(); defer { lock.unlock() }
-        words.removeAll { $0 == word }
+        let target = word.lowercased()
+        words.removeAll { $0.lowercased() == target }
     }
 
     func discardAll() {
@@ -54,6 +52,41 @@ final class PendingVocabMarks: @unchecked Sendable {
         defer { words.removeAll() }
         return words
     }
+}
+
+/// Per-coordinator debounce + pending store for `markVocabWords`. Owning the
+/// pending list here (not a singleton) means it dies with its coordinator, and
+/// drain + emit run together on the main actor so main-thread removals cannot
+/// interleave between them (#2437).
+final class VocabMarkScheduler: @unchecked Sendable {
+    private let pending = PendingVocabMarks()
+    private let duration: TimeInterval
+    private let key = "markVocabWords-\(UUID().uuidString)"
+    private let emit: @MainActor @Sendable ([String]) -> Void
+
+    init(duration: TimeInterval, emit: @escaping @MainActor @Sendable ([String]) -> Void) {
+        self.duration = duration
+        self.emit = emit
+    }
+
+    func schedule(_ words: [String]) {
+        guard !words.isEmpty else { return }
+        pending.enqueue(words)
+        let key = key, duration = duration
+        Task {
+            await GlobalDebouncer.shared.debounce(key: key, duration: duration) { [weak self] in
+                await MainActor.run {
+                    guard let self else { return }
+                    let words = self.pending.drain()
+                    guard !words.isEmpty else { return }
+                    self.emit(words)
+                }
+            }
+        }
+    }
+
+    func discard(word: String) { pending.discard(word: word) }
+    func discardAll() { pending.discardAll() }
 }
 
 final class NavigatorHostViewController: UIViewController {

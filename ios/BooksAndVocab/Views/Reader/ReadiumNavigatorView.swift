@@ -289,6 +289,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         let navigatorID = UUID()
         var hasPublishedNavigatorSettingsReceipt = false
         let domExecutor = ReaderDOMExecutor()
+        lazy var vocabMarks = VocabMarkScheduler(duration: ReaderMetrics.markVocabDebounceDuration) { [weak self] words in
+            self?.emitMarkVocabWordsJS(words)
+        }
 
         /// 記住 setupUserScripts 傳入的 controller，供 dismantle 時移除 handler 打斷 retain cycle
         weak var registeredContentController: WKUserContentController?

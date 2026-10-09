@@ -36,5 +36,64 @@ struct ReaderVocabMarkDebounceTests {
         pending.enqueue(["charlie"])
         #expect(pending.drain() == ["charlie"])
     }
+
+    @Test func discardIsCaseInsensitive() {
+        let pending = PendingVocabMarks()
+        pending.enqueue(["Alpha", "bravo"])
+        pending.discard(word: "ALPHA")
+        #expect(pending.drain() == ["bravo"])
+    }
+
+    // MARK: - scheduler wiring (debounce + emit)
+
+    private final class Sink: @unchecked Sendable {
+        private let lock = NSLock()
+        private var batches: [[String]] = []
+        func record(_ words: [String]) { lock.lock(); batches.append(words); lock.unlock() }
+        var all: [[String]] { lock.lock(); defer { lock.unlock() }; return batches }
+    }
+
+    private func makeScheduler(_ sink: Sink) -> VocabMarkScheduler {
+        VocabMarkScheduler(duration: 0.05) { sink.record($0) }
+    }
+
+    private func settle() async { try? await Task.sleep(for: .seconds(0.4)) }
+
+    @Test func removeDuringWindowEmitsOnlyRemainingWord() async {
+        let sink = Sink()
+        let scheduler = makeScheduler(sink)
+        scheduler.schedule(["X", "Y"])
+        scheduler.discard(word: "X")
+        await settle()
+        #expect(sink.all == [["Y"]])
+    }
+
+    @Test func clearAllDuringWindowEmitsNothing() async {
+        let sink = Sink()
+        let scheduler = makeScheduler(sink)
+        scheduler.schedule(["X", "Y"])
+        scheduler.discardAll()
+        await settle()
+        #expect(sink.all.isEmpty)
+    }
+
+    @Test func repeatedSchedulesCoalesceIntoOneEmit() async {
+        let sink = Sink()
+        let scheduler = makeScheduler(sink)
+        scheduler.schedule(["X"])
+        scheduler.schedule(["X", "Y"])
+        scheduler.schedule(["Z"])
+        await settle()
+        #expect(sink.all == [["X", "Y", "Z"]])
+    }
+
+    @Test func deallocatedSchedulerEmitsNothing() async {
+        let sink = Sink()
+        var scheduler: VocabMarkScheduler? = makeScheduler(sink)
+        scheduler?.schedule(["X"])
+        scheduler = nil
+        await settle()
+        #expect(sink.all.isEmpty)
+    }
 }
 #endif
