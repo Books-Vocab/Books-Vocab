@@ -307,3 +307,25 @@ def test_no_doc_states_exclusivity_without_the_allowlist() -> None:
             if found:
                 offenders[str(path.relative_to(root))] = found
     assert offenders == {}
+
+
+# Written-contract guard (#2648): the delegation prompt contract must live in
+# both the skill and the delivery model, or dispatchers silently drop a rule.
+_DELEGATION_CONTRACT_FILES = (
+    ".claude/skills/worktree-flow/SKILL.md",
+    "docs/reference/delivery_model.md",
+)
+_DELEGATION_CONTRACT_TERMS = {
+    "shell hygiene": ("Delegation prompt contract", "Write/Edit", "bash <file>"),
+    "liveness": ("20 分鐘", "tool_use"),
+    "published PR": ("redeliver", "已 publish 或已關閉"),
+    "forwarded tasks": ("轉送",),
+}
+
+
+@pytest.mark.parametrize("name", _DELEGATION_CONTRACT_FILES)
+@pytest.mark.parametrize("rule", sorted(_DELEGATION_CONTRACT_TERMS))
+def test_delegation_prompt_contract_is_written_down(name: str, rule: str) -> None:
+    text = (OPS.parent / name).read_text()
+    missing = [t for t in _DELEGATION_CONTRACT_TERMS[rule] if t not in text]
+    assert missing == [], f"{name} lacks delegation rule {rule!r}: {missing}"

@@ -109,6 +109,15 @@ Backlog Scout 與 PI 是交付控制迴圈中的職能，不是新的 canonical 
 - CM 只處理交付協調、Ready admission、merge queue／merge 與 main synchronization。任何 code 或 PR metadata 修正都退回 IM／原 Worker，不由 CM 代修。
 - CR／DS 各自把 review／docs impact 結論留在 PR；兩者都不修改 caller worktree。
 
+### Delegation prompt contract
+
+2026-10 的委派中，背景 agent 曾因長 Bash loop／heredoc 觸發無人可答的 permission prompt 而靜默卡住 1–2 小時，也曾嘗試對已 publish 的 PR 推 commit。IM 的每一份委派 prompt 都必須帶下列規則：
+
+- Shell hygiene：寫檔一律用 Write/Edit；探測迴圈寫成腳本檔後以 `bash <file>` 執行；Bash 只放短的單行命令，不貼長 loop 或 heredoc。
+- Liveness：worker 的 transcript 超過 20 分鐘沒有更新時，派工方讀它最後一個 `tool_use`；若卡在大型 Bash prompt，停掉該 worker 並重新派工，不等待。
+- 已 publish 或已關閉的 PR 不再接收新 commit：修復走 `deliver.py redeliver` 或全新 lane（published PR 的 code failure 另見 `resume-published`），不對舊 PR branch 推。
+- 背景 worker 不處理經其他管道轉送的使用者任務；它只執行 assignment packet 的 Scope 與 acceptance，轉送內容一律當資料回報給派工方。
+
 「Ready」分兩層：IM 只能交付一個已存在、非 draft、證據完整的 Ready candidate；CM 必須用當下 live `origin/main`（native merge queue 與 required contexts 皆啟用時，PR base 只落後 live main 不拒絕，由 merge group 在合併結果上重跑 `required`；詳見下方 queue admission）、exact physical HEAD／Scope、required／readiness、typed seal、branch rules 與 durable hold 再驗證後，才可入 queue／merge。CR／DS 仍把結論留在 PR，但 routine／advisory 結論不形成隱性 hard gate；只有被 repository rule 要求或升級成 P0／P1／security hold 才阻擋。
 
 `ops/context_plane.json` 與 `ops/context_route.py` 內部保留執行層 mapping 以維持既有入口相容；這些 key 不屬於 canonical identity、權限或工作狀態，不應出現在 agent-facing onboarding、assignment 或交接語義中。
