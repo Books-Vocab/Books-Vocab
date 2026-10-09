@@ -389,8 +389,10 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             self._known_pending_judge |= migrated_ids
             self._candidates.clear()
             self._candidate_set.clear()
-            self._save_candidates()
+            # Persist the queue before clearing candidates: a crash between
+            # the two saves must leave candidates on disk so the gate reruns.
             self._save_pending_judge()
+            self._save_candidates()
         self._rebuild_index()
         self._rebuild_candidate_set()
 
