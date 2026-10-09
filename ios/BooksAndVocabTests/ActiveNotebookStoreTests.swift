@@ -172,6 +172,15 @@ struct ActiveNotebookStoreTests {
         #expect(store.activeNotebookId == "local-nb")
     }
 
+    @Test("init：無 timestamp 的非 default 本地 id 不被清除（#2726）")
+    func initKeepsTimestamplessNonDefaultLocalId() {
+        let d = makeDefaults()
+        d.set("nb-42", forKey: "activeNotebookId")
+        let store = ActiveNotebookStore(defaults: d, cloud: FakeCloudKVStore())
+        #expect(store.activeNotebookId == "nb-42")
+        #expect(store.activeNotebookIdIfSet == "nb-42")
+    }
+
     @Test("clearStale 寫回 default 並推進 updatedAt（跨裝置同步重置）")
     func clearStaleResetsWithTimestamp() {
         let d = makeDefaults()

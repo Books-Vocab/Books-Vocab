@@ -120,7 +120,8 @@ final class ActiveNotebookStore {
         )
         defaults.removeObject(forKey: Keys.activeId)
         defaults.removeObject(forKey: Keys.updatedAt)
-        if resolved.updatedAt != nil {
+        // 無 timestamp 但非 default 的 id（pre-LWW 殘留 / guest）須保留；(default, nil) 維持不實體化。
+        if resolved.updatedAt != nil || resolved.activeNotebookId != Self.defaultNotebookId {
             writeLocalState(resolved)
         }
     }
