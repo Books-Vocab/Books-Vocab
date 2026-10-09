@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
@@ -21,6 +22,7 @@ from ..settings import KGSettings
 
 # Presigned URL TTL (seconds) for asset upload/download targets.
 _ASSET_URL_TTL = 3600
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["library"])
 
@@ -91,7 +93,7 @@ def put_position(book_id: str, req: BookPositionRequest, user: CurrentUser):
 
 
 @router.delete("/api/library/books/{book_id}", response_model=DeleteBookResponse)
-def delete_book(book_id: str, user: CurrentUser):
+def delete_book(book_id: str, user: CurrentUser, request: Request):
     """Soft-delete a library book (set ``is_deleted``).
 
     Idempotent: a second delete of an already-deleted book still returns 200.
@@ -101,6 +103,7 @@ def delete_book(book_id: str, user: CurrentUser):
     result = store.soft_delete(book_id)
     if result is None:
         raise NotFoundError("Book", book_id)
+    _delete_asset_object(_settings(request), result.asset_object_key)
     return DeleteBookResponse(deleted=book_id)
 
 
@@ -128,9 +131,30 @@ def _library_s3_client(settings: KGSettings):
     )
 
 
+def _object_missing(exc: Exception) -> bool:
+    response = getattr(exc, "response", None)
+    error = response.get("Error") if isinstance(response, dict) else None
+    code = error.get("Code") if isinstance(error, dict) else None
+    return str(code) in {"NoSuchKey", "NotFound", "404"}
+
+
 def _asset_object_key(user_id: str, book_id: str, fmt: str) -> str:
     safe_fmt = "".join(c for c in fmt.lower() if c.isalnum()) or "bin"
     return f"library/{user_id}/{book_id}/asset.{safe_fmt}"
+
+
+def _delete_asset_object(settings: KGSettings, object_key: str | None) -> None:
+    """Best-effort removal of a superseded or tombstoned asset object.
+
+    The key stays recorded on the book row for deleted books, so account
+    erasure remains the retry path when this fails.
+    """
+    if not object_key or not settings.library_bucket:
+        return
+    try:
+        _library_s3_client(settings).delete_object(Bucket=settings.library_bucket, Key=object_key)
+    except Exception:
+        logger.warning("library asset object cleanup failed", exc_info=True)
 
 
 @router.post(
@@ -171,13 +195,14 @@ def request_asset_upload(
             byte_size=req.byte_size,
             sha256=req.sha256,
         )
+        _delete_asset_object(settings, book.asset_object_key)
         return AssetUploadResponse(book_id=book_id, storage="local")
 
     object_key = _asset_object_key(user["id"], book_id, req.format)
     client = _library_s3_client(settings)
     upload_url = client.generate_presigned_url(
         "put_object",
-        Params={"Bucket": settings.library_bucket, "Key": object_key},
+        Params={"Bucket": settings.library_bucket, "Key": object_key, "ContentLength": req.byte_size},
         ExpiresIn=_ASSET_URL_TTL,
     )
     store.set_asset(
@@ -187,6 +212,8 @@ def request_asset_upload(
         byte_size=req.byte_size,
         sha256=req.sha256,
     )
+    if book.asset_object_key != object_key:
+        _delete_asset_object(settings, book.asset_object_key)
     return AssetUploadResponse(
         book_id=book_id,
         storage="object",
@@ -215,6 +242,14 @@ def download_asset(book_id: str, user: CurrentUser, request: Request):
         raise ConflictError("Book asset is not server-hosted (local-only)")
 
     client = _library_s3_client(settings)
+    # The key is recorded when the upload URL is minted, before any bytes
+    # exist; only redirect once the object is really there.
+    try:
+        client.head_object(Bucket=settings.library_bucket, Key=book.asset_object_key)
+    except Exception as exc:
+        if _object_missing(exc):
+            raise ConflictError("Book asset has not been uploaded yet") from exc
+        raise
     download_url = client.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.library_bucket, "Key": book.asset_object_key},

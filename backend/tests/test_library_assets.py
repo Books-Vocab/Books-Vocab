@@ -194,7 +194,7 @@ def test_asset_download_requires_auth(isolated_api):
 
 
 def test_asset_download_redirects_to_presigned_url_when_object_stored(isolated_api, monkeypatch):
-    """After an object-storage upload is registered, download issues a 307 to a
+    """After the object is actually uploaded, download issues a 307 to a
     presigned GET URL."""
     _set_fake_object_storage_credentials(monkeypatch)
     _swap_settings(
@@ -204,6 +204,16 @@ def test_asset_download_redirects_to_presigned_url_when_object_stored(isolated_a
             library_bucket="kg-library-test",
         )
     )
+    import kg.routers.library as library_router
+
+    class FakeS3Client:
+        def generate_presigned_url(self, operation, *, Params, ExpiresIn):
+            return "https://storage.test/presigned"
+
+        def head_object(self, *, Bucket, Key):
+            return {"ContentLength": 4096}
+
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: FakeS3Client())
     book_id = _seed_book(isolated_api, client_book_id="obj-dl-1")
     up = isolated_api.client.post(
         f"/api/library/books/{book_id}/asset-upload",
@@ -288,3 +298,58 @@ def test_legal_formats_succeed_on_all_three_models(isolated_api, fmt):
         headers=isolated_api.headers,
     )
     assert up.status_code == 200, up.text
+
+
+# ---------------------------------------------------------------------------
+# Upload target integrity (Issue #2525)
+# ---------------------------------------------------------------------------
+
+
+def _configure_bucket(api) -> None:
+    _swap_settings(KGSettings(data_dir=api.data_dir, jwt_secret=TEST_JWT_SECRET, library_bucket="kg-library-test"))
+
+
+def test_presigned_put_binds_declared_content_length(isolated_api, monkeypatch):
+    """The presigned PUT must pin ContentLength to the declared byte_size so the
+    quota check cannot be bypassed by uploading a larger body."""
+    import kg.routers.library as library_router
+
+    calls = []
+
+    class FakeS3Client:
+        def generate_presigned_url(self, operation, *, Params, ExpiresIn):
+            calls.append((operation, Params))
+            return "https://storage.test/presigned"
+
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: FakeS3Client())
+    _configure_bucket(isolated_api)
+    book_id = _seed_book(isolated_api, client_book_id="cl-1")
+    r = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": "epub", "byte_size": 4096},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
+    assert calls[0][0] == "put_object"
+    assert calls[0][1]["ContentLength"] == 4096
+
+
+@pytest.mark.parametrize("sha", ["z" * 64, "abc", "g" * 64, " " * 64])
+def test_asset_upload_rejects_non_hex_sha256(isolated_api, sha):
+    book_id = _seed_book(isolated_api)
+    r = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": "epub", "byte_size": 10, "sha256": sha},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_asset_upload_accepts_hex_sha256(isolated_api):
+    book_id = _seed_book(isolated_api)
+    r = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": "epub", "byte_size": 10, "sha256": "aB" * 32},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
