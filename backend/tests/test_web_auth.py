@@ -322,3 +322,24 @@ def test_apple_login_state_cookie_security_attributes(web_auth_env):
     assert "secure" in set_cookie
     assert "path=/auth/web/" in set_cookie
     assert "samesite=none" in set_cookie
+
+
+def test_google_callback_provider_error_log_is_length_capped(web_auth_env, caplog):
+    """#2303: attacker-controlled ``error`` must be truncated before logging."""
+    client = web_auth_env.client
+    with caplog.at_level("WARNING", logger="kg.routers.web_auth"):
+        resp = client.get(f"/auth/web/google/callback?error={'a' * 5000}", follow_redirects=False)
+    assert resp.status_code == 400
+    messages = [r.getMessage() for r in caplog.records if r.name == "kg.routers.web_auth"]
+    assert messages
+    assert all(len(m) < 400 for m in messages)
+
+
+def test_apple_callback_provider_error_log_is_length_capped(web_auth_env, caplog):
+    client = web_auth_env.client
+    with caplog.at_level("WARNING", logger="kg.routers.web_auth"):
+        resp = client.post("/auth/web/apple/callback", data={"error": "a" * 5000}, follow_redirects=False)
+    assert resp.status_code == 400
+    messages = [r.getMessage() for r in caplog.records if r.name == "kg.routers.web_auth"]
+    assert messages
+    assert all(len(m) < 400 for m in messages)

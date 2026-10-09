@@ -12,6 +12,9 @@ import logging
 import re
 import threading
 
+# Cap per-row message size so one oversized log line cannot bloat the ring buffer.
+_MAX_MSG_CHARS = 2000
+
 _SENSITIVE_QUERY_RE = re.compile(r"([?&](?:token|code|state))=[^&\s\"]+")
 
 
@@ -57,7 +60,7 @@ class _MemoryLogHandler(logging.Handler):
                     "ts": _dt.fromtimestamp(record.created).strftime("%H:%M:%S"),
                     "level": record.levelname,
                     "name": record.name,
-                    "msg": record.getMessage(),
+                    "msg": record.getMessage()[:_MAX_MSG_CHARS],
                     "request_id": request_id_var.get("-"),
                 }
             )

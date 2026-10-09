@@ -210,7 +210,7 @@ Operational observability：
 - **token**: JWT 認證令牌，用於 KG API 呼叫的 `Authorization: Bearer` 標頭
 - **Apple Sign-In**：原生 `ASAuthorization` 流程
 - **Google Sign-In**：整合 GoogleSignIn SDK，支援多設備無縫切換
-- **Web Auth**：後端提供 `/login` → Google/Apple OAuth callback 的瀏覽器登入骨架(官網未來擴展成帳號/訂閱管理的入口)。`/login` 會為 Apple form-post flow 預先 mint `oauth_state` HttpOnly Secure cookie，callback 必須通過 state compare；成功後**僅**簽發 session JWT(中間頁呈現),**不設** admin/session cookie。未來 same-origin 帳號流程會改設 session cookie + redirect
+- **Web Auth**：後端提供 `/login` → Google/Apple OAuth callback 的瀏覽器登入骨架(官網未來擴展成帳號/訂閱管理的入口)。`/login` 會為 Apple form-post flow 預先 mint `oauth_state` HttpOnly Secure cookie，Google flow 的 nonce 由 `/auth/web/google/login` 簽發並記錄於 server 端（單次使用、600s TTL、process-local，見 `deploy.md` 單 worker 不變式），callback 必須同時通過 cookie compare 與該 nonce 的消耗，重放或偽造的 cookie/state 配對在任何對外 token 交換前即被拒；成功後**僅**簽發 session JWT(中間頁呈現),**不設** admin/session cookie。未來 same-origin 帳號流程會改設 session cookie + redirect
 - **Guest Mode**：未登入時仍允許查詞與本地儲存，帳號切換時自動清除舊帳號資料
 
 ### 生詞條目狀態管理

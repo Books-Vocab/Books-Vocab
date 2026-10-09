@@ -158,6 +158,9 @@ def install_app_middlewares_from_dependencies(
         "/support",
         "/terms",
         "/guide",
+        # Landing-page assets (css/js/fonts/images): ~10 same-origin requests per
+        # page view must not burn the anonymous per-IP API budget (#2824).
+        "/static/",
         "/api/billing/app-store/notifications",
         "/api/system/info",
         "/auth/web/google/callback",
@@ -172,6 +175,9 @@ def install_app_middlewares_from_dependencies(
         "/api/v1/notebooks",
         "/api/v1/operations",
     )
+
+    # Exact-match exemptions: a "/" prefix would exempt every path.
+    rate_limit_exempt_paths = frozenset({"/"})
 
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
@@ -190,7 +196,7 @@ def install_app_middlewares_from_dependencies(
                     headers={"Retry-After": str(login_limiter.window_seconds)},
                 )
             return await call_next(request)
-        if any(path.startswith(prefix) for prefix in rate_limit_exempt_prefixes):
+        if path in rate_limit_exempt_paths or any(path.startswith(prefix) for prefix in rate_limit_exempt_prefixes):
             return await call_next(request)
         # Only a server-signed JWT earns a per-user bucket. Anything else —
         # no header, a non-JWT bearer (admin token), a forged/expired JWT —

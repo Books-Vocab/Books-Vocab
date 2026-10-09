@@ -9,7 +9,9 @@ TTL) and includes it in the upstream provider redirect / form. SameSite is
 (`response_mode=form_post` → cross-site top-level POST, which a Lax cookie would
 not accompany). The matching callback compares the cookie against the value
 returned by the provider; mismatches return HTTP 400 and the cookie is cleared
-on success.
+on success. The Google nonce is additionally recorded server-side
+(`_GoogleStateStore`) and consumed on first callback use, so replays and forged
+equal cookie/state pairs are rejected before any outbound token exchange.
 """
 
 from __future__ import annotations
@@ -17,6 +19,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import threading
+import time
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -43,6 +48,50 @@ _OAUTH_STATE_COOKIE = "oauth_state"
 _OAUTH_STATE_TTL_SECONDS = 600  # 10 min
 _OAUTH_STATE_PATH = "/auth/web/"
 _GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS = (0.2, 0.5)
+
+
+class _GoogleStateStore:
+    """Server-side record of Google OAuth nonces: single-use, TTL-bound, size-capped.
+
+    The cookie/query comparison alone only proves the two values are equal, so an
+    attacker could mint any equal pair and drive unlimited outbound token
+    exchanges (#2804). A nonce is now valid only if /auth/web/google/login issued
+    it, and is consumed on first use.
+
+    Deployment assumption: production runs a single uvicorn worker, so process
+    memory is the shared store. With multiple workers a callback landing on a
+    different worker than the login would be rejected; move this to a shared
+    store (e.g. the sqlite/redis layer) before scaling out.
+    """
+
+    def __init__(self, *, ttl_seconds: int, max_entries: int) -> None:
+        self._ttl = ttl_seconds
+        self._max = max_entries
+        self._issued: OrderedDict[str, float] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def issue(self, nonce: str, *, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            # Insertion order == expiry order (constant ttl): drop expired head.
+            while self._issued and next(iter(self._issued.values())) <= now:
+                self._issued.popitem(last=False)
+            self._issued[nonce] = now + self._ttl
+            while len(self._issued) > self._max:
+                self._issued.popitem(last=False)
+
+    def consume(self, nonce: str, *, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            expires = self._issued.pop(nonce, None)
+        return expires is not None and now < expires
+
+
+_google_states = _GoogleStateStore(ttl_seconds=_OAUTH_STATE_TTL_SECONDS, max_entries=10_000)
+
+
+def _issue_google_state(nonce: str) -> None:
+    _google_states.issue(nonce)
 
 
 def _is_transient_status(status_code: int) -> bool:
@@ -159,6 +208,7 @@ async def google_login(request: Request):
             "state": nonce,
         }
     )
+    _issue_google_state(nonce)
     response = RedirectResponse(url=f"{GOOGLE_AUTH_URL}?{params}", status_code=307)
     _set_state_cookie(response, nonce)
     return response
@@ -202,12 +252,16 @@ async def google_callback(
         # Redact the upstream provider string from the client (it can carry
         # provider-internal hints); keep the raw value server-side only,
         # mirroring ExternalServiceError's redaction philosophy.
-        logger.warning("Google OAuth callback returned provider error: %s", error)
+        logger.warning("Google OAuth callback returned provider error: %.200r", error)
         raise HTTPException(status_code=400, detail="Authentication failed")
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
     _verify_state(request, state)
+    # Single-use: consumed before the outbound exchange so a replay (or a forged
+    # equal cookie/state pair) never reaches Google.
+    if not state or not _google_states.consume(state):
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
     settings = request.app.state.kg_settings
 
@@ -267,7 +321,7 @@ async def apple_callback(
     if error:
         # Redact the upstream provider string from the client; keep raw value
         # server-side only (see google_callback above).
-        logger.warning("Apple OAuth callback returned provider error: %s", error)
+        logger.warning("Apple OAuth callback returned provider error: %.200r", error)
         raise HTTPException(status_code=400, detail="Authentication failed")
 
     if not id_token:
