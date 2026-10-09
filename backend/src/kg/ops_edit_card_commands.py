@@ -332,28 +332,15 @@ def _preview_link_ids(user_dir: Path, notebook_id: str, card_id: str) -> list[st
 
     不經 ``create_graph_store``:它對 default 本會把 legacy ``graph.json`` rename 成
     ``graph_default.json``(遷移)並可能回寫,違反 dry-run 零磁碟寫入契約。這裡只讀檔,
-    default 本在新檔不存在時直接讀 legacy ``graph.json``;壞檔退回 ``.bak``。
+    default 本在新檔不存在時直接讀 legacy ``graph.json``。解析規則與 store 載入共用
+    ``kg.graph.store.parse_link_rows``(去重、retired kind、rejected、list 格式限定)。
     """
+    from kg.graph.store import read_card_links
+
     path = user_dir / f"graph_{notebook_id}.json"
     if notebook_id == "default" and not path.exists():
         path = user_dir / "graph.json"
-    for candidate in (path, path.with_suffix(".json.bak")):
-        try:
-            rows = json.loads(candidate.read_text())
-        except (OSError, ValueError):
-            continue
-        if isinstance(rows, dict):  # 舊格式:{id: row}
-            rows = list(rows.values())
-        if isinstance(rows, list):
-            return [
-                row["id"]
-                for row in rows
-                if isinstance(row, dict)
-                and "id" in row
-                and card_id in (row.get("from_id"), row.get("to_id"))
-                and row.get("status", "active") in ("active", "hidden")
-            ]
-    return []
+    return [lk.id for lk in read_card_links(path, card_id)]
 
 
 def cmd_card_move(args: argparse.Namespace) -> int:

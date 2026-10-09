@@ -336,6 +336,37 @@ class TestLinkSameNotebook:
             assert snapshot() == before
         assert (ud / "graph.json").exists() and not (ud / "graph_default.json").exists()
 
+    def _preview_vs_commit(self, tmp_path, graph_payload):
+        """寫入手工 graph 檔,回傳 (dry-run 預覽的 purge ids, commit 實際 purged ids)。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        ml, nl = _card_by_content(tmp_path, uid, "ml")["id"], _card_by_content(tmp_path, uid, "nl")["id"]
+
+        def row(lid, a, b):
+            return {"id": lid, "from_id": a, "to_id": b, "kind": "shares_usage", "confidence": 0.5, "reason": "r"}
+
+        (_user_dir(tmp_path, uid) / "graph_default.json").write_text(json.dumps(graph_payload(row, ml, nl)))
+        rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+        assert rd.returncode == 0, rd.stderr
+        preview = json.loads(rd.stdout)["plan"]["purge_link_ids"]
+        rc = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--commit", "--json")
+        assert rc.returncode == 0, rc.stderr
+        return preview, json.loads(rc.stdout)["result"]["purged_links"]
+
+    def test_card_move_dry_run_preview_dedupes_duplicate_pair_like_commit(self, tmp_path):
+        """#2706 CR:同 pair 兩條 active → store 載入只留第一條,預覽必須相同。"""
+        preview, purged = self._preview_vs_commit(tmp_path, lambda row, ml, nl: [row("l1", ml, nl), row("l2", nl, ml)])
+        assert purged == ["l1"]
+        assert preview == purged
+
+    def test_card_move_dry_run_preview_ignores_dict_format_like_commit(self, tmp_path):
+        """#2706 CR:store 只認 list 格式;dict 檔載入為空,預覽不得列出其中的 link。"""
+        preview, purged = self._preview_vs_commit(tmp_path, lambda row, ml, nl: {"l9": row("l9", ml, nl)})
+        assert purged == []
+        assert preview == purged
+
 
 class TestNotebookDeleteCascade:
     def test_rejects_nonempty_without_cascade(self, tmp_path):

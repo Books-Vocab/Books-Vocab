@@ -468,10 +468,18 @@ class TestCmdCardMoveDryRunPreview:
         ud = tmp_path / "users" / "u1"
 
         def row(lid, status="active"):
-            return {"id": lid, "from_id": c.id, "to_id": "peer", "status": status}
+            return {
+                "id": lid,
+                "from_id": c.id,
+                "to_id": f"peer-{lid}",
+                "kind": "shares_usage",
+                "confidence": 0.5,
+                "reason": "r",
+                "status": status,
+            }
 
         (ud / "graph_default.json").write_text(json.dumps([row("l1"), row("gone", "deprecated")]))
-        (ud / f"graph_{nb.id}.json").write_text(json.dumps([row("l2"), {"id": "x", "from_id": "a", "to_id": "b"}]))
+        (ud / f"graph_{nb.id}.json").write_text(json.dumps([row("l2"), {**row("x"), "from_id": "a", "to_id": "b"}]))
         capsys.readouterr()
         assert cards_cmd.cmd_card_move(_make_args(card=c.id, to_notebook=nb.id, json=True)) == 0
         plan = json.loads(capsys.readouterr().out)["plan"]
