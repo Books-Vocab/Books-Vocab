@@ -210,6 +210,7 @@ async def test_web_google_callback_links_off_the_event_loop(web_app_state, monke
     monkeypatch.setattr(web_auth, "verify_google_token", verify_google)
     monkeypatch.setattr(web_auth, "_resolve_and_link_user", link)
 
+    web_auth._issue_google_state("nonce-2")
     async with _asgi_client() as client:
         resp = await client.get(
             "/auth/web/google/callback?code=c&state=nonce-2",

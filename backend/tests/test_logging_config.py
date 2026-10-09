@@ -85,4 +85,9 @@ def test_google_callback_error_payload_is_one_parseable_record(web_auth_env):  #
         root.removeHandler(handler)
     lines = [ln for ln in stream.getvalue().splitlines() if "provider error" in ln]
     assert len(lines) == 1
-    assert json.loads(lines[0])["msg"].endswith('x\n"}{"level":"ERROR"\r')
+    msg = json.loads(lines[0])["msg"]
+    # Injection guard: one physical line and one parseable record (above), and the
+    # logged message itself carries no raw control characters or forged-record
+    # structure (the value is logged as an escaped repr).
+    assert "\n" not in msg and "\r" not in msg
+    assert msg.endswith("'x\\n\"}{\"level\":\"ERROR\"\\r'")

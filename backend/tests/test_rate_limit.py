@@ -120,6 +120,26 @@ class TestRateLimitMiddlewareWhitelist:
             r = client.get("/openapi.json")
             assert r.status_code != 429, "/openapi.json must be exempt from rate limiting"
 
+    def test_static_assets_and_landing_not_rate_limited(self, client):
+        """#2824: the landing page loads ~10 same-origin assets; they must not
+        burn the anonymous per-IP API budget."""
+        from kg.rate_limit import api_limiter
+
+        api_limiter._requests.clear()
+        for _ in range(api_limiter.max_requests + 10):
+            r = client.get("/static/site.css")
+            assert r.status_code != 429, "/static must be exempt from rate limiting"
+        for _ in range(api_limiter.max_requests + 10):
+            r = client.get("/")
+            assert r.status_code != 429, "landing page must be exempt from rate limiting"
+
+    def test_exempting_landing_does_not_exempt_api_routes(self, client):
+        from kg.rate_limit import api_limiter
+
+        api_limiter._requests.clear()
+        statuses = [client.get("/api/not-a-real-route").status_code for _ in range(api_limiter.max_requests + 5)]
+        assert 429 in statuses
+
     def test_google_oauth_callback_not_rate_limited(self, client):
         """OAuth callbacks come from Google and ar single shots per login.
         A rate-limit 429 on the callback means the user can't sign in. The

@@ -96,16 +96,27 @@ def _redact_validation_payload(value: Any) -> Any:
     return value
 
 
-def _strip_validation_inputs(errors: Any) -> Any:
-    """Replace echoed user input with a placeholder in log copies (loc/msg/type stay)."""
-    if isinstance(errors, list):
-        return [
-            {k: (v if v == "[REDACTED]" else "[omitted]") if k == "input" else v for k, v in e.items()}
-            if isinstance(e, dict)
-            else e
-            for e in errors
-        ]
-    return errors
+_MAX_LOGGED_VALIDATION_ERRORS = 20
+_MAX_LOGGED_LOC_CHARS = 100
+
+
+def _validation_error_shape(errors: Any) -> list[str]:
+    """Reduce validation errors to ``loc:type`` strings for logging.
+
+    Never includes ``input``, ``msg`` or ``ctx``: those can echo user-entered text
+    (words, passages). ``loc`` parts can come from client-chosen keys, so each is
+    length-capped and the list is bounded.
+    """
+    if not isinstance(errors, list):
+        return []
+    shape: list[str] = []
+    for err in errors[:_MAX_LOGGED_VALIDATION_ERRORS]:
+        if not isinstance(err, dict):
+            continue
+        loc = err.get("loc")
+        loc_text = ".".join(str(part) for part in loc) if isinstance(loc, (list, tuple)) else ""
+        shape.append(f"{loc_text[:_MAX_LOGGED_LOC_CHARS]}:{str(err.get('type', ''))[:_MAX_LOGGED_LOC_CHARS]}")
+    return shape
 
 
 def _sanitize_non_finite(value: Any) -> Any:
@@ -145,19 +156,20 @@ def install_app_exception_handlers_from_dependencies(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
-        body = None
+        body_bytes: int | None = None
         try:
-            body = await request.body()
-            body = body.decode("utf-8", errors="replace")
+            body_bytes = len(await request.body())
         except Exception:
             logger.warning("Validation handler cannot read request body", exc_info=True)
         errors = _redact_validation_payload(_sanitize_non_finite(jsonable_encoder(exc.errors())))
+        # Shape only (#2303/#2825): request bodies carry user passages, so the log
+        # gets the body size and error loc/type, never values.
         logger.warning(
-            "Validation error [%s %s] body=%s errors=%s",
+            "Validation error [%s %s] body_bytes=%s errors=%s",
             request.method,
             request.url.path,
-            _redact_validation_body(body),
-            _strip_validation_inputs(errors),
+            body_bytes,
+            _validation_error_shape(errors),
         )
         return JSONResponse(status_code=422, content={"detail": errors})
 

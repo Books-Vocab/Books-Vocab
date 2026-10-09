@@ -205,26 +205,35 @@ def test_4xx_kg_error_does_not_attach_exc_info(caplog):
     assert record.exc_info is None
 
 
-def test_validation_error_log_omits_raw_input_but_response_keeps_it(caplog):
-    """#2303: the server log must not carry user-supplied field values."""
+class _Translate(BaseModel):
+    word: str = Field(max_length=5)
+    context: str
+
+
+def test_validation_error_log_has_shape_only_but_response_keeps_input(caplog):
+    """#2303/#2825: the server log carries field locations and error types only,
+    never submitted values (not in errors, not in the raw body)."""
     app = FastAPI()
     handlers_deps = _dependencies(app)
     install_app_exception_handlers_from_dependencies(dependencies=handlers_deps)
 
     @app.post("/payload")
-    def post_payload(payload: _NonFinitePayload):
+    def post_payload(payload: _Translate):
         return payload
 
-    sentinel = "private-user-note-xyz"
+    word = "private-word-xyz"
+    context = "private passage context abc"
     client = TestClient(app, raise_server_exceptions=False)
     try:
         with caplog.at_level(logging.WARNING, logger=handlers_deps.logger.name):
-            response = client.post("/payload", json={"count": sentinel})
+            response = client.post("/payload", json={"word": word, "context": context, "extra": "private-extra"})
     finally:
         client.close()
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["input"] == sentinel
+    assert response.json()["detail"][0]["input"] == word
     logged = " ".join(r.getMessage() for r in caplog.records)
     assert "Validation error" in logged
-    assert sentinel not in logged.split("errors=", 1)[1]
+    assert "word" in logged and "string_too_long" in logged
+    for secret in (word, context, "private-extra"):
+        assert secret not in logged

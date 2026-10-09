@@ -81,9 +81,7 @@ def web_auth_env(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        with TrackingTestClient(
-            app, base_url="https://testserver", raise_server_exceptions=False
-        ) as client:
+        with TrackingTestClient(app, base_url="https://testserver", raise_server_exceptions=False) as client:
             yield SimpleNamespace(client=client, data_dir=data_dir)
     finally:
         assert lifecycle == {"constructed": 1, "entered": 1, "exited": 1}
@@ -151,6 +149,62 @@ def test_oauth_state_replay_after_consume_rejected(web_auth_env):
             follow_redirects=False,
         )
     assert second.status_code == 400, second.text
+
+
+def test_oauth_state_replay_with_attacker_held_cookie_rejected(web_auth_env):
+    """#2804: clearing the cookie client-side is not enough — an attacker who keeps
+    (or forges) the cookie must not be able to reuse a consumed nonce."""
+    client = web_auth_env.client
+    state = _bootstrap_google_state(client)
+
+    post_patch, verify_patch = _patch_google_token_exchange()
+    with post_patch, verify_patch:
+        first = client.get(f"/auth/web/google/callback?code=fake-code&state={state}", follow_redirects=False)
+    assert first.status_code == 200, first.text
+
+    client.cookies.set("oauth_state", state, path="/auth/web/")
+    calls = []
+
+    async def counting_post(self, url, data=None, **kwargs):
+        calls.append(url)
+        raise AssertionError("replayed state must not reach Google")
+
+    with patch("httpx.AsyncClient.post", new=counting_post):
+        second = client.get(f"/auth/web/google/callback?code=fake-code&state={state}", follow_redirects=False)
+    assert second.status_code == 400, second.text
+    assert calls == []
+
+
+def test_oauth_callback_with_unissued_state_never_calls_google(web_auth_env):
+    """#2804: equal cookie and state is not enough; the nonce must have been
+    issued by /auth/web/google/login, so junk callbacks cost no outbound call."""
+    client = web_auth_env.client
+    client.cookies.set("oauth_state", "forged-nonce", path="/auth/web/")
+    calls = []
+
+    async def counting_post(self, url, data=None, **kwargs):
+        calls.append(url)
+        raise AssertionError("unissued state must not reach Google")
+
+    with patch("httpx.AsyncClient.post", new=counting_post):
+        resp = client.get("/auth/web/google/callback?code=junk&state=forged-nonce", follow_redirects=False)
+    assert resp.status_code == 400, resp.text
+    assert calls == []
+
+
+def test_issued_google_states_expire_and_are_bounded():
+    from kg.routers import web_auth
+
+    store = web_auth._GoogleStateStore(ttl_seconds=10, max_entries=3)
+    store.issue("a", now=0)
+    assert store.consume("a", now=5) is True
+    assert store.consume("a", now=5) is False
+    store.issue("b", now=0)
+    assert store.consume("b", now=11) is False
+    for i, n in enumerate("cdef"):
+        store.issue(n, now=100 + i)
+    assert store.consume("c", now=105) is False  # evicted, oldest first
+    assert store.consume("f", now=105) is True
 
 
 def test_oauth_callback_with_mismatched_state_rejected(web_auth_env):
