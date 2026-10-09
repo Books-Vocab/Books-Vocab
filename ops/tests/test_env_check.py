@@ -86,7 +86,9 @@ def _run_cli(
 
 
 def test_cli_exits_nonzero_on_unsafe_flag() -> None:
-    proc = _run_cli("REQUIRED_KEY=x\nAPP_STORE_ALLOW_UNSIGNED_SYNC=True\n", "REQUIRED_KEY")
+    proc = _run_cli(
+        "REQUIRED_KEY=x\nAPP_STORE_ALLOW_UNSIGNED_SYNC=True\n", "REQUIRED_KEY"
+    )
     assert proc.returncode != 0
     assert "✓ REQUIRED_KEY" in proc.stdout
     assert "✗ APP_STORE_ALLOW_UNSIGNED_SYNC" in proc.stdout
