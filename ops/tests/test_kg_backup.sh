@@ -12,6 +12,7 @@
 #   3. 走訪失敗（不可讀子目錄）→ 同樣 fail-closed（root 執行時跳過）
 #   4. sqlite3 不在 PATH → exit=3、aws 未被呼叫
 #   1c. （#2281）填充 wc／空或非數字 sha256·bytes 不得記 exit=0／慢消費者仍被等待
+#   1d. （#2814）tar 非零結束（aws 成功）→ log exit=<非零>、script 非零
 #   5. 上傳中收到 TERM → log exit=143、staging 清空
 
 set -o pipefail
@@ -250,6 +251,21 @@ for variant in slowsha slowwc; do
   up_sha="$("$REAL_SHA" "$T/upload.tgz" | awk '{print $1}')"
   check "$variant: logged sha256 matches the upload" log_field sha256 "$up_sha"
 done
+
+# ── 1d. tar 失敗（Issue #2814）─────────────────────────────────────────
+# tar 寫完串流後以非零結束（讀檔失敗／檔案中途變動）：aws 仍會收到完整串流而成功，
+# 但 archive 不可信，紀錄必須是 exit=<非零>，不得被 aws 的 0 蓋掉。
+section "case 1d: tar failure after a successful upload never logs exit=0"
+REAL_TAR="$(command -v tar)"
+make_stub failtar "'$REAL_TAR' \"\$@\"; exit 1" tar
+reset_run
+run_backup "$DATA" PATH="$T/stub-failtar:$PATH"; rc=$?
+if [[ $rc -ne 0 ]]; then ok "exit $rc"; else fail_t "exit 0 although tar failed"; show_run; fi
+check "log records exit=<nonzero>, backup_status unhealthy" failure_logged
+check "no exit=0 record" no_exit0
+tar_failure_recorded() { [[ "$(last_log)" == *"tar exited"* && "$(last_log)" == *"sha256="* ]]; }
+check "log names the tar failure and keeps bytes/sha256" tar_failure_recorded
+check "staging removed" tmp_empty
 
 # ── 2. 快照失敗 ────────────────────────────────────────────────────────
 section "case 2: garbage *.db fails closed before upload"
