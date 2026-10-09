@@ -225,7 +225,7 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 |---|---|---|
 | `TTS_MAX_CONCURRENT` | 10 | ThreadPoolExecutor batch 並發上限 |
 | `TTS_RETRY_ATTEMPTS` | 4 | 429/503 outer-level 重試 |
-| `TTS_BATCH_TIMEOUT` | 600 | 單 batch 的 future wall-clock timeout(秒) |
+| `TTS_BATCH_TIMEOUT` | 600 | 整集共用的 wall-clock deadline(秒,所有 batch 共用一條,非逐 batch 計時) |
 | `TTS_MASTER_LUFS` | -16 | Apple Podcasts 標準整合響度 |
 | `TTS_MASTER` | 1 | 設 0 跳過 loudnorm(無 ffmpeg 自動降級) |
 
@@ -253,7 +253,7 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 #### 非 agent stage 的 wall-clock 上限(synthesize / audio-qa / subtitle / publish)
 
-`pipeline.py` 以 `_run_bounded` 執行這四個 subprocess stage。synthesize / audio-qa / subtitle 的上限是 **每集** `_TOOL_STAGE_TIMEOUTS`(synthesize 1200s、audio-qa 120s、subtitle 900s)× 集數(`scripts/ep_*_script.md` 數;`--only-episode` 只給一集額度),依實測 `pipeline_log.jsonl` 的 `stage_end` 定:synthesize 75–200 s/集(synthesize.py 自己對單集 batch 有 `TTS_BATCH_TIMEOUT` 600s + 兩次 180s loudnorm,合法上限約 1000 s/集)、subtitle 180–245 s/集、audio-qa 整季 ≤31s。publish 每次嘗試上限 `_PUBLISH_TIMEOUT` 1800s。逾時寫 `<stage> TIMEOUT after <n>s` error 並讓 stage 回 False(publish 視為失敗嘗試照常重試;其他三個不重試,修好原因後 `--skip-to`)。
+`pipeline.py` 以 `_run_bounded` 執行這四個 subprocess stage。synthesize / audio-qa / subtitle 的上限是 **每集** `_TOOL_STAGE_TIMEOUTS`(synthesize 1200s、audio-qa 120s、subtitle 900s)× 集數(`scripts/ep_*_script.md` 數;`--only-episode` 只給一集額度),依實測 `pipeline_log.jsonl` 的 `stage_end` 定:synthesize 75–200 s/集(synthesize.py 自己對單集全部 batch 共用 `TTS_BATCH_TIMEOUT` 600s deadline + 兩次 180s loudnorm,合法上限約 1000 s/集)、subtitle 180–245 s/集、audio-qa 整季 ≤31s。publish 每次嘗試上限 `_PUBLISH_TIMEOUT` 1800s。逾時寫 `<stage> TIMEOUT after <n>s` error 並讓 stage 回 False(publish 視為失敗嘗試照常重試;其他三個不重試,修好原因後 `--skip-to`)。
 
 逾時先送 **SIGTERM**,`_TOOL_TERM_GRACE`(30s)內未結束才 SIGKILL:`uv run` 只會把 SIGTERM 轉給真正的工具、SIGKILL 轉不過去(工具會變孤兒繼續燒 TTS 額度),而 bash 只有收到 SIGTERM 才會執行 `podcast_upload.sh` 的 EXIT trap 清 staging(SIGKILL 不跑 trap)。bash 不會把 SIGTERM 轉給它正在等的前景子程序,所以 trap 先 `pkill -TERM -P $$` 停掉自己的子程序、等它們全結束(上限 15s)才刪 staging;逾時仍有子程序就保留 staging 不刪。否則孤兒 reconcile 會掃到已刪的 staging、把整個 series 當 orphan 從 bucket 刪光。子程序留在 pipeline 的 process group,dashboard 的 `killpg`(`monitor/jobs.py`)仍能一併停掉。
 

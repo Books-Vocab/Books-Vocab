@@ -125,10 +125,11 @@ MP3_BITRATE = os.getenv("TTS_MP3_BITRATE", "192k").strip()
 # letting AVPlayer start playback during the first Range request instead of
 # waiting for the whole file (which is the entire point of moving to S3).
 AAC_BITRATE = os.getenv("TTS_AAC_BITRATE", "128k").strip()
-# Per-batch wall-clock timeout. A single stuck Gemini call should not block the
-# whole episode. Raised timeout → stuck batch re-queues on next run; cached
-# siblings on disk survive.
-TTS_BATCH_TIMEOUT = int(os.getenv("TTS_BATCH_TIMEOUT", "600"))  # 10 min / batch
+# Per-episode wall-clock deadline for one synthesize_batches() call (one shared
+# deadline for all in-flight batches, not a per-batch timer). A single stuck
+# Gemini call should not block the whole episode. On expiry unfinished batches
+# are marked stuck and re-queued on next run; cached siblings on disk survive.
+TTS_BATCH_TIMEOUT = int(os.getenv("TTS_BATCH_TIMEOUT", "600"))  # 10 min / episode
 
 # Mastering: EBU R128 loudness normalization. Disable with TTS_MASTER=0.
 MASTER_ENABLED = os.getenv("TTS_MASTER", "1").strip() != "0"
@@ -691,9 +692,10 @@ def synthesize_batches(
     - After every batch succeeded, cache files no current batch references
       (old keys, legacy index-named `batch_NN.wav`, `.part` leftovers) are
       pruned so the dir holds exactly this episode's audio.
-    - Each in-flight batch has a `TTS_BATCH_TIMEOUT` wall-clock cap — a stuck
-      batch raises TimeoutError, its siblings keep running, and the next run
-      only retries the missing one.
+    - The whole call shares one `TTS_BATCH_TIMEOUT` wall-clock deadline
+      (episode-wide, not per batch) — batches unfinished at the deadline are
+      marked stuck and the call raises RuntimeError; batches that already
+      finished stay cached, and the next run only retries the missing ones.
     """
     total = len(batches)
     results: dict[int, AudioSegment] = {}
@@ -722,7 +724,7 @@ def synthesize_batches(
 
     workers = max(1, min(len(pending), TTS_MAX_CONCURRENT))
     print(
-        f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)..."
+        f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s episode deadline)..."
     )
 
     # Phase 2 — synthesize pending batches, isolate stuck ones via a wall-clock
