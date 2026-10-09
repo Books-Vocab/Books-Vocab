@@ -82,6 +82,14 @@ extension PipelineStep {
         if status == .running && total > 0 {
             return "\(state)，\(current)/\(total)"
         }
-        return detail.isEmpty ? state : "\(state)，\(detail)"
+        // waiting 列畫面上不顯示 detail（SyncPresenter／設定頁皆隱藏），念出來也不該有。
+        return (detail.isEmpty || status == .waiting) ? state : "\(state)，\(detail)"
+    }
+
+    /// 整列的 VoiceOver (label, value)；詞庫頁 stepRow 直接套用，測試也斷言這一組。
+    /// label 經 L10n，對已本地化字串冪等。
+    func accessibilitySummary(language: AppLanguage? = nil) -> (label: String, value: String) {
+        let localizedLabel = language.map { L10n.string(label, language: $0) } ?? L10n.string(label)
+        return (localizedLabel, accessibilityValue(language: language))
     }
 }

@@ -198,8 +198,8 @@ struct SyncPresenter: View {
         }
         // 與設定頁同一念法（#2432）：整列合併成「步驟名，狀態，進度或細節」。
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(step.label))
-        .accessibilityValue(Text(step.accessibilityValue()))
+        .accessibilityLabel(Text(step.accessibilitySummary().label))
+        .accessibilityValue(Text(step.accessibilitySummary().value))
     }
 
     // MARK: - Detail Color + Status Symbol
