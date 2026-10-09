@@ -597,7 +597,7 @@ cmd_resume() {
   if (( tag_presealed == 1 )); then
     ios_exact_asc_probe "$version" "$build" >/dev/null
     echo "  exact ASC build 已存在，略過 upload，直接 finalize"
-  elif ios_exact_asc_probe "$version" "$build" >/dev/null 2>&1; then
+  elif ios_exact_asc_probe "$version" "$build" >/dev/null; then
     echo "  exact ASC build 已存在，略過 upload，直接 finalize"
   else
     asc_probe_rc=$?
@@ -1101,7 +1101,7 @@ cmd_shipped() {
     || err "shipped 只支援 ios（api 的「已上生產」看 origin/prod，見 ./ops/release.sh status）"
   [[ $# -le 1 ]] || err "多餘參數：${*:2}（版本與 build 由 ASC 決定，不從命令列接受）"
 
-  local pair="" rc=0 ver build btag commit vtag existing manual=0 short_commit
+  local pair="" rc=0 ver build btag commit vtag existing manual=0 short_commit remote_vtag="" local_only=0
   pair="$(asc_shipped_pair)" || rc=$?
   [[ "$rc" -eq 0 && -n "$pair" ]] \
     || err "查不到 App Store 上架版本（ASC 查詢失敗、憑證/網路不可用，或目前沒有 READY_FOR_SALE）。
@@ -1130,9 +1130,22 @@ cmd_shipped() {
   existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${vtag}^{commit}" || true)"
   if [[ -n "$existing" ]]; then
     if [[ "$existing" == "$commit" ]]; then
-      echo "✓ ${vtag} 已指向 ${short_commit}，與 ASC 一致，無需變更。"
-      return 0
-    fi
+      if ! git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+        echo "✓ ${vtag} 已指向 ${short_commit}，與 ASC 一致，無需變更（無 origin remote）。"
+        return 0
+      fi
+      remote_vtag="$(ios_remote_tag_commit "$vtag")"
+      if [[ -z "$remote_vtag" ]]; then
+        local_only=1
+        echo "  ${vtag} 只存在於本機（${short_commit}），origin 尚缺——補推。"
+      elif [[ "$remote_vtag" == "$commit" ]]; then
+        echo "✓ ${vtag} 已指向 ${short_commit}，local 與 origin 皆與 ASC 一致，無需變更。"
+        return 0
+      else
+        err "origin ${vtag} 指向 ${remote_vtag:0:12}，但 local 與 ASC 皆為 ${short_commit}。
+   上架 tag 是 immutable 的，本工具不移動它——需要人工裁決 origin 的 tag。"
+      fi
+    else
     # 一個 released marketing version 最終只會有一顆上架 build（Apple 規則：released
     # 之後要再發必須提高 marketing version），所以這個 tag 天生 immutable。工具不移動它。
     err "${vtag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，但 ASC 說上架的是 ${short_commit}。
@@ -1140,6 +1153,7 @@ cmd_shipped() {
    確認舊 tag 是錯的之後：
      git tag -d ${vtag} && git push origin :refs/tags/${vtag}
    再重跑 ./ops/release.sh shipped ios --yes"
+    fi
   fi
 
   echo "App Store 上架版本=${ver}  build=${build}"
@@ -1149,12 +1163,20 @@ cmd_shipped() {
   else
     echo "  commit 來自 build tag ${btag}：${short_commit}"
   fi
-  echo "  將建立上架 tag：${vtag} → ${short_commit}"
+  if (( local_only == 1 )); then
+    echo "  將補推既有上架 tag：${vtag} → ${short_commit}"
+  else
+    echo "  將建立上架 tag：${vtag} → ${short_commit}"
+  fi
 
   if [[ $YES -eq 1 ]]; then
-    git -C "$ROOT" tag "$vtag" "$commit"
+    (( local_only == 1 )) || git -C "$ROOT" tag "$vtag" "$commit"
     if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
-      git -C "$ROOT" push origin "$vtag"
+      git -C "$ROOT" push origin "$vtag" \
+        || err "push origin ${vtag} 失敗；local tag 已保留，可安全重跑 shipped ios --yes 補推"
+      remote_vtag="$(ios_remote_tag_commit "$vtag")"
+      [[ "$remote_vtag" == "$commit" ]] \
+        || err "push 回報成功但 origin ${vtag}=${remote_vtag:-<missing>} ≠ ${commit}"
       echo "✓ 已建立 ${vtag} 並推送 origin（另一台 clone 需要同一份紀錄）。"
     else
       echo "✓ 已建立 ${vtag}（無 origin remote，未推送）。"

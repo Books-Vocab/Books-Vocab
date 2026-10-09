@@ -1255,6 +1255,32 @@ mm_out="$(KG_ASC_SHIPPED_CMD="$fx_sm/asc-stub.sh" bash "$fx_sm/ops/release.sh" s
   && ok "shipped refuses to move an existing shipped tag and prints the manual remediation" \
   || fail_t "shipped moved or silently accepted a conflicting shipped tag: $mm_out"
 
+# 19d2. local 上架 tag 已與 ASC 一致、但 origin 缺 → 重跑要補推；origin 指向別顆 → 失敗。
+fx_sp="$TMP5/shipped-localonly"; remote_sp="$TMP5/shipped-localonly.git"
+make_shipped_fixture "$fx_sp" "$remote_sp" "2.0.0 6"
+sealed_sp="$(git -C "$fx_sp" rev-parse HEAD)"
+git --git-dir="$remote_sp" tag -d ios/2.0.0 >/dev/null 2>&1 || true
+git -C "$fx_sp" tag "ios/2.0.0+6"
+git -C "$fx_sp" tag "ios/2.0.0" "$sealed_sp"
+sp_rc=0
+sp_out="$(KG_ASC_SHIPPED_CMD="$fx_sp/asc-stub.sh" bash "$fx_sp/ops/release.sh" shipped ios --yes 2>&1)" || sp_rc=$?
+[[ "$sp_rc" -eq 0 \
+   && "$(git --git-dir="$remote_sp" rev-parse -q --verify 'refs/tags/ios/2.0.0^{commit}' 2>/dev/null)" == "$sealed_sp" ]] \
+  && ok "shipped re-run pushes a local-only shipped tag to origin" \
+  || fail_t "shipped treated a local-only tag as done: $sp_out"
+fx_sq="$TMP5/shipped-remote-diff"; remote_sq="$TMP5/shipped-remote-diff.git"
+make_shipped_fixture "$fx_sq" "$remote_sq" "2.0.0 6"
+sealed_sq="$(git -C "$fx_sq" rev-parse HEAD)"
+git -C "$fx_sq" tag "ios/2.0.0+6"
+git -C "$fx_sq" tag "ios/2.0.0" "$sealed_sq"
+git -C "$fx_sq" commit -q --allow-empty -m "ios: other commit"
+git -C "$fx_sq" push -q -f origin "HEAD:refs/tags/ios/2.0.0"
+sq_rc=0
+sq_out="$(KG_ASC_SHIPPED_CMD="$fx_sq/asc-stub.sh" bash "$fx_sq/ops/release.sh" shipped ios --yes 2>&1)" || sq_rc=$?
+[[ "$sq_rc" -ne 0 && "$sq_out" == *"origin ios/2.0.0"* ]] \
+  && ok "shipped fails when origin shipped tag differs from local/ASC" \
+  || fail_t "shipped accepted a divergent origin tag: $sq_out"
+
 # 19e. 沒有對應 build tag（發版於本機制上線前）→ 明確說「沒有紀錄」，不猜。
 fx_sn="$TMP5/shipped-norecord"; remote_sn="$TMP5/shipped-norecord.git"
 make_shipped_fixture "$fx_sn" "$remote_sn" "2.0.0 6"
@@ -1743,6 +1769,13 @@ rec_valid_dry_rc=0; rec_valid_dry_out="$(KG_PR_CMD="$fx_rec/.git/pr-fixture/pr-s
    && ! -e "$fx_rec/upload.called" ]] \
   && ok "resume exact PR/source dry-run is side-effect free" \
   || fail_t "resume exact-evidence dry-run failed: $rec_valid_dry_out"
+rec_probe_rc=0; rec_probe_out="$(ASC_EXACT_BUILD_EXIT=1 KG_RELEASE_ASC_WAIT_SECS=0 \
+  KG_PR_CMD="$fx_rec/.git/pr-fixture/pr-stub.sh" bash "$fx_rec/ops/release.sh" resume ios 2.0.1 6 \
+  --pr 1590 --merged-source "$rec_source" --yes 2>&1)" || rec_probe_rc=$?
+[[ $rec_probe_rc -ne 0 && "$rec_probe_out" == *"ASC exact build lookup 失敗（exit 1）"* \
+   && ! -e "$fx_rec/upload.called" ]] \
+  && ok "resume surfaces a failing ASC probe's error and does not upload" \
+  || fail_t "resume swallowed the ASC probe error or uploaded: $rec_probe_out"
 rec_first_rc=0; rec_first_out="$(ASC_EXACT_BUILD_EXIT=3 KG_RELEASE_ASC_WAIT_SECS=0 \
   KG_PR_CMD="$fx_rec/.git/pr-fixture/pr-stub.sh" bash "$fx_rec/ops/release.sh" resume ios 2.0.1 6 \
   --pr 1590 --merged-source "$rec_source" --yes 2>&1)" || rec_first_rc=$?
