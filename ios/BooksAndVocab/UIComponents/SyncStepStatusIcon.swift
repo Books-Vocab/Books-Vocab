@@ -52,3 +52,36 @@ extension PipelineStep.StepStatus {
         }
     }
 }
+
+// MARK: - Accessibility（#2432）
+
+extension PipelineStep.StepStatus {
+    /// VoiceOver 用的狀態字串。六態各自獨立：retry 與 running 在畫面上是
+    /// 不同符號，念出來也不能是同一句。`language` 僅供確定性測試，
+    /// 正式呼叫走目前 app 語言。
+    func accessibilityValue(language: AppLanguage? = nil) -> String {
+        func lookup(_ key: String) -> String {
+            language.map { L10n.string(key, language: $0) } ?? L10n.string(key)
+        }
+        switch self {
+        case .waiting: return lookup("等待中")
+        case .running: return lookup("進行中")
+        case .retry:   return lookup("重試中")
+        case .done:    return lookup("已完成")
+        case .skipped: return lookup("已略過")
+        case .error:   return lookup("失敗")
+        }
+    }
+}
+
+extension PipelineStep {
+    /// 整列念成「步驟名（label），狀態，進度或細節（value）」；
+    /// 詞庫頁與設定頁共用，避免兩處念法漂移。
+    func accessibilityValue(language: AppLanguage? = nil) -> String {
+        let state = status.accessibilityValue(language: language)
+        if status == .running && total > 0 {
+            return "\(state)，\(current)/\(total)"
+        }
+        return detail.isEmpty ? state : "\(state)，\(detail)"
+    }
+}
