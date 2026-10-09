@@ -40,6 +40,25 @@ def _close_store(store: object) -> None:
             logger.debug("Failed to close evicted store %s", type(store).__name__, exc_info=True)
 
 
+def _release_evicted_store(store: object) -> None:
+    """Drop pooled connections of an LRU victim without invalidating the store.
+
+    In-flight requests may still hold the victim across an await; ``close()``
+    nulls the engine, so they would crash on their next write (#2711).
+    ``Engine.dispose()`` keeps the engine usable (it reconnects lazily).
+    Account / notebook deletion keeps the destructive ``_close_store``.
+    """
+    engine = getattr(store, "engine", None)
+    dispose = getattr(engine, "dispose", None)
+    if callable(dispose):
+        try:
+            dispose()
+        except Exception:
+            logger.debug("Failed to dispose evicted store %s", type(store).__name__, exc_info=True)
+        return
+    _close_store(store)
+
+
 def _get_cached(key: str, factory):
     """Cache-or-build with per-key in-flight coordination.
 
@@ -89,7 +108,7 @@ def _get_cached(key: str, factory):
             event.set()
 
     for victim in evicted:
-        _close_store(victim)
+        _release_evicted_store(victim)
     if invalidated_by_eviction:
         _close_store(instance)
     return instance
