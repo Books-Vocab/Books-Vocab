@@ -119,7 +119,8 @@ struct ArchivedVocabSheet: View {
             } catch {
                 AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")
                 await MainActor.run {
-                    toastCoordinator.error(L10n.format("解除封存失敗：%@", error.localizedDescription))
+                    // Fixed short copy: a system error description can exceed the pill's single line; the detail is in AppLog above.
+                    toastCoordinator.error(L10n.string("解除封存失敗"))
                 }
             }
         }

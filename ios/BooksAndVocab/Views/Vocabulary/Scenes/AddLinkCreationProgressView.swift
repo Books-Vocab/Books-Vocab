@@ -29,6 +29,7 @@ struct AddLinkCreationProgressView: View {
             if let message = coordinator.message {
                 if coordinator.phase == .failed || coordinator.phase == .succeededWithWarnings {
                     VocabStateMessageCard(title: message, systemImage: bannerSystemImage)
+                        .transition(.statusRowReveal)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier(
                             coordinator.phase == .succeededWithWarnings
@@ -64,6 +65,7 @@ struct AddLinkCreationProgressView: View {
             SettingsSyncProgressPanel(steps: coordinator.steps, fraction: coordinator.fraction)
         }
         .padding(.vertical, appSkin.spacing.tinyGap)
+        .animation(AppMotion.phaseChange, value: coordinator.phase)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("addLink.creation.progress")
         .accessibilityValue("attempt-\(attempt)")

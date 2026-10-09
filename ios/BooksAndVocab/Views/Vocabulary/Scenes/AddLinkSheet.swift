@@ -1,6 +1,32 @@
 import SwiftUI
 import SwiftData
 
+/// Top-pill copy for Add Link outcomes (#2047). Each event has a stable key, so a
+/// repeated outcome replaces the visible pill instead of stacking; detail and
+/// actions stay in the in-sheet panel.
+enum AddLinkToastEvent {
+    static let actionFailedKey = "addLink.action.failed"
+    static let creationFailedKey = "addLink.creation.failed"
+    static let creationWarningKey = "addLink.creation.warning"
+    static let blockedKey = "addLink.creation.blocked"
+
+    static func actionFailed(_ error: AddLinkActionError) -> AppToastItem {
+        AppToastItem(message: error.message, style: .error, key: actionFailedKey)
+    }
+
+    static func creationFailed(message: String) -> AppToastItem {
+        AppToastItem(message: message, style: .error, key: creationFailedKey)
+    }
+
+    static func creationWarning(message: String) -> AppToastItem {
+        AppToastItem(message: message, style: .warning, key: creationWarningKey)
+    }
+
+    static func blocked(message: String) -> AppToastItem {
+        AppToastItem(message: message, style: .warning, key: blockedKey)
+    }
+}
+
 struct AddLinkSheet: View {
     @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
@@ -21,6 +47,10 @@ struct AddLinkSheet: View {
     // Made by the hub, which keeps a running creation alive after this sheet closes.
     @State private var creationCoordinator: AddLinkCreationCoordinator
     @State private var creationAttempt = 0
+    /// Only an outcome of a tap or retry the user just made earns a pill; a state
+    /// restored on open (or by the hub) shows its panel without a pill (#2047).
+    @State private var awaitingActionOutcome = false
+    @State private var awaitingCreationOutcome = false
     @State private var didCompleteCreation = false
     @State private var recoveredProviderErrors: Set<UUID> = []
     @FocusState private var isSearchFocused: Bool
@@ -125,11 +155,15 @@ struct AddLinkSheet: View {
                         systemImage: "exclamationmark.triangle"
                     ) {
                         if coordinator.canRetryLastAction {
-                            Button(L10n.string("banner.action.retry")) { coordinator.retryLastAction() }
-                                .buttonStyle(.appCompactAction(.primary))
-                                .accessibilityIdentifier("addLink.error.retry")
+                            Button(L10n.string("banner.action.retry")) {
+                                awaitingActionOutcome = true
+                                coordinator.retryLastAction()
+                            }
+                            .buttonStyle(.appCompactAction(.primary))
+                            .accessibilityIdentifier("addLink.error.retry")
                         }
                     }
+                    .transition(.statusRowReveal)
                     .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("addLink.error.reason")
@@ -147,12 +181,6 @@ struct AddLinkSheet: View {
                         .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                         .frame(maxHeight: .infinity, alignment: .top)
                 } else {
-                    if creationCoordinator.phase == .blocked,
-                       let message = creationCoordinator.message {
-                        VocabStateMessageCard(title: message, systemImage: "exclamationmark.triangle")
-                            .padding(.horizontal, appSkin.metrics.cardBlockPadding)
-                    }
-
                     searchField(returnBehavior, in: snapshot)
                         .padding(appSkin.metrics.cardBlockPadding)
 
@@ -164,6 +192,8 @@ struct AddLinkSheet: View {
                 }
             }
             .vocabCanvasBackground()
+            .animation(AppMotion.phaseChange, value: coordinator.actionPhase)
+            .animation(AppMotion.phaseChange, value: creationCoordinator.phase)
             .navigationTitle(L10n.string("新增連結"))
             .inlineNavigationBarTitle()
             .toolbar {
@@ -174,12 +204,17 @@ struct AddLinkSheet: View {
             }
         }
         .onChange(of: coordinator.actionPhase) { _, phase in
+            if phase == .failed, awaitingActionOutcome, let error = coordinator.actionError {
+                toastCoordinator.show(AddLinkToastEvent.actionFailed(error))
+            }
+            if phase != .linking { awaitingActionOutcome = false }
             if phase == .succeeded {
                 onLinked()
                 dismiss()
             }
         }
         .onChange(of: creationCoordinator.phase) { _, phase in
+            announceCreationOutcome()
             // Only a full success closes on its own. A warning keeps the sheet
             // open (retry / done) so a partial result is never swallowed.
             guard phase == .succeeded, !didCompleteCreation else { return }
@@ -190,6 +225,10 @@ struct AddLinkSheet: View {
         .onAppear {
             // Offline from the start: say so now, not after a failed round trip (#2039).
             if let notice = connectivity.noticeMessage { toastCoordinator.warning(notice) }
+        }
+        // A warning retry keeps the phase, so its outcome arrives as the retry ending.
+        .onChange(of: creationCoordinator.isRetryingWarnings) { _, _ in
+            announceCreationOutcome()
         }
         .onChange(of: networkMonitor.isConnected) { old, new in
             guard let message = AddLinkConnectivity.transitionMessage(
@@ -453,6 +492,7 @@ struct AddLinkSheet: View {
             if let notice = connectivity.noticeMessage { toastCoordinator.warning(notice) }
             return
         }
+        awaitingActionOutcome = true
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
@@ -464,9 +504,32 @@ struct AddLinkSheet: View {
     /// failure retry starts a new attempt under the key policy.
     private func retryCreation() {
         if creationCoordinator.phase == .succeededWithWarnings {
+            awaitingCreationOutcome = true
             creationCoordinator.retryWarnings()
         } else {
             startCreation()
+        }
+    }
+
+    /// Posts the pill for a creation outcome the user just caused, once. Running
+    /// and a warning retry still in flight are not outcomes yet.
+    private func announceCreationOutcome() {
+        guard awaitingCreationOutcome, !creationCoordinator.isRetryingWarnings else { return }
+        switch creationCoordinator.phase {
+        case .failed:
+            awaitingCreationOutcome = false
+            if let message = creationCoordinator.message {
+                toastCoordinator.show(AddLinkToastEvent.creationFailed(message: message))
+            }
+        case .succeededWithWarnings:
+            awaitingCreationOutcome = false
+            if let message = creationCoordinator.message {
+                toastCoordinator.show(AddLinkToastEvent.creationWarning(message: message))
+            }
+        case .idle, .succeeded, .cancelled:
+            awaitingCreationOutcome = false
+        case .running, .blocked:
+            break
         }
     }
 
@@ -487,6 +550,7 @@ struct AddLinkSheet: View {
             return
         }
         creationAttempt += 1
+        awaitingCreationOutcome = true
         creationCoordinator.start(
             word: searchText,
             sourceEntry: sourceEntry,
@@ -495,6 +559,11 @@ struct AddLinkSheet: View {
             syncService: kgService,
             container: modelContext.container
         )
+        // Refused before any work starts: a one-off notice, so a pill (no panel).
+        if creationCoordinator.phase == .blocked, let message = creationCoordinator.message {
+            awaitingCreationOutcome = false
+            toastCoordinator.show(AddLinkToastEvent.blocked(message: message))
+        }
     }
 
     /// Return (#2038): links an exactly-typed existing word, otherwise only puts
