@@ -219,7 +219,7 @@ extension GraphWebView {
         nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge]
     ) -> String {
         let nodeSig = nodes.map { node -> String in
-            "\(node.id)|\(node.tier ?? "-")|\(node.colorHex ?? "-")|\(node.degree)|\(node.badgeSystemImage ?? "-")"
+            "\(node.id)|\(node.word)|\(node.tier ?? "-")|\(node.colorHex ?? "-")|\(node.degree)|\(node.badgeSystemImage ?? "-")"
         }.joined(separator: ";")
         let edgeSig = edges.map { "\($0.id)|\($0.from)|\($0.to)|\($0.kind)" }
             .joined(separator: ";")
