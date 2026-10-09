@@ -32,6 +32,30 @@ struct ReadiumBookWordExtractionTests {
         #expect(!words.contains("nbsp"))
     }
 
+    @Test func decodesTypographicAndUppercaseEntities() {
+        let words = ReadiumService.extractWords(fromHTML: "<p>&ldquo;Hello&rdquo; &Eacute;cole &Uuml;ber</p>")
+        #expect(words.contains("hello"))
+        #expect(words.contains("\u{E9}cole"))
+        #expect(words.contains("\u{FC}ber"))
+        #expect(!words.contains("ldquo"))
+        #expect(!words.contains("rdquo"))
+        #expect(!words.contains("eacute"))
+    }
+
+    @Test func insertsFragmentsAlongsideWholeToken() {
+        let words = ReadiumService.extractWords(fromHTML: "<p>well-known king's covid-19 mp3 \u{FB01}sh</p>")
+        #expect(words.contains("well-known"))
+        #expect(words.contains("well"))
+        #expect(words.contains("known"))
+        #expect(words.contains("king's"))
+        #expect(words.contains("king"))
+        #expect(words.contains("covid-19"))
+        #expect(words.contains("covid"))
+        #expect(words.contains("mp3"))
+        #expect(words.contains("fish"))
+        #expect(!words.contains("s"))
+    }
+
     @Test func dropsSingleLettersAndTrimsEdgePunctuation() {
         let words = ReadiumService.extractWords(fromHTML: "<p>a I -dash- 'quoted' end--</p>")
         #expect(words == ["dash", "quoted", "end"])
