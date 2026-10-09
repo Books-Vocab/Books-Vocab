@@ -108,7 +108,7 @@ struct ReaderJSEvalTests {
     /// substring ("he" inside "The"/"other"/"there"); the tap must resolve to
     /// the real whole-word occurrence in the later sentence.
     @Test func contextIgnoresEarlierSentenceWhereWordIsOnlyASubstring() throws {
-        let text = "The other brother left there. Then he ran home. Everyone slept."
+        let text = "The other brother left there. Nothing more was said. Rain fell hard. Then he ran home. Everyone slept."
         let tapped = try #require(text.range(of: "he ran"))
         let offset = text.distance(from: text.startIndex, to: tapped.lowerBound)
         let result = try #require(evaluateContext(fullText: text, word: "he", tapOffset: offset))
