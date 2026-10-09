@@ -13,13 +13,15 @@ ceiling in the budget file so a reviewer sees the number and the reason.  The
 ceiling is therefore a decision, not a side effect.  ``ratchet`` only moves it
 down, so deletions are banked and cannot be spent again silently.
 
-A lane gate judges the change, not the trunk: an area over its ceiling only fails ``check`` when
-this change added more than the headroom the area had at the merge-base (``origin/main``, else
-``main``), i.e. a base that is already red tolerates only a change that adds nothing; otherwise it
-is reported as ``inherited``.  A lane that rebases onto a sibling's red base must delete or raise
-the ceiling in its own PR.  The absolute judgement belongs to ``--strict``
-(CI runs it on push to ``main``, see ``ci_args``), so a red trunk is still caught;
-``--base REF`` overrides the base.  With no usable base the absolute judgement applies, loudly.
+A lane gate charges a lane only for its own growth.  Per area, delta = lines now minus lines at the
+merge-base (``origin/main``, else ``main``), counted by the same ``count_lines`` rule on both sides.
+The lane passes when delta <= the headroom the area had at the merge-base (ceiling read from the
+budget file *at the base*), or when the lane itself raises the ceiling in the budget file (then the
+new ceiling is judged absolutely).  Two sibling lanes that each fit the base headroom therefore both
+pass; absolute overflow of the checked tree is then only a WARNING that main needs a rebaseline PR.
+On main itself (HEAD is the base) or with ``--absolute``/``--strict`` (CI on push to ``main``, see
+``ci_args``) the absolute check fails, so a red trunk stays visible.  ``--base REF`` overrides the
+base; with no usable base the absolute judgement applies, loudly.
 
 Exit code: 0 within budget, 1 over budget, 2 usage or unreadable budget.
 """
@@ -76,6 +78,13 @@ def ci_args(env: dict[str, str] | None = None) -> list[str]:
     return ["--strict"] if event == "push" else []
 
 
+def head_sha(repo: Path) -> str | None:
+    found = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
+    )
+    return found.stdout.strip() if found.returncode == 0 else None
+
+
 def merge_base(repo: Path, base: str | None) -> str | None:
     """Commit to diff against, or None when there is no usable base (absolute mode)."""
     for ref in [base] if base else ["origin/main", "main"]:
@@ -90,28 +99,86 @@ def merge_base(repo: Path, base: str | None) -> str | None:
     return None
 
 
-def line_deltas(repo: Path, base: str) -> dict[str, int]:
-    """Counted lines added minus removed per area, working tree versus ``base``."""
-    out = subprocess.run(
-        ["git", "diff", "--numstat", "--no-renames", "-z", base, "--"],
+def count_lines_at(repo: Path, rev: str, prefix: str) -> int:
+    """``count_lines`` over the tree of ``rev`` (same suffix and symlink rules)."""
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", rev, "--", prefix],
         cwd=repo,
         capture_output=True,
         check=True,
     ).stdout
-    deltas = dict.fromkeys(AREAS, 0)
-    for entry in out.split(b"\0"):
-        if not entry:
+    wanted = []
+    for raw in listing.split(b"\0"):
+        if not raw:
             continue
-        added, _, rest = entry.decode().partition("\t")
-        removed, _, name = rest.partition("\t")
-        if not added.isdigit() or not removed.isdigit():  # binary
-            continue
-        if not name.endswith(COUNTED_SUFFIXES):
-            continue
-        for area, prefix in AREAS.items():
-            if name.startswith(prefix):
-                deltas[area] += int(added) - int(removed)
-    return deltas
+        meta, _, name = raw.decode().partition("\t")
+        mode, _, rest = meta.partition(" ")
+        if mode != "120000" and name.endswith(COUNTED_SUFFIXES):
+            wanted.append(rest.split(" ")[1])
+    if not wanted:
+        return 0
+    out = subprocess.run(
+        ["git", "cat-file", "--batch"],
+        cwd=repo,
+        input="".join(f"{sha}\n" for sha in wanted).encode(),
+        capture_output=True,
+        check=True,
+    ).stdout
+    total, pos = 0, 0
+    while pos < len(out):
+        end = out.index(b"\n", pos)
+        size = int(out[pos:end].split()[2])
+        total += out[end + 1 : end + 1 + size].count(b"\n")
+        pos = end + 1 + size + 1
+    return total
+
+
+def _budget_at(repo: Path, rev: str) -> tuple[dict[str, int], dict[str, int]] | None:
+    shown = subprocess.run(
+        ["git", "show", f"{rev}:{BUDGET_FILE}"], cwd=repo, capture_output=True
+    )
+    if shown.returncode != 0:
+        return None
+    try:
+        ceilings = json.loads(shown.stdout)["ceilings"]
+        counts = {n: count_lines_at(repo, rev, p) for n, p in AREAS.items()}
+        return counts, {n: int(ceilings[n]) for n in AREAS}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def fork_point(repo: Path, base: str) -> str | None:
+    """For a CI merge commit (HEAD = main + PR), the PR's own fork point; else None."""
+    parents = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    ).stdout.split()[1:]
+    if len(parents) != 2 or parents[0] != base:
+        return None
+    found = subprocess.run(
+        ["git", "merge-base", *parents], cwd=repo, capture_output=True, text=True
+    )
+    return found.stdout.strip() or None if found.returncode == 0 else None
+
+
+def base_snapshot(
+    repo: Path, base: str, fork: str | None = None
+) -> dict[str, dict[str, int]] | None:
+    """Counts and ceilings at ``base`` plus ``headroom``: what the lane may add.  ``fork`` (a CI
+    merge commit's PR fork point) contributes its own headroom, so a sibling merged first does not
+    consume this lane's allowance.  None when the base has no readable budget."""
+    at_base = _budget_at(repo, base)
+    if at_base is None:
+        return None
+    counts, ceilings = at_base
+    headroom = {n: ceilings[n] - counts[n] for n in AREAS}
+    at_fork = _budget_at(repo, fork) if fork else None
+    if at_fork:
+        for n in AREAS:
+            headroom[n] = max(headroom[n], at_fork[1][n] - at_fork[0][n])
+    return {"counts": counts, "ceilings": ceilings, "headroom": headroom}
 
 
 def measure(repo: Path) -> dict[str, int]:
@@ -137,30 +204,41 @@ def load_budget(path: Path) -> dict[str, Any]:
 def evaluate(
     measured: dict[str, int],
     budget: dict[str, Any],
-    deltas: dict[str, int] | None = None,
+    base: dict[str, dict[str, int]] | None = None,
 ) -> list[dict[str, Any]]:
-    """``deltas`` (lines this change added per area) judges the change against the headroom the
-    area had at the merge-base: an area over its ceiling only fails when the change added more
-    than that headroom (so an already-red base tolerates only delta <= 0).  ``slack`` is the
-    ratchet's reset margin and plays no part here.  Without ``deltas`` the judgement is absolute."""
+    """Without ``base`` the judgement is absolute (``over`` = count > ceiling).  With ``base``
+    (counts and ceilings at the merge-base) a lane is charged only for its own growth: ``over``
+    when delta exceeds the base headroom, or, if the lane raised the ceiling, when count exceeds
+    the new ceiling.  Absolute overflow the lane is not responsible for is ``warn``."""
     rows = []
     for name in AREAS:
         ceiling = int(budget["ceilings"][name])
         now = measured[name]
         beyond = now > ceiling
-        if deltas is None:
-            grew = True
+        delta = None
+        if base is None:
+            over = beyond
         else:
-            delta = deltas.get(name, 0)
-            grew = delta > max(0, ceiling - (now - delta))
+            delta = now - base["counts"][name]
+            base_ceiling = base["ceilings"][name]
+            if ceiling > base_ceiling:  # explicit bump in this lane: judged absolutely
+                over = beyond
+            else:
+                over = delta > max(
+                    0,
+                    base.get("headroom", {}).get(
+                        name, base_ceiling - base["counts"][name]
+                    ),
+                )
         rows.append(
             {
                 "area": name,
                 "lines": now,
                 "ceiling": ceiling,
                 "headroom": ceiling - now,
-                "over": beyond and grew,
-                "inherited": beyond and not grew,
+                "delta": delta,
+                "over": over,
+                "warn": beyond and not over,
             }
         )
     return rows
@@ -187,10 +265,10 @@ def ratio(measured: dict[str, int]) -> float | None:
 def render(rows: list[dict[str, Any]], measured: dict[str, int]) -> str:
     lines = []
     for row in rows:
-        mark = "OVER" if row["over"] else "base" if row["inherited"] else "ok  "
+        mark = "OVER" if row["over"] else "warn" if row["warn"] else "ok  "
         note = (
-            "  inherited: over at base, this change adds nothing"
-            if row["inherited"]
+            "  WARNING: main is over budget and needs a rebaseline PR; this lane's own growth fits"
+            if row["warn"]
             else ""
         )
         lines.append(
@@ -217,8 +295,10 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
     )
     parser.add_argument(
         "--strict",
+        "--absolute",
+        dest="strict",
         action="store_true",
-        help="judge absolute counts; ignore the base delta",
+        help="judge absolute counts; ignore the base (CI on push to main, doctor)",
     )
     args = parser.parse_args(argv)
     root = repo or Path(__file__).resolve().parents[1]
@@ -229,23 +309,24 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
     except (BudgetError, subprocess.CalledProcessError) as exc:
         print(f"complexity: {exc}", file=sys.stderr)
         return 2
-    deltas = None
+    snapshot = None
     if not args.strict:
         base = merge_base(root, args.base)
-        if base:
-            try:
-                deltas = line_deltas(root, base)
-            except subprocess.CalledProcessError as exc:
-                print(
-                    f"complexity: diff failed ({exc}); judging absolute",
-                    file=sys.stderr,
-                )
-        else:
+        if base is None:
             print(
                 "complexity: no merge-base (origin/main or main); judging absolute",
                 file=sys.stderr,
             )
-    rows = evaluate(measured, budget, deltas)
+        elif args.base is None and base == head_sha(root):
+            pass  # on main itself: absolute, so a red trunk stays visible
+        else:
+            try:
+                snapshot = base_snapshot(root, base, fork_point(root, base))
+            except subprocess.CalledProcessError as exc:
+                print(f"complexity: base read failed ({exc})", file=sys.stderr)
+            if snapshot is None:
+                print("complexity: base unreadable; judging absolute", file=sys.stderr)
+    rows = evaluate(measured, budget, snapshot)
 
     if args.command == "ratchet":
         new = ratcheted(measured, budget)
@@ -278,6 +359,13 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
     else:
         print(render(rows, measured))
     over = [r["area"] for r in rows if r["over"]]
+    warned = [r["area"] for r in rows if r["warn"]]
+    if warned:
+        print(
+            f"complexity: WARNING main is over budget in {', '.join(warned)}; needs a rebaseline PR "
+            "(this lane's own growth fits the base headroom)",
+            file=sys.stderr,
+        )
     if args.command == "check" and over:
         print(
             f"complexity: over budget: {', '.join(over)}. Delete something, or raise the ceiling in "

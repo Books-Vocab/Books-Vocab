@@ -204,7 +204,7 @@ def test_doctor_warns_when_the_budget_cannot_be_read() -> None:
     assert doctor.evaluate_complexity(None, None).level == "warn"
 
 
-# ---- merge-base delta (#2679): a red base must not block a change that adds nothing ----
+# ---- lane gate (#2679): a lane is charged for its own growth, not for main's state ----
 
 
 def _commit(repo: Path, message: str) -> None:
@@ -215,112 +215,128 @@ def _commit(repo: Path, message: str) -> None:
     )
 
 
-def _over_base_repo(tmp_path: Path) -> Path:
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _add(repo: Path, name: str, lines: int) -> None:
+    (repo / name).write_text("1\n" * lines)
+    _git(repo, "add", "-A")
+
+
+def _headroom_repo(tmp_path: Path, ceiling: int = 40) -> Path:
+    # base ops=30 lines; default ceiling 40 -> headroom 10 (slack 50 deliberately larger)
     repo = _git_repo(tmp_path, {"ops/a.py": "1\n" * 30, "ios/a.swift": "1\n"})
-    path = repo / complexity.BUDGET_FILE
-    path.write_text(json.dumps(_budget(ops=10)))
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    (repo / complexity.BUDGET_FILE).write_text(json.dumps(_budget(ops=ceiling)))
+    _git(repo, "add", "-A")
     _commit(repo, "base")
     return repo
 
 
-def test_evaluate_is_over_only_when_the_change_grew_the_area() -> None:
-    measured = {**MEASURED, "ops": 1001}
-    grew = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 51})}
-    flat = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 0})}
-    shrank = {
-        r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": -2})
-    }
-    assert grew["ops"]["over"] is True
-    assert flat["ops"]["over"] is False and flat["ops"]["inherited"] is True
-    assert shrank["ops"]["over"] is False and shrank["ops"]["inherited"] is True
+def _check(repo: Path, *extra: str) -> int:
+    return complexity.main(["check", "--base", "HEAD", *extra], repo=repo)
 
 
-def test_check_passes_when_the_base_is_already_over_and_the_change_adds_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    repo = _over_base_repo(tmp_path)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
-    assert "inherited" in capsys.readouterr().out
-
-
-def test_check_fails_when_a_change_grows_an_area_that_is_over(tmp_path: Path) -> None:
-    repo = _over_base_repo(tmp_path)
-    (repo / "ops" / "b.py").write_text("1\n" * 51)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
-
-
-def test_check_passes_when_a_change_only_shrinks_an_area_that_is_over(
-    tmp_path: Path,
-) -> None:
-    repo = _over_base_repo(tmp_path)
-    (repo / "ops" / "a.py").write_text("1\n" * 20)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
-
-
-def test_strict_ignores_the_delta_so_main_itself_can_still_go_red(
-    tmp_path: Path,
-) -> None:
-    repo = _over_base_repo(tmp_path)
-    assert complexity.main(["check", "--base", "HEAD", "--strict"], repo=repo) == 1
-
-
-def test_delta_ignores_data_files_like_measure_does(tmp_path: Path) -> None:
-    repo = _over_base_repo(tmp_path)
-    (repo / "ops" / "world.json").write_text("1\n" * 500)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.line_deltas(repo, "HEAD") == {
-        "ops": 0,
-        "docs": 0,
-        "workflows": 0,
-    }
-
-
-# ---- review fixes (#2679): lane gate is delta-vs-slack, CI goes through the same entry ----
-
-
-def _headroom_repo(tmp_path: Path) -> Path:
-    # base ops=30 lines, ceiling 40 (headroom 10), slack 50 (deliberately larger than the headroom)
-    repo = _git_repo(tmp_path, {"ops/a.py": "1\n" * 30, "ios/a.swift": "1\n"})
-    (repo / complexity.BUDGET_FILE).write_text(json.dumps(_budget(ops=40)))
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    _commit(repo, "base")
-    return repo
-
-
-def test_a_lane_adding_more_than_the_headroom_fails_even_when_under_slack(
+def test_a_lane_adding_more_than_the_base_headroom_fails_with_the_remedy(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo = _headroom_repo(tmp_path)
-    (repo / "ops" / "big.py").write_text("1\n" * 20)  # 20 > headroom 10, < slack 50
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
+    _add(repo, "ops/big.py", 20)  # 20 > headroom 10, < slack 50
+    assert _check(repo) == 1
     assert "raise the ceiling" in capsys.readouterr().err
 
 
-def test_a_lane_adding_within_the_headroom_passes(tmp_path: Path) -> None:
+def test_a_lane_adding_within_the_base_headroom_passes(tmp_path: Path) -> None:
     repo = _headroom_repo(tmp_path)
-    (repo / "ops" / "small.py").write_text("1\n" * 10)  # exactly the headroom
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
+    _add(repo, "ops/small.py", 10)  # exactly the headroom
+    assert _check(repo) == 0
 
 
-def test_sequential_lanes_the_one_rebased_onto_a_red_base_must_raise_the_ceiling(
+def test_a_lane_that_raises_the_ceiling_passes_and_is_then_judged_against_it(
     tmp_path: Path,
 ) -> None:
-    # Chosen tolerance rule: headroom at the merge-base, no slack and no sibling grace.
-    # Lane A fits the headroom and merges; lane B also fits the ORIGINAL headroom, but once rebased
-    # onto A's (now full) base it has none left, so it fails until it deletes or raises the ceiling.
     repo = _headroom_repo(tmp_path)
-    (repo / "ops" / "a_lane.py").write_text("1\n" * 10)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
-    _commit(repo, "lane A merged")  # base is now exactly at the ceiling (40)
-    (repo / "ops" / "b_lane.py").write_text("1\n" * 5)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
+    _add(repo, "ops/big.py", 20)  # tree = 50
+    (repo / complexity.BUDGET_FILE).write_text(json.dumps(_budget(ops=60)))
+    assert _check(repo) == 0
+    (repo / complexity.BUDGET_FILE).write_text(json.dumps(_budget(ops=45)))
+    assert _check(repo) == 1  # bumped, but still not enough
+
+
+def test_a_red_base_tolerates_only_a_change_that_adds_nothing_and_warns(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _headroom_repo(tmp_path, ceiling=10)  # base 30 > ceiling 10
+    assert _check(repo) == 0
+    err = capsys.readouterr()
+    assert "WARNING" in err.err and "rebaseline" in err.err
+    _add(repo, "ops/b.py", 1)
+    assert _check(repo) == 1
+
+
+def test_two_sibling_lanes_each_fitting_the_base_headroom_both_pass(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _headroom_repo(tmp_path)  # headroom 10
+    trunk = _git(repo, "branch", "--show-current")
+    _git(repo, "checkout", "-q", "-b", "lane-a")
+    _add(repo, "ops/a_lane.py", 8)
+    _commit(repo, "lane A")
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "checkout", "-q", "-b", "lane-b")
+    _add(repo, "ops/b_lane.py", 8)
+    _commit(repo, "lane B")
+    # trunk now contains A; B's merge-base with trunk is still the original base
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "merge", "-q", "--no-ff", "-m", "A", "lane-a")
+    _git(repo, "checkout", "-q", "lane-b")
+    assert complexity.main(["check", "--base", trunk], repo=repo) == 0
+    # the CI merge commit (trunk + B): absolute 46 > 40 is a warning, not a failure
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "merge", "-q", "--no-ff", "-m", "B", "lane-b")
+    assert complexity.main(["check", "--base", "HEAD^1"], repo=repo) == 0
+    assert "WARNING" in capsys.readouterr().err
+
+
+def test_main_itself_over_budget_fails_without_a_base_flag(tmp_path: Path) -> None:
+    repo = _headroom_repo(tmp_path, ceiling=10)
+    assert complexity.main(["check"], repo=repo) == 1  # HEAD is the base: absolute
+
+
+def test_absolute_mode_fails_when_over_budget_whatever_the_lane_added(
+    tmp_path: Path,
+) -> None:
+    repo = _headroom_repo(tmp_path, ceiling=10)
+    assert _check(repo, "--absolute") == 1
+    assert _check(repo, "--strict") == 1
+
+
+def test_base_count_uses_the_same_counting_rule_as_the_tree(tmp_path: Path) -> None:
+    repo = _git_repo(
+        tmp_path,
+        {
+            "ops/a.py": "one\ntwo",  # no trailing newline
+            "ops/world.json": "1\n" * 50,  # data, ignored
+            "docs/x.md": "1\n",
+            ".github/workflows/w.yml": "1\n",
+        },
+    )
+    _commit(repo, "base")
+    for name, prefix in complexity.AREAS.items():
+        assert complexity.count_lines_at(
+            repo, "HEAD", prefix
+        ) == complexity.count_lines(repo, prefix), name
+
+
+def test_a_change_to_a_data_file_costs_nothing(tmp_path: Path) -> None:
+    repo = _headroom_repo(tmp_path)
+    _add(repo, "ops/world.json", 500)
+    assert _check(repo) == 0
 
 
 def test_no_usable_base_falls_back_to_absolute_and_says_so(
@@ -342,7 +358,7 @@ def test_ci_entry_is_strict_on_push_and_delta_aware_on_pull_request() -> None:
 def test_the_ci_test_uses_the_check_entry_point_with_a_red_base(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repo = _over_base_repo(tmp_path)
+    repo = _headroom_repo(tmp_path, ceiling=10)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
     assert (
         complexity.main(["check", "--base", "HEAD", *complexity.ci_args()], repo=repo)
