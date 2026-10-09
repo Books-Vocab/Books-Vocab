@@ -245,6 +245,7 @@ struct BookshelfView: View {
                 }
                 .buttonStyle(.appAction(.outline))
                 .accessibilityIdentifier("bookshelf.emptyState.importButton")
+                .disabled(coordinator.isLoading)
                 .fixedSize(horizontal: false, vertical: true)
 
                 if !authManager.isDemoMode && !authManager.isLoggedIn {
@@ -385,6 +386,7 @@ struct BookshelfView: View {
                     coordinator.presentImporter()
                 }
                 .buttonStyle(.appCompactAction(.primary))
+                .disabled(coordinator.isLoading)
 
                 Button(BookshelfCopy.closeTitle) {
                     coordinator.clearError()

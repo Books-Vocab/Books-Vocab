@@ -65,6 +65,20 @@ struct BookLibraryReconcilerTests {
         #expect(!FileManager.default.fileExists(atPath: stale.path))
     }
 
+    @Test func reconcileSweepsStaleImportTempInLegacyDirectories() throws {
+        let context = ModelContext(try makeContainer())
+        let root = try makeTempRoot()
+        let legacy = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: legacy) }
+        let stale = legacy.appendingPathComponent(".\(UUID().uuidString).tmp")
+        try Data("x".utf8).write(to: stale)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-7200)], ofItemAtPath: stale.path)
+
+        _ = try BookLibraryReconciler(rootDirectory: root, legacyDirectories: [legacy]).reconcile(context: context)
+
+        #expect(!FileManager.default.fileExists(atPath: stale.path))
+    }
+
     @Test func reconcilerRebuildsMissingRowFromManifestAndFile() throws {
         let container = try makeContainer()
         let context = ModelContext(container)

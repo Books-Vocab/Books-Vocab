@@ -20,10 +20,14 @@ struct BookLibraryReconciler {
         legacyDirectories: [URL]? = nil,
         manifestStore: BookManifestStore? = nil,
         pendingDeletions: PendingBookDeletionStore = .standard,
-        isICloudAvailable: @escaping () -> Bool = { Book.iCloudBooksDirectory != nil }
+        isICloudAvailable: (() -> Bool)? = nil
     ) {
         self.pendingDeletions = pendingDeletions
-        self.isICloudAvailable = isICloudAvailable
+        // 預設以「此 reconciler 實際使用的 root 就是 iCloud 目錄」判定：root 在 init 固定為本機目錄時，
+        // iCloud 之後才可用也不算可用（否則只刪本機副本卻清掉 tombstone，iCloud 副本殘留），下次啟動 root 解析到 iCloud 才補刪。
+        self.isICloudAvailable = isICloudAvailable ?? {
+            Book.iCloudBooksDirectory?.standardizedFileURL == rootDirectory.standardizedFileURL
+        }
         self.rootDirectory = rootDirectory
         self.legacyDirectories = legacyDirectories ?? Self.defaultLegacyDirectories()
         self.manifestStore = manifestStore ?? BookManifestStore(rootDirectory: rootDirectory)
@@ -34,7 +38,10 @@ struct BookLibraryReconciler {
         context: ModelContext,
         allowBareFileRecovery: Bool = false
     ) throws -> BookLibraryReconcileResult {
-        Self.sweepStaleImportTemps(in: rootDirectory)
+        // 本機與 legacy 目錄也可能留有 iCloud 關閉時匯入被殺的 .tmp（#2724）。
+        for dir in Set([rootDirectory, Book.localBooksDirectory] + legacyDirectories) {
+            Self.sweepStaleImportTemps(in: dir)
+        }
         completePendingDeletions()
         let filesByName = scanBookFiles()
         let manifests = manifestStore.readAll()

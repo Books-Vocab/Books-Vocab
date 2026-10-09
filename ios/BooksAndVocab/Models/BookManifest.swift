@@ -222,15 +222,20 @@ struct PendingBookDeletionStore {
 
     static var standard: PendingBookDeletionStore { PendingBookDeletionStore() }
 
-    var fileNames: Set<String> {
-        Set(defaults.stringArray(forKey: Self.key) ?? [])
-    }
+    /// 上限：不以 iCloud 登入狀態把關（見 `LocalBookFileManager.deleteBookFile`），沒用 iCloud 的人永遠不會消耗 tombstone，
+    /// 以此封頂（保留最新的，檔名是 UUID 不會誤刪在庫書）。
+    static let maxEntries = 200
+
+    private var ordered: [String] { defaults.stringArray(forKey: Self.key) ?? [] }
+
+    var fileNames: Set<String> { Set(ordered) }
 
     func insert(_ fileName: String) {
-        defaults.set(Array(fileNames.union([fileName])).sorted(), forKey: Self.key)
+        let kept = ordered.filter { $0 != fileName } + [fileName]
+        defaults.set(Array(kept.suffix(Self.maxEntries)), forKey: Self.key)
     }
 
     func remove(_ fileName: String) {
-        defaults.set(Array(fileNames.subtracting([fileName])).sorted(), forKey: Self.key)
+        defaults.set(ordered.filter { $0 != fileName }, forKey: Self.key)
     }
 }

@@ -154,7 +154,7 @@ struct LocalBookFileManagerDeletionTests {
         #expect(!FileManager.default.fileExists(atPath: open.appendingPathComponent("book.epub").path))
     }
 
-    // MARK: - tombstone 只在成功且使用者有 iCloud 時記錄（#2750）
+    // MARK: - tombstone 只在成功時記錄（#2750）
 
     private func makeStore() -> PendingBookDeletionStore {
         PendingBookDeletionStore(defaults: UserDefaults(suiteName: "BookDeletionTombstone-\(UUID().uuidString)")!)
@@ -169,35 +169,45 @@ struct LocalBookFileManagerDeletionTests {
         let store = makeStore()
 
         #expect(throws: BookFileDeletionError.self) {
-            try LocalBookFileManager(locations: [locked], pendingDeletions: store, iCloudAvailable: { false }, iCloudSignedIn: { true })
+            try LocalBookFileManager(locations: [locked], pendingDeletions: store, iCloudAvailable: { false })
                 .deleteBookFile(named: "book.epub")
         }
 
         #expect(store.fileNames.isEmpty)
     }
 
-    @Test func successfulDeleteWhileICloudUnavailableRecordsTombstoneForSignedInUser() throws {
+    @Test func successfulDeleteWhileICloudUnavailableRecordsTombstone() throws {
         let root = try makeRoot()
         defer { cleanUp(root) }
         let a = try makeDir("a", in: root)
         let store = makeStore()
 
-        try LocalBookFileManager(locations: [a], pendingDeletions: store, iCloudAvailable: { false }, iCloudSignedIn: { true })
+        try LocalBookFileManager(locations: [a], pendingDeletions: store, iCloudAvailable: { false })
             .deleteBookFile(named: "book.epub")
 
         #expect(store.fileNames == ["book.epub"])
     }
 
-    @Test func deleteRecordsNoTombstoneWhenUserHasNoICloud() throws {
+    @Test func deleteWithoutTombstoneOptionRecordsNothing() throws {
         let root = try makeRoot()
         defer { cleanUp(root) }
         let a = try makeDir("a", in: root)
         let store = makeStore()
 
-        try LocalBookFileManager(locations: [a], pendingDeletions: store, iCloudAvailable: { false }, iCloudSignedIn: { false })
+        try LocalBookFileManager(locations: [a], pendingDeletions: store, iCloudAvailable: { false }, recordsTombstone: false)
             .deleteBookFile(named: "book.epub")
 
         #expect(store.fileNames.isEmpty)
+    }
+
+    @Test func tombstoneStoreKeepsOnlyNewestEntries() {
+        let store = makeStore()
+        let total = PendingBookDeletionStore.maxEntries + 5
+        for index in 0..<total { store.insert("\(index).epub") }
+
+        #expect(store.fileNames.count == PendingBookDeletionStore.maxEntries)
+        #expect(!store.fileNames.contains("0.epub"))
+        #expect(store.fileNames.contains("\(total - 1).epub"))
     }
 }
 
