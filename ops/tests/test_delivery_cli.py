@@ -807,6 +807,43 @@ def test_publish_flags_replace_registry_external_issue_ids() -> None:
     assert parse_body_issues(github.pull_request.body) == IssueLinks(refs=(2392,))
 
 
+def test_publish_derives_closes_from_issue_named_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(globals(), "BRANCH", "debug/issue-2477-wave")
+    registry = FakeRegistry()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=(github := FakeGitHub()),
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(closes=(2477,))
+
+
+def test_publish_explicit_refs_override_issue_named_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(globals(), "BRANCH", "debug/issue-2477-wave")
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=(github := FakeGitHub()),
+        registry=FakeRegistry(),
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery", refs=[2477])
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(refs=(2477,))
+
+
 def test_publish_records_github_advanced_base_without_rewriting_handback() -> None:
     registry = FakeRegistry()
     git = FakeGit()

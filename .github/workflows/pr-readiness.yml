@@ -55,5 +55,6 @@ jobs:
             echo "PR HEAD drift: expected $HEAD_SHA, got $actual_head" >&2
             exit 1
           fi
+          head_ref="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.ref')"
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body' \
-            | ./ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA"
+            | ./ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA" --head-ref "$head_ref"

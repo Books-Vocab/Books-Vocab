@@ -60,6 +60,7 @@ from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.services.pr_contract import (
     parse_body_holds,
     pull_request_label_holds,
+    salvage_body_issues,
 )
 from lib import worktree_scope
 
@@ -70,6 +71,9 @@ PR_GATE = OPS.parent / ".github" / "workflows" / "pr-gate.yml"
 # Raised by delivery_control/adapters/operation_lock.py (a test pins the text).
 LOCK_BUSY = "delivery mutation already in progress"
 LOCK_RETRY_SECONDS = 5.0
+# GitHub closes `Closes #N` issues a moment after the merge event (#2654).
+ISSUE_CLOSE_POLLS = 5
+ISSUE_CLOSE_POLL_SECONDS = 3.0
 AGENT_REVIEW = OPS.parent / ".github" / "workflows" / "agent-review.yml"
 REVIEW_CHECK = "agent-review"
 # The workflow posts its verdicts as extra check runs carrying this external_id
@@ -951,7 +955,62 @@ class Delivery:
             )
             self.mutate([*delivery, "sync-main"], canon, "sync-main")
             self.say(f"merged #{number}; lane cleaned and main synced")
+            self.verify_issues_closed(repo, number)
         return self.summary(branch, lane, number, "merged")
+
+    def verify_issues_closed(self, repo: str, number: int) -> None:
+        """Every ``Closes`` issue of the merged PR must be closed now (#2654).
+
+        The lane is already cleaned, so this only reports: a still-open issue
+        means the PR never linked it (or GitHub did not process the keyword).
+        """
+        body = must(
+            self.runner,
+            [
+                "gh",
+                "pr",
+                "view",
+                str(number),
+                "--repo",
+                repo,
+                "--json",
+                "body",
+                "-q",
+                ".body",
+            ],
+            self.home,
+            "read PR body",
+        ).stdout
+        for issue in salvage_body_issues(body).closes:
+            for attempt in range(ISSUE_CLOSE_POLLS):
+                state = must(
+                    self.runner,
+                    [
+                        "gh",
+                        "issue",
+                        "view",
+                        str(issue),
+                        "--repo",
+                        repo,
+                        "--json",
+                        "state",
+                        "-q",
+                        ".state",
+                    ],
+                    self.home,
+                    "read issue state",
+                ).stdout.strip()
+                if state == "CLOSED":
+                    self.say(f"issue #{issue} closed by #{number}")
+                    break
+                if attempt + 1 < ISSUE_CLOSE_POLLS:
+                    self.sleep(ISSUE_CLOSE_POLL_SECONDS)
+            else:
+                raise DeliverError(
+                    f"#{number} merged with Closes #{issue} but issue #{issue} is "
+                    "still open; close it with a link to the merged PR "
+                    "(owner preference: close each issue when its fix merges)"
+                )
 
     def _required(self, repo: str, number: int) -> str | None:
         out = must(

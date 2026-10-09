@@ -764,7 +764,9 @@ class DeliveryApplication:
             issues=IssueLinks(tuple(closes or ()), tuple(refs or ()))
             if closes or refs
             else None,
-            default_issues=IssueLinks.from_external_ids(record.external_ids),
+            default_issues=IssueLinks.from_external_ids(
+                record.external_ids
+            ).merged_with(IssueLinks.from_branch(receipt.branch)),
         )
         published_base = self.record_published_base(
             publication.pull_request.number, operation_lease=operation_lease

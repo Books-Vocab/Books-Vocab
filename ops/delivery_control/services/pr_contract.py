@@ -17,6 +17,7 @@ _RECEIPT_END = "\n-->"
 _HOLDS_BEGIN = "<!-- kg.delivery.holds.v1\n"
 _HOLDS_END = "\n-->"
 _ISSUES_HEADING = "## Issues"
+_BRANCH_ISSUE = re.compile(r"(?:^|/)issue-(?P<number>[1-9][0-9]*)(?:-|$)")
 _ISSUE_LINE = re.compile(r"(?P<kind>Closes|Refs) #(?P<number>[1-9][0-9]*)")
 _HOLD_LABELS = {
     "delivery-hold:p0": HoldKind.P0,
@@ -50,6 +51,18 @@ class IssueLinks:
         numbers = (issue_number_from_external_id(value) for value in external_ids)
         return cls(closes=tuple(n for n in numbers if n is not None))
 
+    @classmethod
+    def from_branch(cls, branch: str) -> IssueLinks:
+        """An `issue-<N>` branch segment names the Issue its PR resolves (#2654)."""
+        number = issue_number_from_branch(branch)
+        return cls(closes=(number,)) if number is not None else cls()
+
+    def merged_with(self, other: IssueLinks) -> IssueLinks:
+        """Union where this side's Closes/Refs choice wins for a shared number."""
+        closes = set(self.closes) | {n for n in other.closes if n not in self.refs}
+        refs = set(self.refs) | {n for n in other.refs if n not in closes}
+        return IssueLinks(closes=tuple(closes), refs=tuple(refs))
+
     def __bool__(self) -> bool:
         return bool(self.closes or self.refs)
 
@@ -60,6 +73,11 @@ class IssueLinks:
 
 
 NO_ISSUES = IssueLinks()
+
+
+def issue_number_from_branch(branch: str) -> int | None:
+    match = _BRANCH_ISSUE.search(branch)
+    return int(match["number"]) if match is not None else None
 
 
 def parse_body_issues(body: str) -> IssueLinks:
@@ -272,8 +290,18 @@ def render_pull_request_body(
     )
 
 
-def validate_pull_request_body(body: str, *, expected_head_sha: str) -> HandbackReceipt:
+def validate_pull_request_body(
+    body: str, *, expected_head_sha: str, head_ref: str | None = None
+) -> HandbackReceipt:
     receipt = parse_pull_request_body(body)
     if receipt.head_sha != expected_head_sha:
         raise PolicyViolation("PR body receipt differs from the exact PR HEAD")
+    linked = parse_body_issues(body)
+    for branch in (receipt.branch, head_ref):
+        number = issue_number_from_branch(branch) if branch else None
+        if number is not None and number not in linked.closes + linked.refs:
+            raise PolicyViolation(
+                f"branch {branch} names issue-{number} but the PR body has "
+                f"neither Closes #{number} or Refs #{number}"
+            )
     return receipt

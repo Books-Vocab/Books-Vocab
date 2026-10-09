@@ -66,6 +66,10 @@ class FakeWorld:
             state.get("checks", [[{"name": "required", "state": "SUCCESS"}]])
         )
         self.pr_state = list(state.get("pr_state", ["MERGED"]))
+        # `## Issues` body of the merged PR and the state GitHub reports per
+        # linked Issue (a list is consumed one read at a time, last repeats).
+        self.pr_body: str = state.get("pr_body", "")
+        self.issue_states: dict[int, list[str]] = state.get("issue_states", {})
         self.merged_prs = state.get("merged_prs", {})
         self.diff = state.get("diff", "M\0ops/a.py\0A\0ops/b.py\0")
         self.fork = state.get("fork", "f" * 40)
@@ -289,6 +293,11 @@ class FakeWorld:
                 return ok(json.dumps([[]]))
             if cmd[1] == "api" and cmd[-1].endswith("/comments?per_page=100"):
                 return ok(json.dumps([self.review_comments]))
+            if cmd[1:3] == ["issue", "view"]:
+                reads = self.issue_states.get(int(cmd[3]), ["CLOSED"])
+                return ok(reads.pop(0) if len(reads) > 1 else reads[0])
+            if cmd[1:3] == ["pr", "view"] and cmd[cmd.index("--json") + 1] == "body":
+                return ok(self.pr_body)
             if cmd[1:3] == ["pr", "view"]:
                 self.viewed_pr = int(cmd[3])
             if cmd[1:3] == ["pr", "view"] and "headRefOid,headRefName" in cmd:
@@ -2209,3 +2218,42 @@ def test_redeliver_still_abandons_when_the_pr_stays_clean_across_the_wait() -> N
     assert _adopt_bases(world) == [world.fork]  # not the main fetched meanwhile
     graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
     assert len(graphql) >= 3  # run, retire, and once more before the retry
+
+
+# --- post-merge verification that every Closes issue closed (#2654) ---------
+
+_CLOSES_BODY = "## Issues\nCloses #2029\nCloses #2030\nRefs #9\n\n"
+
+
+def _issue_views(world: FakeWorld) -> list[str]:
+    return [c[3] for c in world.calls if c[1:3] == ["issue", "view"]]
+
+
+def test_merge_verifies_every_closes_issue_is_closed_after_cleanup() -> None:
+    world = FakeWorld(pr_body=_CLOSES_BODY)
+    code, result = ship(world, "--check", "unit=good", "--merge")
+    assert code == 0
+    assert result["result"] == "merged"
+    assert _issue_views(world) == ["2029", "2030"]  # Refs #9 is not read
+    assert world.names()[-2:] == ["cleanup-merged", "sync-main"]
+
+
+def test_merge_waits_briefly_for_github_to_close_the_issue() -> None:
+    world = FakeWorld(pr_body=_CLOSES_BODY, issue_states={2029: ["OPEN", "CLOSED"]})
+    code, result = ship(world, "--check", "unit=good", "--merge")
+    assert code == 0, result
+    assert _issue_views(world) == ["2029", "2029", "2030"]
+
+
+def test_merge_fails_loudly_when_a_closes_issue_is_still_open() -> None:
+    world = FakeWorld(pr_body=_CLOSES_BODY, issue_states={2030: ["OPEN"]})
+    code, result = ship(world, "--check", "unit=good", "--merge")
+    assert code == 1
+    assert "#2030" in result["error"] and "still open" in result["error"]
+
+
+def test_a_merged_pr_without_closes_reads_no_issue() -> None:
+    world = FakeWorld(prs=[{"number": 9, "state": "MERGED"}], pr_body="no issues")
+    code, _ = ship(world, "--merge")
+    assert code == 0
+    assert _issue_views(world) == []

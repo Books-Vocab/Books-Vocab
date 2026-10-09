@@ -20,6 +20,10 @@ grep -Fq 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW" \
   || fail "workflow does not bind validation to the exact PR HEAD"
 grep -Fq './ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA"' "$WORKFLOW" \
   || fail "workflow does not call the typed delivery receipt validator"
+grep -Fq -- '--head-ref "$head_ref"' "$WORKFLOW" \
+  || fail "workflow does not pass the PR head ref so issue-named branches must link their Issue"
+grep -Fq "pulls/\$PR_NUMBER\" --jq '.head.ref'" "$WORKFLOW" \
+  || fail "workflow does not read the actual PR head ref from the API"
 
 if grep -Eq 'BASE_SHA:|contains_exact_sha|grep .*Base SHA|perl -ne.*Digest' "$WORKFLOW"; then
   fail "workflow duplicates receipt parsing or blocks durable historical-base publication"

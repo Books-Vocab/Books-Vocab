@@ -279,3 +279,57 @@ def test_external_ids_share_the_claim_rule_for_bare_forms(
 )
 def test_malformed_issue_urls_never_close_anything(external_id: str) -> None:
     assert IssueLinks.from_external_ids((external_id,)) == IssueLinks()
+
+
+# --- issue-named branches must link their issue (#2654) ---------------------
+
+
+@pytest.mark.parametrize(
+    ("branch", "number"),
+    [
+        ("debug/issue-2463-wave", 2463),
+        ("fix/issue-7", 7),
+        ("feat/issue-12-extra-words", 12),
+        ("issue-5", 5),
+    ],
+)
+def test_issue_links_from_branch_name(branch: str, number: int) -> None:
+    assert IssueLinks.from_branch(branch) == IssueLinks(closes=(number,))
+
+
+@pytest.mark.parametrize(
+    "branch",
+    ["feat/delivery", "fix/tissue-3", "fix/issue-x", "fix/issue-0", "issues-4"],
+)
+def test_issue_links_from_branch_ignores_non_issue_branches(branch: str) -> None:
+    assert IssueLinks.from_branch(branch) == IssueLinks()
+
+
+def test_readiness_rejects_issue_named_branch_without_issue_link() -> None:
+    receipt = replace(_receipt(), branch="debug/issue-42-fix")
+    body = render_pull_request_body(receipt)
+
+    with pytest.raises(PolicyViolation, match="issue-42.*Closes #42 or Refs #42"):
+        validate_pull_request_body(body, expected_head_sha=receipt.head_sha)
+
+
+@pytest.mark.parametrize("issues", [IssueLinks(closes=(42,)), IssueLinks(refs=(42,))])
+def test_readiness_accepts_issue_named_branch_with_closes_or_refs(
+    issues: IssueLinks,
+) -> None:
+    receipt = replace(_receipt(), branch="debug/issue-42-fix")
+    body = render_pull_request_body(receipt, issues=issues)
+
+    assert (
+        validate_pull_request_body(body, expected_head_sha=receipt.head_sha) == receipt
+    )
+
+
+def test_readiness_checks_the_actual_head_ref_too() -> None:
+    receipt = _receipt()
+    body = render_pull_request_body(receipt)
+
+    with pytest.raises(PolicyViolation, match="issue-9"):
+        validate_pull_request_body(
+            body, expected_head_sha=receipt.head_sha, head_ref="fix/issue-9"
+        )

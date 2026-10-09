@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -785,6 +786,39 @@ def test_issue_intake_preflight_rejects_duplicate_security_and_scope_collisions(
             pull_requests=PullRequestInventory(records=()),
             changed_paths=lambda _number: (),
         )
+
+
+def test_issue_intake_refuses_an_exact_title_twin_with_a_different_body() -> None:
+    request = IssueIntakeRequest.from_payload(_intake_payload())
+    other_body = "A different problem statement with no intake source marker."
+    twin = DemandIssue(
+        number=92,
+        url="https://github.com/owner/repo/issues/92",
+        node_id="I_92",
+        title=f"  {request.title.upper()} ",
+        labels=request.labels,
+        body=other_body,
+        updated_at=datetime.fromisoformat("2026-08-25T00:00:00+00:00"),
+        body_sha256=issue_body_sha256(other_body),
+        disposition=IssueDisposition.TRIAGE_REQUIRED,
+    )
+
+    with pytest.raises(PolicyViolation, match="title duplicates open Issue #92"):
+        assert_issue_intake_available(
+            request=request,
+            demand_issues=(twin,),
+            registry=RegistryCollisionInventory(records=()),
+            pull_requests=PullRequestInventory(records=()),
+            changed_paths=lambda _number: (),
+        )
+
+    assert_issue_intake_available(
+        request=request,
+        demand_issues=(replace(twin, title="A different title"),),
+        registry=RegistryCollisionInventory(records=()),
+        pull_requests=PullRequestInventory(records=()),
+        changed_paths=lambda _number: (),
+    )
 
 
 def test_issue_intake_inventory_then_candidate_admission_is_separate() -> None:

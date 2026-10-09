@@ -296,9 +296,7 @@ def test_interrupt_during_wait_closes_the_handle(
             patch.setattr(Path, "open", tracking_open)
             patch.setattr(module.time, "sleep", interrupted)
             with pytest.raises(_Interrupt):
-                OperationLock(
-                    tmp_path, command="waiter", wait_seconds=10
-                ).__enter__()
+                OperationLock(tmp_path, command="waiter", wait_seconds=10).__enter__()
         assert opened and all(handle.closed for handle in opened)  # type: ignore[attr-defined]
     finally:
         holder.kill()

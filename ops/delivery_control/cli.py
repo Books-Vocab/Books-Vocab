@@ -295,6 +295,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     validate.add_argument("--head-sha", required=True)
     validate.add_argument("--body-file", type=Path, default=Path("-"))
+    validate.add_argument(
+        "--head-ref",
+        help="actual PR head branch; an issue-<N> branch must link that Issue",
+    )
 
     render_candidate = commands.add_parser(
         "render-candidate-body",
@@ -665,7 +669,9 @@ def run_command(
             if args.body_file == Path("-")
             else args.body_file.read_text(encoding="utf-8")
         )
-        return validate_pull_request_body(body, expected_head_sha=args.head_sha)
+        return validate_pull_request_body(
+            body, expected_head_sha=args.head_sha, head_ref=args.head_ref
+        )
     if args.command == "render-candidate-body":
         raw = (
             sys.stdin.read()

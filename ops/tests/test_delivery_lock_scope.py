@@ -368,7 +368,9 @@ def test_cleanup_merged_waits_by_default_and_other_commands_do_not(
     monkeypatch.delenv("KG_DELIVERY_LOCK_WAIT_SECONDS", raising=False)
     args = cli._parser().parse_args(["cleanup-merged", "--pr", "41"])
     assert cli.lock_wait_seconds(args) == 120.0
-    args = cli._parser().parse_args(["--lock-timeout", "0", "cleanup-merged", "--pr", "41"])
+    args = cli._parser().parse_args(
+        ["--lock-timeout", "0", "cleanup-merged", "--pr", "41"]
+    )
     assert cli.lock_wait_seconds(args) == 0.0
     args = cli._parser().parse_args(["sync-main"])
     assert cli.lock_wait_seconds(args) is None

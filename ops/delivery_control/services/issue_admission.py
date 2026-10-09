@@ -72,6 +72,10 @@ def assert_candidate_scope_available(
             )
 
 
+def _title_key(title: str) -> str:
+    return " ".join(title.split()).casefold()
+
+
 def assert_issue_intake_available(
     *,
     request: IssueIntakeRequest,
@@ -101,6 +105,16 @@ def assert_issue_intake_available(
         if issue_intake_fingerprint(issue.body) == request.source_fingerprint:
             raise PolicyViolation(
                 f"raw Issue intake source fingerprint already exists at Issue #{issue.number}"
+            )
+
+    # A twin with a different body would otherwise slip past the fingerprint,
+    # and a fix could then close only one of the two issues (#2654).
+    title = _title_key(request.title)
+    for issue in demand_issues:
+        if _title_key(issue.title) == title:
+            raise PolicyViolation(
+                f"raw Issue intake title duplicates open Issue #{issue.number}; "
+                "update that Issue instead of filing a twin"
             )
 
     paths = set(request.scope.paths)
