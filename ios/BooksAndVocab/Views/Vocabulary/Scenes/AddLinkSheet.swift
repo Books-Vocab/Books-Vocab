@@ -28,8 +28,6 @@ struct AddLinkSheet: View {
     @Environment(\.networkMonitor) private var networkMonitor
     /// Return on a word nothing in the notebook has: the create entry flashes (#2038).
     @State private var isCreateHighlighted = false
-    /// Latched count of highlight flashes (UI-test marker: the flash itself is shorter than a UI poll).
-    @State private var createHighlightPulses = 0
     @State private var createHighlightTask: Task<Void, Never>?
     // Names the notebook a new card lands in (the source card's own notebook).
     @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted })
@@ -407,7 +405,6 @@ struct AddLinkSheet: View {
                     title: AddLinkCreateCopy.title(target: searchText, source: sourceEntry.word),
                     notebookLine: AddLinkCreateCopy.notebookLine(notebookName: createNotebookName),
                     isHighlighted: isCreateHighlighted,
-                    highlightPulses: createHighlightPulses,
                     disabledReason: connectivity.createDisabledReason,
                     action: startCreation
                 )
@@ -516,7 +513,6 @@ struct AddLinkSheet: View {
     /// Briefly points at the create entry so the user sees where "create" lives.
     private func highlightCreateEntry() {
         createHighlightTask?.cancel()
-        createHighlightPulses += 1
         withAnimation(AppMotion.feedbackPulse) { isCreateHighlighted = true }
         createHighlightTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(1400))

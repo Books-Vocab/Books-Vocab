@@ -15,9 +15,10 @@ struct AddLinkCreateRow: View {
     let notebookLine: String
     /// Brief emphasis (#2038): Return on a word nothing has points here instead of creating.
     var isHighlighted = false
-    /// How many times the highlight has flashed. The flash lasts ~1.4s, shorter than
-    /// a UI test's poll latency, so tests read this latched count instead of `isHighlighted`.
-    var highlightPulses = 0
+    /// Latched count of flashes this row has actually rendered. The flash lasts ~1.4s, shorter
+    /// than a UI test's poll latency, so tests read this count instead of `isHighlighted`.
+    /// Counted here (not in the parent) so the marker proves the row rendered the highlight.
+    @State private var shownPulses = 0
     /// Why the entry cannot be used right now (offline, #2039). The entry stays
     /// listed — disabled and explained — instead of disappearing.
     var disabledReason: String? = nil
@@ -54,7 +55,7 @@ struct AddLinkCreateRow: View {
                 marker("addLink.create.title", value: title)
                 marker("addLink.create.notebook", value: notebookLine)
                 marker("addLink.create.highlight", value: isHighlighted ? "on" : "off")
-                marker("addLink.create.highlightPulses", value: String(highlightPulses))
+                marker("addLink.create.highlightPulses", value: String(shownPulses))
                 if let disabledReason {
                     marker("addLink.create.disabledReason", value: disabledReason)
                 }
@@ -62,6 +63,9 @@ struct AddLinkCreateRow: View {
         }
         .animation(AppMotion.contentFade, value: disabledReason)
         .animation(AppMotion.feedbackPulse, value: isHighlighted)
+        .onChange(of: isHighlighted) { _, on in
+            if on { shownPulses += 1 }
+        }
         // Text changes while typing (the word is in the sentence): fade, don't jump.
         .animation(AppMotion.contentFade, value: title)
         .animation(AppMotion.contentFade, value: notebookLine)
