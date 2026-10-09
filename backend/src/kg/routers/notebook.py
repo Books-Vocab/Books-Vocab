@@ -147,11 +147,17 @@ def delete_notebook(nb_id: str, user: CurrentUser):
         # ops_shared.NOTEBOOK_FILE_SPECS SoT (the same source service_factories
         # uses to create them), so a new artifact kind can't silently orphan a
         # file here as the two lists drift.
+        import glob
+
         from ..ops_shared import notebook_files
 
         for path in notebook_files(user["dir"], nb_id).values():
-            for suffix in ("", ".bak", ".tmp"):
+            for suffix in ("", ".bak", ".tmp", ".lock"):
                 path.with_name(path.name + suffix).unlink(missing_ok=True)
+            # graph/links.py serialises per-pair creates on
+            # ``<file>.pair-<digest>[.lock]``; those siblings leak otherwise.
+            for pair_lock in path.parent.glob(glob.escape(path.name) + ".pair-*"):
+                pair_lock.unlink(missing_ok=True)
         # Evict cached stores
         from ..service_factories import evict_notebook_cache
 

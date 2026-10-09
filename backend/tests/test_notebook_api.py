@@ -725,6 +725,37 @@ def test_delete_notebook_removes_all_artifact_kinds(isolated_api):
     assert not leftover, f"orphan artifacts left after delete: {leftover}"
 
 
+def test_delete_notebook_removes_lock_siblings(isolated_api):
+    """path_write_lock leaves ``<file>.lock`` and links leaves
+    ``<links>.pair-<digest>.lock``; delete must not leak them (#2809)."""
+    from kg.ops_shared import notebook_files
+
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Locks"}, headers=h).json()["id"]
+    other_id = client.post("/api/notebooks", json={"name": "Keep"}, headers=h).json()["id"]
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
+    created = []
+    for path in notebook_files(user_dir, nb_id).values():
+        lock = path.with_name(path.name + ".lock")
+        pair = path.with_name(path.name + ".pair-" + "ab" * 32 + ".lock")
+        for f in (lock, pair):
+            f.write_text("")
+            created.append(f)
+    kept = [p.with_name(p.name + ".lock") for p in notebook_files(user_dir, other_id).values()]
+    for f in kept:
+        f.write_text("")
+
+    r = client.delete(f"/api/notebooks/{nb_id}", headers=h)
+    assert r.status_code == 200, r.text
+
+    leftover = [str(f) for f in created if f.exists()]
+    assert not leftover, f"orphan lock files left after delete: {leftover}"
+    assert all(f.exists() for f in kept), "other notebook's locks must survive"
+
+
 def test_delete_default_notebook_fails(isolated_api):
     """Deleting the default notebook must return 400."""
     r = isolated_api.client.delete("/api/notebooks/default", headers=isolated_api.headers)
