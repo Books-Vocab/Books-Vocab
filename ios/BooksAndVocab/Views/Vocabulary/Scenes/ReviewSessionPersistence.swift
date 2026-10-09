@@ -179,13 +179,13 @@ enum ReviewSessionPersistence {
                     AppLog.data.error("flushPendingAnswers: entry not found for \(queuePersistenceIDs[index]), result not saved")
                     continue
                 }
-                stageAnswer(
+                guard stageAnswer(
                     answer,
                     baseline: queueBaselines[index],
                     entry: entry,
                     notebookSettingsSnapshot: notebookSettingsSnapshot,
                     in: ctx
-                )
+                ) else { continue }
                 staged.append(index)
             }
             let saved = PerfLog.review.measure("flush.dbSaveBatch", "n=\(staged.count)") { ctx.safeSave() }.value
@@ -228,17 +228,30 @@ enum ReviewSessionPersistence {
 
     /// Apply one answer's SRS mutation to `entry` and insert its `ReviewRecord`
     /// (idempotent on record existence) into `ctx`. Caller owns the single save.
-    private static func stageAnswer(
+    /// Returns `false` (nothing touched) when the record lookup itself fails.
+    static func stageAnswer(
         _ answer: TodayReviewState.SubmittedAnswer,
         baseline: TodayReviewSessionSnapshotStore.ReviewBaseline,
         entry: VocabularyEntry,
         notebookSettingsSnapshot: NotebookSettingsSnapshot,
-        in ctx: ModelContext
-    ) {
+        in ctx: ModelContext,
+        fetchRecord: (UUID, ModelContext) throws -> ReviewRecord? = fetchReviewRecord
+    ) -> Bool {
+        // A lookup ERROR is not "no record yet": falling through to the insert branch would add a
+        // second ReviewRecord with the same id (no unique constraint) and double the event (#2796).
+        // Bail before touching `entry` so the answer stays un-staged and the restore reflush retries.
+        let existing: ReviewRecord?
+        do {
+            existing = try fetchRecord(answer.reviewRecordID, ctx)
+        } catch {
+            AppLog.data.error("stageAnswer: ReviewRecord fetch failed for \(answer.reviewRecordID), answer left un-staged: \(error)")
+            return false
+        }
+
         let reviewSettings = notebookSettingsSnapshot.reviewSettings(for: entry.notebookId)
         applySubmittedAnswer(answer, baseline: baseline, to: entry, reviewSettings: reviewSettings)
 
-        if let existing = try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx) {
+        if let existing {
             // Record already exists: either an idempotent re-flush (restore) or the
             // user went back and REPLACED the answer after it had been flushed (#2025).
             // `applySubmittedAnswer` above re-derived the entry from the baseline, so
@@ -278,6 +291,7 @@ enum ReviewSessionPersistence {
             record.notebookId = entry.notebookId
             ctx.insert(record)
         }
+        return true
     }
 
     // MARK: - Private DB helpers
@@ -308,7 +322,7 @@ enum ReviewSessionPersistence {
         return try context.fetch(descriptor).first
     }
 
-    private static func fetchReviewRecord(id: UUID, in context: ModelContext) throws -> ReviewRecord? {
+    static func fetchReviewRecord(_ id: UUID, _ context: ModelContext) throws -> ReviewRecord? {
         var descriptor = FetchDescriptor<ReviewRecord>(
             predicate: #Predicate<ReviewRecord> { $0.id == id }
         )

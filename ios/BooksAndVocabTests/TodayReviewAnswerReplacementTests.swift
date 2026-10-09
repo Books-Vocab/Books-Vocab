@@ -295,6 +295,41 @@ struct TodayReviewAnswerReplacementTests {
         #expect(entry.lastReviewFeedbackRaw == ReviewFeedback.forgot.rawValue)
     }
 
+    private struct FetchFailure: Error {}
+
+    /// #2796: a failed `ReviewRecord` lookup must NOT be read as "no record yet" (would insert a
+    /// duplicate id and double the review event). The answer stays un-staged for a later retry.
+    @Test func recordFetchErrorDoesNotInsertDuplicateAndLeavesAnswerUnstaged() throws {
+        let entries = makeEntries(1)
+        let (container, context) = try makeContainer(entries)
+        let entry = try #require(try context.fetch(FetchDescriptor<VocabularyEntry>()).first)
+        let before = TodayReviewSessionSnapshotStore.ReviewBaseline(
+            reviewIntervalHours: entry.reviewIntervalHours,
+            nextReviewAt: entry.nextReviewAt,
+            lastReviewedAt: entry.lastReviewedAt,
+            reviewCount: entry.reviewCount,
+            lapseCount: entry.lapseCount,
+            reviewStreak: entry.reviewStreak,
+            lastReviewFeedbackRaw: entry.lastReviewFeedbackRaw
+        )
+        let answer = TodayReviewState.SubmittedAnswer(
+            feedback: .forgot, answeredAt: Date(), reviewRecordID: UUID())
+        let snapshot = NotebookSettingsResolver(
+            globalReviewSettings: .default, globalCardLayout: .default
+        ).snapshot(for: [])
+
+        let staged = ReviewSessionPersistence.stageAnswer(
+            answer, baseline: before, entry: entry,
+            notebookSettingsSnapshot: snapshot, in: context,
+            fetchRecord: { _, _ in throw FetchFailure() }
+        )
+
+        #expect(staged == false)
+        #expect(context.safeSave())
+        #expect(try ModelContext(container).fetch(FetchDescriptor<ReviewRecord>()).isEmpty)
+        #expect(entry.reviewCount == before.reviewCount)
+    }
+
     // MARK: - Analytics
 
     @Test func correctionEventMovesAggregateCountsWithoutInflatingTotal() {
