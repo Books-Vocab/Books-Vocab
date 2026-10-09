@@ -37,7 +37,7 @@
 # `--new-version-after-ready` 已移除：ios/<x.y.z> 現在代表上架，tag 存在本身就是證據。
 #
 # 全域 flag：--yes（bump/tag/candidate/upload 真寫；release/resume/resubmit 真執行）
-#           --commit <sha>（僅 shipped：build tag 不存在時人工指定封版 commit；會標記為人工斷言）
+#           --commit <sha>（shipped：build tag 不存在時人工指定封版 commit，標記為人工斷言；tag api <v>：補打歷史版本 tag，須 pyproject 版號==<v> 且為 origin/prod ancestor）
 #           --pr <number> --merged-source <sha>（resume/finalize 的 exact merge evidence）
 # 其他：-h|--help
 # env knob：KG_RELEASE_WAIT_SECS（預設 480）/ KG_RELEASE_POLL_SECS（10）/ KG_PUBLIC_URL
@@ -1011,6 +1011,36 @@ cmd_bump_build() {
   fi
 }
 
+# ---- tag api <v> --commit <sha>：補打歷史版本 tag（#2666）。不 commit、不動 branch，只把 tag 指到既有 commit。
+# 守衛：該 commit 的 pyproject／api.py 版號 == <v>、是 live origin/prod 的 ancestor（確實上過生產）、tag 本地與
+# remote 皆不存在。push 為 tag-only；dry-run 預設，--yes 才寫。
+tag_api_at_commit() {  # $1=component $2=version（SHIPPED_COMMIT = --commit 值）
+  local c="$1" v="$2" sha ver prod tag
+  [[ "$c" == api ]] || err "tag --commit 只支援 api（ios 的 tag 由 shipped ios 依 ASC 物化）"
+  sha="$(git -C "$ROOT" rev-parse --verify -q "${SHIPPED_COMMIT}^{commit}")" \
+    || err "--commit ${SHIPPED_COMMIT} 不是有效的 commit"
+  tag="$(tag_prefix api)${v}"
+  git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+    && err "tag $tag 已存在（本地）；拒絕覆寫"
+  [[ -z "$(git -C "$ROOT" ls-remote --tags origin "refs/tags/$tag" 2>/dev/null)" ]] \
+    || err "tag $tag 已存在於 origin；拒絕覆寫"
+  ver="$(promote_version_at "$sha")"
+  [[ "$ver" == "$v" ]] || err "${sha:0:12} 的 backend 版號是 ${ver}，非 ${v}；拒絕打錯版本的 tag"
+  prod="$(remote_head_sha prod)" || exit $?
+  [[ "$prod" =~ ^[0-9a-f]{40}$ ]] || err "查不到 live origin/prod；fail-closed。"
+  git -C "$ROOT" fetch -q origin prod || err "git fetch origin prod 失敗；fail-closed。"
+  git -C "$ROOT" merge-base --is-ancestor "$sha" "$prod" 2>/dev/null \
+    || err "${sha:0:12} 不是 live origin/prod=${prod:0:12} 的 ancestor（從未上過生產）；拒絕補 tag"
+  echo "component=api  version=$v  tag=$tag  commit=$sha（補打歷史 tag，不 commit、不動 branch）"
+  if [[ $YES -eq 1 ]]; then
+    git -C "$ROOT" tag "$tag" "$sha"
+    git -C "$ROOT" push origin "$tag"
+    echo "✓ 已 tag ${tag} → ${sha:0:12} + tag-only push。"
+  else
+    echo "dry-run：未寫入。確認後加 --yes 才會建 tag 並推送 origin ${tag}。"
+  fi
+}
+
 # ---- tag：commit 版號檔 + 打 tag + tag-only push（版號標記，非部署；dry-run 預設）----
 # tag 不觸發生產，也不更新任何 branch ref；生產部署／upload 由 resume 完成。（原名 publish）
 cmd_tag() {
@@ -1018,6 +1048,7 @@ cmd_tag() {
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
+  if [[ -n "$SHIPPED_COMMIT" ]]; then tag_api_at_commit "$c" "$v"; return; fi
   # resubmit 走的是「同一個 marketing version 的下一顆 build」，而 guard_ios_new_version
   # 專門擋「換版號」——套在重送上會擋掉唯一正確的那條路。用明示的內部旗標開洞，而不是
   # 把 guard 改成可有可無：預設一定跑，只有 cmd_resubmit 會關掉它。
@@ -1404,9 +1435,10 @@ promote_version_at() {  # $1=ref → pyproject 與 api.py 的 backend 版號（�
 }
 
 # CI 證據（嚴格版）：server-side 只取名為 backend-quality 的 check-run（filter=all 含被 rerun 取代的舊 run），
-# --paginate 取全頁，jq -s 合併。**該名稱的每一個 run（含舊的失敗 attempt）都必須 completed/success**；
-# skipped／neutral／in_progress／缺席都不算綠。代價：曾失敗後 rerun 轉綠的 SHA 也會被拒，
-# 改 promote 之後有綠燈無失敗 attempt 的 main commit。total_count 與實收 run 數不符 → 視為不完整。
+# --paginate 取全頁，jq -s 合併。依 check_suite.id 分組：**每個 suite 內 id 最大（最新 attempt）的 run 必須
+# completed/success**；同 suite 內被 rerun 取代的舊失敗 attempt 不擋（#2660），不同 suite 的失敗（另一次獨立
+# CI 執行）仍拒絕。skipped／neutral／in_progress／缺席都不算綠；run 缺 id／check_suite.id 無法判定最新 attempt
+# → 不算綠。total_count 與實收 run 數不符 → 視為不完整。
 # seam：KG_CHECK_RUNS_JSON_CMD <sha> 回傳 raw gh JSON（可為多頁串接），讓測試走真的 jq 過濾器。
 promote_assert_backend_quality() {  # $1=sha
   local sha="$1" out rc=0
@@ -1422,8 +1454,10 @@ promote_assert_backend_quality() {  # $1=sha
     || err "${sha} 的 check-runs 回應不完整（total_count 與實收 run 數不符，疑似分頁截斷）；拒絕 promote。"
   jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")] | length > 0' <<<"$out" >/dev/null 2>&1 \
     || err "${sha} 沒有任何 backend-quality check-run（CI 沒跑）；拒絕 promote。選有 backend 變更且 CI 綠的 main commit。"
-  jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")] | all(.status == "completed" and .conclusion == "success")' <<<"$out" >/dev/null 2>&1 \
-    || err "${sha} 沒有全綠的 backend-quality check-run（任一 run 為失敗、skipped、neutral、進行中皆不算；含被 rerun 取代的舊 attempt）；拒絕 promote。"
+  jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")]
+      | all(.[]; (.id | type) == "number" and (.check_suite.id | type) == "number")
+        and (group_by(.check_suite.id) | all(.[]; (map(.id) | max) as $m | [.[] | select(.id == $m)] | all(.status == "completed" and .conclusion == "success")))' <<<"$out" >/dev/null 2>&1 \
+    || err "${sha} 沒有全綠的 backend-quality check-run（每個 check suite 最新 attempt 都必須 completed/success；失敗、skipped、neutral、進行中、缺 id 皆不算；同 suite 內被 rerun 取代的舊 attempt 不計）；拒絕 promote。"
 }
 
 cmd_promote() {

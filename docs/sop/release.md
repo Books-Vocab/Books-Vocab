@@ -173,7 +173,7 @@ Preconditions (each refuses with a message; the push is lease-guarded, there is 
 1. `<sha>` is a full SHA and an ancestor of the live `refs/heads/main` tip. Refs are matched by exact full name (a stray `a/main` or `a/prod` branch is never mistaken for them).
 2. Live `origin/prod` is an ancestor of `<sha>`: fast-forward only.
 3. `backend/pyproject.toml` and `backend/src/kg/api.py` agree at `<sha>` and are greater than the version at `origin/prod` (equal only with `--same-version <reason>`).
-4. Every `backend-quality` check-run of `<sha>` is `completed`/`success` (`gh api --paginate .../commits/<sha>/check-runs?check_name=backend-quality&filter=all`, all pages merged). Strict: skipped, neutral, in-progress, missing, truncated or unparseable evidence refuses, and so does an earlier failed attempt that was later re-run green (`filter=all` keeps superseded runs); promote a main commit whose CI ran green first time (a backend-touching merge).
+4. The newest `backend-quality` check-run (highest run id) of every check suite of `<sha>` is `completed`/`success` (`gh api --paginate .../commits/<sha>/check-runs?check_name=backend-quality&filter=all`, all pages merged, grouped by `check_suite.id`). Strict: skipped, neutral, in-progress, missing, truncated, unparseable or id-less evidence refuses, and so does a failure in a different suite; an older failed attempt superseded by a green re-run inside the same suite (`filter=all` keeps it) no longer blocks.
 
 The gate matches the exact check-run name `backend-quality`; if that job is ever renamed or nested (e.g. "caller / backend-quality"), every SHA is refused and the gate must be updated.
 
@@ -186,6 +186,8 @@ What happens next (no operator action): within about 90 s the reconciler fast-fo
 Verify: `--wait` polls `GET ${KG_PUBLIC_URL:-https://wordnexus.lol}/api/system/info` every 15 s (up to 600 s; `KG_PROMOTE_POLL_SECS`/`KG_PROMOTE_WAIT_SECS`) until `version` is a prefix of the promoted SHA (at least 7 chars). Without it, run the same `curl` plus `./ops/devops_kg_safe.sh run "tail -40 ~/Library/Logs/kg_reconcile.err.log"` and `tail -5 ~/Library/Logs/kg_reconcile.out.log` (verdict `deployed` expected; `rolled-back` or `poisoned-skip` means the gate failed).
 
 Rollback: the reconciler refuses rewinds, and `promote` refuses non-fast-forward, so never move `prod` backwards. Land a forward `git revert` of the bad change on `main` through the normal PR and merge queue (bump the backend version so the guard passes, or use `--same-version`), then `promote` that commit. If a gate already auto-rolled back, the bad SHA is poisoned and production is on the old SHA; fix forward the same way. First-time provisioning (clone `~/kg-prod`, seed `origin/prod`, plist) is a one-off topology migration, recorded in `docs/reference/host_topology.md`.
+
+Backfill a missing historical tag: `ops/release.sh tag api <x.y.z> --commit <sha> [--yes]` (dry-run by default) tags an exact commit without committing or moving any branch. It refuses when the commit is not a valid commit, its `backend/pyproject.toml` (and `api.py`) version differs from `<x.y.z>`, it is not an ancestor of live `origin/prod` (never shipped), or the tag already exists locally or on origin; the push is tag-only.
 
 ## iOS
 
