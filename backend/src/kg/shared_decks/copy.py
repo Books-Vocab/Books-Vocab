@@ -76,7 +76,7 @@ def _user_copy_lock(user_dir: Path) -> threading.Lock:
     This is the faithful threading translation of that same per-user pattern:
     an LRU-bounded, mutex-guarded registry keyed by the user's dir (the mutated
     resource). ``move_to_end`` on access keeps an in-flight lock recently-used
-    so it is never the eviction victim while still held.
+    and eviction skips held locks (mirrors deps.get_user_lock).
     """
     key = str(Path(user_dir).resolve())
     with _USER_COPY_LOCKS_MUTEX:
@@ -85,7 +85,14 @@ def _user_copy_lock(user_dir: Path) -> threading.Lock:
             lock = threading.Lock()
             _USER_COPY_LOCKS[key] = lock
             while len(_USER_COPY_LOCKS) > _MAX_USER_COPY_LOCKS:
-                _USER_COPY_LOCKS.popitem(last=False)
+                for candidate_key, candidate in _USER_COPY_LOCKS.items():
+                    if not candidate.locked():
+                        del _USER_COPY_LOCKS[candidate_key]
+                        break
+                else:
+                    # Every lock is held: evicting one would hand its user a
+                    # second lock. Let the cache exceed the cap temporarily.
+                    break
         else:
             _USER_COPY_LOCKS.move_to_end(key)
         return lock

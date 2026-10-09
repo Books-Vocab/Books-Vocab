@@ -737,3 +737,20 @@ def test_copy_endpoint_rejects_overlong_notebook_name(isolated_api):
         json={"idempotencyKey": "req-long", "notebookName": "x" * 101},
     )
     assert r.status_code == 422, r.text
+
+
+def test_user_copy_lock_not_evicted_while_held(tmp_path, monkeypatch):
+    """LRU eviction must never drop a held lock (#2697): a second copy for the
+    same user would otherwise mint a fresh lock and run concurrently."""
+    from kg.shared_decks import copy as copy_mod
+
+    monkeypatch.setattr(copy_mod, "_MAX_USER_COPY_LOCKS", 2)
+    monkeypatch.setattr(copy_mod, "_USER_COPY_LOCKS", copy_mod.OrderedDict())
+    held = copy_mod._user_copy_lock(tmp_path / "u0")
+    with held:
+        for i in range(1, 5):
+            copy_mod._user_copy_lock(tmp_path / f"u{i}")
+        assert copy_mod._user_copy_lock(tmp_path / "u0") is held
+    # Released locks are evictable again, so the cache returns to its cap.
+    copy_mod._user_copy_lock(tmp_path / "u9")
+    assert len(copy_mod._USER_COPY_LOCKS) <= 2
