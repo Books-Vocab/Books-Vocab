@@ -538,4 +538,42 @@ struct KGServiceTests {
     @Test func unauthorized_and_notAuthenticated_share_description() {
         #expect(KGError.unauthorized.errorDescription == KGError.notAuthenticated.errorDescription)
     }
+
+    // MARK: - review-event pull paging
+
+    private func reviewEventPayload(_ id: String) -> KGReviewEventPayload {
+        KGReviewEventPayload(
+            event_id: id, card_id: nil, word_snapshot: "w", notebook_id: "default",
+            feedback: 1, reviewed_at: "2026-06-01T10:00:00Z", created_at: "2026-06-01T10:00:00Z"
+        )
+    }
+
+    @Test func review_event_pull_loops_until_short_page() async throws {
+        let pages: [String?: KGService.ReviewEventsPage] = [
+            nil: .init(entries: [reviewEventPayload("a"), reviewEventPayload("b")], cursor: "c1"),
+            "c1": .init(entries: [reviewEventPayload("c"), reviewEventPayload("d")], cursor: "c2"),
+            "c2": .init(entries: [reviewEventPayload("e")], cursor: "c3"),
+        ]
+        var requested: [String?] = []
+        var consumed: [String?] = []
+        let total = try await KGService.drainReviewEventPages(
+            startingAt: nil, pageSize: 2,
+            fetchPage: { since in requested.append(since); return pages[since]! },
+            consume: { _, cursor in consumed.append(cursor) }
+        )
+        #expect(total == 5)
+        #expect(requested == [nil, "c1", "c2"])
+        #expect(consumed == ["c1", "c2", "c3"])
+    }
+
+    @Test func review_event_pull_stops_when_cursor_does_not_advance() async throws {
+        var calls = 0
+        let total = try await KGService.drainReviewEventPages(
+            startingAt: "c1", pageSize: 1,
+            fetchPage: { _ in calls += 1; return .init(entries: [reviewEventPayload("a")], cursor: "c1") },
+            consume: { _, _ in }
+        )
+        #expect(total == 1)
+        #expect(calls == 1)
+    }
 }

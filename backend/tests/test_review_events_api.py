@@ -343,3 +343,20 @@ def test_book_position_put_rejects_nan_progression_with_strict_json_422(isolated
     assert r.status_code == 422, r.text
     body = json.loads(r.text, parse_constant=lambda name: pytest.fail(name))
     assert body["detail"][0]["input"] == "NaN"
+
+
+def test_review_events_pull_is_paged(isolated_api):
+    entries = [_payload(f"evt-page-{i:04d}") for i in range(1005)]
+    r_push = isolated_api.client.patch(
+        "/api/vocab/review-events", json={"entries": entries}, headers=isolated_api.headers
+    )
+    assert r_push.status_code == 200, r_push.text
+
+    first = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers).json()
+    assert len(first["entries"]) == 1000
+    second = isolated_api.client.get(
+        "/api/vocab/review-events", params={"since": first["cursor"]}, headers=isolated_api.headers
+    ).json()
+    assert len(second["entries"]) == 5
+    ids = [e["event_id"] for e in first["entries"] + second["entries"]]
+    assert len(set(ids)) == 1005

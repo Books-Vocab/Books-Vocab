@@ -257,3 +257,47 @@ def test_out_of_range_timestamps_are_bad_request_not_overflow():
         _parse_required_timestamp("9999-12-31T23:59:59-05:00", "reviewed_at")
     with pytest.raises(BadRequestError):
         _parse_iso8601_timestamp("0001-01-01T00:00:00+02:00")
+
+
+def _drain(store, *, page_size):
+    """Pull page by page the way the client does; returns (event_id pages)."""
+    pages: list[list[str]] = []
+    since = None
+    for _ in range(20):
+        entries, cursor = pull_review_events(since=since, event_store=store, page_size=page_size)
+        if not entries:
+            break
+        pages.append([e.event_id for e in entries])
+        since = cursor
+    return pages
+
+
+def test_pull_pages_bounded_for_since_none_and_cursor(tmp_path):
+    path = tmp_path / "review_events.db"
+    ReviewEventStore(path).close()
+    _seed_raw(path, [(f"e{i}", f"2026-05-14 12:00:0{i}.000000") for i in range(5)])
+    store = ReviewEventStore(path)
+    try:
+        entries, cursor = pull_review_events(since=None, event_store=store, page_size=2)
+        assert [e.event_id for e in entries] == ["e0", "e1"]
+        entries, _ = pull_review_events(since=cursor, event_store=store, page_size=2)
+        assert [e.event_id for e in entries] == ["e2", "e3"]
+        assert _drain(store, page_size=2) == [["e0", "e1"], ["e2", "e3"], ["e4"]]
+    finally:
+        store.close()
+
+
+def test_pull_page_never_splits_same_ingested_at_tie(tmp_path):
+    path = tmp_path / "review_events.db"
+    ReviewEventStore(path).close()
+    tie = "2026-05-14 12:00:01.000000"
+    _seed_raw(
+        path,
+        [("a", "2026-05-14 12:00:00.000000"), ("b", tie), ("c", tie), ("d", tie), ("e", "2026-05-14 12:00:02.000000")],
+    )
+    store = ReviewEventStore(path)
+    try:
+        pages = _drain(store, page_size=2)
+        assert pages == [["a", "b", "c", "d"], ["e"]]
+    finally:
+        store.close()

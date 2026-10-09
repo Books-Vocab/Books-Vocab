@@ -113,36 +113,63 @@ extension KGService {
         return (totalInserted, totalSkipped)
     }
 
+    /// Mirrors backend `REVIEW_EVENTS_PAGE_SIZE`: a page with fewer entries is the last.
+    static let reviewEventPullPageSize = 1000
+
+    struct ReviewEventsPage: Decodable {
+        let entries: [KGReviewEventPayload]
+        let cursor: String?
+    }
+
+    /// Pulls pages until a short/empty page, calling `consume` per page (merge + watermark
+    /// advance) so a failure mid-way keeps the pages already applied. Returns events consumed.
+    /// Stops if the server returns no cursor or one that did not advance (no infinite loop).
+    @discardableResult
+    static func drainReviewEventPages(
+        startingAt initial: String?,
+        pageSize: Int = reviewEventPullPageSize,
+        fetchPage: (String?) async throws -> ReviewEventsPage,
+        consume: ([KGReviewEventPayload], String?) async throws -> Void
+    ) async throws -> Int {
+        var since = initial
+        var total = 0
+        while true {
+            let page = try await fetchPage(since)
+            guard !page.entries.isEmpty else { return total }
+            try await consume(page.entries, page.cursor)
+            total += page.entries.count
+            guard page.entries.count >= pageSize, let next = page.cursor, next != since else { return total }
+            since = next
+        }
+    }
+
     func pullReviewEvents(container: ModelContainer) async throws {
-        struct EventsResponse: Decodable {
-            let entries: [KGReviewEventPayload]
-            let cursor: String?
-        }
-
         let defaults = UserDefaults.standard
-        let since = defaults.string(forKey: SyncKeys.reviewEventPullBoundary)
-        let queryItems = since.map { [URLQueryItem(name: "since", value: $0)] }
-
-        let decoded = try await authenticatedDecode(
-            EventsResponse.self,
-            path: "api/vocab/review-events",
-            queryItems: queryItems
-        )
-        guard !decoded.entries.isEmpty else { return }
-
         let actor = BackgroundSyncActor(modelContainer: container)
-        try await actor.mergeReviewEvents(decoded.entries)
-        // Advance the watermark by the server-assigned ingestion cursor, not by
-        // max(reviewed_at): the cursor is monotonic in ingestion order, so a later
-        // pull cannot skip an event whose reviewed_at lies before this boundary.
-        if let cursor = decoded.cursor {
-            defaults.set(cursor, forKey: SyncKeys.reviewEventPullBoundary)
-        } else {
-            // Contract violation: a non-empty batch must carry a cursor. Surface it
-            // instead of silently re-merging the same batch every sync.
-            AppLog.kg.error("pullReviewEvents: non-empty batch returned nil cursor; watermark not advanced")
-        }
-        AppLog.kg.info("pullReviewEvents: merged \(decoded.entries.count) remote events")
+        let total = try await Self.drainReviewEventPages(
+            startingAt: defaults.string(forKey: SyncKeys.reviewEventPullBoundary),
+            fetchPage: { since in
+                try await self.authenticatedDecode(
+                    ReviewEventsPage.self,
+                    path: "api/vocab/review-events",
+                    queryItems: since.map { [URLQueryItem(name: "since", value: $0)] }
+                )
+            },
+            consume: { entries, cursor in
+                try await actor.mergeReviewEvents(entries)
+                // Advance the watermark by the server-assigned ingestion cursor, not by
+                // max(reviewed_at): the cursor is monotonic in ingestion order, so a later
+                // pull cannot skip an event whose reviewed_at lies before this boundary.
+                if let cursor {
+                    defaults.set(cursor, forKey: SyncKeys.reviewEventPullBoundary)
+                } else {
+                    // Contract violation: a non-empty batch must carry a cursor. Surface it
+                    // instead of silently re-merging the same batch every sync.
+                    AppLog.kg.error("pullReviewEvents: non-empty batch returned nil cursor; watermark not advanced")
+                }
+            }
+        )
+        if total > 0 { AppLog.kg.info("pullReviewEvents: merged \(total) remote events") }
     }
 }
 
