@@ -55,10 +55,10 @@
     },
     "audio": {
       "atomic_habits_ep1_flash_playable": {
-        "sourcePath": "ops/fixtures/assets/podcast_demo.mp3",
-        "sha256": "415409cd0d2e2cf204c63a2cf318d3766da0bac0b6d74499eb9da9184f2ff108",
+        "sourcePath": "ops/fixtures/assets/podcast_demo_long.mp3",
+        "sha256": "115da1279fc1c53c965801da9c27b3ef448e8308eb46ad87f4c3ecbac2e4b0a1",
         "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
-        "byteSize": 96591,
+        "byteSize": 75121,
         "contentType": "audio/mpeg"
       },
       "atomic_habits_ep1_flash_auth": {
