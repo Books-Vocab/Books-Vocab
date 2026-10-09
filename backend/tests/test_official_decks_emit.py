@@ -17,6 +17,7 @@ Load-bearing invariants pinned here:
 * end-to-end: a committed official deck is guest-browsable via GET /api/decks
   with zero SRS leakage.
 """
+
 from __future__ import annotations
 
 import json
@@ -52,15 +53,23 @@ def _run_official_cli(*args: str) -> subprocess.CompletedProcess[str]:
         check=False,
     )
 
+
 # The 7 SRS columns that must never surface in a shared card payload.
 _SRS_KEYS = {
-    "reviewIntervalHours", "review_interval_hours",
-    "nextReviewAt", "next_review_at",
-    "lastReviewedAt", "last_reviewed_at",
-    "reviewCount", "review_count",
-    "lapseCount", "lapse_count",
-    "reviewStreak", "review_streak",
-    "lastReviewFeedback", "last_review_feedback",
+    "reviewIntervalHours",
+    "review_interval_hours",
+    "nextReviewAt",
+    "next_review_at",
+    "lastReviewedAt",
+    "last_reviewed_at",
+    "reviewCount",
+    "review_count",
+    "lapseCount",
+    "lapse_count",
+    "reviewStreak",
+    "review_streak",
+    "lastReviewFeedback",
+    "last_review_feedback",
 }
 
 
@@ -75,9 +84,16 @@ def _spec(deck_id="official-test", cards=None, **over):
         "tags": ["test", "starter"],
         "color": "#3366FF",
         "coverPattern": "waves",
-        "cards": cards if cards is not None else [
-            {"content": "apple", "pos": "noun", "meaning": "蘋果",
-             "examples": ["An apple a day."], "mode": "recognition"},
+        "cards": cards
+        if cards is not None
+        else [
+            {
+                "content": "apple",
+                "pos": "noun",
+                "meaning": "蘋果",
+                "examples": ["An apple a day."],
+                "mode": "recognition",
+            },
             {"content": "book", "pos": "noun", "meaning": "書", "mode": "recognition"},
         ],
     }
@@ -92,11 +108,11 @@ def _open(path):
 
 def _card_rows(store, deck_id):
     with Session(store.engine) as s:
-        return list(s.exec(select(SharedDeckCard).where(
-            SharedDeckCard.shared_deck_id == deck_id)).all())
+        return list(s.exec(select(SharedDeckCard).where(SharedDeckCard.shared_deck_id == deck_id)).all())
 
 
 # ── store.publish_official: server-authoritative stamping ──────────────
+
 
 def test_publish_official_stamps_server_authoritative_fields(tmp_path):
     store = _open(tmp_path / "shared_decks.db")
@@ -108,10 +124,8 @@ def test_publish_official_stamps_server_authoritative_fields(tmp_path):
             language_pair="en-zh",
             tags=["core"],
             cards=[
-                {"content": "apple", "pos": "noun", "meaning": "蘋果",
-                 "mode": "recognition"},
-                {"content": "book", "pos": "noun", "meaning": "書",
-                 "mode": "recognition"},
+                {"content": "apple", "pos": "noun", "meaning": "蘋果", "mode": "recognition"},
+                {"content": "book", "pos": "noun", "meaning": "書", "mode": "recognition"},
             ],
         )
         with Session(store.engine) as s:
@@ -137,7 +151,7 @@ def test_publish_official_ignores_caller_supplied_source_and_owner(tmp_path):
     store = _open(tmp_path / "shared_decks.db")
     try:
         spec = _spec(deck_id="official-x")
-        spec["source"] = "community"      # attacker attempt
+        spec["source"] = "community"  # attacker attempt
         spec["ownerId"] = "attacker-123"  # attacker attempt
         build_official.emit(spec, commit=True, data_dir=tmp_path)
         with Session(store.engine) as s:
@@ -151,6 +165,7 @@ def test_publish_official_ignores_caller_supplied_source_and_owner(tmp_path):
 
 # ── content_guid: homograph safety ─────────────────────────────────────
 
+
 def test_content_guid_covers_pos_and_meaning(tmp_path):
     store = _open(tmp_path / "shared_decks.db")
     try:
@@ -158,10 +173,8 @@ def test_content_guid_covers_pos_and_meaning(tmp_path):
             deck_id="d",
             title="Homographs",
             cards=[
-                {"content": "lead", "pos": "noun", "meaning": "鉛（金屬）",
-                 "mode": "recognition"},
-                {"content": "lead", "pos": "verb", "meaning": "帶領",
-                 "mode": "recognition"},
+                {"content": "lead", "pos": "noun", "meaning": "鉛（金屬）", "mode": "recognition"},
+                {"content": "lead", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
             ],
         )
         rows = _card_rows(store, "d")
@@ -191,6 +204,7 @@ def test_identical_cards_dedup_by_guid(tmp_path):
 
 # ── idempotency + versioning ───────────────────────────────────────────
 
+
 def test_reemit_same_spec_is_noop(tmp_path):
     spec = _spec(deck_id="official-idem")
     build_official.emit(spec, commit=True, data_dir=tmp_path)
@@ -210,11 +224,14 @@ def test_reemit_same_spec_is_noop(tmp_path):
 def test_content_change_bumps_version_and_flips_pointer(tmp_path):
     spec = _spec(deck_id="official-ver")
     build_official.emit(spec, commit=True, data_dir=tmp_path)
-    changed = _spec(deck_id="official-ver", cards=[
-        {"content": "apple", "pos": "noun", "meaning": "蘋果", "mode": "recognition"},
-        {"content": "cat", "pos": "noun", "meaning": "貓", "mode": "recognition"},
-        {"content": "dog", "pos": "noun", "meaning": "狗", "mode": "recognition"},
-    ])
+    changed = _spec(
+        deck_id="official-ver",
+        cards=[
+            {"content": "apple", "pos": "noun", "meaning": "蘋果", "mode": "recognition"},
+            {"content": "cat", "pos": "noun", "meaning": "貓", "mode": "recognition"},
+            {"content": "dog", "pos": "noun", "meaning": "狗", "mode": "recognition"},
+        ],
+    )
     result = build_official.emit(changed, commit=True, data_dir=tmp_path)
     store = _open(tmp_path / "shared_decks.db")
     try:
@@ -282,6 +299,7 @@ def test_non_numeric_difficulty_is_rejected(tmp_path):
 
 # ── --check round-trip self-consistency ────────────────────────────────
 
+
 def test_check_passes_for_clean_spec(tmp_path):
     res = build_official.emit(_spec(), check=True)
     assert res["drift"] is False
@@ -290,15 +308,18 @@ def test_check_passes_for_clean_spec(tmp_path):
 def test_check_detects_drift_on_colliding_cards(tmp_path):
     # Two cards identical in (content, pos, mode, meaning) collide to one guid
     # → the stored deck cannot faithfully represent the spec-as-written → drift.
-    bad = _spec(cards=[
-        {"content": "same", "pos": "noun", "meaning": "同", "mode": "recognition"},
-        {"content": "same", "pos": "noun", "meaning": "同", "mode": "recognition"},
-    ])
+    bad = _spec(
+        cards=[
+            {"content": "same", "pos": "noun", "meaning": "同", "mode": "recognition"},
+            {"content": "same", "pos": "noun", "meaning": "同", "mode": "recognition"},
+        ]
+    )
     res = build_official.emit(bad, check=True)
     assert res["drift"] is True
 
 
 # ── copyability: reject NOCASE-colliding homographs at curation ─────────
+
 
 def test_nocase_colliding_cards_rejected_as_uncopyable(tmp_path):
     """A homograph pair distinct only by pos/meaning but sharing a
@@ -307,10 +328,12 @@ def test_nocase_colliding_cards_rejected_as_uncopyable(tmp_path):
     copier's UNIQUE(content COLLATE NOCASE, notebook_id) → every copy 409s.
     build_official must reject it at curation, in EVERY mode, not ship a dead
     deck the round-trip check can't see."""
-    bad = _spec(cards=[
-        {"content": "Lead", "pos": "noun", "meaning": "鉛（金屬）", "mode": "recognition"},
-        {"content": "lead", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
-    ])
+    bad = _spec(
+        cards=[
+            {"content": "Lead", "pos": "noun", "meaning": "鉛（金屬）", "mode": "recognition"},
+            {"content": "lead", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
+        ]
+    )
     with pytest.raises(build_official.SpecError, match="(?i)case-insensitive|nocase|collide"):
         build_official.emit(bad, check=True)
     with pytest.raises(build_official.SpecError):
@@ -323,20 +346,24 @@ def test_nocase_colliding_cards_rejected_as_uncopyable(tmp_path):
 def test_non_ascii_case_variants_rejected_as_uncopyable():
     """The copier dedups on normalize_nfc_lower (full Unicode lower), so
     "Ärger"/"ärger" collide on copy even with differing pos/meaning (#2545)."""
-    bad = _spec(cards=[
-        {"content": "Ärger", "pos": "noun", "meaning": "怒氣", "mode": "recognition"},
-        {"content": "ärger", "pos": "verb", "meaning": "惹惱", "mode": "recognition"},
-    ])
+    bad = _spec(
+        cards=[
+            {"content": "Ärger", "pos": "noun", "meaning": "怒氣", "mode": "recognition"},
+            {"content": "ärger", "pos": "verb", "meaning": "惹惱", "mode": "recognition"},
+        ]
+    )
     with pytest.raises(build_official.SpecError, match="(?i)case-insensitive|nocase|collide"):
         build_official.emit(bad, check=True)
 
 
 def test_distinct_content_homograph_is_copyable(tmp_path):
     """Distinct content strings (no NOCASE collision) copy 1:1 → allowed."""
-    ok = _spec(cards=[
-        {"content": "lead", "pos": "noun", "meaning": "鉛", "mode": "recognition"},
-        {"content": "leads", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
-    ])
+    ok = _spec(
+        cards=[
+            {"content": "lead", "pos": "noun", "meaning": "鉛", "mode": "recognition"},
+            {"content": "leads", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
+        ]
+    )
     assert build_official.emit(ok, check=True)["drift"] is False
 
 
@@ -346,10 +373,12 @@ def test_exact_duplicate_cards_not_flagged_by_copyability_guard(tmp_path):
     (it dedups by guid first, exactly as publish_official does). Dry-run runs the
     guard but not the round-trip --check (which separately flags redundant cards
     as drift — a different gate)."""
-    dup = _spec(cards=[
-        {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
-        {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
-    ])
+    dup = _spec(
+        cards=[
+            {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
+            {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
+        ]
+    )
     res = build_official.emit(dup, commit=False, data_dir=tmp_path)
     assert res["committed"] is False
     assert res["cardCount"] == 1  # deduped by guid, no SpecError raised
@@ -369,6 +398,7 @@ def test_check_over_committed_specs_is_clean():
 
 # ── dry-run purity + backup hook ───────────────────────────────────────
 
+
 def test_dry_run_writes_nothing(tmp_path):
     res = build_official.emit(_spec(), commit=False, data_dir=tmp_path)
     assert res["committed"] is False
@@ -385,6 +415,7 @@ def test_commit_calls_backup_world_before_writing(tmp_path):
 
 # ── end-to-end: seeded official deck is guest-browsable ────────────────
 
+
 @pytest.fixture()
 def api(tmp_path):
     (tmp_path / "users").mkdir()
@@ -397,6 +428,7 @@ def api(tmp_path):
 
 def _settings(tmp_path):
     from kg.settings import KGSettings
+
     return KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
 
 
@@ -405,11 +437,19 @@ from kg.api import app  # noqa: E402
 
 
 def test_seeded_official_deck_is_guest_browsable(api):
-    spec = _spec(deck_id="official-e2e", cards=[
-        {"content": "meticulous", "pos": "adjective", "meaning": "一絲不苟的",
-         "examples": ["a meticulous plan"], "mode": "recognition"},
-        {"content": "plain", "pos": "adjective", "meaning": "平凡的", "mode": "recognition"},
-    ])
+    spec = _spec(
+        deck_id="official-e2e",
+        cards=[
+            {
+                "content": "meticulous",
+                "pos": "adjective",
+                "meaning": "一絲不苟的",
+                "examples": ["a meticulous plan"],
+                "mode": "recognition",
+            },
+            {"content": "plain", "pos": "adjective", "meaning": "平凡的", "mode": "recognition"},
+        ],
+    )
     build_official.emit(spec, commit=True, data_dir=api.data_dir)
 
     r = api.client.get("/api/decks")  # NO auth header (guest)
@@ -437,9 +477,9 @@ def test_seeded_official_deck_is_guest_browsable(api):
 # an implementation that reads the working directory twice would satisfy the
 # positive case and fail the negative one.
 
+
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
+    subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True, text=True)
 
 
 def _write_spec(repo: Path, name: str, *, tracked: bool) -> Path:
@@ -554,13 +594,12 @@ def test_nested_json_is_not_mistaken_for_a_missing_or_untracked_spec(spec_repo, 
 
 
 def test_untracked_specs_refuses_to_report_a_non_git_tree_as_clean(tmp_path, monkeypatch, capsys):
-    """"I cannot see the index" and "the index is clean" are the two states
+    """ "I cannot see the index" and "the index is clean" are the two states
     this gate exists to keep apart, so a missing/unavailable git must raise —
     and must not let ``check`` exit 0."""
     plain = tmp_path / "not-a-repo"
     plain.mkdir()
-    (plain / "loose-deck.json").write_text(
-        json.dumps(_spec(deck_id="loose-deck")), encoding="utf-8")
+    (plain / "loose-deck.json").write_text(json.dumps(_spec(deck_id="loose-deck")), encoding="utf-8")
     monkeypatch.setattr(build_official, "_HERE", plain)
 
     with pytest.raises(build_official.GitIndexUnavailable):
@@ -595,6 +634,7 @@ def test_single_spec_check_reports_index_unchecked_not_untracked_empty(spec_repo
 
 
 # ── CLI surface ────────────────────────────────────────────────────────
+
 
 def test_cli_emit_dry_run_json(tmp_path, capsys):
     spec_path = tmp_path / "deck.json"
