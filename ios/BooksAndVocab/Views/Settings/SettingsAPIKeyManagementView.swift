@@ -7,12 +7,10 @@ struct SettingsAPIKeyManagementView: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.toastCoordinator) private var toastCoordinator
 
-    @State private var keys: [KGExternalAPIKey] = []
     @State private var label = ""
     @State private var isShowingCreateForm = false
-    @State private var isLoading = false
     @State private var isWorking = false
-    @State private var errorMessage: String?
+    @State private var loader = SettingsAPIKeyListLoader()
     @State private var revealedAPIKey: String?
     @State private var revokeTarget: KGExternalAPIKey?
 
@@ -91,7 +89,7 @@ struct SettingsAPIKeyManagementView: View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: SettingsAPIKeyCopy.sectionTitle, icon: "list.bullet.rectangle")
 
-            if let errorMessage {
+            if let errorMessage = loader.errorMessage {
                 VocabStateMessageCard(
                     title: errorMessage,
                     systemImage: "exclamationmark.triangle",
@@ -102,11 +100,11 @@ struct SettingsAPIKeyManagementView: View {
                     }
                 )
                 .accessibilityIdentifier("settings.apiKeys.error")
-            } else if isLoading {
+            } else if loader.isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 80)
                     .accessibilityLabel(L10n.string("正在載入 API 金鑰"))
-            } else if keys.isEmpty {
+            } else if loader.keys.isEmpty {
                 VocabStateMessageCard(
                     title: SettingsAPIKeyCopy.emptyTitle,
                     systemImage: "key",
@@ -135,10 +133,10 @@ struct SettingsAPIKeyManagementView: View {
 
     private var keyList: some View {
         VStack(spacing: 0) {
-            ForEach(Array(keys.enumerated()), id: \.element.id) { index, key in
+            ForEach(Array(loader.keys.enumerated()), id: \.element.id) { index, key in
                 keyRow(key)
 
-                if index < keys.count - 1 {
+                if index < loader.keys.count - 1 {
                     SettingsDivider()
                 }
             }
@@ -257,23 +255,11 @@ struct SettingsAPIKeyManagementView: View {
 
     @MainActor
     private func loadKeys() async {
-        guard subscriptionManager.hasProAccess else {
-            keys = []
-            revealedAPIKey = nil
-            errorMessage = nil
-            return
-        }
-        guard !isLoading else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-
-        do {
-            keys = try await kgService.fetchExternalAPIKeys().map(\.redacted)
-        } catch is CancellationError {
-            return
-        } catch {
-            errorMessage = SettingsAPIKeyCopy.errorMessage(for: error)
+        let hasProAccess = subscriptionManager.hasProAccess
+        let service = kgService
+        if !hasProAccess { revealedAPIKey = nil }
+        await loader.reload(hasProAccess: hasProAccess) {
+            try await service.fetchExternalAPIKeys().map(\.redacted)
         }
     }
 
@@ -281,23 +267,23 @@ struct SettingsAPIKeyManagementView: View {
     private func createKey() async {
         guard !isWorking else { return }
         isWorking = true
-        errorMessage = nil
+        loader.errorMessage = nil
         defer { isWorking = false }
 
         do {
             let created = try await kgService.createExternalAPIKey(label: label)
             guard let secret = created.apiKey, !secret.isEmpty else {
-                errorMessage = SettingsAPIKeyCopy.genericError
+                loader.errorMessage = SettingsAPIKeyCopy.genericError
                 return
             }
-            keys.insert(created.redacted, at: 0)
+            loader.keys.insert(created.redacted, at: 0)
             revealedAPIKey = secret
             label = ""
             isShowingCreateForm = false
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = SettingsAPIKeyCopy.errorMessage(for: error)
+            loader.errorMessage = SettingsAPIKeyCopy.errorMessage(for: error)
         }
     }
 
@@ -305,15 +291,51 @@ struct SettingsAPIKeyManagementView: View {
     private func revokeKey(_ key: KGExternalAPIKey) async {
         guard !isWorking else { return }
         isWorking = true
-        errorMessage = nil
+        loader.errorMessage = nil
         defer { isWorking = false }
 
         do {
             let revoked = try await kgService.revokeExternalAPIKey(id: key.id)
-            keys = keys.map { $0.id == revoked.id ? revoked.redacted : $0 }
+            loader.keys = loader.keys.map { $0.id == revoked.id ? revoked.redacted : $0 }
         } catch is CancellationError {
             return
         } catch {
+            loader.errorMessage = SettingsAPIKeyCopy.errorMessage(for: error)
+        }
+    }
+}
+
+/// Loads the key list for the current entitlement. Lives outside the view so the
+/// entitlement-keyed reload is unit-testable with an injected fetch (#2551).
+@MainActor
+@Observable
+final class SettingsAPIKeyListLoader {
+    var keys: [KGExternalAPIKey] = []
+    var isLoading = false
+    var errorMessage: String?
+    @ObservationIgnored private var generation = 0
+
+    /// A newer reload supersedes an in-flight one: the superseded call publishes nothing and must
+    /// not clear the loading flag that belongs to the newer call (#2551).
+    func reload(hasProAccess: Bool, fetch: () async throws -> [KGExternalAPIKey]) async {
+        generation += 1
+        let token = generation
+        guard hasProAccess else {
+            keys = []
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+        defer { if token == generation { isLoading = false } }
+
+        do {
+            let fetched = try await fetch()
+            guard token == generation else { return }
+            keys = fetched
+        } catch {
+            guard token == generation, !Task.isCancelled, !(error is CancellationError) else { return }
             errorMessage = SettingsAPIKeyCopy.errorMessage(for: error)
         }
     }
