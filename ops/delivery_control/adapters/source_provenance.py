@@ -97,7 +97,14 @@ def inspect_checkout(root: Path) -> CheckoutProvenance:
         )
     head_sha = _git(resolved, "rev-parse", "HEAD")
     blocking, warnings = _classify_status(
-        _git(resolved, "status", "--porcelain=v1", "-z", "--untracked-files=all", strip=False)
+        _git(
+            resolved,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            strip=False,
+        )
     )
     tracked_paths = _git(resolved, "ls-files", "-z", "--", *CONTROL_PLANE_PATHS)
     entries: list[tuple[str, str]] = []

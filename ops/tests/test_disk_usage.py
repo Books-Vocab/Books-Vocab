@@ -2558,3 +2558,56 @@ def test_sibling_agent_lanes_neither_block_each_other_nor_mask_an_orphan(
     assert policy["unregistered_physical_worktrees"] == [str(orphan)]
     # The clean orphan is the only blocker: the dirty sibling adds none.
     assert policy["blocking_reasons"] == ["unregistered-physical-worktree"]
+
+
+def _detached_lane_report(
+    tmp_path: Path, *, advance_branch: bool
+) -> tuple[int, dict, Path]:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    if advance_branch:
+        (worktree / "more.txt").write_text("more\n", encoding="utf-8")
+        _run_git(worktree, "add", "more.txt")
+        _run_git(worktree, "commit", "-m", "advance lane")
+        _run_git(worktree, "checkout", "--detach", "HEAD~1")
+    else:
+        _run_git(worktree, "checkout", "--detach", "HEAD")
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-DETACHED"],
+            }
+        ],
+    )
+    code = main(
+        ["--workspace", str(repo), "--state", str(state), "--output", str(output)]
+    )
+    return code, json.loads(output.read_text(encoding="utf-8")), worktree
+
+
+def test_clean_detached_lane_at_branch_tip_is_a_warning_not_a_block(
+    tmp_path: Path,
+) -> None:
+    _, report, worktree = _detached_lane_report(tmp_path, advance_branch=False)
+
+    policy = report["policy"]
+    assert "physical-identity-mismatch" not in policy["blocking_reasons"]
+    assert str(worktree) in policy["detached_at_tip_warnings"]
+    assert str(worktree) not in policy["physical_identity_mismatches"]
+
+
+def test_detached_lane_behind_branch_tip_blocks_and_names_repair(
+    tmp_path: Path,
+) -> None:
+    _, report, worktree = _detached_lane_report(tmp_path, advance_branch=True)
+
+    policy = report["policy"]
+    assert "physical-identity-mismatch" in policy["blocking_reasons"]
+    assert str(worktree) in policy["physical_identity_mismatches"]
+    assert f"git -C {worktree} switch lane-one" in policy["physical_identity_repairs"]

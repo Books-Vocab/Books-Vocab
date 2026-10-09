@@ -141,18 +141,20 @@ kg_ios_disk_lane_report_is_fresh() {
 # agent does not read a lane-attribution verdict as a disk-space problem.  A
 # stale report's lists are history, not current fact, so they print as unknown.
 kg_ios_disk_guard_diagnose() {
-  local operation="$1" state="$2" lane_state reasons unregistered dirty unknown fresh="yes"
+  local operation="$1" state="$2" lane_state reasons unregistered dirty unknown mismatches repairs fresh="yes"
   lane_state="$(kg_ios_disk_lane_usage_state "$state")"
   if kg_ios_disk_lane_report_is_fresh "$state"; then
     reasons="$(kg_ios_disk_json_array "$lane_state" blocking_reasons)"
     unregistered="$(kg_ios_disk_json_array "$lane_state" unregistered_physical_worktrees)"
     dirty="$(kg_ios_disk_json_array "$lane_state" blocking_dirty_physical_worktrees)"
     unknown="$(kg_ios_disk_json_array "$lane_state" unknown_physical_worktrees)"
+    mismatches="$(kg_ios_disk_json_array "$lane_state" physical_identity_mismatches)"
+    repairs="$(kg_ios_disk_json_array "$lane_state" physical_identity_repairs)"
   else
     fresh="no"
-    reasons="unknown"; unregistered="unknown"; dirty="unknown"; unknown="unknown"
+    reasons="unknown"; unregistered="unknown"; dirty="unknown"; unknown="unknown"; mismatches="unknown"; repairs="unknown"
   fi
-  echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) laneUsageFresh=$fresh laneUsageLagSeconds=$KG_IOS_DISK_LANE_REPORT_LAG blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
+  echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) laneUsageFresh=$fresh laneUsageLagSeconds=$KG_IOS_DISK_LANE_REPORT_LAG blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} identityMismatchWorktrees=${mismatches:-none} identityRepairs=\"${repairs:-none}\" laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
 }
 
 # A guard block that no amount of waiting or cache cleaning clears.  Two sources:
