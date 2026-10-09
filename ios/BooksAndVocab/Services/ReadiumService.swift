@@ -83,8 +83,14 @@ final class ReadiumService: ReadiumServing {
         try await BookshelfImportService.copyFileChunked(from: sourceURL, to: destinationURL, progress: progress)
         AppLog.readium.info("File copied successfully")
 
-        // 開啟 Publication 以提取 metadata
-        let publication = try await openPublication(at: destinationURL)
+        // 開啟 Publication 以提取 metadata；壞檔／被取消時清掉已複製的 dest，避免留下無法開啟的孤檔。
+        let publication: Publication
+        do {
+            publication = try await openPublication(at: destinationURL)
+        } catch {
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw error
+        }
         AppLog.readium.info("Publication ready")
 
         return (fileName, publication)
@@ -121,6 +127,62 @@ final class ReadiumService: ReadiumServing {
 
     // MARK: - 提取純文字與生字預過濾
 
+    /// 章節 HTML → 小寫單字集合（純函式，供 extractUniqueWords 與單測使用）。
+    /// 剝標籤、解 HTML entity、NFC 正規化後，以拉丁字母為底、允許內部 `'`／`-`
+    /// （well-known、don't、café），至少 2 個字元。
+    nonisolated static func extractWords(fromHTML html: String) -> Set<String> {
+        let textOnly = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        let normalized = decodeHTMLEntities(textOnly)
+            .precomposedStringWithCanonicalMapping
+            .lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{2018}", with: "'")
+        guard let regex = try? NSRegularExpression(pattern: "\\p{Latin}+(?:['\\-]\\p{Latin}+)*") else { return [] }
+        let ns = normalized as NSString
+        var words = Set<String>()
+        for match in regex.matches(in: normalized, range: NSRange(location: 0, length: ns.length)) {
+            let word = ns.substring(with: match.range)
+            if word.count >= 2 { words.insert(word) }
+        }
+        return words
+    }
+
+    private nonisolated static let namedEntities: [String: String] = [
+        "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+        "rsquo": "'", "lsquo": "'", "ndash": " ", "mdash": " ", "hellip": " ",
+        "eacute": "\u{E9}", "egrave": "\u{E8}", "ecirc": "\u{EA}", "euml": "\u{EB}",
+        "aacute": "\u{E1}", "agrave": "\u{E0}", "acirc": "\u{E2}", "auml": "\u{E4}", "aring": "\u{E5}",
+        "iacute": "\u{ED}", "icirc": "\u{EE}", "iuml": "\u{EF}",
+        "oacute": "\u{F3}", "ocirc": "\u{F4}", "ouml": "\u{F6}",
+        "uacute": "\u{FA}", "ucirc": "\u{FB}", "uuml": "\u{FC}",
+        "ccedil": "\u{E7}", "ntilde": "\u{F1}", "szlig": "\u{DF}",
+    ]
+
+    /// 單趟解碼（不二次解碼 `&amp;amp;`）；未知 entity 保留原樣。
+    private nonisolated static func decodeHTMLEntities(_ text: String) -> String {
+        guard text.contains("&"),
+              let regex = try? NSRegularExpression(pattern: "&(#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);") else { return text }
+        let ns = text as NSString
+        var result = ""
+        var cursor = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            result += ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            let body = ns.substring(with: match.range(at: 1))
+            var decoded: String?
+            if body.hasPrefix("#x") || body.hasPrefix("#X") {
+                decoded = UInt32(body.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+            } else if body.hasPrefix("#") {
+                decoded = UInt32(body.dropFirst(1)).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+            } else {
+                decoded = namedEntities[body]
+            }
+            result += decoded ?? ns.substring(with: match.range)
+            cursor = match.range.location + match.range.length
+        }
+        result += ns.substring(from: cursor)
+        return result
+    }
+
     /// 從 Publication 的所有閱讀章節中提取出不重複的英文單字集合
     /// 此操作可能耗時，建議在背景 Task 中執行
     func extractUniqueWords(from publication: Publication) async -> Set<String> {
@@ -140,27 +202,7 @@ final class ReadiumService: ReadiumServing {
                     if Task.isCancelled { return [] }
                     guard let htmlString = String(data: data, encoding: .utf8) else { continue }
                     
-                    // 1. 簡易剝離 HTML 標籤
-                    // 將 <...> 替換為空白，避免標籤屬性（如 class="text"）和內文黏連
-                    let textOnly = htmlString.replacingOccurrences(
-                        of: "<[^>]+>",
-                        with: " ",
-                        options: .regularExpression,
-                        range: nil
-                    )
-
-                    // 2. 轉小寫
-                    let lowercased = textOnly.lowercased()
-
-                    // 3. 提取所有純英文字母組成的單字（至少 2 個字母）
-                    let regex = try NSRegularExpression(pattern: "\\b[a-z]{2,}\\b", options: [])
-                    let nsString = lowercased as NSString
-                    let results = regex.matches(in: lowercased, options: [], range: NSRange(location: 0, length: nsString.length))
-
-                    for match in results {
-                        let word = nsString.substring(with: match.range)
-                        uniqueWords.insert(word)
-                    }
+                    uniqueWords.formUnion(Self.extractWords(fromHTML: htmlString))
                 } catch {
                     AppLog.readium.warning("extractUniqueWords: 無法讀取章節 \(String(describing: link.href)), error: \(error.localizedDescription)")
                 }
