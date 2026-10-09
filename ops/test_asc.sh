@@ -499,6 +499,92 @@ s_out="$(PATH="$fake/binok:$PATH" ASC_KEY_DIR="$fake/keys" bash "$ASC" versions 
   && ok "success path intact (stdout passthrough, rc=0)" \
   || fail_t "success path broken (rc=$s_rc, out: $(head -1 <<<"$s_out"))"
 
+# ── §18 create-version（注入縫：ASC_GET_BIN / ASC_WRITE_BIN / ASC_BUILD_BIN，不打 live API）──
+section "create-version (dry-run default, idempotent attach, guards)"
+grep -qE "^[[:space:]]*create-version\)" "$ASC" \
+  && ok "dispatch: create-version" || fail_t "dispatch missing: create-version"
+cv="$fake/cv"; mkdir -p "$cv"
+cat >"$cv/get" <<'FAKE'
+#!/usr/bin/env bash
+case "$1" in
+  *relationships/build) cat "$CV_DIR/rel.json" ;;
+  *appStoreVersions*)   cat "$CV_DIR/versions.json" ;;
+  *) echo '{"_httpError":404}' ;;
+esac
+FAKE
+cat >"$cv/write" <<'FAKE'
+#!/usr/bin/env bash
+{ echo "$2 $1"; cat; echo; } >>"$CV_DIR/writes.log"
+echo '{"_ok":204}'
+FAKE
+cat >"$cv/build" <<'FAKE'
+#!/usr/bin/env bash
+cat "$CV_DIR/build.json"
+FAKE
+chmod +x "$cv/get" "$cv/write" "$cv/build"
+cv_run() {  # $@ = asc.sh args；stdout+stderr 合併；writes.log 每次清空
+  : >"$cv/writes.log"
+  CV_DIR="$cv" ASC_GET_BIN="$cv/get" ASC_WRITE_BIN="$cv/write" ASC_BUILD_BIN="$cv/build" \
+    ASC_KEY_DIR="$fake/keys" bash "$ASC" "$@" 2>&1
+}
+V_LIVE='{"data":[{"id":"v200","attributes":{"versionString":"2.0.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}'
+V_EXIST='{"data":[{"id":"v201","attributes":{"versionString":"2.0.1","platform":"IOS","appStoreState":"PREPARE_FOR_SUBMISSION"}},{"id":"v200","attributes":{"versionString":"2.0.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}'
+B_VALID='{"schema":"kg.asc.build.v1","id":"b13","version":"2.0.1","build":"13","platform":"IOS","processingState":"VALID"}'
+B_PROC='{"schema":"kg.asc.build.v1","id":"b13","version":"2.0.1","build":"13","platform":"IOS","processingState":"PROCESSING"}'
+echo '{"data":null}' >"$cv/rel.json"
+
+# 18a. 建立路徑 dry-run：不寫
+printf '%s' "$V_LIVE" >"$cv/versions.json"; printf '%s' "$B_VALID" >"$cv/build.json"
+o="$(cv_run create-version 2.0.1 13)"
+hasm "$o" 'dry-run' && [[ ! -s "$cv/writes.log" ]] \
+  && ok "create dry-run prints plan and performs no write" || fail_t "create dry-run wrote or lacked dry-run notice (got: $o)"
+# 18b. --yes：POST /v1/appStoreVersions，body 形狀
+o="$(cv_run create-version 2.0.1 13 --yes)"
+wl="$(cat "$cv/writes.log")"
+hasm "$wl" 'POST /v1/appStoreVersions' && ok "create --yes POSTs /v1/appStoreVersions" || fail_t "create --yes no POST (log: $wl)"
+body="$(sed -n '2p' "$cv/writes.log")"
+[[ "$(jq -c '{t:.data.type,p:.data.attributes.platform,v:.data.attributes.versionString,app:.data.relationships.app.data,b:.data.relationships.build.data}' <<<"$body")" \
+  == '{"t":"appStoreVersions","p":"IOS","v":"2.0.1","app":{"type":"apps","id":"6759816274"},"b":{"type":"builds","id":"b13"}}' ]] \
+  && ok "create POST body: attributes{platform,versionString} + relationships app+build" || fail_t "create POST body wrong: $body"
+# 18c. 已存在版本：不 POST，改 PATCH relationship
+printf '%s' "$V_EXIST" >"$cv/versions.json"
+o="$(cv_run create-version 2.0.1 13 --yes)"
+wl="$(cat "$cv/writes.log")"
+hasm "$wl" 'PATCH /v1/appStoreVersions/v201/relationships/build' && ! hasm "$wl" 'POST' \
+  && ok "existing version: PATCH build relationship, no duplicate POST" || fail_t "existing path wrong (log: $wl)"
+[[ "$(jq -c '.data' <<<"$(sed -n '2p' "$cv/writes.log")")" == '{"type":"builds","id":"b13"}' ]] \
+  && ok "attach body is {type:builds,id}" || fail_t "attach body wrong"
+# 18d. 已掛同一 build：no-op
+echo '{"data":{"type":"builds","id":"b13"}}' >"$cv/rel.json"
+o="$(cv_run create-version 2.0.1 13 --yes)"
+[[ ! -s "$cv/writes.log" ]] && hasm "$o" '無需變更' \
+  && ok "already attached: idempotent no-op" || fail_t "already-attached not a no-op (log: $(cat "$cv/writes.log"))"
+echo '{"data":null}' >"$cv/rel.json"
+# 18e. 非 VALID build 拒絕
+printf '%s' "$B_PROC" >"$cv/build.json"
+o="$(cv_run create-version 2.0.1 13 --yes || true)"
+hasm "$o" '須 VALID' && [[ ! -s "$cv/writes.log" ]] \
+  && ok "non-VALID build refused, no write" || fail_t "non-VALID build not refused (got: $o)"
+printf '%s' "$B_VALID" >"$cv/build.json"
+# 18f. 版本不大於線上版本拒絕
+printf '%s' "$V_LIVE" >"$cv/versions.json"
+for bad in 2.0.0 1.9.9; do
+  o="$(cv_run create-version $bad 13 --yes || true)"
+  hasm "$o" '必須大於線上' && [[ ! -s "$cv/writes.log" ]] \
+    && ok "version $bad not greater than live 2.0.0 refused" || fail_t "version $bad not refused (got: $o)"
+done
+# 18g. 另有進行中版本（不同版號）→ 拒絕建第二個
+printf '{"data":[{"id":"v202","attributes":{"versionString":"2.0.2","platform":"IOS","appStoreState":"PREPARE_FOR_SUBMISSION"}},{"id":"v200","attributes":{"versionString":"2.0.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}' >"$cv/versions.json"
+o="$(cv_run create-version 2.0.3 13 --yes || true)"
+hasm "$o" '進行中的其他版本' && [[ ! -s "$cv/writes.log" ]] \
+  && ok "second in-flight version refused" || fail_t "second in-flight version not refused (got: $o)"
+# 18h. 參數守衛 + 寫入走 emit_write
+hasm "$(bash "$ASC" create-version abc 13 2>&1 || true)" '用法' \
+  && ok "create-version validates args" || fail_t "create-version arg validation missing"
+cv_body="$(awk '/^cmd_create_version\(\)/,/^}/' "$ASC")"
+hasm "$cv_body" 'write_raw' \
+  && fail_t "create-version calls write_raw directly (bypasses gate)" || ok "create-version delegates writes to emit_write"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
