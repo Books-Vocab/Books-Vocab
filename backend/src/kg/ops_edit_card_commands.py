@@ -327,6 +327,35 @@ def cmd_card_import(args: argparse.Namespace) -> int:
     return ctx.run(action="card-import", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
 
+def _preview_link_ids(user_dir: Path, notebook_id: str, card_id: str) -> list[str]:
+    """dry-run 專用:唯讀列出 notebook graph 中涉及此卡的 active/hidden link id。
+
+    不經 ``create_graph_store``:它對 default 本會把 legacy ``graph.json`` rename 成
+    ``graph_default.json``(遷移)並可能回寫,違反 dry-run 零磁碟寫入契約。這裡只讀檔,
+    default 本在新檔不存在時直接讀 legacy ``graph.json``;壞檔退回 ``.bak``。
+    """
+    path = user_dir / f"graph_{notebook_id}.json"
+    if notebook_id == "default" and not path.exists():
+        path = user_dir / "graph.json"
+    for candidate in (path, path.with_suffix(".json.bak")):
+        try:
+            rows = json.loads(candidate.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(rows, dict):  # 舊格式:{id: row}
+            rows = list(rows.values())
+        if isinstance(rows, list):
+            return [
+                row["id"]
+                for row in rows
+                if isinstance(row, dict)
+                and "id" in row
+                and card_id in (row.get("from_id"), row.get("to_id"))
+                and row.get("status", "active") in ("active", "hidden")
+            ]
+    return []
+
+
 def cmd_card_move(args: argparse.Namespace) -> int:
     """把卡移到別的筆記本 —— 修正 card-add 誤存 name 的孤兒卡(dogfood A LOW-4)。
 
@@ -362,7 +391,7 @@ def cmd_card_move(args: argparse.Namespace) -> int:
         with closing(_notebook_store(ctx.user_dir)) as nb_store:
             all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
         for gnb in sorted(all_nb_ids):
-            purge_ids.extend(lk.id for lk in _graph_store(ctx.user_dir, gnb).get_links_for(card.id))
+            purge_ids.extend(_preview_link_ids(ctx.user_dir, gnb, card.id))
         plan["card_id"] = card.id
         plan["purge_link_ids"] = purge_ids
         plan["purge_count"] = len(purge_ids)

@@ -307,6 +307,35 @@ class TestLinkSameNotebook:
         assert len(_graph_links(tmp_path, uid, src_id)) == 1
         assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_id
 
+    def test_card_move_dry_run_does_not_touch_disk_even_with_legacy_graph(self, tmp_path):
+        """#2706 CR P2:dry-run 掃 link 不可觸發 legacy graph.json 遷移,目錄與 mtime 皆不變。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        link_args = ("link-add", uid, "ml", "nl", "--kind", "shares_usage", "--confidence", "0.7")
+        assert _edit(str(tmp_path), *link_args, "--reason", "r", "--commit").returncode == 0
+        ud = _user_dir(tmp_path, uid)
+        link_id = _graph_links(tmp_path, uid)[0]["id"]
+
+        def snapshot():
+            # sqlite 的 -wal/-shm 是連線開關時的 housekeeping,不是資料寫入,不納入比對
+            return {
+                p.name: (p.stat().st_mtime_ns, p.stat().st_size)
+                for p in ud.iterdir()
+                if not p.name.endswith(("-wal", "-shm"))
+            }
+
+        for legacy in (False, True):
+            if legacy:  # 還原成 pre-migration 佈局:只有 graph.json
+                (ud / "graph_default.json").rename(ud / "graph.json")
+            before = snapshot()
+            rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+            assert rd.returncode == 0, rd.stderr
+            assert json.loads(rd.stdout)["plan"]["purge_link_ids"] == [link_id]
+            assert snapshot() == before
+        assert (ud / "graph.json").exists() and not (ud / "graph_default.json").exists()
+
 
 class TestNotebookDeleteCascade:
     def test_rejects_nonempty_without_cascade(self, tmp_path):

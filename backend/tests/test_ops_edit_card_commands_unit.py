@@ -454,8 +454,6 @@ class TestCmdCardMoveDryRunPreview:
             cards_cmd.cmd_card_move(_make_args(card="ghost", to_notebook="default"))
 
     def test_dry_run_lists_links_to_purge(self, tmp_path, monkeypatch, capsys):
-        from types import SimpleNamespace
-
         _setup_user(tmp_path)
         store = CardStore(tmp_path / "users" / "u1" / "cards.db")
         nb_store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
@@ -467,16 +465,18 @@ class TestCmdCardMoveDryRunPreview:
             nb_store.close()
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
 
-        class _Graph:
-            def get_links_for(self, _cid):
-                return [SimpleNamespace(id="l1")]
+        ud = tmp_path / "users" / "u1"
 
-        monkeypatch.setattr(cards_cmd, "_graph_store", lambda *_a, **_k: _Graph())
+        def row(lid, status="active"):
+            return {"id": lid, "from_id": c.id, "to_id": "peer", "status": status}
+
+        (ud / "graph_default.json").write_text(json.dumps([row("l1"), row("gone", "deprecated")]))
+        (ud / f"graph_{nb.id}.json").write_text(json.dumps([row("l2"), {"id": "x", "from_id": "a", "to_id": "b"}]))
         capsys.readouterr()
         assert cards_cmd.cmd_card_move(_make_args(card=c.id, to_notebook=nb.id, json=True)) == 0
         plan = json.loads(capsys.readouterr().out)["plan"]
-        assert plan["purge_count"] == 2  # default + DestNB 各一條
-        assert plan["purge_link_ids"] == ["l1", "l1"]
+        assert plan["purge_count"] == 2  # default + DestNB 各一條;deprecated 與無關 link 不算
+        assert sorted(plan["purge_link_ids"]) == ["l1", "l2"]
         assert plan["card_id"] == c.id
 
 
