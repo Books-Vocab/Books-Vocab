@@ -4,6 +4,7 @@ import contextlib
 import logging
 import shutil
 import sqlite3
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from logging import Logger
@@ -21,7 +22,7 @@ from . import (
     translate_log,
     vocab_add_link_operation,
 )
-from .account_erasure import ObjectStorageClient, delete_account_assets
+from .account_erasure import ObjectStorageClient, _asset_object_keys, delete_account_assets
 from .api_models import (
     AutoLinkConfig,
     DeleteAccountResponse,
@@ -269,7 +270,7 @@ def update_user_config_response(
 
 # Remote assets are deleted outside the users lock, so a concurrent sign-in may
 # link one more identity meanwhile; each pass erases what it found and re-checks.
-_MAX_ERASURE_PASSES = 3
+_MAX_ERASURE_PASSES = 4
 
 
 def _tombstone_accounts(
@@ -319,6 +320,41 @@ def _tombstone_accounts(
         purge_external_api_keys(users, ids_to_delete)
 
 
+# Directories whose rmtree failed are parked here (outside ``users/``), so a
+# same-sub re-login's ``mkdir(exist_ok=True)`` can never re-attach erased data.
+_QUARANTINE_DIRNAME = ".deleting"
+
+
+def _sweep_quarantine(data_dir: Path, logger: Logger) -> None:
+    """Best-effort removal of leftovers from earlier failed erasures."""
+    root = data_dir / _QUARANTINE_DIRNAME
+    if not root.is_dir():
+        return
+    for batch in root.iterdir():
+        try:
+            shutil.rmtree(batch)
+        except OSError:
+            logger.exception("Failed to sweep quarantined user data %s", batch)
+
+
+def _remove_user_dir(data_dir: Path, uid: str) -> bool:
+    """Remove ``users/<uid>``; return whether a directory existed.
+
+    The directory is first renamed into the quarantine, so even if the rmtree
+    fails nothing remains at the live path.
+    """
+    user_dir = data_dir / "users" / uid
+    if not user_dir.exists():
+        return False
+    batch = data_dir / _QUARANTINE_DIRNAME / uuid.uuid4().hex
+    batch.mkdir(parents=True)
+    quarantined = batch / uid
+    user_dir.rename(quarantined)
+    shutil.rmtree(quarantined)
+    batch.rmdir()
+    return True
+
+
 def delete_user_account_response(
     user: UserRecord,
     *,
@@ -335,13 +371,19 @@ def delete_user_account_response(
 ) -> DeleteAccountResponse:
     user_id = user["id"]
     erased: set[str] = set()
+    erased_keys: set[str] = set()
+    _sweep_quarantine(data_dir, logger)
 
     for _ in range(_MAX_ERASURE_PASSES):
         with users_file_lock(users_lock_file):
             users = load_users()
             canonical_id, ids_to_delete = collect_account_ids_for_deletion(users, user_id)
             pending = [uid for uid in ids_to_delete if uid not in erased]
-            if not pending:
+            # Re-read the key ledger under the lock: an upload registered while
+            # the previous pass was talking to object storage (#2702) must be
+            # erased before the tombstone revokes the token.
+            new_keys = set(_asset_object_keys(data_dir, ids_to_delete)) - erased_keys if library_bucket else set()
+            if not pending and not new_keys:
                 podcast_progress.delete_for_users(ids_to_delete)
                 vocab_add_link_operation.delete_for_users(ids_to_delete)
                 translate_log.delete_for_users(ids_to_delete)
@@ -363,13 +405,15 @@ def delete_user_account_response(
         # lock (every login / config / billing write) across them (#2060). A
         # failure here leaves users.json and the directories untouched, so the
         # request stays retryable; the next pass re-reads the linked ids.
-        delete_account_assets(
-            data_dir,
-            pending,
-            library_bucket=library_bucket,
-            library_s3_client=library_s3_client,
+        erased_keys.update(
+            delete_account_assets(
+                data_dir,
+                ids_to_delete,
+                library_bucket=library_bucket,
+                library_s3_client=library_s3_client,
+            )
         )
-        erased.update(pending)
+        erased.update(ids_to_delete)
     else:
         raise HTTPException(status_code=409, detail="Account changed during deletion; please retry")
 
@@ -380,13 +424,11 @@ def delete_user_account_response(
         # not strand the remaining linked ids: remove what can be removed, then
         # report the failures.
         for uid in ids_to_delete:
-            user_dir = data_dir / "users" / uid
             try:
-                if user_dir.exists():
-                    shutil.rmtree(user_dir)
+                if _remove_user_dir(data_dir, uid):
                     deleted_dirs.append(uid)
             except OSError:
-                logger.exception("Failed to delete user directory %s", user_dir)
+                logger.exception("Failed to delete user directory for %s", uid)
                 failed_uids.append(uid)
     finally:
         # Evict again after the files are gone (a store reopened during the
