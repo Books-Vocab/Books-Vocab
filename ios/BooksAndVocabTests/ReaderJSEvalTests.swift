@@ -61,6 +61,54 @@ struct ReaderJSEvalTests {
                 "selection must not truncate non-ASCII Latin words")
     }
 
+    // MARK: - Context sentence for a repeated word (#2531)
+
+    private func evaluateContext(fullText: String, word: String, tapOffset: Int?) -> String? {
+        let context = JSContext()!
+        context.evaluateScript("""
+        var window = {}; var navigator = { language: 'en' };
+        var document = { addEventListener: function(){}, documentElement: { lang: 'en' } };
+        var el = { tagName: 'P', textContent: \(Self.jsLiteral(fullText)), parentElement: null };
+        """)
+        context.evaluateScript(ReadiumNavigatorJS.buildSelectionScript(isDebugMode: "false"))
+        let offset = tapOffset.map(String.init) ?? "undefined"
+        let value = context.evaluateScript("extractContextFromElement(el, \(Self.jsLiteral(word)), \(offset))")
+        return context.exception == nil ? value?.toString() : nil
+    }
+
+    private static func jsLiteral(_ text: String) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: [text])
+        let array = String(decoding: data, as: UTF8.self)
+        return String(array.dropFirst().dropLast())
+    }
+
+    private static let repeatedWordText = "The bank of the river was steep. He sat on the bank and fished all day. Later the bank closed for the evening. We walked home slowly after that."
+
+    /// A word that appears in several sentences must take its context from the
+    /// sentence that was tapped, not from the first sentence containing it.
+    @Test func contextFollowsTappedOccurrenceOfRepeatedWord() throws {
+        let text = Self.repeatedWordText
+        let secondBank = try #require(text.range(of: "bank and"))
+        let offset = text.distance(from: text.startIndex, to: secondBank.lowerBound)
+        let result = try #require(evaluateContext(fullText: text, word: "bank", tapOffset: offset))
+        #expect(result.contains("He sat on the bank and fished"))
+        #expect(result.contains("Later the bank closed"))
+    }
+
+    @Test func contextTapInLastSentenceOccurrenceUsesThatSentence() throws {
+        let text = "Cats sleep. Dogs run. Cats eat fish. Birds fly. Cats purr loudly."
+        let lastCats = try #require(text.range(of: "Cats purr"))
+        let offset = text.distance(from: text.startIndex, to: lastCats.lowerBound)
+        let result = try #require(evaluateContext(fullText: text, word: "Cats", tapOffset: offset))
+        #expect(result.contains("Cats purr loudly."))
+        #expect(!result.contains("Cats sleep."))
+    }
+
+    @Test func contextWithoutTapOffsetKeepsFirstOccurrenceBehavior() throws {
+        let result = try #require(evaluateContext(fullText: Self.repeatedWordText, word: "bank", tapOffset: nil))
+        #expect(result.contains("The bank of the river was steep."))
+    }
+
     // MARK: - Vocab bridge script encoding (#2443)
 
     private static let hostileWords = ["alpha", "line1\nline2\r", "a\u{2028}b\u{2029}c", "q\"uote\\"]
