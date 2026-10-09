@@ -92,9 +92,7 @@ def _load_review_states(cards_db: Path) -> list[CardReviewState]:
                 review_count=int(r["review_count"] or 0),
                 lapse_count=int(r["lapse_count"] or 0),
                 review_streak=int(r["review_streak"] or 0),
-                last_review_feedback=int(
-                    r["last_review_feedback"] if r["last_review_feedback"] is not None else -1
-                ),
+                last_review_feedback=int(r["last_review_feedback"] if r["last_review_feedback"] is not None else -1),
                 last_reviewed_at=_parse_ts(r["last_reviewed_at"]),
                 created_at=created,
                 review_interval_hours=float(r["review_interval_hours"] or 12.0),
@@ -129,7 +127,7 @@ def _discover_notebooks(user_dir: Path, cards_db: Path) -> list[str]:
             for (nb,) in conn.execute("SELECT DISTINCT notebook_id FROM card").fetchall():
                 nbs.add(nb or "default")
     for p in user_dir.glob("graph_*.json"):
-        nbs.add(p.stem[len("graph_"):])
+        nbs.add(p.stem[len("graph_") :])
     return sorted(nbs)
 
 
@@ -150,28 +148,44 @@ def _count_review_junk(review_db: Path) -> int:
         return 0
     try:
         with closing(sqlite3.connect(f"file:{review_db}?mode=ro", uri=True)) as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM reviewevent WHERE card_id IS NULL"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) FROM reviewevent WHERE card_id IS NULL").fetchone()
             return int(row[0]) if row else 0
     except sqlite3.Error:
         logger.warning("Failed to count review junk in %s", review_db, exc_info=True)
         return 0
 
 
-def _purge_review_junk(review_db: Path) -> None:
+def _card_ids_with_events(review_db: Path) -> set[str]:
+    """唯讀回傳 review_events.db 已有事件(合成或真實)的 card_id。re-run 時這些卡的複習史
+    已存在 —— review_count 之後隨真實複習上升(iOS 事件 id 為隨機 UUID),若再合成會與真實
+    事件重複計數,故排除。"""
+    if not review_db.exists() or not _is_sqlite_file(review_db):
+        return set()
+    try:
+        with closing(sqlite3.connect(f"file:{review_db}?mode=ro", uri=True)) as conn:
+            rows = conn.execute("SELECT DISTINCT card_id FROM reviewevent WHERE card_id IS NOT NULL").fetchall()
+            return {r[0] for r in rows}
+    except sqlite3.Error:
+        logger.warning("Failed to list card ids with events in %s", review_db, exc_info=True)
+        return set()
+
+
+def _purge_review_junk(review_db: Path) -> bool:
     """就地刪除 card_id IS NULL 的同步殘渣(不 unlink → 不孤兒化 server 開啟中的 inode,
-    且絕不碰真實/合成事件)。表不存在或損毀則忽略(下游 fresh store 仍會重建)。"""
+    且絕不碰真實/合成事件)。表不存在或損毀則忽略(下游 fresh store 仍會重建)。回傳是否成功;失敗時呼叫端不得寫
+    done marker,下次 re-run 才會重試。"""
     try:
         with closing(sqlite3.connect(review_db)) as conn:
             conn.execute("DELETE FROM reviewevent WHERE card_id IS NULL")
             conn.commit()
+        return True
     except sqlite3.Error:
         logger.warning("Failed to purge review junk in %s", review_db, exc_info=True)
         print(
             f"[sot_history_migrate] unable to purge review junk from {review_db} (continuing)",
             file=sys.stderr,
         )
+        return False
 
 
 def _notebooks_without_snapshot_ro(graph_db: Path, notebooks: Iterable[str]) -> int:
@@ -187,10 +201,9 @@ def _notebooks_without_snapshot_ro(graph_db: Path, notebooks: Iterable[str]) -> 
             if not has_table:
                 return len(nbs)
             return sum(
-                1 for nb in nbs
-                if conn.execute(
-                    "SELECT 1 FROM graphsnapshot WHERE notebook_id=? LIMIT 1", (nb,)
-                ).fetchone() is None
+                1
+                for nb in nbs
+                if conn.execute("SELECT 1 FROM graphsnapshot WHERE notebook_id=? LIMIT 1", (nb,)).fetchone() is None
             )
     except sqlite3.Error:
         logger.warning("Failed to query graph snapshot presence in %s", graph_db, exc_info=True)
@@ -222,7 +235,8 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
 
     # ── 複習史 ───────────────────────────────────────────────────────────
     states = _load_review_states(cards_db)
-    synth_review = [e for s in states for e in synthesize_review_events(s)]
+    seeded = _card_ids_with_events(user_dir / _REVIEW_DB)
+    synth_review = [e for s in states if s.card_id not in seeded for e in synthesize_review_events(s)]
     report.review_events_synthesized = len(synth_review)
 
     # ── 圖譜史 ───────────────────────────────────────────────────────────
@@ -243,13 +257,12 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
     review_db = user_dir / _REVIEW_DB
     marker = user_dir / _MIGRATED_MARKER
     will_purge = not marker.exists()
+    purge_ok = True
     report.review_events_old_purged = _count_review_junk(review_db) if will_purge else 0
 
     if not apply:
         # dry-run:唯讀回報「會取幾張」初始 snapshot(尚無者才取),不建檔/不改 schema。
-        report.graph_snapshots_taken = _notebooks_without_snapshot_ro(
-            user_dir / _GRAPH_DB, links_by_nb.keys()
-        )
+        report.graph_snapshots_taken = _notebooks_without_snapshot_ro(user_dir / _GRAPH_DB, links_by_nb.keys())
         return report
 
     # ── 清舊垃圾(就地、只刪 card_id NULL 殘渣,且僅首次遷移)+ 灌合成複習史 ─────────
@@ -262,13 +275,13 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
             bak.write_bytes(review_db.read_bytes())
             report.backups.append(bak)
         if _is_sqlite_file(review_db):
-            _purge_review_junk(review_db)  # 就地刪垃圾,保留 inode 與真實事件
+            purge_ok = _purge_review_junk(review_db)  # 就地刪垃圾,保留 inode 與真實事件
         else:
             review_db.unlink()  # 非 db 垃圾檔(損毀殘留),直接移除重建
     fresh_review = ReviewEventStore(review_db)
     push_review_events(synth_review, event_store=fresh_review)
     fresh_review.engine.dispose()
-    if will_purge:
+    if will_purge and purge_ok:  # purge 失敗不寫 marker,下次 re-run 重試
         marker.write_text("")  # 標記已遷移:後續 re-run 不再 purge card_id NULL
 
     # ── 灌合成圖譜史(event_id 去重 → 冪等,毋須 wipe)──────────────────
@@ -282,9 +295,7 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
     for nb, links in links_by_nb.items():
         if snap_store.latest(nb) is not None:
             continue  # 已有 snapshot(遷移已跑過)→ 不重複堆疊,保冪等
-        snap_store.save(
-            nb, [lk.model_dump(mode="json") for lk in links], is_synthetic=True
-        )
+        snap_store.save(nb, [lk.model_dump(mode="json") for lk in links], is_synthetic=True)
         report.graph_snapshots_taken += 1
     snap_store.close()
 
