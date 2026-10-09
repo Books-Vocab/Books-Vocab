@@ -426,3 +426,25 @@ def test_the_ci_test_uses_the_check_entry_point_with_a_red_base(
         complexity.main(["check", "--base", "HEAD", *complexity.ci_args()], repo=repo)
         == 1
     )
+
+
+def test_merge_group_head_is_charged_against_main_tip_headroom_not_the_pr_fork(
+    tmp_path: Path,
+) -> None:
+    """#2869: A (8) merged, group head = merge(main, B (8)); 16 > headroom 10 must be red."""
+    repo = _headroom_repo(tmp_path)
+    trunk = _git(repo, "branch", "--show-current")
+    _git(repo, "checkout", "-q", "-b", "lane-a")
+    _add(repo, "ops/a_lane.py", 8)
+    _commit(repo, "lane A")
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "checkout", "-q", "-b", "lane-b")
+    _add(repo, "ops/b_lane.py", 8)
+    _commit(repo, "lane B")
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "merge", "-q", "--no-ff", "-m", "A", "lane-a")
+    _git(repo, "checkout", "-q", "-b", "group")
+    _git(repo, "merge", "-q", "--no-ff", "-m", "group", "lane-b")
+    argv = ["check", "--base", trunk]
+    assert complexity.main(argv, repo=repo) == 0  # PR-style: B alone fits its fork
+    assert complexity.main([*argv, "--no-fork-points"], repo=repo) == 1
