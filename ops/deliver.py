@@ -355,6 +355,9 @@ def review_bots(workflow: str) -> tuple[str, ...]:
     return tuple(bots)
 
 
+QUOTA_MARKER = "usage limit"
+
+
 def review_verdict(runs: list[dict[str, Any]]) -> str | None:
     """The settled `agent-review` verdict of one head, or None while pending.
 
@@ -377,6 +380,39 @@ def review_verdict(runs: list[dict[str, Any]]) -> str | None:
         r.get("conclusion") for r in done
     }
     return next((v for v in ("success", "neutral") if v in verdicts), None)
+
+
+def quota_text(text: Any) -> bool:
+    return QUOTA_MARKER in str(text or "").lower()
+
+
+def bot_down(runs: list[dict[str, Any]]) -> bool:
+    """Whether a completed neutral `agent-review` run itself reports a quota stop.
+
+    The workflow's own neutral title ("review unavailable") is posted on every
+    neutral, so it is no evidence: the bot may still review later.
+    """
+    return any(
+        quota_text(
+            f"{(r.get('output') or {}).get('title')} {(r.get('output') or {}).get('summary')}"
+        )
+        for r in runs
+        if r.get("status") == "completed" and r.get("conclusion") == "neutral"
+    )
+
+
+def quota_reply(items: list[dict[str, Any]], since: str, bots: tuple[str, ...]) -> bool:
+    """A comment/review by the review bot saying it is out of quota, at or after ``since``."""
+    for item in items:
+        posted = str(item.get("created_at") or item.get("submitted_at") or "")
+        if (
+            (item.get("user") or {}).get("login") in bots
+            and quota_text(item.get("body"))
+            and since
+            and posted >= since
+        ):
+            return True
+    return False
 
 
 def review_run_id(run: dict[str, Any]) -> int | None:
@@ -1003,6 +1039,31 @@ class Delivery:
                 mine.append(run)
         return mine
 
+    def bot_out_of_quota(
+        self, repo: str, number: int, head: str, bots: tuple[str, ...]
+    ) -> bool:
+        """Positive evidence the review bot refused for quota after this head existed."""
+        since = must(
+            self.runner,
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{head}",
+                "--jq",
+                ".commit.committer.date",
+            ],
+            self.home,
+            "read head commit date",
+        ).stdout.strip()
+        return any(
+            quota_reply(
+                self.gh_pages(f"repos/{repo}/{kind}/{number}/{leaf}?per_page=100"),
+                since,
+                bots,
+            )
+            for kind, leaf in (("issues", "comments"), ("pulls", "reviews"))
+        )
+
     def review_gate(self, repo: str, number: int) -> dict[str, Any]:
         """Settle `agent-review` on the PR's exact head before it may be queued."""
         view = json.loads(
@@ -1027,11 +1088,18 @@ class Delivery:
         def settled() -> str | None:
             # `neutral` only says the workflow stopped waiting (20 x 15s) for
             # the bot; the bot often reviews later and a new run posts the
-            # real verdict, so only success/failure ends the wait.
+            # real verdict, so only success/failure ends the wait, unless the
+            # operator already accepts no review or the run says the bot is down.
             listed = self.gh_pages(f"{runs}&filter=all&per_page=100", "check_runs")
             mine = self.runs_of_pr(repo, number, head_ref, listed, owners)
             foreign[0] = sum(r.get("name") == REVIEW_CHECK for r in listed) - len(mine)
             seen[0] = review_verdict(mine)
+            if seen[0] == "neutral" and (
+                no_review
+                or bot_down(mine)
+                or self.bot_out_of_quota(repo, number, head, bots)
+            ):
+                return "neutral"  # settled for good: do not wait out --timeout
             return seen[0] if seen[0] in ("success", "failure") else None
 
         no_review = (self.args.accept_no_review or "").strip()
@@ -1056,6 +1124,14 @@ class Delivery:
                     "or pass --accept-no-review '<reason>'"
                 ) from exc
             verdict = "neutral"
+        if verdict == "neutral":
+            if not no_review:
+                raise DeliverError(
+                    f"refusing to queue #{number}: {REVIEW_CHECK} neutral: review "
+                    f"bot unavailable ({bots[0]} did not review {head}); have CR "
+                    "review the exact head and re-run with "
+                    "--accept-no-review '<CR verdict>'"
+                )
             self.say(f"accepted #{number} without an exact-head review ({no_review})")
         findings = review_findings(
             self.gh_pages(f"repos/{repo}/pulls/{number}/comments?per_page=100"),
