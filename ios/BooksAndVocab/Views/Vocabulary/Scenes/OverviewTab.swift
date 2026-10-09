@@ -18,6 +18,12 @@ struct OverviewTab: View {
     @State private var filter = NotebookFilter.load()
     @State private var loginGate = LoginGateState()
 
+    /// Same account-boundary identity NotebookListView uses: a login flag alone
+    /// does not change for an A→B switch.
+    private var accountTaskID: String {
+        "\(authManager.isLoggedIn ? "logged-in" : "logged-out"):\(authManager.userId ?? "none"):\(authManager.isDemoMode)"
+    }
+
     var body: some View {
         NavigationStack {
             if authManager.isLoggedIn || authManager.isDemoMode {
@@ -37,6 +43,15 @@ struct OverviewTab: View {
             } else {
                 loggedOutState
             }
+        }
+        // Notebooks tab persists the shared filter to UserDefaults; keep this
+        // tab's copy in step (on appear and whenever the stored value changes).
+        .onAppear { filter.reloadFromStorage() }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            filter.reloadFromStorage()
+        }
+        .onChange(of: accountTaskID) { _, _ in
+            filter.resetForAccountChange()
         }
         .enableInjection()
     }

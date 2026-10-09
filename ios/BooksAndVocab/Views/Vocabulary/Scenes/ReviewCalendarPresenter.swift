@@ -13,9 +13,14 @@ struct ReviewCalendarClock: Equatable {
     static let liveSource = "live.Date()"
     static let explicitSource = "explicit"
 
+    /// Wall-clock "today": activity (reviewedToday, streaks, heatmap) and the
+    /// calendar's today/selection. Manual reviews are stamped with real time.
     let now: Date
     let timeZone: TimeZone
     let provenance: String
+    /// Frozen reference for due/forecast projections while progress is paused;
+    /// nil means "same as `now`".
+    let dueReference: Date?
 
     var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -28,11 +33,13 @@ struct ReviewCalendarClock: Equatable {
     init(
         now: Date,
         timeZone: TimeZone,
-        provenance: String = ReviewCalendarClock.explicitSource
+        provenance: String = ReviewCalendarClock.explicitSource,
+        dueReference: Date? = nil
     ) {
         self.now = now
         self.timeZone = timeZone
         self.provenance = provenance
+        self.dueReference = dueReference
     }
 
     init(
@@ -61,13 +68,14 @@ struct ReviewCalendarClock: Equatable {
     /// state pass an explicit `ReviewCalendarClock` instead.
     static func live(
         settings: ReviewSettings = .default,
-        timeZone: TimeZone = .current
+        timeZone: TimeZone = .current,
+        wallClockNow: Date = Date()
     ) -> Self {
-        let wallClockNow = Date()
         return Self(
-            now: settings.reviewReferenceDate(now: wallClockNow),
+            now: wallClockNow,
             timeZone: timeZone,
-            provenance: Self.liveSource
+            provenance: Self.liveSource,
+            dueReference: settings.reviewReferenceDate(now: wallClockNow)
         )
     }
 
@@ -144,6 +152,9 @@ struct ReviewCalendarClock: Equatable {
         calendar.startOfDay(for: now)
     }
 
+    /// Reference for due/forecast projections.
+    var dueNow: Date { dueReference ?? now }
+
     func cutoff(days: Int) -> Date {
         calendar.date(byAdding: .day, value: -days, to: startOfToday) ?? startOfToday
     }
@@ -187,6 +198,18 @@ enum ReviewCalendarPresentation {
 
     static func filteredRecords(_ records: [ReviewRecord], filter: NotebookFilter) -> [ReviewRecord] {
         filter.isFiltered ? records.filter { filter.matches($0.notebookId) } : records
+    }
+
+    static func calendarActivity(
+        records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [String: Int] {
+        // Month paging is unbounded, so the map must be too (no day window).
+        var result: [String: Int] = [:]
+        for record in records {
+            result[clock.dayKey(record.reviewedAt), default: 0] += 1
+        }
+        return result
     }
 
     static func dayKey(for date: Date, clock: ReviewCalendarClock) -> String {
@@ -275,15 +298,11 @@ struct ReviewCalendarPresenter: View {
     }
 
     private var activityMap: [String: Int] {
-        ReviewCalendarPresentation.activity(for: 365, records: filteredRecords, clock: clock)
+        ReviewCalendarPresentation.calendarActivity(records: filteredRecords, clock: clock)
     }
 
     private var filteredRecords: [ReviewRecord] {
-        let cutoff = clock.cutoff(months: 6)
-        return ReviewCalendarPresentation.filteredRecords(
-            allRecords.filter { $0.reviewedAt >= cutoff },
-            filter: filter
-        )
+        ReviewCalendarPresentation.filteredRecords(allRecords, filter: filter)
     }
 
     private var selectedDayRecords: [ReviewRecord] {

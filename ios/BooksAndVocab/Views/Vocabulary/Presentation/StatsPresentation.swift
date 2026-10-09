@@ -78,6 +78,7 @@ enum StatsPresentation {
         let reviews: Set<Review>
         let forecastDays: Int
         let now: Date
+        let dueNow: Date
         let timeZoneIdentifier: String
     }
 
@@ -106,6 +107,7 @@ enum StatsPresentation {
             reviews: reviewKeys,
             forecastDays: inputs.forecastDays,
             now: inputs.clock.now,
+            dueNow: inputs.clock.dueNow,
             timeZoneIdentifier: inputs.clock.calendar.timeZone.identifier
         )
     }
@@ -189,7 +191,10 @@ enum StatsPresentation {
 
         // Forecast
         var forecastMap: [String: Int] = [:]
-        let todayKey = inputs.clock.dayKey(inputs.clock.now)
+        // Due/forecast follow the (possibly paused) review reference; activity,
+        // streaks and reviewedToday below follow the wall clock.
+        let dueNow = inputs.clock.dueNow
+        let todayKey = inputs.clock.dayKey(dueNow)
         // Only cards in the review queue (reviewed at least once, not excluded)
         // are due; new cards' placeholder nextReviewAt must not count.
         for entry in synced where entry.shouldAppearInReview && entry.reviewCount > 0 {
@@ -206,7 +211,7 @@ enum StatsPresentation {
             guard let date = inputs.clock.date(
                 byAdding: .day,
                 value: offset,
-                to: inputs.clock.now
+                to: dueNow
             ) else { continue }
             let key = inputs.clock.dayKey(date)
             let label: String

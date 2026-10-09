@@ -163,6 +163,28 @@ struct VocabularySurfaceStateTests {
         )
     }
 
+    @Test func reviewCalendar_pagingBackBeyondSixMonthsStillShowsOldRecords() throws {
+        let clock = ReviewCalendarClock(
+            now: try fixedDate("2026-10-10T12:00:00Z"),
+            timeZone: try #require(TimeZone(identifier: "UTC"))
+        )
+        let old = ReviewRecord(
+            word: "old",
+            entryID: nil,
+            feedback: 1,
+            reviewedAt: try fixedDate("2025-02-03T10:00:00Z")
+        )
+
+        let visible = ReviewCalendarPresentation.filteredRecords([old], filter: NotebookFilter())
+        let activity = ReviewCalendarPresentation.calendarActivity(records: visible, clock: clock)
+
+        #expect(
+            ReviewCalendarPresentation.records(for: "2025-02-03", from: visible, clock: clock).count == 1,
+            "records older than the former 6-month cutoff must remain reachable by month paging"
+        )
+        #expect(activity["2025-02-03"] == 1, "activity map must not window out paged-back months")
+    }
+
     @Test func statsSummaryUsesInjectedClockAcrossMidnightAndTimezone() throws {
         let timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
         let clock = ReviewCalendarClock(

@@ -102,6 +102,46 @@ struct NotebookFilterTests {
         #expect(NotebookFilter.load(from: suite!).selectedIds.isEmpty)
     }
 
+    @Test func reloadFromStorageAdoptsValueSavedByAnotherTab() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var overview = NotebookFilter(selectedIds: ["nb-home"])
+        overview.save(to: suite!)
+        NotebookFilter(selectedIds: ["nb-work"]).save(to: suite!)
+
+        let firstReload = overview.reloadFromStorage(defaults: suite!)
+        #expect(firstReload)
+        #expect(overview.selectedIds == ["nb-work"])
+        let secondReload = overview.reloadFromStorage(defaults: suite!)
+        #expect(!secondReload, "no change when already in sync")
+    }
+
+    @Test func resetForAccountChangeClearsAndPersists() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var filter = NotebookFilter(selectedIds: ["nb-a"])
+        filter.save(to: suite!)
+
+        filter.resetForAccountChange(defaults: suite!)
+
+        #expect(filter.selectedIds.isEmpty)
+        #expect(NotebookFilter.load(from: suite!).selectedIds.isEmpty)
+    }
+
+    @Test func overviewTabSyncsFilterAndResetsAtAccountBoundary() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        #expect(source.contains("resetForAccountChange"))
+        #expect(source.contains("reloadFromStorage"))
+        #expect(source.contains("UserDefaults.didChangeNotification"))
+    }
+
     @Test func notebookListResetsFilterAtAccountBoundary() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -112,6 +152,29 @@ struct NotebookFilterTests {
         let task = try #require(source.range(of: ".task(id: accountTaskID)", range: accountChange.upperBound..<source.endIndex))
         let accountBoundaryBlock = source[accountChange.lowerBound..<task.lowerBound]
 
-        #expect(accountBoundaryBlock.contains("reviewFilter = NotebookFilter()"))
+        #expect(accountBoundaryBlock.contains("reviewFilter.resetForAccountChange()"))
     }
+
+    @Test func notebookListFollowsStoredFilterWrites() throws {
+        let source = try String(contentsOf: Self.sceneURL("NotebookListView.swift"), encoding: .utf8)
+
+        #expect(source.contains("reviewFilter.reloadFromStorage()"))
+        #expect(source.contains("UserDefaults.didChangeNotification"))
+    }
+
+    @Test func graphThumbnailUsesDueReferenceWhilePaused() throws {
+        let source = try String(contentsOf: Self.sceneURL("StatsPresenter.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "var graphThumbnailNodes"))
+        let body = source[start.lowerBound...].prefix(400)
+
+        #expect(body.contains("now: activeProjectionClock.dueNow"))
+    }
+
+    private static func sceneURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/\(name)")
+    }
+
 }

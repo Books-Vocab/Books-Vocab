@@ -43,6 +43,21 @@ struct NotebookFilter: Equatable {
         return true
     }
 
+    /// Re-reads the persisted selection; returns whether the in-memory copy changed.
+    @discardableResult
+    mutating func reloadFromStorage(defaults: UserDefaults = .standard) -> Bool {
+        let stored = Self.load(from: defaults)
+        guard stored != self else { return false }
+        self = stored
+        return true
+    }
+
+    /// Clears the selection at an account boundary and persists the reset.
+    mutating func resetForAccountChange(defaults: UserDefaults = .standard) {
+        selectedIds = []
+        save(to: defaults)
+    }
+
     static func load() -> NotebookFilter {
         load(from: .standard)
     }
