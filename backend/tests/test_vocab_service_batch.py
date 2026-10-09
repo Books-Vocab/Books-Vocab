@@ -10,11 +10,13 @@ from test_vocab_service import _FakeArchiveGraph, _FakeCard, _FakeCardsStore
 
 class TestBatchDeleteVocabWords:
     def test_deletes_multiple_words(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-            _FakeCard(id="c3", content="keep"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+                _FakeCard(id="c3", content="keep"),
+            ]
+        )
         result = batch_delete_vocab_words(["hello", "world"], cards_store=cards)
         assert result["deleted"] == 2
         assert set(result["deleted_words"]) == {"hello", "world"}
@@ -35,10 +37,12 @@ class TestBatchDeleteVocabWords:
             batch_delete_vocab_words([], cards_store=cards)
 
     def test_with_graph(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+            ]
+        )
         graph = _FakeArchiveGraph()
         result = batch_delete_vocab_words(["hello", "world"], cards_store=cards, graph=graph)
         assert result["deleted"] == 2
@@ -52,7 +56,9 @@ class TestBatchDeleteVocabWords:
             graph = _FakeArchiveGraph()
 
             result = batch_delete_vocab_words(
-                ["hello", "hello"], cards_store=cards, graph=graph,
+                ["hello", "hello"],
+                cards_store=cards,
+                graph=graph,
             )
 
             assert result["deleted"] == 1
@@ -68,7 +74,9 @@ class TestBatchDeleteVocabWords:
             graph = _FakeArchiveGraph()
 
             result = batch_delete_vocab_words(
-                ["Hello.", "hello"], cards_store=cards, graph=graph,
+                ["Hello.", "hello"],
+                cards_store=cards,
+                graph=graph,
             )
 
             assert result["deleted"] == 2
@@ -79,19 +87,23 @@ class TestBatchDeleteVocabWords:
 
 class TestBatchArchiveVocabWords:
     def test_archives_multiple_words(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello"),
-            _FakeCard(id="c2", content="world"),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello"),
+                _FakeCard(id="c2", content="world"),
+            ]
+        )
         result = batch_archive_vocab_words(["hello", "world"], archived=True, cards_store=cards)
         assert result["updated"] == 2
         assert result["not_found"] == []
 
     def test_unarchive_multiple(self):
-        cards = _FakeCardsStore([
-            _FakeCard(id="c1", content="hello", is_archived=True),
-            _FakeCard(id="c2", content="world", is_archived=True),
-        ])
+        cards = _FakeCardsStore(
+            [
+                _FakeCard(id="c1", content="hello", is_archived=True),
+                _FakeCard(id="c2", content="world", is_archived=True),
+            ]
+        )
         graph = _FakeArchiveGraph()
         result = batch_archive_vocab_words(["hello", "world"], archived=False, cards_store=cards, graph=graph)
         assert result["updated"] == 2
@@ -105,7 +117,10 @@ class TestBatchArchiveVocabWords:
             graph = _FakeArchiveGraph()
 
             result = batch_archive_vocab_words(
-                ["hello", "hello"], archived=True, cards_store=cards, graph=graph,
+                ["hello", "hello"],
+                archived=True,
+                cards_store=cards,
+                graph=graph,
             )
 
             assert result["updated"] == 1
@@ -122,7 +137,10 @@ class TestBatchArchiveVocabWords:
             graph = _FakeArchiveGraph()
 
             result = batch_archive_vocab_words(
-                ["Hello.", "hello"], archived=True, cards_store=cards, graph=graph,
+                ["Hello.", "hello"],
+                archived=True,
+                cards_store=cards,
+                graph=graph,
             )
 
             assert result["updated"] == 2
@@ -154,10 +172,51 @@ class TestBatchDeleteNotebookIsolation:
             nb_b = cards.add("hello", meaning="m", notebook_id="nb_b")
 
             result = batch_delete_vocab_words(
-                ["hello"], cards_store=cards, notebook_id="nb_a",
+                ["hello"],
+                cards_store=cards,
+                notebook_id="nb_a",
             )
 
             assert result["deleted"] == 1
             assert result["deleted_words"] == ["hello"]
             assert cards.get(nb_a.id).is_deleted is True
             assert cards.get(nb_b.id).is_deleted is False
+
+
+class _RaisingBatchGraph(_FakeArchiveGraph):
+    def cleanup_for_card(self, card_id, source="manual"):
+        raise RuntimeError("graph boom")
+
+    def restore_links_for(self, card_id, cards_store, source="manual"):
+        raise RuntimeError("graph boom")
+
+
+class _UpdateSpyBatchCards(_FakeCardsStore):
+    def __init__(self, cards):
+        super().__init__(cards)
+        self.update_calls = []
+
+    def update(self, card_id, **kwargs):
+        self.update_calls.append((card_id, kwargs))
+        super().update(card_id, **kwargs)
+
+
+class TestBatchArchiveRollbackRestoresPriorState:
+    """#2543: batch rollback restores the captured prior state."""
+
+    @pytest.mark.parametrize("archived", [True, False])
+    def test_already_in_requested_state_is_noop(self, archived):
+        cards = _UpdateSpyBatchCards([_FakeCard(id="c1", content="hello", is_archived=archived)])
+        result = batch_archive_vocab_words(["hello"], archived=archived, cards_store=cards, graph=_RaisingBatchGraph())
+        assert result["updated_words"] == ["hello"]
+        assert result["failed"] == []
+        assert cards.update_calls == []
+        assert cards.get("c1").is_archived is archived
+
+    @pytest.mark.parametrize("archived", [True, False])
+    def test_graph_failure_rolls_back_to_prior_state(self, archived):
+        cards = _UpdateSpyBatchCards([_FakeCard(id="c1", content="hello", is_archived=not archived)])
+        result = batch_archive_vocab_words(["hello"], archived=archived, cards_store=cards, graph=_RaisingBatchGraph())
+        assert result["updated_words"] == []
+        assert result["failed"] == ["hello"]
+        assert cards.get("c1").is_archived is (not archived)
