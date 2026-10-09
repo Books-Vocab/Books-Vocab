@@ -379,7 +379,11 @@ struct NotebookListContent: View {
                 PlatformShareView(url: url)
             }
             .onChange(of: accountTaskID) { _, _ in
-                reviewFilter = NotebookFilter()
+                reviewFilter.resetForAccountChange()
+            }
+            .onAppear { reviewFilter.reloadFromStorage() }
+            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+                reviewFilter.reloadFromStorage()
             }
             .onChange(of: liveNotebookIDs, initial: true) { _, ids in
                 reviewFilter.reconcile(with: ids)

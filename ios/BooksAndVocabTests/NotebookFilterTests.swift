@@ -152,6 +152,29 @@ struct NotebookFilterTests {
         let task = try #require(source.range(of: ".task(id: accountTaskID)", range: accountChange.upperBound..<source.endIndex))
         let accountBoundaryBlock = source[accountChange.lowerBound..<task.lowerBound]
 
-        #expect(accountBoundaryBlock.contains("reviewFilter = NotebookFilter()"))
+        #expect(accountBoundaryBlock.contains("reviewFilter.resetForAccountChange()"))
     }
+
+    @Test func notebookListFollowsStoredFilterWrites() throws {
+        let source = try String(contentsOf: Self.sceneURL("NotebookListView.swift"), encoding: .utf8)
+
+        #expect(source.contains("reviewFilter.reloadFromStorage()"))
+        #expect(source.contains("UserDefaults.didChangeNotification"))
+    }
+
+    @Test func graphThumbnailUsesDueReferenceWhilePaused() throws {
+        let source = try String(contentsOf: Self.sceneURL("StatsPresenter.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "var graphThumbnailNodes"))
+        let body = source[start.lowerBound...].prefix(400)
+
+        #expect(body.contains("now: activeProjectionClock.dueNow"))
+    }
+
+    private static func sceneURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/\(name)")
+    }
+
 }

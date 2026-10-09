@@ -200,14 +200,6 @@ enum ReviewCalendarPresentation {
         filter.isFiltered ? records.filter { filter.matches($0.notebookId) } : records
     }
 
-    static func calendarRecords(
-        _ records: [ReviewRecord],
-        filter: NotebookFilter,
-        clock: ReviewCalendarClock
-    ) -> [ReviewRecord] {
-        filteredRecords(records, filter: filter)
-    }
-
     static func calendarActivity(
         records: [ReviewRecord],
         clock: ReviewCalendarClock
@@ -310,7 +302,7 @@ struct ReviewCalendarPresenter: View {
     }
 
     private var filteredRecords: [ReviewRecord] {
-        ReviewCalendarPresentation.calendarRecords(allRecords, filter: filter, clock: clock)
+        ReviewCalendarPresentation.filteredRecords(allRecords, filter: filter)
     }
 
     private var selectedDayRecords: [ReviewRecord] {

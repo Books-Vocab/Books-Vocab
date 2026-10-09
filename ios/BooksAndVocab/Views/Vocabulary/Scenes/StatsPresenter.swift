@@ -455,7 +455,7 @@ struct StatsPresenter: View {
             from: filteredEntries,
             links: graphLinks,
             showIsolatedNodes: false,
-            now: activeProjectionClock.now
+            now: activeProjectionClock.dueNow
         )
     }
 

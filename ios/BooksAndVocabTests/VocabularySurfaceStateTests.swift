@@ -175,9 +175,7 @@ struct VocabularySurfaceStateTests {
             reviewedAt: try fixedDate("2025-02-03T10:00:00Z")
         )
 
-        let visible = ReviewCalendarPresentation.calendarRecords(
-            [old], filter: NotebookFilter(), clock: clock
-        )
+        let visible = ReviewCalendarPresentation.filteredRecords([old], filter: NotebookFilter())
         let activity = ReviewCalendarPresentation.calendarActivity(records: visible, clock: clock)
 
         #expect(
