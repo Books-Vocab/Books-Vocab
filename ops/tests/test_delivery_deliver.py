@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import contextlib
 import fcntl
 import io
@@ -1311,6 +1312,21 @@ def test_gc_keeps_a_lane_whose_head_is_not_in_the_merged_pr(tmp_path: Path) -> N
     result = _gc(world)
     assert result["retired"] == []
     assert {k["branch"] for k in result["kept"]} >= {"feat/merged", "feat/live"}
+
+
+def test_gc_fails_loudly_when_github_cannot_be_read(tmp_path: Path) -> None:
+    """A gh failure must not read as 'PR not merged' with exit 0 (#2760)."""
+    world = _gc_world(tmp_path)
+    inner = world.__call__
+
+    def gh_down(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        if cmd[:2] == ["gh", "api"]:
+            return deliver.Proc(1, "", "API rate limit exceeded")
+        return inner(cmd, cwd)
+
+    with pytest.raises(deliver.DeliverError, match="rate limit"):
+        deliver.gc(argparse.Namespace(dry_run=False), gh_down)
+    assert "cleanup-merged" not in world.names()
 
 
 def test_gc_dry_run_changes_nothing(tmp_path: Path) -> None:
