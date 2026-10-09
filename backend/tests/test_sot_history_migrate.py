@@ -44,9 +44,14 @@ def _make_cards_db(path: Path, cards: list[dict]) -> None:
                 :review_interval_hours,:last_reviewed_at,:review_count,:lapse_count,
                 :review_streak,:last_review_feedback)""",
             {
-                "meaning": "m", "is_deleted": 0, "notebook_id": "default",
-                "review_interval_hours": 96.0, "lapse_count": 0, "review_streak": None,
-                "last_review_feedback": 1, **c,
+                "meaning": "m",
+                "is_deleted": 0,
+                "notebook_id": "default",
+                "review_interval_hours": 96.0,
+                "lapse_count": 0,
+                "review_streak": None,
+                "last_review_feedback": 1,
+                **c,
             },
         )
     conn.commit()
@@ -62,22 +67,62 @@ def _seed_user(tmp_path: Path) -> Path:
     user_dir.mkdir()
     last = datetime(2026, 6, 1, 12, 0, tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
     created = datetime(2026, 3, 1, 9, 0, tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
-    _make_cards_db(user_dir / "cards.db", [
-        {"id": "cardA", "content": "alpha", "created_at": created,
-         "last_reviewed_at": last, "review_count": 5, "review_streak": 5},
-        {"id": "cardB", "content": "beta", "created_at": created,
-         "last_reviewed_at": last, "review_count": 3, "lapse_count": 1,
-         "review_streak": 1},
-        {"id": "cardC", "content": "never", "created_at": created,
-         "last_reviewed_at": None, "review_count": 0, "review_streak": 0},
-    ])
+    _make_cards_db(
+        user_dir / "cards.db",
+        [
+            {
+                "id": "cardA",
+                "content": "alpha",
+                "created_at": created,
+                "last_reviewed_at": last,
+                "review_count": 5,
+                "review_streak": 5,
+            },
+            {
+                "id": "cardB",
+                "content": "beta",
+                "created_at": created,
+                "last_reviewed_at": last,
+                "review_count": 3,
+                "lapse_count": 1,
+                "review_streak": 1,
+            },
+            {
+                "id": "cardC",
+                "content": "never",
+                "created_at": created,
+                "last_reviewed_at": None,
+                "review_count": 0,
+                "review_streak": 0,
+            },
+        ],
+    )
     born = datetime(2026, 4, 1, 9, 0, tzinfo=UTC).isoformat()
-    _make_graph(user_dir / "graph_default.json", [
-        {"id": "lk1", "from_id": "cardA", "to_id": "cardB", "kind": "shares_usage",
-         "confidence": 0.8, "reason": "r", "created_at": born, "status": "active"},
-        {"id": "lk2", "from_id": "cardB", "to_id": "cardA", "kind": "contrasts_with",
-         "confidence": 0.6, "reason": "r", "created_at": born, "status": "hidden"},
-    ])
+    _make_graph(
+        user_dir / "graph_default.json",
+        [
+            {
+                "id": "lk1",
+                "from_id": "cardA",
+                "to_id": "cardB",
+                "kind": "shares_usage",
+                "confidence": 0.8,
+                "reason": "r",
+                "created_at": born,
+                "status": "active",
+            },
+            {
+                "id": "lk2",
+                "from_id": "cardB",
+                "to_id": "cardA",
+                "kind": "contrasts_with",
+                "confidence": 0.6,
+                "reason": "r",
+                "created_at": born,
+                "status": "hidden",
+            },
+        ],
+    )
     return user_dir
 
 
@@ -85,8 +130,8 @@ def test_dry_run_reports_without_writing(tmp_path):
     user_dir = _seed_user(tmp_path)
     report = migrate_user(user_dir, apply=False)
     assert report.dry_run is True
-    assert report.review_events_synthesized == 8   # 5 + 3 (cardC has 0)
-    assert report.graph_events_synthesized == 3    # active=1 + hidden=2
+    assert report.review_events_synthesized == 8  # 5 + 3 (cardC has 0)
+    assert report.graph_events_synthesized == 3  # active=1 + hidden=2
     assert not (user_dir / "graph_events.db").exists()  # dry-run 不建檔
     assert report.backups == []
 
@@ -114,9 +159,9 @@ def test_apply_plants_synthetic_graph_history(tmp_path):
     assert len(events) == 3
     assert all(e.is_synthetic for e in events)
     link_ids = {e.link_id for e in events}
-    assert link_ids == {"lk1", "lk2"}                       # == 終態 link 集合
+    assert link_ids == {"lk1", "lk2"}  # == 終態 link 集合
     added = [e for e in events if e.event_type == GraphEventType.LINK_ADDED]
-    assert {e.link_id for e in added} == {"lk1", "lk2"}     # 每條 ≥1 add
+    assert {e.link_id for e in added} == {"lk1", "lk2"}  # 每條 ≥1 add
     store.engine.dispose()
 
 
@@ -128,7 +173,7 @@ def test_apply_takes_initial_synthetic_snapshot(tmp_path):
     snap = store.latest("default")
     assert snap is not None
     assert snap.is_synthetic is True
-    assert snap.link_count == 2                       # 終態 2 links (lk1, lk2)
+    assert snap.link_count == 2  # 終態 2 links (lk1, lk2)
     assert {lk["id"] for lk in snap.links} == {"lk1", "lk2"}
     store.engine.dispose()
 
@@ -138,7 +183,7 @@ def test_re_migration_does_not_stack_snapshots(tmp_path):
     first = migrate_user(user_dir, apply=True)
     second = migrate_user(user_dir, apply=True)
     assert first.graph_snapshots_taken == 1
-    assert second.graph_snapshots_taken == 0          # 已有 → 不重複堆疊
+    assert second.graph_snapshots_taken == 0  # 已有 → 不重複堆疊
     snaps_store = GraphSnapshotStore(user_dir / "graph_events.db")
     snaps = snaps_store.all(notebook_id="default")
     assert len(snaps) == 1
@@ -151,19 +196,28 @@ def test_apply_purges_old_review_event_junk(tmp_path):
     pre = ReviewEventStore(user_dir / "review_events.db")
     from kg.api_models.review import ReviewEventEntry
     from kg.review_events import push_review_events
-    push_review_events([ReviewEventEntry(
-        event_id="legacy-junk-1", card_id=None, word_snapshot="(跨裝置同步)",
-        notebook_id="default", feedback=1,
-        reviewed_at=datetime(2025, 1, 1, tzinfo=UTC).isoformat(),
-        created_at=datetime(2025, 1, 1, tzinfo=UTC).isoformat(),
-    )], event_store=pre)
+
+    push_review_events(
+        [
+            ReviewEventEntry(
+                event_id="legacy-junk-1",
+                card_id=None,
+                word_snapshot="(跨裝置同步)",
+                notebook_id="default",
+                feedback=1,
+                reviewed_at=datetime(2025, 1, 1, tzinfo=UTC).isoformat(),
+                created_at=datetime(2025, 1, 1, tzinfo=UTC).isoformat(),
+            )
+        ],
+        event_store=pre,
+    )
     pre.engine.dispose()
 
     report = migrate_user(user_dir, apply=True)
     assert report.review_events_old_purged == 1
     store = ReviewEventStore(user_dir / "review_events.db")
     pulled, _ = pull_review_events(since=None, event_store=store)
-    assert all(e.is_synthetic for e in pulled)        # 垃圾沒了,只剩合成
+    assert all(e.is_synthetic for e in pulled)  # 垃圾沒了,只剩合成
     assert not any(e.card_id is None for e in pulled)
     store.engine.dispose()
 
@@ -184,7 +238,8 @@ def test_apply_is_idempotent(tmp_path):
     user_dir = _seed_user(tmp_path)
     first = migrate_user(user_dir, apply=True)
     second = migrate_user(user_dir, apply=True)
-    assert first.review_events_synthesized == second.review_events_synthesized == 8
+    assert first.review_events_synthesized == 8
+    assert second.review_events_synthesized == 0  # 已種過史的卡不再合成(#2810)
     assert first.graph_events_synthesized == second.graph_events_synthesized == 3
     # 事件總數不因重跑膨脹
     store = GraphEventStore(user_dir / "graph_events.db")
@@ -254,13 +309,21 @@ def test_rerun_apply_preserves_real_events(tmp_path):
 
     # 模擬上線後 iOS 推入真實事件
     store = ReviewEventStore(user_dir / "review_events.db")
-    push_review_events([ReviewEventEntry(
-        event_id="real-ios-1", card_id="cardA", word_snapshot="alpha",
-        notebook_id="default", feedback=1,
-        reviewed_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
-        created_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
-        is_synthetic=False,
-    )], event_store=store)
+    push_review_events(
+        [
+            ReviewEventEntry(
+                event_id="real-ios-1",
+                card_id="cardA",
+                word_snapshot="alpha",
+                notebook_id="default",
+                feedback=1,
+                reviewed_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
+                created_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
+                is_synthetic=False,
+            )
+        ],
+        event_store=store,
+    )
     store.engine.dispose()
 
     migrate_user(user_dir, apply=True)  # 二次:不得銷毀 real-ios-1
@@ -268,8 +331,9 @@ def test_rerun_apply_preserves_real_events(tmp_path):
     store2 = ReviewEventStore(user_dir / "review_events.db")
     pulled, _ = pull_review_events(since=None, event_store=store2)
     import uuid as _uuid
+
     ids = {e.event_id for e in pulled}
-    assert "real-ios-1" in ids                  # 真實事件保住
+    assert "real-ios-1" in ids  # 真實事件保住
     assert any(e.is_synthetic for e in pulled)  # 合成仍在
     # 合成 id 為合法 UUID(iOS 不會丟棄)
     for e in pulled:
@@ -289,13 +353,21 @@ def test_rerun_does_not_purge_card_id_null_events_after_first_migration(tmp_path
 
     # 上線後:一筆 card_id NULL 但真實的 word-only 複習(正是本 PR 別處在修的 nil-card-id 類)
     store = ReviewEventStore(user_dir / "review_events.db")
-    push_review_events([ReviewEventEntry(
-        event_id="legacy-real-nullcard", card_id=None, word_snapshot="serendipity",
-        notebook_id="default", feedback=1,
-        reviewed_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
-        created_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
-        is_synthetic=False,
-    )], event_store=store)
+    push_review_events(
+        [
+            ReviewEventEntry(
+                event_id="legacy-real-nullcard",
+                card_id=None,
+                word_snapshot="serendipity",
+                notebook_id="default",
+                feedback=1,
+                reviewed_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
+                created_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
+                is_synthetic=False,
+            )
+        ],
+        event_store=store,
+    )
     store.engine.dispose()
 
     migrate_user(user_dir, apply=True)  # 二次遷移:不得 purge 該真實事件
@@ -311,24 +383,140 @@ def test_multiple_notebooks_are_all_migrated(tmp_path):
     user_dir.mkdir()
     last = datetime(2026, 6, 1, 12, 0, tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
     created = datetime(2026, 3, 1, 9, 0, tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
-    _make_cards_db(user_dir / "cards.db", [
-        {"id": "c1", "content": "a", "notebook_id": "default", "created_at": created,
-         "last_reviewed_at": last, "review_count": 2, "review_streak": 2},
-        {"id": "c2", "content": "b", "notebook_id": "work", "created_at": created,
-         "last_reviewed_at": last, "review_count": 3, "review_streak": 3},
-    ])
+    _make_cards_db(
+        user_dir / "cards.db",
+        [
+            {
+                "id": "c1",
+                "content": "a",
+                "notebook_id": "default",
+                "created_at": created,
+                "last_reviewed_at": last,
+                "review_count": 2,
+                "review_streak": 2,
+            },
+            {
+                "id": "c2",
+                "content": "b",
+                "notebook_id": "work",
+                "created_at": created,
+                "last_reviewed_at": last,
+                "review_count": 3,
+                "review_streak": 3,
+            },
+        ],
+    )
     born = datetime(2026, 4, 1, 9, 0, tzinfo=UTC).isoformat()
-    _make_graph(user_dir / "graph_default.json", [
-        {"id": "L1", "from_id": "c1", "to_id": "c1", "kind": "shares_usage",
-         "confidence": 0.5, "reason": "r", "created_at": born, "status": "active"}])
-    _make_graph(user_dir / "graph_work.json", [
-        {"id": "L2", "from_id": "c2", "to_id": "c2", "kind": "shares_usage",
-         "confidence": 0.5, "reason": "r", "created_at": born, "status": "active"}])
+    _make_graph(
+        user_dir / "graph_default.json",
+        [
+            {
+                "id": "L1",
+                "from_id": "c1",
+                "to_id": "c1",
+                "kind": "shares_usage",
+                "confidence": 0.5,
+                "reason": "r",
+                "created_at": born,
+                "status": "active",
+            }
+        ],
+    )
+    _make_graph(
+        user_dir / "graph_work.json",
+        [
+            {
+                "id": "L2",
+                "from_id": "c2",
+                "to_id": "c2",
+                "kind": "shares_usage",
+                "confidence": 0.5,
+                "reason": "r",
+                "created_at": born,
+                "status": "active",
+            }
+        ],
+    )
     report = migrate_user(user_dir, apply=True)
     assert sorted(report.notebooks) == ["default", "work"]
-    assert report.review_events_synthesized == 5   # 2 + 3
-    assert report.graph_events_synthesized == 2    # L1 + L2
+    assert report.review_events_synthesized == 5  # 2 + 3
+    assert report.graph_events_synthesized == 2  # L1 + L2
     store = GraphEventStore(user_dir / "graph_events.db")
     nbs = {e.notebook_id for e in store.all()}
     assert nbs == {"default", "work"}
     store.engine.dispose()
+
+
+def test_rerun_after_review_count_grew_does_not_duplicate_real_reviews(tmp_path):
+    """#2810: 遷移後 iOS 推入真實複習(隨機 UUID)使 review_count 上升;re-run 不得為
+    已有事件的卡再合成 index>=舊 count 的事件(event_id 去重擋不住,會重複計同一次複習)。"""
+    from kg.api_models.review import ReviewEventEntry
+    from kg.review_events import push_review_events
+
+    user_dir = _seed_user(tmp_path)
+    migrate_user(user_dir, apply=True)
+    store = ReviewEventStore(user_dir / "review_events.db")
+    before, _ = pull_review_events(since=None, event_store=store)
+    push_review_events(
+        [
+            ReviewEventEntry(
+                event_id="real-ios-grow",
+                card_id="cardA",
+                word_snapshot="alpha",
+                notebook_id="default",
+                feedback=1,
+                reviewed_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
+                created_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
+                is_synthetic=False,
+            )
+        ],
+        event_store=store,
+    )
+    store.engine.dispose()
+    conn = sqlite3.connect(user_dir / "cards.db")  # push_review_states 使 count 6
+    conn.execute("UPDATE card SET review_count = 6 WHERE id = 'cardA'")
+    conn.commit()
+    conn.close()
+
+    report = migrate_user(user_dir, apply=True)
+
+    store2 = ReviewEventStore(user_dir / "review_events.db")
+    after, _ = pull_review_events(since=None, event_store=store2)
+    store2.engine.dispose()
+    assert len(after) == len(before) + 1  # 僅多出那一筆真實事件
+    assert report.review_events_synthesized == 0
+
+
+def test_purge_failure_withholds_marker_and_rerun_retries(tmp_path, monkeypatch):
+    """#2811: purge 失敗(db locked)不得寫 done marker,否則殘渣永遠留下。"""
+    from kg import sot_history_migrate as m
+
+    user_dir = _seed_user(tmp_path)
+    review_db = user_dir / "review_events.db"
+    _legacy_review_db(review_db)
+    real_connect = sqlite3.connect
+
+    class _LockedConn:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, sql, *a):
+            if sql.startswith("DELETE FROM reviewevent"):
+                raise sqlite3.OperationalError("database is locked")
+            return self._c.execute(sql, *a)
+
+        def __getattr__(self, name):
+            return getattr(self._c, name)
+
+    def _connect(target, *a, **k):
+        conn = real_connect(target, *a, **k)
+        return _LockedConn(conn) if Path(str(target)) == review_db else conn
+
+    monkeypatch.setattr(m.sqlite3, "connect", _connect)
+    migrate_user(user_dir, apply=True)
+    monkeypatch.undo()
+    assert not (user_dir / m._MIGRATED_MARKER).exists()
+
+    report = migrate_user(user_dir, apply=True)  # 鎖解除 → 重試 purge
+    assert report.review_events_old_purged >= 1
+    assert (user_dir / m._MIGRATED_MARKER).exists()
