@@ -592,3 +592,44 @@ def test_vocab_embed_and_link_partial_failure_queues_persisted_chunk(tmp_path: P
     assert store.count() == 100
     # The persisted first chunk is queued for judge; the failed chunk is not.
     assert graph.pending == ids[:100]
+
+
+# ---------------------------------------------------------------------------
+# #2691: failed _save must roll back in-memory state
+# ---------------------------------------------------------------------------
+
+
+class TestSaveFailureRollsBack:
+    def test_append_rows_rolls_back_on_save_failure(self, tmp_path: Path):
+        store, _ = _make_store(tmp_path, preload_ids=["a", "b"])
+        before = store._embeddings.copy()
+        vecs = np.random.rand(1, EMBEDDING_DIM).astype(np.float32)
+        with patch.object(EmbeddingStore, "_save", side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                store._append_rows([("c", "text")], vecs)
+        assert store._ids == ["a", "b"]
+        assert store._id_set == {"a", "b"}
+        assert store._id_pos == {"a": 0, "b": 1}
+        assert np.array_equal(store._embeddings, before)
+        assert not store.has("c")
+
+    def test_append_rows_rolls_back_fresh_store(self, tmp_path: Path):
+        store, _ = _make_store(tmp_path)
+        vecs = np.random.rand(1, EMBEDDING_DIM).astype(np.float32)
+        with patch.object(EmbeddingStore, "_save", side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                store._append_rows([("c", "text")], vecs)
+        assert store._embeddings is None
+        assert store._ids == []
+        assert store._id_set == set()
+
+    def test_remove_batch_rolls_back_on_save_failure(self, tmp_path: Path):
+        store, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
+        before = store._embeddings.copy()
+        with patch.object(EmbeddingStore, "_save", side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                store.remove_batch(["b"])
+        assert store._ids == ["a", "b", "c"]
+        assert store._id_set == {"a", "b", "c"}
+        assert store._id_pos == {"a": 0, "b": 1, "c": 2}
+        assert np.array_equal(store._embeddings, before)
