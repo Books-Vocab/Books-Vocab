@@ -781,6 +781,104 @@ def test_quota_exhaustion_mid_run_halts_gracefully():
     assert "quota_exhausted" in statuses, f"quota exhaustion must end_run with 'quota_exhausted' status, got {statuses}"
 
 
+def test_judge_quota_rejection_does_not_discard_other_billed_results():
+    """#2243: one judge call rejected for quota must not orphan the other
+    cards' completed (billed, judge_log-accepted) results: their links are
+    persisted and acked; only the rejected card is requeued."""
+    from kg.exceptions import QuotaExceededError
+
+    logger = _FakeLogger()
+    uid = "u_judge_quota_collect"
+    user = {"id": uid, "dir": Path("/tmp/u_judge_quota_collect"), "config": {}}
+    pending_ids = [f"c{i}" for i in range(4)]
+    cards = _CardsForJudge(count=4)
+    graph = _GraphRecording(pending=list(pending_ids))
+    embeddings = _EmbeddingsAlreadyHave(pending_ids)
+
+    class _QuotaOnC1Judge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+            if target_word == "c1":
+                raise QuotaExceededError(3600)
+            return {cid: _make_judgement() if i == 0 else None for i, (cid, _w, _m) in enumerate(candidates)}
+
+    async def run():
+        import kg.judge as judge_mod
+
+        original_judge = judge_mod.Judge
+        judge_mod.Judge = _QuotaOnC1Judge
+        try:
+            await _step_embed_and_judge(
+                uid,
+                user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = original_judge
+
+    with pytest.raises(QuotaExceededError):
+        asyncio.run(run())
+
+    assert len(graph.persisted_links) == 3, graph.persisted_links
+    assert sorted(graph.acked_pending) == ["c0", "c2", "c3"]
+    assert [cid for batch in graph.added_pending for cid in batch] == ["c1"]
+
+
+def test_judge_skips_cards_from_other_notebooks():
+    """#2532: a pending entry / stale vector whose card now lives in another
+    notebook must neither be judged nor offered as a candidate, or a
+    cross-notebook link is created."""
+    logger = _FakeLogger()
+    uid = "u_judge_nb_guard"
+    user = {"id": uid, "dir": Path("/tmp/u_judge_nb_guard"), "config": {}}
+    pending_ids = ["c0", "c1", "c2"]
+    cards = _CardsForJudge(count=3)
+    cards._cards["c1"].notebook_id = "elsewhere"
+    graph = _GraphRecording(pending=list(pending_ids))
+    embeddings = _EmbeddingsAlreadyHave(pending_ids)
+    judged: list[tuple[str, list[str]]] = []
+
+    class _RecordingJudge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+            judged.append((target_word, [cid for cid, _w, _m in candidates]))
+            return {cid: _make_judgement() for cid, _w, _m in candidates}
+
+    async def run():
+        import kg.judge as judge_mod
+
+        original_judge = judge_mod.Judge
+        judge_mod.Judge = _RecordingJudge
+        try:
+            await _step_embed_and_judge(
+                uid,
+                user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = original_judge
+
+    asyncio.run(run())
+
+    assert judged, "in-notebook cards must still be judged"
+    assert all(target != "c1" and "c1" not in cands for target, cands in judged), judged
+    assert all("c1" not in (a, b) for a, b, *_ in graph.persisted_links), graph.persisted_links
+
+
 def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
     """A later pipeline step failing must NOT revert a previously committed
     earlier step.
@@ -941,6 +1039,30 @@ def test_step_enrich_skips_malformed_llm_items(monkeypatch):
     assert "[u_malformed] Skipped 4 malformed enrichment items" in logger.warning_messages
 
 
+def test_step_enrich_survives_mistyped_optional_fields(monkeypatch):
+    """pos as a list / mistyped meaning_fix must not abort the step
+    (``_normalize_pos`` would call ``.strip()`` on a list); valid fields of the
+    same item still land and mistyped collocations entries are filtered."""
+    import kg.enrich as enrich_mod
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {
+            "status": "running",
+            "results": [
+                {"word": "Evoke", "pos": ["v."], "note": "n", "meaning_fix": 5, "collocations": ["a b", 3]},
+            ],
+        }
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    cards = _CardsRecordingUpdates()
+    logger = _RecLogger()
+
+    updated = asyncio.run(_run_step_enrich("u_mistyped", cards, logger))
+
+    assert updated == 1
+    assert cards.updates == [[("c1", {"note": "n", "collocations": ["a b"]})]]
+
+
 def test_step_enrich_skips_non_list_results(monkeypatch):
     """`_parse_enrich_response` returns `data["results"]` verbatim, so a batch's
     results can be any JSON value; a non-iterable one must not crash the step."""
@@ -988,3 +1110,29 @@ def test_step_enrich_closes_stream_when_consumer_raises(monkeypatch):
         assert closed == [True]
 
     asyncio.run(run())
+
+
+def test_step_enrich_raises_when_all_batches_error(monkeypatch):
+    """An error terminal with zero results must fail the step, not record ok/0."""
+    import kg.enrich as enrich_mod
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {"status": "error", "detail": "provider down"}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    with pytest.raises(RuntimeError, match="provider down"):
+        asyncio.run(_run_step_enrich("u_allerr", _CardsRecordingUpdates(), _RecLogger()))
+
+
+def test_step_enrich_matches_nfc_and_whitespace_variants(monkeypatch):
+    """Result word differing by NFC form / surrounding whitespace still updates its card."""
+    import kg.enrich as enrich_mod
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [{"word": "  Café ", "pos": "n.", "note": "n"}]}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    cards = _CardsRecordingUpdates()
+    cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None)]
+    updated = asyncio.run(_run_step_enrich("u_nfc", cards, _RecLogger()))
+    assert updated == 1

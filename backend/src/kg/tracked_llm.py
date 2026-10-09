@@ -7,7 +7,7 @@ import logging
 import httpx
 
 from .llm.providers import LLMProvider
-from .quota_service import estimate_call_cost, reserve
+from .quota_service import areserve, estimate_call_cost, reserve
 from .token_tracker import record
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ class TrackedLLM:
     async def chat_async(self, call_type: str, **kwargs):
         kwargs = self._chat_kwargs(call_type, kwargs)
         reservation = estimate_call_cost(call_type) if self._reserve_quota else 0.0
-        with reserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
+        async with areserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
             try:
                 resp = await self._client.chat.completions.create(**kwargs)
             except Exception as exc:

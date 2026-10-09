@@ -8,7 +8,9 @@ from typing import Any, Protocol
 
 from openai import OpenAIError
 
+from ..exceptions import QuotaExceededError
 from ..ops_cli_shared import _normalize_persisted_bool
+from ..text_utils import normalize_nfc_lower
 from ..types import UserRecord
 from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
@@ -95,13 +97,16 @@ def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
     """
     if not isinstance(results, list):
         return {}, 1
+    from ..enrich import sanitize_enrich_item
+
     result_map: dict[str, dict] = {}
     skipped = 0
     for item in results:
-        if isinstance(item, dict) and isinstance(item.get("word"), str):
-            result_map[item["word"].lower()] = item
-        else:
+        clean = sanitize_enrich_item(item)
+        if clean is None:
             skipped += 1
+        else:
+            result_map[normalize_nfc_lower(clean["word"])] = clean
     return result_map, skipped
 
 
@@ -142,6 +147,8 @@ async def _step_enrich(
     )
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
+    batch_errors: list[str] = []
+    got_results = False
 
     # aclosing: a consumer-side failure (e.g. SQLite busy in batch_update) must
     # shut the stream's executor down now, not at GC, and before _run_step's
@@ -152,14 +159,16 @@ async def _step_enrich(
         async for msg in stream:
             if msg.get("status") == "error":
                 logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
+                batch_errors.append(str(msg.get("detail")))
 
             if msg.get("results"):
+                got_results = True
                 result_map, skipped = _index_enrichment_results(msg["results"])
                 if skipped:
                     logger.warning("[%s] Skipped %d malformed enrichment items", uid, skipped)
                 batch_updates: list[tuple[str, dict]] = []
                 for card in targets:
-                    enrichment = result_map.get(card.content.lower())
+                    enrichment = result_map.get(normalize_nfc_lower(card.content))
                     if not enrichment:
                         continue
                     kwargs: dict[str, Any] = {}
@@ -180,6 +189,8 @@ async def _step_enrich(
                 if batch_updates:
                     updated += cards.batch_update(batch_updates)
 
+    if batch_errors and not got_results:
+        raise RuntimeError(f"Enrich failed for all batches: {batch_errors[0]}")
     logger.info("[%s] Enriched %d cards", uid, updated)
     return updated
 
@@ -363,6 +374,8 @@ async def _judge_pending(
         card = cards_cache.get(card_id)
         if not card or card.is_deleted or card.is_archived:
             continue
+        if getattr(card, "notebook_id", notebook_id) != notebook_id:
+            continue  # moved to another notebook (#2532): never link across notebooks
         current_degree = _active_degree(card_id)
         if current_degree >= MAX_DEGREE:
             continue
@@ -425,6 +438,8 @@ async def _judge_pending(
             other = others_cache.get(other_id)
             if not other or other.is_deleted or other.is_archived:
                 continue
+            if getattr(other, "notebook_id", notebook_id) != notebook_id:
+                continue  # stale vector of a card moved out of this notebook (#2532)
             if _active_degree(other_id) >= MAX_DEGREE:
                 continue
             filtered.append((other_id, other.content, other.meaning, score))
@@ -517,10 +532,18 @@ async def _judge_pending(
         except Exception:
             logger.warning("[%s] Failed to write degree_cap judge_log", uid, exc_info=True)
 
-    processed = 0
+    consumed: list[str] = []
+    quota_error: QuotaExceededError | None = None
     try:
         for card_id, fut in futures:
-            results = await fut
+            try:
+                results = await fut
+            except QuotaExceededError as exc:
+                # Real exhaustion rejected this one call. Keep collecting: the
+                # other calls already ran, were billed and wrote accepted
+                # judge_log rows, so their links must be applied, not orphaned.
+                quota_error = quota_error or exc
+                continue
             # NOTE: do NOT `break` on from-cap — we still need to walk
             # remaining results so over-cap accepted candidates get
             # logged as degree_cap rejects (audit trail).
@@ -547,25 +570,28 @@ async def _judge_pending(
                 )
                 from_link_counts[card_id] += 1
                 to_link_counts[other_id] += 1
-            # Increment ONLY after a card's results are FULLY consumed.
+            # Record ONLY after a card's results are FULLY consumed.
             # If an exception fires inside the inner loop above (e.g.
-            # `link_kind_enum` rejects an illegal enum value), `processed`
-            # still points at the failing card so `futures[processed:]`
-            # re-includes it for requeue. Phase 2a's `graph.has_link`
-            # check then skips any links this card already persisted, so
-            # the re-judge neither double-links nor double-counts.
-            processed += 1
+            # `link_kind_enum` rejects an illegal enum value), the card is
+            # not in `consumed`, so it is requeued. Phase 2a's
+            # `graph.has_link` check then skips any links this card already
+            # persisted, so the re-judge neither double-links nor
+            # double-counts.
+            consumed.append(card_id)
+        if quota_error is not None:
+            raise quota_error
     except BaseException:
-        # Exception or cancellation mid-loop. `processed` is incremented only
-        # AFTER a card's results are fully consumed, so on failure it still
-        # points to the card that failed — whether the failure was in `await
-        # fut` or mid result-consumption — and `futures[processed:]` includes
-        # it. Persist the fully consumed cards' links and ack exactly those;
+        # Exception or cancellation mid-loop. A card enters `consumed` only
+        # AFTER its results are fully consumed, so a card that failed — in
+        # `await fut`, on quota rejection, or mid result-consumption — is
+        # absent. Persist the consumed cards' links and ack exactly those;
         # the caller requeues everything else still claimed (including these
         # cards if their links never reached disk).
-        unprocessed_ids = [cid for cid, _ in futures[processed:]]
+        consumed_set = set(consumed)
+        remaining = [(cid, fut) for cid, fut in futures if cid not in consumed_set]
+        unprocessed_ids = [cid for cid, _ in remaining]
         logger.warning(
-            "[%s] Judge interrupted at %d/%d, requeueing %d", uid, processed, len(futures), len(unprocessed_ids)
+            "[%s] Judge interrupted at %d/%d, requeueing %d", uid, len(consumed), len(futures), len(unprocessed_ids)
         )
         # Wrap the persistence: a failure here must NOT mask the original
         # judge-loop exception that we're about to re-raise.
@@ -573,14 +599,14 @@ async def _judge_pending(
             if all_links:
                 graph.batch_add_links(all_links)
                 _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
-            claim.ack([cid for cid, _ in futures[:processed]])
+            claim.ack(consumed)
         except Exception:
             logger.warning("[%s] Failed to persist partial links/touch", uid, exc_info=True)
         # Drain in-flight futures: their exceptions are unobserved otherwise,
         # and asyncio logs "Future exception was never retrieved" at ERROR
         # level on GC. We're already aborting; cancel pending and silently
         # consume any exception already raised.
-        for _cid, fut in futures[processed:]:
+        for _cid, fut in remaining:
             if not fut.done():
                 fut.cancel()
                 continue

@@ -181,6 +181,25 @@ class TestParseEnrichResponse:
         with pytest.raises(json.JSONDecodeError):
             _parse_enrich_response("not json at all {{{")
 
+    def test_malformed_items_are_skipped_not_raised(self):
+        data = [
+            5,
+            "x",
+            {"word": None},
+            {"word": ""},
+            {"word": "bad_pos", "pos": ["n."], "note": 3, "meaning_fix": [], "collocations": "x"},
+            {"word": "ok", "pos": "n.", "collocations": ["a b", 7]},
+        ]
+        result = _parse_enrich_response(json.dumps(data))
+        assert result == [
+            {"word": "bad_pos"},
+            {"word": "ok", "pos": "n.", "collocations": ["a b"]},
+        ]
+
+    def test_non_list_results_value_returns_empty(self):
+        assert _parse_enrich_response(json.dumps({"results": 7})) == []
+        assert _parse_enrich_response(json.dumps({"results": {"word": "x"}})) == []
+
     def test_dict_no_list_values(self):
         result = _parse_enrich_response('{"status": "ok"}')
         assert result == []
@@ -428,6 +447,66 @@ class TestEnrichCardsStream:
         assert stub.calls <= self._EARLY_EXIT_WORKERS + 1, (
             f"{stub.calls}/{self._EARLY_EXIT_BATCHES} batches called the LLM after the quota abort"
         )
+
+    @pytest.mark.asyncio
+    async def test_quota_exhaustion_drains_inflight_batches_before_raising(self):
+        """#2243: batches already admitted (and billed) when another batch hits
+        real exhaustion must still be yielded before QuotaExceededError."""
+        from kg.enrich import enrich_cards_stream
+
+        resp = _mock_response(json.dumps([{"word": "x"}]))
+        llm = TrackedLLM(MagicMock(), "u_quota_drain")
+        cards = [_make_card(f"w{i}") for i in range(3)]
+        seen = []
+        started = threading.Barrier(3, timeout=5)
+        release = threading.Event()
+        order = iter(range(3))
+        order_lock = threading.Lock()
+
+        def stub(*_a, **_k):
+            with order_lock:
+                n = next(order)
+            started.wait()  # all three batches are admitted before any outcome
+            if n == 0:
+                raise QuotaExceededError(reset_seconds=60)
+            release.wait(5)
+            return resp
+
+        asyncio.get_running_loop().call_later(0.3, release.set)
+        with patch("kg.enrich.sync_retry", stub):
+            with pytest.raises(QuotaExceededError):
+                async for msg in enrich_cards_stream(llm, cards, batch_size=1, max_workers=3):
+                    if msg.get("results"):
+                        seen.append(msg)
+
+        assert len(seen) == 2, f"admitted batches' results were dropped: {seen}"
+
+    @pytest.mark.asyncio
+    async def test_free_user_enforced_fanout_applies_all_batches(self, monkeypatch):
+        """#2243: Free user ($0 recorded), enforce_quota=True, 3 concurrent
+        batches: in-flight contention waits, no false quota exhaustion."""
+        import time
+
+        import kg.quota_service as qs
+        from kg.enrich import enrich_cards_stream
+
+        monkeypatch.setattr(qs, "_recorded_usd", lambda _uid: 0.0)
+        monkeypatch.setattr(TrackedLLM, "_record_chat", lambda *a, **k: None)
+        resp = _mock_response(json.dumps([{"word": "x"}]))
+
+        def create(**_kwargs):
+            time.sleep(0.05)
+            return resp
+
+        client = MagicMock()
+        client.chat.completions.create.side_effect = create
+        llm = TrackedLLM(client, "u_free_fanout", enforce_quota=True, is_pro=False)
+        cards = [_make_card(f"w{i}") for i in range(3)]
+
+        results = [m async for m in enrich_cards_stream(llm, cards, batch_size=1, max_workers=3) if m.get("results")]
+
+        assert len(results) == 3
+        assert client.chat.completions.create.call_count == 3
 
     @pytest.mark.asyncio
     async def test_early_exit_leaves_no_try_put_timers(self):

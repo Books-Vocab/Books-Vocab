@@ -6,11 +6,13 @@ Only exposes fraction (0.0–1.0) to clients — never absolute numbers.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 import sqlite3
 import threading
-from contextlib import contextmanager
+import time
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
@@ -183,6 +185,55 @@ def _admission_usage_snapshot(user_id: str) -> tuple[float, float]:
             return recorded, reserved_after
 
 
+# Max seconds a caller waits for same-user in-flight reservations to release
+# before admission gives up with QuotaExceededError. Sized to a few LLM calls:
+# only in-flight contention waits; real exhaustion (recorded + estimate > limit)
+# still raises immediately.
+_ADMISSION_WAIT_SECONDS: float = 120.0
+_ADMISSION_POLL_SECONDS: float = 0.05
+_release_cond = threading.Condition(_reservation_lock)
+
+
+def _quota_exhausted_error() -> QuotaExceededError:
+    return QuotaExceededError(
+        _ROLLING_WINDOW_SECONDS,
+        headers={
+            "X-Quota-Fraction": "0.0",
+            "X-Quota-Reset": str(_ROLLING_WINDOW_SECONDS),
+        },
+    )
+
+
+def _try_admit(user_id: str, estimated_usd: float, enforce: bool, is_pro: bool) -> tuple[int | None, int]:
+    """One admission attempt: ``(rid, version)``; ``rid`` is None when only
+    other in-flight reservations block (caller may wait). Raises
+    QuotaExceededError on real exhaustion (recorded + estimate > limit)."""
+    global _reservation_version
+    rid = next(_reservation_ids)
+    # Do SQLite reads outside `_reservation_lock`; `_admission_usage_snapshot`
+    # retries if a concurrent reservation is released during the read.
+    recorded, reserved_snapshot = _admission_usage_snapshot(user_id) if enforce else (0.0, 0.0)
+    with _reservation_lock:
+        if enforce:
+            reserved = max(reserved_snapshot, _reserved_usd_unlocked(user_id))
+            limit = _daily_limit(is_pro)
+            if recorded + float(estimated_usd) > limit:
+                raise _quota_exhausted_error()
+            if recorded + reserved + float(estimated_usd) > limit:
+                return None, _reservation_version
+        _reservations[rid] = (user_id, float(estimated_usd))
+        _reservation_version += 1
+        return rid, _reservation_version
+
+
+def _release(rid: int) -> None:
+    global _reservation_version
+    with _reservation_lock:
+        if _reservations.pop(rid, None) is not None:
+            _reservation_version += 1
+            _release_cond.notify_all()
+
+
 @contextmanager
 def reserve(user_id: str, estimated_usd: float, *, enforce: bool = False, is_pro: bool = False):
     """Hold an in-flight quota reservation for the duration of a call.
@@ -195,36 +246,51 @@ def reserve(user_id: str, estimated_usd: float, *, enforce: bool = False, is_pro
     The reservation counts against the quota gate while held and is
     released on block exit — including when the body raises — so a
     failed handler never leaks budget.
+
+    With ``enforce=True``, real exhaustion raises immediately; when only the
+    same user's other in-flight reservations push the total over the limit,
+    the caller blocks (bounded by ``_ADMISSION_WAIT_SECONDS``) until one
+    releases. Blocking: for event-loop callers use :func:`areserve`.
     """
     if not user_id or estimated_usd <= 0:
         # Nothing to reserve; still yield so callers can wrap freely.
         yield
         return
-    rid = next(_reservation_ids)
-    # Do SQLite reads outside `_reservation_lock`; `_admission_usage_snapshot`
-    # retries if a concurrent reservation is released during the read.
-    recorded, reserved_snapshot = _admission_usage_snapshot(user_id) if enforce else (0.0, 0.0)
-    with _reservation_lock:
-        global _reservation_version
-        if enforce:
-            reserved = max(reserved_snapshot, _reserved_usd_unlocked(user_id))
-            limit = _daily_limit(is_pro)
-            if recorded + reserved + float(estimated_usd) > limit:
-                raise QuotaExceededError(
-                    _ROLLING_WINDOW_SECONDS,
-                    headers={
-                        "X-Quota-Fraction": "0.0",
-                        "X-Quota-Reset": str(_ROLLING_WINDOW_SECONDS),
-                    },
-                )
-        _reservations[rid] = (user_id, float(estimated_usd))
-        _reservation_version += 1
+    deadline = time.monotonic() + _ADMISSION_WAIT_SECONDS
+    while True:
+        rid, version = _try_admit(user_id, estimated_usd, enforce, is_pro)
+        if rid is not None:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _quota_exhausted_error()
+        with _release_cond:
+            _release_cond.wait_for(lambda v=version: _reservation_version != v, timeout=remaining)
     try:
         yield
     finally:
-        with _reservation_lock:
-            if _reservations.pop(rid, None) is not None:
-                _reservation_version += 1
+        _release(rid)
+
+
+@asynccontextmanager
+async def areserve(user_id: str, estimated_usd: float, *, enforce: bool = False, is_pro: bool = False):
+    """Async twin of :func:`reserve`: in-flight contention polls with
+    ``asyncio.sleep`` so the event loop is never blocked."""
+    if not user_id or estimated_usd <= 0:
+        yield
+        return
+    deadline = time.monotonic() + _ADMISSION_WAIT_SECONDS
+    while True:
+        rid, _version = _try_admit(user_id, estimated_usd, enforce, is_pro)
+        if rid is not None:
+            break
+        if deadline - time.monotonic() <= 0:
+            raise _quota_exhausted_error()
+        await asyncio.sleep(_ADMISSION_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        _release(rid)
 
 
 def clear_reservations() -> None:
@@ -234,6 +300,7 @@ def clear_reservations() -> None:
         if _reservations:
             _reservations.clear()
             _reservation_version += 1
+            _release_cond.notify_all()
 
 
 def _row_cost(
