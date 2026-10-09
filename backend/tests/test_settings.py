@@ -211,3 +211,20 @@ def test_unsigned_app_store_flags_log_warning(monkeypatch, caplog, flag):
     with caplog.at_level(logging.WARNING, logger="kg.settings"):
         load_settings()
     assert any(flag in r.getMessage() and r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_google_redirect_uri_follows_public_web_base_url(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "x" * 32)
+    monkeypatch.setenv("PUBLIC_WEB_BASE_URL", "https://staging.example.com/")
+    monkeypatch.delenv("GOOGLE_REDIRECT_URI", raising=False)
+    s = load_settings()
+    assert s.google_redirect_uri.startswith("https://staging.example.com/")
+    assert not s.google_redirect_uri.startswith("https://staging.example.com//")
+    assert s.google_redirect_uri.startswith(s.public_web_base_url)
+
+
+def test_explicit_google_redirect_uri_wins(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "x" * 32)
+    monkeypatch.setenv("PUBLIC_WEB_BASE_URL", "https://staging.example.com")
+    monkeypatch.setenv("GOOGLE_REDIRECT_URI", "https://other.example.com/cb")
+    assert load_settings().google_redirect_uri == "https://other.example.com/cb"

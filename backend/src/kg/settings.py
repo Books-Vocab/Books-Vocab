@@ -283,18 +283,17 @@ def load_settings() -> KGSettings:
 
     rate_limit_settings = load_rate_limit_settings()
 
+    public_web_base_url = os.getenv("PUBLIC_WEB_BASE_URL", DEFAULT_PUBLIC_WEB_BASE_URL).rstrip("/")
+
     return KGSettings(
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
         jwt_secret=jwt_secret,
-        public_web_base_url=os.getenv("PUBLIC_WEB_BASE_URL", DEFAULT_PUBLIC_WEB_BASE_URL).rstrip("/"),
+        public_web_base_url=public_web_base_url,
         embedding_model=os.getenv("EMBEDDING_MODEL", "gemini-embedding-2-preview"),
         embedding_dim=_env_int("EMBEDDING_DIM", 3072),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
-        google_redirect_uri=os.getenv(
-            "GOOGLE_REDIRECT_URI",
-            DEFAULT_PUBLIC_WEB_BASE_URL + _GOOGLE_WEB_CALLBACK_PATH,
-        ),
+        google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", public_web_base_url + _GOOGLE_WEB_CALLBACK_PATH),
         apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser"),
         apple_service_id=os.getenv("APPLE_SERVICE_ID", "com.Max0228.BooksAndVocab.web"),
         app_store_allow_unsigned_sync=app_store_allow_unsigned_sync,
