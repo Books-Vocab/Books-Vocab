@@ -96,6 +96,18 @@ def _redact_validation_payload(value: Any) -> Any:
     return value
 
 
+def _strip_validation_inputs(errors: Any) -> Any:
+    """Replace echoed user input with a placeholder in log copies (loc/msg/type stay)."""
+    if isinstance(errors, list):
+        return [
+            {k: (v if v == "[REDACTED]" else "[omitted]") if k == "input" else v for k, v in e.items()}
+            if isinstance(e, dict)
+            else e
+            for e in errors
+        ]
+    return errors
+
+
 def _sanitize_non_finite(value: Any) -> Any:
     """Map non-finite floats to strings so the 422 body is strict-JSON safe."""
     if isinstance(value, float) and not math.isfinite(value):
@@ -145,7 +157,7 @@ def install_app_exception_handlers_from_dependencies(
             request.method,
             request.url.path,
             _redact_validation_body(body),
-            errors,
+            _strip_validation_inputs(errors),
         )
         return JSONResponse(status_code=422, content={"detail": errors})
 

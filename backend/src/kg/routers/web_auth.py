@@ -202,7 +202,7 @@ async def google_callback(
         # Redact the upstream provider string from the client (it can carry
         # provider-internal hints); keep the raw value server-side only,
         # mirroring ExternalServiceError's redaction philosophy.
-        logger.warning("Google OAuth callback returned provider error: %s", error)
+        logger.warning("Google OAuth callback returned provider error: %.200r", error)
         raise HTTPException(status_code=400, detail="Authentication failed")
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
@@ -267,7 +267,7 @@ async def apple_callback(
     if error:
         # Redact the upstream provider string from the client; keep raw value
         # server-side only (see google_callback above).
-        logger.warning("Apple OAuth callback returned provider error: %s", error)
+        logger.warning("Apple OAuth callback returned provider error: %.200r", error)
         raise HTTPException(status_code=400, detail="Authentication failed")
 
     if not id_token:
