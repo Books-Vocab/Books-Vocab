@@ -12,7 +12,7 @@ final class PodcastPlaybackPerfUITests: UITestCase {
     @MainActor
     func testPodcastPlaybackProbeSustainsRealAudioPlayback() throws {
         let app = launchIsolatedApp(
-            fixtures: [.podcastPlayablePreview],
+            fixtures: [.podcastPlayablePreview, .entitlementsProAccess],
             perfLog: "audio,scroll,underline,layout,render"
         )
         captureStep("launch", app: app)
