@@ -38,6 +38,30 @@ name="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["structs
 run "$FIX" --struct "$name"; rc=$?
 if [ "$rc" = 0 ]; then check "matching --struct exits 0" ok; else check "matching --struct (rc=$rc)" bad; fi
 
+# numeric literals (#2445): radix / underscores lowered faithfully, overflow -> unknown (never 0)
+run fixtures/numeric_literals.swift; rc=$?
+got="$(uv run --no-project python -I -c '
+import json, sys
+r = json.load(open(sys.argv[1]))["structs"][0]["root"]
+f = [m["dims"] for m in r["modifiers"] if m["name"] == "frame"]
+a, b = f[0], f[1]
+out = [a["width"]["value"], a["height"]["value"], a["minWidth"]["value"], a["maxWidth"]["value"], b["idealWidth"]["value"], b["idealHeight"]["kind"], b["idealHeight"]["raw"]]
+print(out)
+' "$OUT")"
+if [ "$rc" = 0 ] && [ "$got" = "[1000, 64, 5, 15, 1000.5, 'unknown', '99999999999999999999']" ]; then check "numeric literals lowered (radix/underscore/overflow)" ok
+else check "numeric literals lowered (rc=$rc got=$got)" bad; fi
+
+# ternary foreground (#2449): the first palette.X of a ternary must not be reported as the token
+run fixtures/ternary_foreground_color.swift; rc=$?
+got="$(uv run --no-project python -I -c '
+import json, sys
+s = {x["name"]: x["root"] for x in json.load(open(sys.argv[1]))["structs"]}
+tok = lambda n: [m["token"] for m in s[n]["modifiers"] if m["name"] == "foreground"][0]
+print(tok("TernaryForeground") + "," + tok("PlainForeground"))
+' "$OUT")"
+if [ "$rc" = 0 ] && [ "$got" = "isSelected,accent" ]; then check "ternary foreground not resolved to first palette token" ok
+else check "ternary foreground (rc=$rc got=$got)" bad; fi
+
 # usage string: header comment == stderr usage
 hdr="$(grep -m1 '^// Usage: ' "$SRC" | sed 's|^// Usage: ||')"
 run; use="$(sed 's/^usage: //' "$ERR" | head -1)"
