@@ -6,7 +6,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from kg.ops_shared import data_dir
+from kg.ops_shared import data_dir, remove_notebook_artifacts
 
 from .ops_edit_seed_commands import _dangling_active_notebook
 from .ops_edit_shared import EditContext, EditError
@@ -27,9 +27,7 @@ def _resolve_notebook_id(user_dir: Path, ref: str) -> str:
         for nb in store.all():
             if nb.name == ref:
                 return nb.id
-    raise EditError(
-        f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
-    )
+    raise EditError(f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)")
 
 
 def cmd_notebook_create(args: argparse.Namespace) -> int:
@@ -45,18 +43,17 @@ def cmd_notebook_create(args: argparse.Namespace) -> int:
             # operator 易混淆(dogfood D LOW-1)。診斷走 stderr,不污染 --json stdout。
             dup = next((nb for nb in store.all() if nb.name == args.name), None)
             if dup is not None:
-                print(f"⚠ 已存在同名 notebook(id={dup.id});name→id 解析將取最舊那本",
-                      file=sys.stderr)
+                print(f"⚠ 已存在同名 notebook(id={dup.id});name→id 解析將取最舊那本", file=sys.stderr)
             nb = store.create(name=args.name, color=args.color, cover_pattern=args.cover)
             state["nb_id"] = nb.id
-            return {"notebook": {"id": nb.id, "name": nb.name, "color": nb.color,
-                                 "cover_pattern": nb.cover_pattern}}
+            return {"notebook": {"id": nb.id, "name": nb.name, "color": nb.color, "cover_pattern": nb.cover_pattern}}
 
     def verify_fn() -> dict[str, Any]:
         with closing(_notebook_store(ctx.user_dir)) as store:
             return {"ok": store.get(state["nb_id"]) is not None}
 
     return ctx.run(action="notebook-create", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
 
 def cmd_notebook_update(args: argparse.Namespace) -> int:
     """改筆記本 name/color/cover —— 讀端有 notebook 但寫端此前無法改名(dogfood A LOW-4)。"""
@@ -82,8 +79,15 @@ def cmd_notebook_update(args: argparse.Namespace) -> int:
             nb = store.update(nb_id, **updates)
             if nb is None:
                 raise EditError(f"notebook not found 或已刪除:{nb_id}")
-            return {"notebook": {"id": nb.id, "name": nb.name, "color": nb.color,
-                                 "cover_pattern": nb.cover_pattern, "sort_order": nb.sort_order}}
+            return {
+                "notebook": {
+                    "id": nb.id,
+                    "name": nb.name,
+                    "color": nb.color,
+                    "cover_pattern": nb.cover_pattern,
+                    "sort_order": nb.sort_order,
+                }
+            }
 
     def verify_fn() -> dict[str, Any]:
         with closing(_notebook_store(ctx.user_dir)) as store:
@@ -116,8 +120,7 @@ def cmd_notebook_delete(args: argparse.Namespace) -> int:
             f"notebook {nb_id} 內尚有 {card_count} 張卡;刪本會使其成孤兒卡(iOS 不可見)。"
             "先用 card-move 搬出,或加 --cascade 一併軟刪這些卡"
         )
-    plan = {"notebook_id": nb_id, "kind": "soft-delete",
-            "card_count": card_count, "cascade": args.cascade}
+    plan = {"notebook_id": nb_id, "kind": "soft-delete", "card_count": card_count, "cascade": args.cascade}
 
     def apply_fn() -> dict[str, Any]:
         cards_deleted = 0
@@ -128,8 +131,9 @@ def cmd_notebook_delete(args: argparse.Namespace) -> int:
             result = store.delete(nb_id)  # True=刪 / None=已刪(冪等) / False=not found 或 default
             if result is False:
                 raise EditError(f"notebook 刪除失敗(not found 或為 default):{nb_id}")
-            return {"deleted": nb_id, "already_deleted": result is None,
-                    "cards_soft_deleted": cards_deleted}
+            # 與 DELETE /api/notebooks 一致:清 per-notebook graph/embedding 等檔(#2708)
+            remove_notebook_artifacts(ctx.user_dir, nb_id)
+            return {"deleted": nb_id, "already_deleted": result is None, "cards_soft_deleted": cards_deleted}
 
     def verify_fn() -> dict[str, Any]:
         with closing(_notebook_store(ctx.user_dir)) as store:
@@ -140,9 +144,7 @@ def cmd_notebook_delete(args: argparse.Namespace) -> int:
             active_left = cards.count(notebook_id=nb_id)
         dangling_config = _dangling_active_notebook(ctx.data_dir, ctx.uid, live_nb_ids)
         return {
-            "ok": (notebook_deleted
-                   and (not args.cascade or active_left == 0)
-                   and not dangling_config),
+            "ok": (notebook_deleted and (not args.cascade or active_left == 0) and not dangling_config),
             "active_cards_left": active_left,
             "dangling_config": dangling_config,
         }
