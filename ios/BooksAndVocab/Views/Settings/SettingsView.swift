@@ -109,7 +109,7 @@ struct SettingsView: View {
         // 不讓整個設定頁跟著重算（`PodcastProgressTicker` 的同一個模式）。
         .environment(\.syncProgressStore, coordinator.syncProgress)
         .task(id: settingsAccountTaskID) {
-            coordinator.resetForAccountBoundary()
+            coordinator.resetForAccountBoundary(authManager: authManager)
             normalizeCleanSettingsFixtureIfNeeded()
             await coordinator.loadData(authManager: authManager, kgService: kgService)
             if authManager.isLoggedIn {

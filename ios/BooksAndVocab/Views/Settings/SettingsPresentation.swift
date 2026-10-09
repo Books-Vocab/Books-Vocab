@@ -377,10 +377,19 @@ struct SettingsPresenterState {
     struct DangerSection {
         let isDeletingAccount: Bool
         let resetLifecycle: SettingsResetLifecycle?
+        /// Fresh read of local state for the confirmation dialog, so a retry
+        /// never reasons from a stale before-snapshot. `nil` falls back to the
+        /// lifecycle's own `before`.
+        let currentSnapshot: SettingsResetLifecycle.Snapshot?
 
-        init(isDeletingAccount: Bool, resetLifecycle: SettingsResetLifecycle? = nil) {
+        init(
+            isDeletingAccount: Bool,
+            resetLifecycle: SettingsResetLifecycle? = nil,
+            currentSnapshot: SettingsResetLifecycle.Snapshot? = nil
+        ) {
             self.isDeletingAccount = isDeletingAccount
             self.resetLifecycle = resetLifecycle
+            self.currentSnapshot = currentSnapshot
         }
     }
 
@@ -415,12 +424,26 @@ struct SettingsResetLifecycle: Equatable {
         /// distinct from zero: an unreadable store must never look empty.
         let localCardCount: Int?
         let localCardCountError: String?
+        /// Rows not yet confirmed by the server (pending or failed sync).
+        /// Reset deletes them for good, so they gate the reset.
+        let unsyncedCardCount: Int
+        /// Review events the server has not acknowledged (`pushedAt == nil`);
+        /// reset deletes every ReviewRecord, so these are lost too.
+        let unsyncedReviewCount: Int
         let hasCustomPreferences: Bool
         let isLoggedIn: Bool
 
-        init(localCardCount: Int, hasCustomPreferences: Bool, isLoggedIn: Bool) {
+        init(
+            localCardCount: Int,
+            unsyncedCardCount: Int = 0,
+            unsyncedReviewCount: Int = 0,
+            hasCustomPreferences: Bool,
+            isLoggedIn: Bool
+        ) {
             self.localCardCount = localCardCount
             self.localCardCountError = nil
+            self.unsyncedCardCount = unsyncedCardCount
+            self.unsyncedReviewCount = unsyncedReviewCount
             self.hasCustomPreferences = hasCustomPreferences
             self.isLoggedIn = isLoggedIn
         }
@@ -432,6 +455,8 @@ struct SettingsResetLifecycle: Equatable {
         ) {
             self.localCardCount = nil
             self.localCardCountError = error
+            self.unsyncedCardCount = 0
+            self.unsyncedReviewCount = 0
             self.hasCustomPreferences = hasCustomPreferences
             self.isLoggedIn = isLoggedIn
         }
@@ -442,6 +467,22 @@ struct SettingsResetLifecycle: Equatable {
 
         var isResetComplete: Bool {
             isReadable && localCardCount == 0 && !hasCustomPreferences
+        }
+
+        var requiresUnsyncedAcknowledgement: Bool {
+            isReadable && (unsyncedCardCount > 0 || unsyncedReviewCount > 0)
+        }
+
+        /// Card and review parts of the unsynced loss, for dialog and card copy.
+        var unsyncedSummary: String {
+            var parts: [String] = []
+            if unsyncedCardCount > 0 {
+                parts.append(L10n.format("card_count_plural", Int64(unsyncedCardCount)))
+            }
+            if unsyncedReviewCount > 0 {
+                parts.append(L10n.format("%@ 筆複習紀錄", String(unsyncedReviewCount)))
+            }
+            return parts.joined(separator: " / ")
         }
     }
 
@@ -461,6 +502,28 @@ struct SettingsResetLifecycle: Equatable {
                 : L10n.string("無法讀取本機資料，重設已停用。"),
             canRetry: before.isReadable
         )
+    }
+
+    /// Reset stopped before deleting anything because unsynced rows exist; the
+    /// user can retry with an explicit acknowledgement.
+    static func blockedByUnsynced(before: Snapshot) -> Self {
+        .init(
+            phase: .preReset,
+            before: before,
+            after: before,
+            terminalMessage: L10n.format(
+                "尚有 %@ 未同步，已停止重設。請先同步，或確認放棄未同步資料。",
+                before.unsyncedSummary
+            ),
+            canRetry: true
+        )
+    }
+
+    /// A blocked card goes stale once the user syncs. Re-derive it from a
+    /// fresh snapshot; every other phase keeps its recorded before/after pair.
+    func refreshed(with fresh: Snapshot) -> Self {
+        guard phase == .preReset, before.requiresUnsyncedAcknowledgement, fresh.isReadable else { return self }
+        return fresh.requiresUnsyncedAcknowledgement ? .blockedByUnsynced(before: fresh) : .preReset(before: fresh)
     }
 
     func resetting() -> Self {
@@ -557,4 +620,6 @@ struct SettingsPresenterActions {
     var toggleSoundFeedback: (Bool) -> Void = { _ in }
     var toggleHapticFeedback: (Bool) -> Void = { _ in }
     var resetLocalData: () -> Void = {}
+    /// Reset after the user explicitly accepted losing rows that never synced.
+    var resetLocalDataDiscardingUnsynced: () -> Void = {}
 }

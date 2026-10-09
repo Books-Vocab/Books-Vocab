@@ -615,12 +615,338 @@ import Testing
         #expect(resetService.callCount == 0)
     }
 
+    // MARK: - #2442 unsynced-data guard / #2439 server push / #2744 account boundary
+
+    @Test @MainActor func p2442SnapshotCountsUnsyncedRowsSeparately() throws {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        for (word, status) in [("synced", 1), ("pending", 0), ("failed", 2)] {
+            let entry = VocabularyEntry(word: word, translation: "t", context: "c", bookTitle: "b")
+            entry.syncStatus = status
+            context.insert(entry)
+        }
+        try context.save()
+
+        let snapshot = LiveSettingsResetStore().readSnapshot(authManager: LoggedInAuthStub(), modelContext: context)
+
+        #expect(snapshot.localCardCount == 1)
+        #expect(snapshot.unsyncedCardCount == 2)
+    }
+
+    @Test @MainActor func p2442UnsyncedReviewEventsAloneRequireAcknowledgement() throws {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let entry = VocabularyEntry(word: "synced", translation: "t", context: "c", bookTitle: "b")
+        entry.syncStatus = 1
+        context.insert(entry)
+        let owed = ReviewRecord(word: "synced", entryID: nil, feedback: 1)
+        let acked = ReviewRecord(word: "synced", entryID: nil, feedback: 0)
+        acked.pushedAt = Date()
+        context.insert(owed)
+        context.insert(acked)
+        try context.save()
+
+        let snapshot = LiveSettingsResetStore().readSnapshot(authManager: LoggedInAuthStub(), modelContext: context)
+
+        #expect(snapshot.unsyncedCardCount == 0)
+        #expect(snapshot.unsyncedReviewCount == 1)
+        #expect(snapshot.requiresUnsyncedAcknowledgement == true)
+    }
+
+    @Test @MainActor func p2442ResetWithUnsyncedRowsIsBlockedUntilAcknowledged() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        resetStore.unsyncedCardCount = 2
+        let service = StatefulResetService(store: resetStore, outcomes: [.success])
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+        let context = ModelContext(container)
+        let auth = LoggedInAuthStub()
+
+        await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: context)
+
+        let blocked = try #require(coordinator.resetLifecycle)
+        #expect(blocked.phase == .preReset)
+        #expect(blocked.before.unsyncedCardCount == 2)
+        #expect(blocked.terminalMessage != nil)
+        #expect(blocked.canRetry == true)
+        #expect(service.callCount == 0)
+
+        await coordinator.resetLocalData(
+            authManager: auth,
+            kgService: service,
+            modelContext: context,
+            acknowledgeUnsyncedLoss: true
+        )
+
+        #expect(service.callCount == 1)
+        #expect(coordinator.resetLifecycle?.phase == .succeeded)
+    }
+
+    @Test func p2442ConfirmationRequiresAcknowledgementOnlyForReadableUnsyncedRows() {
+        let clean = SettingsResetLifecycle.Snapshot(localCardCount: 3, hasCustomPreferences: true, isLoggedIn: true)
+        let dirty = SettingsResetLifecycle.Snapshot(
+            localCardCount: 3, unsyncedCardCount: 2, hasCustomPreferences: true, isLoggedIn: true
+        )
+        #expect(clean.unsyncedCardCount == 0)
+        #expect(clean.requiresUnsyncedAcknowledgement == false)
+        #expect(dirty.requiresUnsyncedAcknowledgement == true)
+    }
+
+    @Test @MainActor func p2439SignedInResetPushesDefaultConfigsBeforeClearingLocalData() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let order = OrderRecorder()
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: order)
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+
+        await coordinator.resetLocalData(
+            authManager: LoggedInAuthStub(),
+            kgService: service,
+            modelContext: ModelContext(container)
+        )
+
+        let defaults = ReviewSettings.default
+        #expect(service.autoLink?.enabled == true)
+        #expect(service.autoLink?.updated_at != nil)
+        #expect(service.translation?.source_lang == "en")
+        #expect(service.translation?.target_lang == "zh-Hant")
+        #expect(service.translation?.updated_at != nil)
+        #expect(service.reviewClock?.is_paused == false)
+        #expect(service.reviewClock?.paused_at == nil)
+        #expect(service.reviewMode?.mode == defaults.mode.rawValue)
+        #expect(service.reviewMode?.custom_initial_interval_hours == defaults.customInitialIntervalHours)
+        #expect(service.reviewMode?.custom_maximum_interval_hours == defaults.customMaximumIntervalHours)
+        let events = order.events
+        #expect(events.last == "clear")
+        #expect(try #require(events.firstIndex(of: "clear")) > #require(events.firstIndex(of: "autoLink")))
+        #expect(coordinator.resetLifecycle?.phase == .succeeded)
+    }
+
+    @Test @MainActor func p2442RetryAfterFailedPushRechecksUnsyncedRows() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: OrderRecorder())
+        service.configFailure = ResetFailure()
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+        let context = ModelContext(container)
+        let auth = LoggedInAuthStub()
+
+        await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: context)
+        #expect(coordinator.resetLifecycle?.phase == .failed)
+
+        resetStore.unsyncedCardCount = 2
+        await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: context)
+
+        let blocked = try #require(coordinator.resetLifecycle)
+        #expect(blocked.phase == .preReset)
+        #expect(blocked.before.unsyncedCardCount == 2)
+        #expect(service.clearCallCount == 0)
+    }
+
+    @Test func p2442BlockedCardRefreshesAfterSyncCompletes() {
+        let stale = SettingsResetLifecycle.Snapshot(
+            localCardCount: 3, unsyncedCardCount: 2, hasCustomPreferences: true, isLoggedIn: true
+        )
+        let synced = SettingsResetLifecycle.Snapshot(localCardCount: 3, hasCustomPreferences: true, isLoggedIn: true)
+        let fewer = SettingsResetLifecycle.Snapshot(
+            localCardCount: 3, unsyncedCardCount: 1, hasCustomPreferences: true, isLoggedIn: true
+        )
+        let blocked = SettingsResetLifecycle.blockedByUnsynced(before: stale)
+
+        let cleared = blocked.refreshed(with: synced)
+        #expect(cleared.before == synced)
+        #expect(cleared.terminalMessage == nil)
+        #expect(blocked.refreshed(with: fewer).before.unsyncedCardCount == 1)
+        let failed = SettingsResetLifecycle.preReset(before: stale).resetting().failed(after: stale, message: "x")
+        #expect(failed.refreshed(with: synced) == failed)
+    }
+
+    @Test @MainActor func p2439PushFailureAbortsResetWithoutDeletingLocalData() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: OrderRecorder())
+        service.configFailure = ResetFailure()
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+
+        await coordinator.resetLocalData(
+            authManager: LoggedInAuthStub(),
+            kgService: service,
+            modelContext: ModelContext(container)
+        )
+
+        let lifecycle = try #require(coordinator.resetLifecycle)
+        #expect(lifecycle.phase == .failed)
+        #expect(lifecycle.canRetry == true)
+        #expect(service.clearCallCount == 0)
+        #expect(resetStore.resetPreferencesCallCount == 0)
+        #expect(resetStore.hasCustomPreferences == true)
+    }
+
+    @Test @MainActor func p2439DemoResetMakesNoServerCalls() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: OrderRecorder())
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+        let demo = LoggedInAuthStub()
+        demo.isDemoMode = true
+
+        await coordinator.resetLocalData(authManager: demo, kgService: service, modelContext: ModelContext(container))
+
+        #expect(service.clearCallCount == 1)
+        #expect(service.configCallCount == 0)
+    }
+
+    @Test @MainActor func p2744AccountSwitchClearsPreviousAccountsResetLifecycle() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: OrderRecorder())
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+        let auth = LoggedInAuthStub()
+
+        await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: ModelContext(container))
+        #expect(coordinator.resetLifecycle?.phase == .succeeded)
+
+        // The same account re-entering the boundary keeps its terminal card.
+        coordinator.resetForAccountBoundary(authManager: auth)
+        #expect(coordinator.resetLifecycle?.phase == .succeeded)
+
+        // A's own logout cleanup keeps the terminal card visible.
+        auth.isLoggedIn = false
+        auth.userId = nil
+        coordinator.resetForAccountBoundary(authManager: auth)
+        #expect(coordinator.resetLifecycle?.phase == .succeeded)
+
+        // A different account must not inherit it.
+        auth.isLoggedIn = true
+        auth.userId = "another-user"
+        coordinator.resetForAccountBoundary(authManager: auth)
+        #expect(coordinator.resetLifecycle == nil)
+    }
+
+    @Test @MainActor func p2744InFlightResetCompletionIsIgnoredAfterAccountSwitch() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: OrderRecorder())
+        service.gateClear()
+        let auth = LoggedInAuthStub()
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+        let context = ModelContext(container)
+
+        let task = Task { @MainActor in
+            await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: context)
+        }
+        await service.waitUntilClearStarted()
+        auth.userId = "another-user"
+        coordinator.resetForAccountBoundary(authManager: auth)
+        #expect(coordinator.resetLifecycle == nil)
+
+        service.openGate()
+        await task.value
+
+        #expect(coordinator.resetLifecycle == nil)
+        #expect(resetStore.resetPreferencesCallCount == 0)
+    }
+
+    private final class OrderRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: [String] = []
+        var events: [String] { lock.withLock { storage } }
+        func append(_ event: String) { lock.withLock { storage.append(event) } }
+    }
+
+    /// One fake for both seams the reset flow touches: local cleanup and the
+    /// server config endpoints, so ordering between them is observable.
+    private final class CombinedResetService: LocalDataResetting, UserConfigServing, @unchecked Sendable {
+        private let lock = NSLock()
+        private let store: StatefulSettingsResetStore
+        private let order: OrderRecorder
+        private var gated = false
+        private var clearStarted = false
+        private var gateOpen = false
+        private(set) var clearCallCount = 0
+        private(set) var configCallCount = 0
+        private(set) var autoLink: KGAutoLinkConfig?
+        private(set) var translation: KGTranslationConfig?
+        private(set) var reviewClock: KGReviewClockConfig?
+        private(set) var reviewMode: KGReviewModeConfig?
+        var configFailure: Error?
+
+        init(store: StatefulSettingsResetStore, order: OrderRecorder) {
+            self.store = store
+            self.order = order
+        }
+
+        func gateClear() { lock.withLock { gated = true } }
+        func openGate() { lock.withLock { gateOpen = true } }
+        func waitUntilClearStarted() async {
+            while !lock.withLock({ clearStarted }) { try? await Task.sleep(nanoseconds: 5_000_000) }
+        }
+
+        func clearLocalData(container: ModelContainer, reason: String) async throws {
+            lock.withLock { clearCallCount += 1; clearStarted = true }
+            while lock.withLock({ gated && !gateOpen }) { try? await Task.sleep(nanoseconds: 5_000_000) }
+            order.append("clear")
+            await store.finishCleanup()
+        }
+
+        private func record(_ name: String) throws -> KGUserConfig {
+            lock.withLock { configCallCount += 1 }
+            if let configFailure { throw configFailure }
+            order.append(name)
+            return KGUserConfig(translation: nil, review_clock: nil, review_mode: nil, vocab_ui: nil, auto_link: nil)
+        }
+
+        func fetchUserConfig() async throws -> KGUserConfig { try record("fetch") }
+        func updateTranslationConfig(_ c: KGTranslationConfig) async throws -> KGUserConfig {
+            let r = try record("translation"); translation = c; return r
+        }
+        func updateVocabUIConfig(_ c: KGVocabUIConfig) async throws -> KGUserConfig { try record("vocabUI") }
+        func updateReviewClockConfig(_ c: KGReviewClockConfig) async throws -> KGUserConfig {
+            let r = try record("reviewClock"); reviewClock = c; return r
+        }
+        func updateReviewModeConfig(_ c: KGReviewModeConfig) async throws -> KGUserConfig {
+            let r = try record("reviewMode"); reviewMode = c; return r
+        }
+        func updateAutoLinkConfig(_ c: KGAutoLinkConfig) async throws -> KGUserConfig {
+            let r = try record("autoLink"); autoLink = c; return r
+        }
+    }
+
     private struct ResetFailure: Error {}
 
     @MainActor
     private final class StatefulSettingsResetStore: SettingsResetStorePort {
         var localCardCount = 3
+        var unsyncedCardCount = 0
         var hasCustomPreferences = true
+        private(set) var resetPreferencesCallCount = 0
         private(set) var readSnapshots: [SettingsResetLifecycle.Snapshot] = []
         private var unreadable = false
 
@@ -639,6 +965,7 @@ import Testing
             }
             let snapshot = SettingsResetLifecycle.Snapshot(
                 localCardCount: localCardCount,
+                unsyncedCardCount: unsyncedCardCount,
                 hasCustomPreferences: hasCustomPreferences,
                 isLoggedIn: authManager.isLoggedIn
             )
@@ -647,7 +974,12 @@ import Testing
         }
 
         func resetPreferences() {
+            resetPreferencesCallCount += 1
             hasCustomPreferences = false
+        }
+
+        func pushDefaultPreferences(to configService: any UserConfigServing) async throws {
+            try await LiveSettingsResetStore.pushDefaultPreferences(to: configService)
         }
 
         func leavePartialCleanupState() {
@@ -656,6 +988,7 @@ import Testing
 
         func finishCleanup() {
             localCardCount = 0
+            unsyncedCardCount = 0
         }
 
         func makeUnreadable() {
@@ -668,7 +1001,7 @@ import Testing
         case success
     }
 
-    private final class StatefulResetService: LocalDataResetting, @unchecked Sendable {
+    private final class StatefulResetService: LocalDataResetting, StubbedUserConfig, @unchecked Sendable {
         private let store: StatefulSettingsResetStore
         private var outcomes: [StatefulResetOutcome]
         private(set) var callCount = 0
@@ -691,7 +1024,7 @@ import Testing
         }
     }
 
-    private final class ScriptedResetService: LocalDataResetting, @unchecked Sendable {
+    private final class ScriptedResetService: LocalDataResetting, StubbedUserConfig, @unchecked Sendable {
         private var outcomes: [Result<Void, Error>]
         private(set) var callCount = 0
 
@@ -826,5 +1159,21 @@ import Testing
 
         throw NSError(domain: "SettingsFixturesTests", code: 2)
     }
+}
+
+/// Fakes that only care about local cleanup accept every server config push,
+/// so signed-in reset tests do not need a transport.
+private protocol StubbedUserConfig: UserConfigServing {}
+
+extension StubbedUserConfig {
+    private var blankConfig: KGUserConfig {
+        KGUserConfig(translation: nil, review_clock: nil, review_mode: nil, vocab_ui: nil, auto_link: nil)
+    }
+    func fetchUserConfig() async throws -> KGUserConfig { blankConfig }
+    func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig { blankConfig }
+    func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig { blankConfig }
+    func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig { blankConfig }
+    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig { blankConfig }
+    func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig { blankConfig }
 }
 #endif

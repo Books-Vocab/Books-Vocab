@@ -8,6 +8,7 @@ struct SettingsAccountDetailView: View {
     let actions: SettingsPresenterActions
     let isProActive: Bool
     var onShowAPIKeyManagement: (() -> Void)?
+    @State private var showResetConfirmation = false
 
     init(
         authState: SettingsPresenterState.AuthSection,
@@ -138,7 +139,7 @@ struct SettingsAccountDetailView: View {
             SettingsSectionHeader(title: L10n.string("危險操作"), icon: "exclamationmark.triangle")
 
             if let resetLifecycle = danger.resetLifecycle {
-                resetBoundaryCard(resetLifecycle)
+                resetBoundaryCard(resetLifecycle, confirmation: danger.currentSnapshot ?? resetLifecycle.before)
             }
 
             VocabStateMessageCard(
@@ -173,7 +174,7 @@ struct SettingsAccountDetailView: View {
         .accessibilityIdentifier("settings.account.dangerGroup")
     }
 
-    private func resetBoundaryCard(_ lifecycle: SettingsResetLifecycle) -> some View {
+    private func resetBoundaryCard(_ lifecycle: SettingsResetLifecycle, confirmation: SettingsResetLifecycle.Snapshot) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             HStack(spacing: appSkin.spacing.controlGap) {
                 Image(systemName: resetSystemImage(for: lifecycle.phase))
@@ -217,7 +218,7 @@ struct SettingsAccountDetailView: View {
             }
             .settingsCard()
 
-            Button(action: actions.resetLocalData) {
+            Button { showResetConfirmation = true } label: {
                 HStack {
                     Text(resetActionTitle(for: lifecycle.phase))
                         .font(appSkin.typography.body)
@@ -236,6 +237,34 @@ struct SettingsAccountDetailView: View {
             .disabled(!lifecycle.canRetry || lifecycle.phase == .resetting)
             .accessibilityIdentifier("settings.account.resetBoundary.resetButton")
             .accessibilityLabel(resetActionTitle(for: lifecycle.phase))
+            .confirmationDialog(
+                L10n.string("確定要重設本機資料？"),
+                isPresented: $showResetConfirmation,
+                titleVisibility: .visible
+            ) {
+                let discardsUnsynced = confirmation.requiresUnsyncedAcknowledgement
+                Button(
+                    discardsUnsynced ? L10n.string("放棄未同步並重設") : L10n.string("重設本機資料"),
+                    role: .destructive
+                ) {
+                    if discardsUnsynced {
+                        actions.resetLocalDataDiscardingUnsynced()
+                    } else {
+                        actions.resetLocalData()
+                    }
+                }
+                .accessibilityIdentifier("settings.account.resetBoundary.confirm")
+                Button(L10n.string("取消"), role: .cancel) {}
+            } message: {
+                let base = confirmation.requiresUnsyncedAcknowledgement
+                    ? L10n.format("尚有 %@ 未同步，重設後將永久遺失。", confirmation.unsyncedSummary)
+                    : resetDescription(for: .preReset)
+                if confirmation.isLoggedIn {
+                    Text(base + "\n" + L10n.string("已登入時，複習、時鐘、自動連結與翻譯的預設值也會同步到伺服器與你的其他裝置，需要網路連線。"))
+                } else {
+                    Text(base)
+                }
+            }
         }
         .padding(appSkin.spacing.cardPadding)
         .background(appSkin.palette.cardBackground)
@@ -267,6 +296,18 @@ struct SettingsAccountDetailView: View {
                 .accessibilityIdentifier("\(identifier).localCardCount")
                 .accessibilityLabel(cardCountText)
                 .accessibilityValue(snapshot.localCardCountError ?? "")
+            }
+            if snapshot.requiresUnsyncedAcknowledgement {
+                AppKeyValueRow(icon: "icloud.slash", label: L10n.string("未同步資料"), style: .settings(appSkin)) {
+                    let unsyncedText = snapshot.unsyncedSummary
+                    Text(unsyncedText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.destructive)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityIdentifier("\(identifier).unsyncedCardCount")
+                        .accessibilityLabel(unsyncedText)
+                }
             }
             AppKeyValueRow(icon: "slider.horizontal.3", label: L10n.string("設定偏好"), style: .settings(appSkin)) {
                 let preferencesText = snapshot.hasCustomPreferences ? L10n.string("已自訂") : L10n.string("預設值")
