@@ -317,9 +317,10 @@ class TestWithQuotaCheckBlock:
         err = exc_info.value
         assert err.status_code == 429
         assert err.headers["X-Quota-Fraction"] == "0.0"
-        assert err.headers["X-Quota-Reset"] == "86400"
-        assert err.reset_seconds == 86400
-        assert err.to_detail() == {"code": "quota_exhausted", "reset_seconds": 86400}
+        # Blocking row was just inserted, so it ages out in ~the full window.
+        assert err.reset_seconds == pytest.approx(86400, abs=5)
+        assert err.headers["X-Quota-Reset"] == str(err.reset_seconds)
+        assert err.to_detail() == {"code": "quota_exhausted", "reset_seconds": err.reset_seconds}
 
 
 # ── X-Quota-Fraction header math ─────────────────────────────────────

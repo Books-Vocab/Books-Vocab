@@ -92,7 +92,7 @@ class TestCheckAndGetQuota:
         assert free_result["exceeded"] is True
         assert pro_result["exceeded"] is False
 
-    def test_reset_seconds_is_86400(self, isolated_tracker):
+    def test_reset_seconds_is_86400_without_usage(self, isolated_tracker):
         qs = self._fresh_quota_service(isolated_tracker)
         result = qs.check_and_get_quota("user4", "translate_quick")
         assert result["reset_seconds"] == 86400
