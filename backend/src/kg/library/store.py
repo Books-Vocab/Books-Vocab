@@ -113,10 +113,13 @@ class LibraryStore:
             # SQLite's default deferred transaction lets concurrent callers all
             # observe the same missing client_book_id before either commits.
             session.connection().exec_driver_sql("BEGIN IMMEDIATE")
-            # Idempotency: if client_book_id exists, return existing
+            # Idempotency: return the live row for client_book_id; tombstones never match, so a reused id gets a fresh row
             if req.client_book_id:
                 existing = session.exec(
-                    select(LibraryBook).where(LibraryBook.client_book_id == req.client_book_id)
+                    select(LibraryBook).where(
+                        LibraryBook.client_book_id == req.client_book_id,
+                        LibraryBook.is_deleted == False,  # noqa: E712
+                    )
                 ).first()
                 if existing:
                     return self._to_response(existing)
