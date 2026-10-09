@@ -17,6 +17,10 @@
 #                   whose variables are NSStringPluralRuleType with ValueType lld
 #                   (plural_missing / plural_type); en must define `one` and `other`
 #                   (plural_form).
+#                D. Locale Parity — every en.lproj .strings key must exist in zh-Hans/
+#                   ja/ko (locale_missing; zh-Hant keys are the source text), and no
+#                   value in any locale may mix numbered %1$@ with unnumbered %@
+#                   (format_mixed).
 #
 # Allowlist:
 #   - Per-line:  `// i18n-allow: <reason>`  on the same line to exempt
@@ -284,6 +288,41 @@ for k, v in d.items():
 PY
 }
 
+# Check D: (1) every key in en.lproj/Localizable.strings must exist in zh-Hans, ja
+# and ko — L10n falls back to en on a miss, so a gap silently ships English (#2435).
+# zh-Hant is the source language: its keys ARE the Chinese fallback, so a gap there
+# is harmless and skipped. A locale without a Localizable.strings is skipped (the
+# plural check and the duplicate-key scan already flag missing locale files).
+# (2) no value in any locale may mix numbered (%1$@) and unnumbered (%@) specs:
+# NSString(format:) then drops the arguments the numbered spec skipped (#2430).
+scan_locale_parity() {
+  [ -f "$EN_STRINGS" ] || return 0
+  "${PY_CMD[@]}" - "$IOS_SRC" <<'PY' || echo "locale_missing: <parity scan failed; coverage unverified>"
+import os, re, sys
+root = sys.argv[1]
+ENTRY = re.compile(r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;')
+SPEC = re.compile(r'%%|%(\d+\$)?[-+ #0]*\d*(?:\.\d+)?(?:hh?|ll?|[qzjtL])?[@a-zA-Z]')
+def load(loc):
+    path = os.path.join(root, f"{loc}.lproj", "Localizable.strings")
+    if not os.path.isfile(path):
+        return None
+    src = re.sub(r"/\*.*?\*/", "", open(path, encoding="utf-8").read(), flags=re.DOTALL)
+    return {m.group(1): m.group(2) for m in ENTRY.finditer(src)}
+tables = {loc: load(loc) for loc in ("en", "zh-Hant", "zh-Hans", "ja", "ko")}
+en = tables["en"] or {}
+for loc in ("zh-Hans", "ja", "ko"):
+    if tables[loc] is None:
+        continue
+    for k in sorted(k for k in en if k not in tables[loc]):
+        print(f"locale_missing: [{loc}] {k!r}")
+for loc, table in tables.items():
+    for k, v in sorted((table or {}).items()):
+        specs = [m.group(1) for m in SPEC.finditer(v) if m.group(0) != "%%"]
+        if any(specs) and not all(specs):
+            print(f"format_mixed: [{loc}] {k!r} -> {v!r}")
+PY
+}
+
 # Check C: plural keys (L10n.format keys whose en .strings value uses %lld/%d,
 # plus any L10n.format key already in the en .stringsdict) must have, in every
 # shipped locale, a .stringsdict entry whose variables are plural rules with
@@ -378,9 +417,11 @@ total=$((raw_count + ret_count + fmt_count))
 missing_key_hits=""
 en_cjk_hits=""
 plural_missing_hits=""
+parity_hits=""
 missing_key_count=0
 en_cjk_count=0
 plural_missing_count=0
+parity_count=0
 
 print_findings() {
   if [ -n "$raw_hits" ]; then
@@ -416,6 +457,11 @@ print_findings() {
   if [ -n "$plural_missing_hits" ]; then
     echo "=== Plural rule problems ($plural_missing_count) ==="
     printf '%s\n' "$plural_missing_hits"
+    echo
+  fi
+  if [ -n "$parity_hits" ]; then
+    echo "=== Locale parity / mixed format specs ($parity_count) ==="
+    printf '%s\n' "$parity_hits"
     echo
   fi
   echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count dup=$dup_count localized_calls=$localized_count)"
@@ -503,14 +549,16 @@ EOF
     missing_key_hits="$(scan_key_coverage)"
     en_cjk_hits="$(scan_en_purity)"
     plural_missing_hits="$(scan_plural_coverage)"
+    parity_hits="$(scan_locale_parity)"
     missing_key_count=$(count_lines "$missing_key_hits")
     en_cjk_count=$(count_lines "$en_cjk_hits")
     plural_missing_count=$(count_lines "$plural_missing_hits")
-    strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count))
+    parity_count=$(count_lines "$parity_hits")
+    strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count + parity_count))
     print_findings
     reject_duplicates
     if [ "$strict_total" -gt 0 ]; then
-      echo "[i18n_lint] FAIL strict: $strict_total findings (legacy=$total, coverage=$missing_key_count, en_cjk=$en_cjk_count, plural=$plural_missing_count)" >&2
+      echo "[i18n_lint] FAIL strict: $strict_total findings (legacy=$total, coverage=$missing_key_count, en_cjk=$en_cjk_count, plural=$plural_missing_count, parity=$parity_count)" >&2
       exit 1
     fi
     check_localized_watermark
