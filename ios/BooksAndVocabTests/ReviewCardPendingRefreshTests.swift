@@ -127,7 +127,7 @@ struct ReviewCardPendingRefreshTests {
                 label: "x", confidence: 1, reason: "r"
             )
         ]]
-        state.refreshPendingLinksForEntry(entry)
+        state.refreshLinksForEntry(entry)
 
         let after = try #require(state.preparedCardCache[entry.id])
         #expect(after.measurementCache === before.measurementCache, "success must not rebuild the cache")
