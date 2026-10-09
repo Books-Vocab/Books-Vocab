@@ -55,6 +55,7 @@ from .services import (
     branch_audit,
     branch_content,
     cleanup,
+    drain,
     inspect,
     issue_terminal_close,
     legacy_cleanup,
@@ -889,6 +890,21 @@ class DeliveryApplication:
             "published_base_sha": final_record.published_base_sha,
             "claim_generation": final_record.claim_generation,
         }
+
+    def drain(
+        self,
+        *,
+        once: bool = False,
+        dry_run: bool = False,
+        interval: float = drain.DEFAULT_INTERVAL_SECONDS,
+        timeout: float = drain.DEFAULT_TIMEOUT_SECONDS,
+        operation_lease: cleanup.OperationLease | None = None,
+    ) -> object:
+        """Pump published lanes to merged and cleaned in this one process (#2646)."""
+
+        return drain.DrainService(
+            application=self, operation_lease=operation_lease
+        ).run(once=once, dry_run=dry_run, interval=interval, timeout=timeout)
 
     def release_published(
         self,

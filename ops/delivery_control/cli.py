@@ -58,6 +58,7 @@ MUTATING_COMMANDS = frozenset(
         "repair-pr-metadata",
         "trigger-required",
         "cleanup-merged",
+        "drain",
         "abandon-pr",
         "cleanup-abandoned",
         "discard-abandoned-handback",
@@ -75,7 +76,7 @@ MUTATING_COMMANDS = frozenset(
 # same lock path.  queue writes only GitHub, guarded there by expected head,
 # base and body readback; cleanup sections are resumable from cleanup_pending.
 SCOPED_LEASE_COMMANDS = frozenset(
-    {"queue", "cleanup-merged", "release-published", "publish"}
+    {"queue", "cleanup-merged", "release-published", "publish", "drain"}
 )
 
 
@@ -370,6 +371,25 @@ def _parser() -> argparse.ArgumentParser:
         help="restore canonical body metadata on one durable PR",
     )
     repair_metadata.add_argument("--pr", type=int, required=True)
+
+    drain = commands.add_parser(
+        "drain",
+        help="one process: enqueue gate-green published PRs, clean up merged ones",
+    )
+    drain.add_argument(
+        "--once", action="store_true", help="run a single cycle instead of looping"
+    )
+    drain.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="plan one cycle and execute nothing",
+    )
+    drain.add_argument(
+        "--interval", type=float, default=30.0, help="seconds between cycles"
+    )
+    drain.add_argument(
+        "--timeout", type=float, default=3600.0, help="stop looping after SECONDS"
+    )
 
     commands.add_parser(
         "trigger-required", help="dispatch required checks for one exact published PR"
@@ -761,6 +781,14 @@ def run_command(
             pull_request_number=args.pr,
             holds=frozenset(HoldKind(item) for item in args.hold or ()),
         )
+    if args.command == "drain":
+        return application.drain(
+            once=args.once,
+            dry_run=args.dry_run,
+            interval=args.interval,
+            timeout=args.timeout,
+            operation_lease=operation_lease,
+        )
     if args.command == "reconcile-holds":
         return application.reconcile_holds(
             pull_request_number=args.pr,
@@ -871,6 +899,8 @@ def _result_exit_code(command: str, result: object) -> int:
         return 2
     if command == "watchdog-claim":
         return 0 if _watchdog_dispatch_authorized(result) else 2
+    if command == "drain":
+        return {"stuck": 1, "timeout": 2}.get(str(_result_field(result, "stopped")), 0)
     if command in APPLY_COMMANDS:
         verdict = _result_field(result, "verdict")
         if verdict == "partial-failure":
@@ -1022,6 +1052,8 @@ def _command_verdict(command: str, result: object) -> str:
             else getattr(result, "ready", None)
         )
         return "ready" if ready is True else "blocked"
+    if command == "drain":
+        return str(_result_field(result, "stopped"))
     if command in APPLY_COMMANDS:
         verdict = _result_field(result, "verdict")
         return verdict if isinstance(verdict, str) else "success"

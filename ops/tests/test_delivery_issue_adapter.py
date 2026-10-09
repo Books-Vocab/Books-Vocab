@@ -20,8 +20,8 @@ from delivery_control.domain.candidate_issues import (
     CandidateSpec,
 )
 from delivery_control.domain.demand_issues import (
-    DemandIssue,
     ISSUE_INTAKE_SCHEMA,
+    DemandIssue,
     IssueDisposition,
     IssueIntakeRequest,
     issue_body_sha256,

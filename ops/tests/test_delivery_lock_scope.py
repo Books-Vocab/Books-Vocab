@@ -8,6 +8,7 @@ delivery mutation fail with ``delivery mutation already in progress``.
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import sys
@@ -148,6 +149,7 @@ def test_scoped_lease_commands_are_exactly_the_narrowed_mutations() -> None:
         "cleanup-merged",
         "release-published",
         "publish",
+        "drain",
     }
     assert cli.SCOPED_LEASE_COMMANDS <= cli.MUTATING_COMMANDS
 
@@ -298,7 +300,7 @@ def test_publish_network_io_runs_outside_and_registry_writes_inside_the_lease(
 def test_publish_proceeds_while_another_process_holds_the_lock_until_registry_write(
     tmp_path: Path,
 ) -> None:
-    application, registry, git, github = _application(tmp_path)
+    application, registry, git, _ = _application(tmp_path)
     lock_path = OperationLock(tmp_path, command="x").path
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     seen: list[str] = []
@@ -344,10 +346,8 @@ def _captured_waits(
     monkeypatch.setattr(cli, "OperationLock", recording)
     application, *_ = _application(tmp_path)
     args = cli._parser().parse_args(["--repo", str(tmp_path), *argv])
-    try:
+    with contextlib.suppress(Exception):  # only the lock wait is under test
         cli._run_command_serialized(args, application)
-    except Exception:  # only the lock wait is under test
-        pass
     return waits
 
 
