@@ -582,3 +582,16 @@ def test_link_persist_failure_is_failed_not_warning(tmp_path, monkeypatch):
     result = get_operation("user-1", operation["operation_id"])
     assert result["status"] == "failed"
     assert not result.get("link_id")
+
+
+def test_find_operation_replays_by_key_and_rejects_changed_payload():
+    from kg.vocab_add_link_operation import find_operation
+
+    assert find_operation(user_id="user-1", idempotency_key="tap-1", payload=payload()) is None
+    first, _ = create_operation(user_id="user-1", notebook_id="default", idempotency_key="tap-1", payload=payload())
+
+    found = find_operation(user_id="user-1", idempotency_key="tap-1", payload=payload())
+    assert found is not None and found["operation_id"] == first["operation_id"]
+    assert find_operation(user_id="user-2", idempotency_key="tap-1", payload=payload()) is None
+    with pytest.raises(IdempotencyConflict):
+        find_operation(user_id="user-1", idempotency_key="tap-1", payload=payload("different"))

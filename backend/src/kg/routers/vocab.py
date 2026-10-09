@@ -48,6 +48,7 @@ from ..service_factories import create_client
 from ..vocab_add_link_operation import (
     IdempotencyConflict,
     create_operation,
+    find_operation,
     get_operation,
     operation_response,
     run_add_link_operation,
@@ -126,20 +127,29 @@ async def enqueue_add_link_operation(
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        raise BadRequestError("Idempotency-Key must not be blank")
+    payload = req.model_dump(mode="json")
+    # A replay is answered from the stored operation before any live-state
+    # validation: the source may have been archived since the first admission.
+    try:
+        existing = find_operation(user_id=user["id"], idempotency_key=normalized_key, payload=payload)
+    except IdempotencyConflict as exc:
+        raise ConflictError(str(exc)) from exc
+    if existing is not None:
+        return operation_response(existing)
     validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
     source = _card_store(user["dir"]).get(req.from_id)
     if source is None or source.is_deleted or source.is_archived or source.notebook_id != notebook_id:
         raise NotFoundError("Card", req.from_id)
 
-    normalized_key = idempotency_key.strip()
-    if not normalized_key:
-        raise BadRequestError("Idempotency-Key must not be blank")
     try:
         record, created = create_operation(
             user_id=user["id"],
             notebook_id=notebook_id,
             idempotency_key=normalized_key,
-            payload=req.model_dump(mode="json"),
+            payload=payload,
         )
     except IdempotencyConflict as exc:
         raise ConflictError(str(exc)) from exc
@@ -248,11 +258,12 @@ def push_review(
     if isinstance(req, VocabContentUpdateRequest):
         return update_word_content("review", req, user, notebook_id=notebook_id)
     # notebook_id 不做過濾：iOS client 推送全部 notebook 的複習狀態，
-    # 後端需在全域卡片中查找匹配（query notebook_id 只用於上面的內容編輯）。
+    # 後端需在全域卡片中查找匹配（query notebook_id 只用於上面的內容編輯）；staged notebook 由 handler 排除。
     return push_review_response(
         req,
         user,
         card_store_factory=_card_store,
+        notebook_store_factory=_notebook_store,
         logger=logger,
         notebook_id=None,
     )

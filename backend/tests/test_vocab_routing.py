@@ -335,3 +335,83 @@ def test_slash_word_crud_and_preferences_routes(vocab_api):
     deleted = client.delete(f"/api/vocab/{word}", headers=headers)
     assert deleted.status_code == 200, deleted.text
     assert deleted.json() == {"deleted": word, "id": card.id}
+
+
+def _staged_and_live_cards(api):
+    from kg.cards import CardStore
+    from kg.notebook import NotebookStore
+
+    user_dir = api.data_dir / "users" / api.user_id
+    nbs = NotebookStore(user_dir / "notebooks.db")
+    staged = nbs.create(name="Staged", is_staged=True)
+    cards = CardStore(user_dir / "cards.db")
+    try:
+        live = cards.add(content="shared", meaning="live", notebook_id="default")
+        hidden = cards.add(content="shared", meaning="hidden", notebook_id=staged.id)
+    finally:
+        cards.close()
+    return live.id, hidden.id
+
+
+def test_review_push_skips_staged_notebook_cards(vocab_api):
+    """#2694: PATCH /api/vocab/review must not write review state into staged notebook cards."""
+    from kg.cards import CardStore
+
+    live_id, hidden_id = _staged_and_live_cards(vocab_api)
+    entry = {
+        "word": "shared",
+        "review_interval_hours": 24.0,
+        "next_review_at": "2099-01-01T00:00:00Z",
+        "last_reviewed_at": "2026-01-01T00:00:00Z",
+        "review_count": 3,
+        "lapse_count": 0,
+        "review_streak": 1,
+        "last_review_feedback": 1,
+    }
+    by_word = vocab_api.client.patch("/api/vocab/review", json={"entries": [entry]}, headers=vocab_api.headers)
+    by_id = vocab_api.client.patch(
+        "/api/vocab/review", json={"entries": [{**entry, "card_id": hidden_id}]}, headers=vocab_api.headers
+    )
+    assert by_word.json() == {"updated": 1, "skipped": 0}, by_word.text
+    assert by_id.json() == {"updated": 0, "skipped": 1}, by_id.text
+
+    store = CardStore(vocab_api.data_dir / "users" / vocab_api.user_id / "cards.db")
+    try:
+        assert store.get(live_id).review_count == 3
+        assert store.get(hidden_id).review_count == 0
+    finally:
+        store.close()
+
+
+def test_add_link_replay_survives_archived_source_and_changed_body_conflicts(vocab_api, tmp_path, monkeypatch):
+    """#2686: a same-key replay returns the stored operation even after the source is archived."""
+    import kg.routers.vocab as vocab_router
+    import kg.vocab_add_link_operation as operations
+    from kg.cards import CardStore
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    operations.reset()
+    monkeypatch.setattr(vocab_router, "run_add_link_operation", lambda *a, **k: None)
+    store = CardStore(vocab_api.data_dir / "users" / vocab_api.user_id / "cards.db")
+    try:
+        source = store.add(content="source", meaning="src", notebook_id="default")
+        body = {"from_id": source.id, "target_word": "target", "source_lang": "en", "target_lang": "zh-Hant"}
+        headers = {**vocab_api.headers, "Idempotency-Key": "k-1"}
+        url = "/api/graph/links/ensure-target"
+
+        first = vocab_api.client.post(url, json=body, headers=headers)
+        assert first.status_code == 202, first.text
+        store.update(source.id, is_archived=True)
+
+        replay = vocab_api.client.post(url, json=body, headers=headers)
+        assert replay.status_code == 202, replay.text
+        assert replay.json()["operationId"] == first.json()["operationId"]
+
+        changed = vocab_api.client.post(url, json={**body, "target_word": "other"}, headers=headers)
+        assert changed.status_code == 409, changed.text
+
+        fresh = vocab_api.client.post(url, json=body, headers={**vocab_api.headers, "Idempotency-Key": "k-2"})
+        assert fresh.status_code == 404, fresh.text
+    finally:
+        store.close()
+        operations.reset()

@@ -339,3 +339,49 @@ class TestPushReviewStatesConcurrentWriter:
         push_review_states([entry], cards_store=store, logger=logging.getLogger())
 
         assert store.get(card.id).review_count == 10
+
+
+class TestPushReviewCrossKeyAndStaged:
+    def test_card_id_and_word_entries_for_same_card_coalesce_to_newest(self, tmp_path):
+        """#2692: a card_id entry and a legacy word entry hitting one card must not race on order."""
+        store = _make_store(tmp_path)
+        card = store.add("merge", "合併")
+        older = _now() - timedelta(hours=2)
+        newer = older + timedelta(hours=1)
+        newer_entry = _entry("merge", _iso(newer), card_id=card.id, review_interval_hours=48.0, review_count=2)
+        older_word_entry = _entry("merge", _iso(older), review_interval_hours=12.0, review_count=1)
+
+        for entries in ([newer_entry, older_word_entry], [older_word_entry, newer_entry]):
+            fresh = store.get(card.id)
+            store.update(card.id, last_reviewed_at=None, review_count=0, review_interval_hours=24.0)
+            result = push_review_states(entries, cards_store=store, logger=logging.getLogger())
+            assert result == {"updated": 1, "skipped": 1}, fresh
+            updated = store.get(card.id)
+            assert updated.review_interval_hours == 48.0
+            assert updated.last_reviewed_at == newer.replace(tzinfo=None)
+
+    def test_staged_notebook_cards_are_not_updated_by_word_or_card_id(self, tmp_path):
+        """#2694: staged notebook cards stay hidden from the push path, like the pull path."""
+        store = _make_store(tmp_path)
+        visible = store.add("same", "可見", notebook_id="live")
+        staged = store.add("same", "暫存", notebook_id="staged-nb")
+        at = _iso(_now())
+
+        by_word = push_review_states(
+            [_entry("same", at, review_count=4)],
+            cards_store=store,
+            logger=logging.getLogger(),
+            exclude_notebook_ids=["staged-nb"],
+        )
+        assert by_word == {"updated": 1, "skipped": 0}
+        assert store.get(visible.id).review_count == 4
+        assert store.get(staged.id).review_count == 0
+
+        by_id = push_review_states(
+            [_entry("same", at, card_id=staged.id, review_count=9)],
+            cards_store=store,
+            logger=logging.getLogger(),
+            exclude_notebook_ids=["staged-nb"],
+        )
+        assert by_id == {"updated": 0, "skipped": 1}
+        assert store.get(staged.id).review_count == 0
