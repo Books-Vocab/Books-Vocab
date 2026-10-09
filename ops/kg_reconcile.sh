@@ -282,6 +282,18 @@ localhost_ready_ok() {
   return 1
 }
 
+# 週期性 readiness：每個非 dry-run、非 locked 的 tick 都探（noop / ff-only / poisoned-skip /
+# 回滾後的 poison 冷卻期 / 部署前），不論這一輪最後走哪條路徑。沒有部署事件時，這是唯一會發現
+# 「容器活著但 /app/data 壞了」的檢查（2026-10-09 事故 3 小時無人察覺）。
+# 失敗 → stderr ALERT + stdout verdict=unhealthy + exit 1；不動任何狀態。
+# 副作用：儲存層壞著時 tick 不會部署（host state 壞，先修它）；因此部署 gate 看到的
+# readiness 失敗必然是「部署前才好的」→ 新版有嫌疑（見 deploy_and_gate 的 ready 分支）。
+probe_ready_or_fail() {
+  localhost_ready_ok && return 0
+  alert "readiness 失敗：${KG_LOCAL_READY_URL} 非 200（資料目錄不存在／不可寫／啟動檔案遺失）。服務可能對使用者回 500，需立即人工檢查 /app/data。"
+  emit_verdict "unhealthy"; exit 1
+}
+
 # 外部 smoke 快子集（CF→tunnel→felix 全鏈）：
 #   /api/system/info 200 且 version==期望 sha；/api/health 401/403/200(存在即可)、
 #   404 跳過、000/500/其他判紅。
@@ -621,6 +633,16 @@ deploy_and_gate() {
   else
     alert "回滾後舊版 $rollback_sha localhost 健康未確認 — 生產可能雙壞，需立即人工檢查。"
   fi
+  # reason=ready 的歸因：儲存層壞可能是 host state（跟哪個 image 無關，回滾也救不了）。
+  # 進 deploy 前 main 已探過 readiness 為綠，所以回滾是合理的第一步；但**回滾後必須確認舊版
+  # readiness 轉綠**才能把罪歸給新 sha。舊版同樣不 ready → host state 壞：不 poison
+  # （否則壞的是主機，卻冷卻掉一個無辜的 sha），大聲 ALERT、verdict=unhealthy、exit 1。
+  if [[ "$reason" == "ready" ]] && (( rrc == 0 )) && ! localhost_ready_ok; then
+    alert "部署後 readiness 失敗，回滾到 ${rollback_sha} 後仍不 ready —— 是 host state（/app/data）壞了，不是 ${new_sha} 的問題。未 poison 該 sha；需人工修復資料目錄。"
+    append_deploy_log "ROLLED_BACK from=$new_sha to=$rollback_sha reason=ready host_unready=1"
+    emit_verdict "unhealthy"
+    exit 1
+  fi
   write_poison "$ORIGIN_SHA"
   if (( rrc != 0 )); then
     append_deploy_log "ROLLBACK_FAILED from=$new_sha to=$rollback_sha reason=$reason compose_rc=$rrc"
@@ -700,6 +722,7 @@ main() {
     log "deploy 鎖 $KG_LOCK_DIR 已被持有（人工 deploy 進行中？）→ 跳過 VERSION 自癒，本輪讓路。"
     emit_verdict "locked"; exit 0
   fi
+  [[ "$dry_run" == "1" ]] || probe_ready_or_fail
   if [[ "$dry_run" != "1" ]]; then
     local live_ver
     live_ver="$(reconcile_live_version)"
@@ -727,13 +750,6 @@ main() {
     # 表達這一輪無事可做；只有手動診斷才開 verbose，避免正常輪詢製造磁碟寫入。
     [[ "${KG_RECON_VERBOSE_NOOP:-0}" == "1" ]] && \
       log "已同版（deployed=$DEPLOYED_SHA == origin=${ORIGIN_SHA}），no-op。"
-    # noop tick 也探 readiness（dry-run 不探）：沒有部署事件時，這是唯一會發現
-    # 「容器活著但 /app/data 壞了」的週期性檢查（2026-10-09 事故 3 小時無人察覺）。
-    # 失敗 → verdict=unhealthy + exit 1，launchd err log 與 verdict 都看得到；不動任何狀態。
-    if [[ "$dry_run" != "1" ]] && ! localhost_ready_ok; then
-      alert "readiness 失敗：${KG_LOCAL_READY_URL} 非 200（資料目錄不存在／不可寫／啟動檔案遺失）。服務可能對使用者回 500，需立即人工檢查 /app/data。"
-      emit_verdict "unhealthy"; exit 1
-    fi
     emit_verdict "noop"; exit 0
   fi
 

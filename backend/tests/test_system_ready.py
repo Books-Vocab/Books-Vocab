@@ -24,6 +24,15 @@ def _make_healthy(root):
     return root
 
 
+@pytest.fixture(autouse=True)
+def _fresh_ready_cache():
+    from kg.routers import system
+
+    system._reset_ready_cache()
+    yield
+    system._reset_ready_cache()
+
+
 @pytest.fixture()
 def data_dir(tmp_path, monkeypatch):
     root = _make_healthy(tmp_path / "data")
@@ -115,3 +124,36 @@ def test_ready_is_rate_limit_exempt(client):
     for _ in range(api_limiter.max_requests + 30):
         r = client.get(READY_PATH)
         assert r.status_code == 200, "readiness must never be rate limited"
+
+
+def test_ready_verdict_cached_for_two_seconds(client, data_dir, monkeypatch):
+    clock = {"t": 1000.0}
+    monkeypatch.setattr("kg.routers.system._ready_clock", lambda: clock["t"])
+    assert client.get(READY_PATH).status_code == 200
+    (data_dir / "users").rmdir()
+    clock["t"] += 1.9
+    assert client.get(READY_PATH).status_code == 200, "within TTL the cached verdict is served"
+    clock["t"] += 0.2
+    r = client.get(READY_PATH)
+    assert r.status_code == 503 and r.json()["reasons"] == ["users_dir_missing"]
+
+
+def test_ready_probe_removed_even_if_close_fails(client, data_dir, monkeypatch):
+    real_close = os.close
+
+    def boom(fd):
+        real_close(fd)
+        raise OSError("close failed")
+
+    monkeypatch.setattr("kg.routers.system.os.close", boom)
+    r = client.get(READY_PATH)
+    assert r.status_code == 503 and r.json()["reasons"] == ["data_dir_not_writable"]
+    assert [p.name for p in data_dir.iterdir() if p.name.startswith(".ready")] == []
+
+
+def test_ready_empty_fresh_volume_reports_users_dir_missing(client, data_dir):
+    for child in data_dir.iterdir():
+        child.rmdir() if child.is_dir() else child.unlink()
+    r = client.get(READY_PATH)
+    assert r.status_code == 503
+    assert set(r.json()["reasons"]) == {"users_dir_missing", "worker_lock_missing", "pipeline_db_missing"}

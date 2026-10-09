@@ -110,15 +110,32 @@ def readiness_failures(data_dir: Path) -> list[str]:
         os.close(fd)
     except OSError:
         reasons.append("data_dir_not_writable")
-    else:
+    finally:
+        # Also covers a failure between create and close: never leave a probe behind.
         try:
-            probe.unlink()
+            probe.unlink(missing_ok=True)
         except OSError:
-            reasons.append("data_dir_not_writable")
+            if "data_dir_not_writable" not in reasons:
+                reasons.append("data_dir_not_writable")
     for name, reason in _READY_STARTUP_FILES:
         if not (data_dir / name).is_file():
             reasons.append(reason)
     return reasons
+
+
+# The endpoint is unauthenticated and rate-limit exempt, so every hit would
+# otherwise create+unlink a file. Cache the verdict briefly (per data dir).
+_READY_CACHE_TTL_SECONDS = 2.0
+_ready_cache: tuple[float, str, list[str]] | None = None
+
+
+def _ready_clock() -> float:
+    return time.monotonic()
+
+
+def _reset_ready_cache() -> None:
+    global _ready_cache
+    _ready_cache = None
 
 
 # NOTE: lives under /api/system/info/ on purpose: the rate-limit middleware
@@ -129,7 +146,14 @@ def readiness_failures(data_dir: Path) -> list[str]:
 async def system_ready(request: Request) -> JSONResponse:
     """Unauthenticated fail-closed readiness: 200 only if storage is usable."""
     data_dir = Path(request.app.state.kg_settings.data_dir)
-    reasons = await run_in_threadpool(readiness_failures, data_dir)
+    global _ready_cache
+    now = _ready_clock()
+    cached = _ready_cache
+    if cached is not None and cached[1] == str(data_dir) and 0 <= now - cached[0] < _READY_CACHE_TTL_SECONDS:
+        reasons = list(cached[2])
+    else:
+        reasons = await run_in_threadpool(readiness_failures, data_dir)
+        _ready_cache = (now, str(data_dir), list(reasons))
     headers = {"Cache-Control": "no-store"}
     if reasons:
         return JSONResponse({"ready": False, "reasons": reasons}, status_code=503, headers=headers)

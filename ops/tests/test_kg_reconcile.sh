@@ -71,7 +71,16 @@ done
 # 否則 localhost 的 SERVED 分支會對它回一個帶 version 的 200，等於替身比真實依賴仁慈。
 # MOCK_READY_LOCAL / MOCK_READY_EXTERNAL = 該端點回的 HTTP code（預設 200；000 = 連不出去）。
 if [[ "\$url" == */api/system/info/ready ]]; then
-  if [[ "\$url" == *localhost* ]]; then rc_="\${MOCK_READY_LOCAL:-200}"; else rc_="\${MOCK_READY_EXTERNAL:-200}"; fi
+  if [[ "\$url" == *localhost* ]]; then
+    rc_="\${MOCK_READY_LOCAL:-200}"
+    # MOCK_READY_LOCAL_SEQ="200 503 503 200"：依序消耗，用完重複最後一個（模擬部署前綠、部署後壞、回滾後好/壞）。
+    if [[ -n "\${MOCK_READY_LOCAL_SEQ:-}" ]]; then
+      read -r -a seq_ <<<"\$MOCK_READY_LOCAL_SEQ"
+      n_=\$(cat "$dir/ready_seq_n" 2>/dev/null || echo 0)
+      idx_=\$n_; (( idx_ >= \${#seq_[@]} )) && idx_=\$(( \${#seq_[@]} - 1 ))
+      rc_="\${seq_[\$idx_]}"; echo \$((n_+1)) > "$dir/ready_seq_n"
+    fi
+  else rc_="\${MOCK_READY_EXTERNAL:-200}"; fi
   echo "\$url \$rc_" >> "$dir/ready_calls"
   if [[ "\$rc_" == "000" ]]; then
     if [[ "\$want_body_plus_http" == "1" ]]; then printf '\\n000'
@@ -1038,7 +1047,33 @@ rm -f "$SC/ready_calls"
 out="$(MOCK_READY_LOCAL=503 run_recon --once --dry-run 2>/dev/null)"; rc=$?
 [[ "$(get_verdict "$out")" == "noop" && "$rc" -eq 0 && ! -e "$SC/ready_calls" ]] && ok "ready dry-run: 不探 readiness" || bad "ready dry-run: verdict=$(get_verdict "$out") rc=$rc calls=$(cat "$SC/ready_calls" 2>/dev/null)"
 
-# 2) deploy gate：localhost readiness 壞 → 回滾 reason=ready
+# 1b) ff-only 與 poisoned-skip 的 tick 也要探（P1：原本只有 noop 探，其餘路徑對儲存層全盲）
+for rcode in 200 503; do
+  new_scratch docs
+  MOCK_CURL="$(make_mock_curl "" "$SC")"
+  rm -f "$SC/ready_calls"
+  out="$(MOCK_READY_LOCAL=$rcode run_recon --once 2>"$SC/ready.err")"; rc=$?
+  if [[ "$rcode" == "200" ]]; then
+    [[ "$(get_verdict "$out")" == "ff-only" && "$rc" -eq 0 && -s "$SC/ready_calls" ]] && ok "ready ff-only 正控: 探了 readiness 且仍 ff-only" || bad "ready ff-only 正控: verdict=$(get_verdict "$out") rc=$rc"
+  else
+    [[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 ]] && grep -q "ALERT: readiness 失敗" "$SC/ready.err" && ok "ready ff-only[503]: unhealthy/ALERT/exit!=0" || bad "ready ff-only[503]: verdict=$(get_verdict "$out") rc=$rc"
+    grep -q "pull" "$GITLOG" && bad "ready ff-only[503]: 仍 pull 了" || ok "ready ff-only[503]: 未 pull"
+  fi
+done
+for rcode in 200 503; do
+  new_scratch backend
+  printf 'poison %s %s\n' "$SHA_NEW" "$(date +%s)" > "$STATE"
+  MOCK_CURL="$(make_mock_curl "" "$SC")"
+  rm -f "$SC/ready_calls"
+  out="$(MOCK_READY_LOCAL=$rcode run_recon --once 2>"$SC/ready.err")"; rc=$?
+  if [[ "$rcode" == "200" ]]; then
+    [[ "$(get_verdict "$out")" == "poisoned-skip" && "$rc" -eq 0 && -s "$SC/ready_calls" ]] && ok "ready poisoned-skip 正控: 探了 readiness 且仍 poisoned-skip" || bad "ready poisoned-skip 正控: verdict=$(get_verdict "$out") rc=$rc"
+  else
+    [[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 ]] && grep -q "ALERT: readiness 失敗" "$SC/ready.err" && ok "ready poisoned-skip[503]: unhealthy/ALERT/exit!=0" || bad "ready poisoned-skip[503]: verdict=$(get_verdict "$out") rc=$rc"
+  fi
+done
+
+# 2) deploy：部署前 readiness 壞 → 不部署（host state 壞，先修它）
 new_scratch backend
 MOCK_CURL="$(make_mock_curl "$(cat <<EOF
 wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
@@ -1046,8 +1081,32 @@ wordnexus.lol/api/health|401|{"detail":"x"}
 EOF
 )" "$SC" "$SERVEDFILE")"
 out="$(MOCK_READY_LOCAL=503 run_recon --once 2>/dev/null)"; rc=$?
-[[ "$(get_verdict "$out")" == "rolled-back" && "$rc" -ne 0 ]] && ok "ready deploy-local: rolled-back 非 0" || bad "ready deploy-local: verdict=$(get_verdict "$out") rc=$rc"
-grep -q "ROLLED_BACK .*reason=ready" "$DEPLOYLOG" && ok "ready deploy-local: deploy.log reason=ready" || bad "ready deploy-local: deploy.log=$(cat "$DEPLOYLOG" 2>/dev/null)"
+[[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 && ! -s "$COMPOSELOG" ]] && ok "ready pre-deploy: 儲存層壞 → 不 rebuild" || bad "ready pre-deploy: verdict=$(get_verdict "$out") rc=$rc compose=$(cat "$COMPOSELOG" 2>/dev/null)"
+
+# 2b) deploy：部署前綠、部署後壞、回滾後轉綠 → 新 sha 有罪：rolled-back + poison reason=ready
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_READY_LOCAL_SEQ="200 503 503 200" run_recon --once 2>/dev/null)"; rc=$?
+[[ "$(get_verdict "$out")" == "rolled-back" && "$rc" -ne 0 ]] && ok "ready deploy-local(rollback fixes): rolled-back 非 0" || bad "ready deploy-local(rollback fixes): verdict=$(get_verdict "$out") rc=$rc"
+grep -q "ROLLED_BACK .*reason=ready" "$DEPLOYLOG" && ok "ready deploy-local(rollback fixes): reason=ready" || bad "ready deploy-local: deploy.log=$(cat "$DEPLOYLOG" 2>/dev/null)"
+grep -q "^poison " "$STATE" && ok "ready deploy-local(rollback fixes): sha 已 poison" || bad "ready deploy-local(rollback fixes): 未 poison"
+
+# 2c) 回滾後仍不 ready → host state：不 poison、verdict=unhealthy、ALERT
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_READY_LOCAL_SEQ="200 503" run_recon --once 2>"$SC/ready.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 ]] && ok "ready host-state: unhealthy 非 0" || bad "ready host-state: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "^poison " "$STATE" 2>/dev/null && bad "ready host-state: 不該 poison 無辜的 sha" || ok "ready host-state: 未 poison"
+grep -q "host state" "$SC/ready.err" && ok "ready host-state: ALERT 指出 host state" || bad "ready host-state: 無 host state ALERT"
+grep -q "host_unready=1" "$DEPLOYLOG" && ok "ready host-state: deploy.log 記錄 host_unready" || bad "ready host-state: deploy.log=$(cat "$DEPLOYLOG" 2>/dev/null)"
 
 # 3) deploy gate：外部 readiness 壞（info 200 + health 401 都綠）→ 回滾 reason=smoke
 new_scratch backend
