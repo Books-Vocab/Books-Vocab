@@ -153,12 +153,28 @@ enum NotebookReconciler {
     /// 將指定 notebook 集合下尚未刪除的 entries 排入刪除 queue。
     /// 一律走 `queueDelete()`，由 sync 層處理 lifecycle，避免 hard delete 與
     /// in-flight upload task 競爭。
+    ///
+    /// caller 傳入的 `allEntries` 通常來自 `knowledgeListPredicate`（僅已同步且未封存），
+    /// 會漏掉 pending / 封存的卡（#2730）；故以 `notebookId` 自行查詢，再與 `allEntries`
+    /// 取聯集（以 persistentModelID 去重）。
     static func cascadeDeleteEntries(
         matching notebookIds: Set<String>,
         allEntries: [VocabularyEntry],
         modelContext: ModelContext
     ) {
-        for entry in allEntries where notebookIds.contains(entry.notebookId) && entry.syncAction != .delete {
+        var targets: [PersistentIdentifier: VocabularyEntry] = [:]
+        for entry in allEntries where notebookIds.contains(entry.notebookId) {
+            targets[entry.persistentModelID] = entry
+        }
+        for notebookId in notebookIds {
+            let descriptor = FetchDescriptor<VocabularyEntry>(
+                predicate: #Predicate { $0.notebookId == notebookId }
+            )
+            for entry in (try? modelContext.fetch(descriptor)) ?? [] {
+                targets[entry.persistentModelID] = entry
+            }
+        }
+        for entry in targets.values where entry.syncAction != .delete {
             entry.queueDelete()
         }
     }
