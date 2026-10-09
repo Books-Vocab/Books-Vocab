@@ -56,15 +56,6 @@ enum VocabActivityHeatmapScenarios {
                     projectionClock: Self.projectionClock
                 )
             }
-            Scenario("Narrow 300pt · opens on latest week", layout: .compressed) {
-                HeatmapScene(
-                    activity: Self.gradedActivity(),
-                    thresholds: [2, 5, 9],
-                    weeks: 20,
-                    projectionClock: Self.projectionClock,
-                    width: 300
-                )
-            }
             Scenario("Short range (8 weeks)", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
@@ -109,7 +100,6 @@ private struct HeatmapScene: View {
     let thresholds: [Int]
     let weeks: Int
     let projectionClock: StatsProjectionClock
-    var width: CGFloat?
 
     var body: some View {
         AppThemeContainer {
@@ -119,7 +109,6 @@ private struct HeatmapScene: View {
                 weeks: weeks
             )
             .padding()
-            .frame(width: width)
         }
         .environmentObject(AppAppearanceStore.preview)
         .environment(\.statsProjectionClock, projectionClock)

@@ -238,7 +238,7 @@ final class OverviewFlowUITests: UITestCase {
 
     /// #2736: the heatmap must open scrolled to the latest week. 52 weeks overflow
     /// every device, so this is not vacuous on the wide CI device; without the
-    /// scroll anchor the strip opens at the oldest week and today is off-screen.
+    /// scroll position the strip opens at the oldest week and the latest is off-screen.
     @MainActor
     func testActivityHeatmapOpensOnLatestWeek() throws {
         let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
@@ -254,19 +254,32 @@ final class OverviewFlowUITests: UITestCase {
         overview.scrollToReviewCalendarButton()
         overview.calendar.assertExists(timeout: 10)
 
-        let days = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'calendar.day.'"))
-        let today = app.descendants(matching: .any)
-            .matching(identifier: "calendar.day.\(expected.forecastDayKey)").firstMatch
-        XCTAssertTrue(today.waitForExistence(timeout: 10), "today's heatmap cell missing")
-        let oldest = days.firstMatch
-        XCTAssertTrue(oldest.exists)
-        let card = overview.calendar.frame
-        XCTAssertTrue(oldest.frame.maxX <= card.minX + 1 || !oldest.isHittable,
-                      "52-week grid did not overflow the card: \(oldest.frame) vs \(card)")
+        // The probe sits on the horizontal ScrollView viewport (value derived from real scroll
+        // geometry), not on per-day cells: the heatmap lives inside a Button label.
+        func probeValue() -> String {
+            let viewport = app.descendants(matching: .any)
+                .matching(identifier: "calendar.heatmap.viewport").firstMatch
+            return viewport.exists ? (viewport.value as? String ?? "") : "<probe missing>"
+        }
+        func waitForProbe(containing needle: String, timeout: TimeInterval) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if probeValue().contains(needle) { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            }
+            return probeValue().contains(needle)
+        }
+
+        // Precondition (test premise): the 52-week grid must overflow the viewport,
+        // otherwise "latest week visible" holds trivially without any scroll fix.
         XCTAssertTrue(
-            today.isHittable && today.frame.minX >= card.minX && today.frame.maxX <= card.maxX,
-            "heatmap did not open scrolled to the latest week: \(today.frame) outside \(card)"
+            waitForProbe(containing: "overflow=1", timeout: 10),
+            "precondition failed: 52-week heatmap did not overflow its viewport (probe=\(probeValue()))"
+        )
+        // The assertion under test: the overflowing strip rests on the trailing (latest) edge.
+        XCTAssertTrue(
+            waitForProbe(containing: "trailing=1", timeout: 5),
+            "heatmap did not open scrolled to the latest week (probe=\(probeValue()))"
         )
     }
 

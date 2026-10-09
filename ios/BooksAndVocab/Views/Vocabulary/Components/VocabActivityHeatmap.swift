@@ -41,9 +41,21 @@ struct VocabActivityHeatmap: View {
     }()
 
     @State private var grid: [[CellData]] = []
-    // Explicit position (not `.defaultScrollAnchor`): `grid` fills async after `.task`, so the
-    // strip grows from label-only to overflowing; re-pinning on `grid.count` is deterministic.
-    @State private var scrollPosition = ScrollPosition(edge: .trailing)
+    #if DEBUG
+    @State private var probe = ViewportProbe()
+
+    /// UI-test probe (#2736): what the viewport actually shows, from real scroll geometry.
+    private struct ViewportProbe: Equatable {
+        var contentWidth = 0, containerWidth = 0, offsetX = 0
+        var overflows: Bool { contentWidth > containerWidth + 1 }
+        var atTrailingEdge: Bool { offsetX + containerWidth >= contentWidth - 1 }
+
+        var value: String {
+            "overflow=\(overflows ? 1 : 0);trailing=\(atTrailingEdge ? 1 : 0);"
+                + "x=\(offsetX);content=\(contentWidth);container=\(containerWidth)"
+        }
+    }
+    #endif
 
     private var activeProjectionClock: StatsProjectionClock {
         explicitProjectionClock ?? projectionClock
@@ -95,19 +107,36 @@ struct VocabActivityHeatmap: View {
                     .padding(.trailing, appSkin.spacing.rowMicroGap)
 
                     HStack(spacing: cellSpacing) {
-                        ForEach(Array(grid.enumerated()), id: \.offset) { weekIndex, column in
+                        ForEach(Array(grid.enumerated()), id: \.offset) { _, column in
                             VStack(spacing: cellSpacing) {
                                 ForEach(column, id: \.key) { cell in
                                     cellView(cell)
                                 }
                             }
-                            .id(weekIndex)
                         }
                     }
                 }
             }
-            .scrollPosition($scrollPosition)
-            .onChange(of: grid.count) { scrollPosition.scrollTo(edge: .trailing) }
+            // Open on the latest (trailing) week. `grid` fills async after `.task`, so the strip grows
+            // from label-only to overflowing after first layout; the anchor also covers that growth
+            // (explicit scrollTo from geometry/onChange callbacks measurably did not stick, #2736).
+            .defaultScrollAnchor(.trailing)
+            // The probe sits on the viewport rather than per cell: the heatmap lives inside a Button
+            // label, so cell identifiers are not reliably addressable, and promoting the root to a
+            // container would split that Button for VoiceOver. Debug builds only.
+            #if DEBUG
+            .onScrollGeometryChange(for: ViewportProbe.self) { geometry in
+                ViewportProbe(
+                    contentWidth: Int(geometry.contentSize.width.rounded()),
+                    containerWidth: Int(geometry.containerSize.width.rounded()),
+                    offsetX: Int(geometry.visibleRect.minX.rounded())
+                )
+            } action: { _, new in
+                probe = new
+            }
+            .accessibilityIdentifier("calendar.heatmap.viewport")
+            .accessibilityValue(probe.value)
+            #endif
 
             // Legend
             HStack(spacing: appSkin.spacing.rowMicroGap) {
@@ -125,8 +154,6 @@ struct VocabActivityHeatmap: View {
                     .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
-        // Keep per-day cells individually addressable inside the enclosing Button.
-        .accessibilityElement(children: .contain)
         .task(id: activeProjectionClock) { grid = buildGrid(activity: activity, weeks: weeks) }
         .onChange(of: activity) { _, new in grid = buildGrid(activity: new, weeks: weeks) }
         .enableInjection()
