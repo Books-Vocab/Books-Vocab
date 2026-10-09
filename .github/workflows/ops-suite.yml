@@ -16,6 +16,11 @@ on:
       # These paths have no shared prefix, so keep them explicit and test the list.
       - 'backend/restart_kg.sh'
       - 'backend/view_logs.sh'
+      # Backend ops CLI driven by ops tests (Issue #2326); mirror ops/ci_scope_router.sh.
+      - 'backend/ops_cli.py'
+      - 'backend/ops_edit.py'
+      - 'backend/src/kg/ops_*'
+      - 'backend/tests/ops_helpers.py'
       - 'lab/podcast/**'
       - 'scripts/ios_token_lint.sh'
       - '.claude/skills/app-debug/find-polluter.sh'

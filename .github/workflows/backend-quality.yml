@@ -11,6 +11,13 @@ on:
     paths:
       - 'backend/**'
       - '.claude/skills/devops/SKILL.md'
+      # Cross-tree files read by backend tests (Issue #2326); mirror ops/ci_scope_router.sh.
+      - 'ops/data_inspect.py'
+      - 'ops/official_decks/**'
+      - 'ops/seeds/marketing_demo.json'
+      - 'docs/registry.yml'
+      - 'docs/reference/testing/backend_strategy.md'
+      - 'ios/BooksAndVocab/Views/Podcast/PodcastAccess.swift'
       - '.github/workflows/backend-quality.yml'
   schedule:
     - cron: '17 2 * * *'
