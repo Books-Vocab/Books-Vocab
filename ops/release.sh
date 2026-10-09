@@ -1015,15 +1015,16 @@ cmd_bump_build() {
 # 守衛：該 commit 的 pyproject／api.py 版號 == <v>、是 live origin/prod 的 ancestor（確實上過生產）、tag 本地與
 # remote 皆不存在。push 為 tag-only；dry-run 預設，--yes 才寫。
 tag_api_at_commit() {  # $1=component $2=version（SHIPPED_COMMIT = --commit 值）
-  local c="$1" v="$2" sha ver prod tag
+  local c="$1" v="$2" sha ver prod tag remote_tag
   [[ "$c" == api ]] || err "tag --commit 只支援 api（ios 的 tag 由 shipped ios 依 ASC 物化）"
   sha="$(git -C "$ROOT" rev-parse --verify -q "${SHIPPED_COMMIT}^{commit}")" \
     || err "--commit ${SHIPPED_COMMIT} 不是有效的 commit"
   tag="$(tag_prefix api)${v}"
   git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
     && err "tag $tag 已存在（本地）；拒絕覆寫"
-  [[ -z "$(git -C "$ROOT" ls-remote --tags origin "refs/tags/$tag" 2>/dev/null)" ]] \
-    || err "tag $tag 已存在於 origin；拒絕覆寫"
+  remote_tag="$(git -C "$ROOT" ls-remote --tags origin "refs/tags/$tag" 2>/dev/null)" \
+    || err "git ls-remote origin 失敗；無法確認 tag $tag 是否已存在；fail-closed。"
+  [[ -z "$remote_tag" ]] || err "tag $tag 已存在於 origin；拒絕覆寫"
   ver="$(promote_version_at "$sha")"
   [[ "$ver" == "$v" ]] || err "${sha:0:12} 的 backend 版號是 ${ver}，非 ${v}；拒絕打錯版本的 tag"
   prod="$(remote_head_sha prod)" || exit $?
