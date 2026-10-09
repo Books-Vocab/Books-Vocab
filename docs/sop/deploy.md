@@ -153,7 +153,7 @@ launchctl bootout gui/$(id -u)/com.kg.log-retention
 
 **舊黃金原則**：`restart` 比 `deploy` 快 10 倍，只有代碼真的改了才 `deploy`。
 
-舊 Lightsail `deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate** → migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**。
+舊 Lightsail `deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate** → migrate → 容器內 health check → **追加 deploy.log** → **外部 smoke verify**。（舊流程；現行 standby deploy 不執行 env-drift）
 
 > 現役 standby `deploy` 內部流程見上方 §標準部署流程：`git pull --ff-only` → 寫 VERSION → `docker compose up -d --build --force-recreate` → health（`api/system/info`）→ 外部 smoke verify；migration 由 app 啟動自動跑，deploy 不再自動 backup/migrate。**force-recreate 仍在**——2026-06-19 retarget 時掉了，紅了 6.5 週才被發現並回補（IMP-0052）。**自動路徑（`ops/kg_reconcile.sh`）2026-08-04 起同樣兩處都帶此旗標**（deploy 與 rollback），理由與代價相同；少了它會每小時假回滾一次（IMP-0056）。代價是不進 image 的 commit 也會斷幾秒、且前一顆容器的 json-file log（`docker-logs` 看得到的範圍）會消失；換的是版本游標與容器自報值一致，smoke gate 與 Sentry release tag 都靠它。
 
@@ -171,13 +171,13 @@ launchctl bootout gui/$(id -u)/com.kg.log-retention
 2. `GET https://wordnexus.lol/api/health` — unauth 預期 401/403（受 `Depends(get_current_user)` 保護，代表 endpoint 存在 + auth 系統 wire 正常）。HTTP 404 = endpoint 從 router 消失，**視為跳過**而非失敗（保留向後相容空間）；HTTP 000/500 = 真的壞，失敗。
 3. `SENTRY_VERIFY=1` 時：`GET /api/system/sentry-test` — endpoint 是 admin-only，unauth 預期 401/403；若 endpoint 已被移除（404）則 fallback 檢查 `/api/system/info` body 是否含 `sentry` 欄位作為「DSN 已讀取」的存在性證據。
 
-任何一層失敗：紅字錯誤 + 自動印出容器最近 30 行 log + 非零 exit。`deploy.log` 已寫入（無回滾語意），需人工 `./devops.sh logs 100` + 決定是否 rollback。
+任何一層失敗：紅字錯誤 + 自動印出容器最近 30 行 log + 非零 exit。build 失敗、版本不對齊或 smoke 失敗時 `deploy.log` 不寫入、Sentry 也不記錄；需人工 `./devops.sh logs 100` + 決定是否 rollback。
 
 #### 控制 env
 
 | Env | 預設 | 用途 |
 |-----|------|------|
-| `KG_SKIP_SMOKE=1` | 0 | 完全跳過 smoke verify（緊急 deploy 用，不建議） |
+| `KG_SKIP_SMOKE=1` | 0 | 只跳過外部 smoke（CF → tunnel → host）；host 內 `/api/system/info` version == deploy_sha 對齊 gate 與 compose build 失敗仍為 fatal（緊急 deploy 用，不建議） |
 | `SENTRY_VERIFY=1` | 0 | 額外加做 sentry endpoint 探測 |
 | `SMOKE_BASE_URL` | `https://wordnexus.lol` | 改打 staging / 自訂 domain |
 | `CURL_BIN` | `curl` | 注入 mock curl（測試專用，見 `ops/tests/test_deploy_smoke.sh`） |
