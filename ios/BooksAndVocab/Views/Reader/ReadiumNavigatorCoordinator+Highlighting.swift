@@ -13,18 +13,11 @@ extension ReadiumNavigatorView.Coordinator {
     }
 
     func markVocabWords(_ words: [String]) {
-        guard !words.isEmpty else { return }
-
-        Task {
-            await GlobalDebouncer.shared.debounce(key: "markVocabWords", duration: ReaderMetrics.markVocabDebounceDuration) { [weak self] in
-                guard let self else { return }
-                await MainActor.run { self.emitMarkVocabWordsJS(words) }
-            }
-        }
+        vocabMarks.schedule(words)
     }
 
     @MainActor
-    private func emitMarkVocabWordsJS(_ words: [String]) {
+    func emitMarkVocabWordsJS(_ words: [String]) {
         guard let navigator = self.navigator else { return }
 
         let js = ReaderJSEval.markVocabWordsScript(words)
@@ -48,6 +41,7 @@ extension ReadiumNavigatorView.Coordinator {
     }
 
     func clearAllVocabHighlights() {
+        vocabMarks.discardAll()
         guard let navigator else { return }
         let js = """
         document.querySelectorAll('.vocab-word').forEach(function(el) {
@@ -67,6 +61,7 @@ extension ReadiumNavigatorView.Coordinator {
     }
 
     func removeVocabWord(_ word: String) {
+        vocabMarks.discard(word: word)
         invokeSingleWordBridge(word, jsFunction: "__removeVocabWord", label: "removeVocabWord", logMessage: "Removed vocab underline: \(word)")
     }
 
