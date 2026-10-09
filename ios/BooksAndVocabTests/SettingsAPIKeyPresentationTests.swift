@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 @testable import BooksAndVocab
 
@@ -59,21 +58,28 @@ struct SettingsAPIKeyListLoaderTests {
         #expect(loader.errorMessage == nil)
     }
 
-    @Test func superseded_in_flight_load_cannot_clear_loading_or_overwrite_newer_keys() async {
+    @Test func superseded_load_cannot_clear_loading_of_newer_in_flight_load() async {
         let loader = SettingsAPIKeyListLoader()
         let stale = SuspendedFetch()
         let staleLoad = Task { await loader.reload(hasProAccess: true) { try await stale.fetch() } }
         for _ in 0..<100 where !stale.started { await Task.yield() }
         #expect(stale.started)
 
-        // Entitlement flips false then true while the first fetch is still in flight.
-        staleLoad.cancel()
-        await loader.reload(hasProAccess: false) { [] }
-        await loader.reload(hasProAccess: true) { [self.key("new")] }
+        // A newer entitlement-driven reload starts while the first fetch is still in flight.
+        let newer = SuspendedFetch()
+        let newerLoad = Task { await loader.reload(hasProAccess: true) { try await newer.fetch() } }
+        for _ in 0..<100 where !newer.started { await Task.yield() }
+        #expect(newer.started)
 
+        // The superseded load completes first: it must publish nothing and must not clear
+        // the loading flag that belongs to the still in-flight newer load.
         stale.resume(returning: [key("old")])
         await staleLoad.value
+        #expect(loader.isLoading)
+        #expect(loader.keys.isEmpty)
 
+        newer.resume(returning: [key("new")])
+        await newerLoad.value
         #expect(loader.keys.map(\.keyId) == ["new"])
         #expect(!loader.isLoading)
         #expect(loader.errorMessage == nil)
