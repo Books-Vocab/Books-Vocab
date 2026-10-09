@@ -217,6 +217,21 @@ struct SettingsSheetPage {
         exact(.button, "settings.account.resetBoundary.resetButton")
     }
 
+    var resetConfirmButton: XCUIElement {
+        exact(.button, "settings.account.resetBoundary.confirm")
+    }
+
+    /// Reset is destructive: the row only opens a confirmation, nothing is
+    /// deleted until the confirm button is tapped.
+    func requestReset() {
+        resetButton.tapWhenReady()
+    }
+
+    func confirmReset() {
+        requestReset()
+        resetConfirmButton.tapWhenReady()
+    }
+
     var resetMessage: XCUIElement {
         exact(.staticText, "settings.account.resetBoundary.message")
     }

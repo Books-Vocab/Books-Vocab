@@ -310,7 +310,10 @@ final class SettingsFlowUITests: UITestCase {
         XCTAssertEqual(beforeIsLoggedIn, afterIsLoggedIn)
         let app = launchIsolatedApp(
             fixtures: [.settingsResetLifecycle],
-            extraEnvironment: ["KG_UI_TEST_SETTINGS_RESET_FAIL_ONCE": "1"],
+            extraEnvironment: [
+                "KG_UI_TEST_SETTINGS_RESET_FAIL_ONCE": "1",
+                "KG_UI_TEST_SETTINGS_RESET_SKIP_CONFIG_PUSH": "1"
+            ],
             perfLog: "settings-reset-counterexample"
         )
         let bookshelf = AppPage(app: app).goToBookshelf()
@@ -350,7 +353,11 @@ final class SettingsFlowUITests: UITestCase {
             hittable: true
         )
         captureStep("reset", app: app)
-        settings.resetButton.tapWhenReady()
+        // Tapping the row alone must only present the confirmation.
+        settings.requestReset()
+        XCTAssertTrue(settings.resetConfirmButton.waitUntilExists(timeout: 5))
+        XCTAssertEqual(settings.resetPhase.value as? String, "preReset", "no deletion before confirming")
+        settings.resetConfirmButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("failed", timeout: 10))
         _ = settings.assertExactlyOne(
             .staticText,
@@ -373,7 +380,7 @@ final class SettingsFlowUITests: UITestCase {
             visible: true,
             hittable: true
         )
-        settings.resetButton.tapWhenReady()
+        settings.confirmReset()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("succeeded", timeout: 10))
         XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardValue, timeout: 5))
         XCTAssertTrue(settings.resetBeforePreferences.waitUntilExists(timeout: 5))

@@ -1369,3 +1369,11 @@
 "addLink.offline.notice" = "You are offline. Linking or creating words needs a connection.";
 "addLink.offline.restored" = "Back online.";
 "addLink.offline.createReason" = "Offline: reconnect to create a new word.";
+
+/* Settings reset: confirmation, unsynced guard, server push (#2442 #2439) */
+"確定要重設本機資料？" = "Reset local data?";
+"尚有 %@ 未同步，重設後將永久遺失。" = "%@ not yet synced will be permanently lost after reset.";
+"放棄未同步並重設" = "Discard unsynced and reset";
+"未同步單字" = "Unsynced words";
+"尚有 %@ 未同步，已停止重設。請先同步，或確認放棄未同步資料。" = "%@ not yet synced, so the reset was stopped. Sync first, or confirm discarding the unsynced data.";
+"無法將預設設定同步到伺服器，本機資料未變動，請重試。" = "Could not sync the default settings to the server. Local data is unchanged; please try again.";

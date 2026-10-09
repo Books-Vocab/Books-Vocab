@@ -210,7 +210,18 @@ extension SettingsView {
                     await coordinator.resetLocalData(
                         authManager: authManager,
                         kgService: kgService,
-                        modelContext: modelContext
+                        modelContext: modelContext,
+                        acknowledgeUnsyncedLoss: false
+                    )
+                }
+            },
+            resetLocalDataDiscardingUnsynced: {
+                Task {
+                    await coordinator.resetLocalData(
+                        authManager: authManager,
+                        kgService: kgService,
+                        modelContext: modelContext,
+                        acknowledgeUnsyncedLoss: true
                     )
                 }
             }

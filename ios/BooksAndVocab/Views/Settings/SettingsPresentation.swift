@@ -415,12 +415,21 @@ struct SettingsResetLifecycle: Equatable {
         /// distinct from zero: an unreadable store must never look empty.
         let localCardCount: Int?
         let localCardCountError: String?
+        /// Rows not yet confirmed by the server (pending or failed sync).
+        /// Reset deletes them for good, so they gate the reset.
+        let unsyncedCardCount: Int
         let hasCustomPreferences: Bool
         let isLoggedIn: Bool
 
-        init(localCardCount: Int, hasCustomPreferences: Bool, isLoggedIn: Bool) {
+        init(
+            localCardCount: Int,
+            unsyncedCardCount: Int = 0,
+            hasCustomPreferences: Bool,
+            isLoggedIn: Bool
+        ) {
             self.localCardCount = localCardCount
             self.localCardCountError = nil
+            self.unsyncedCardCount = unsyncedCardCount
             self.hasCustomPreferences = hasCustomPreferences
             self.isLoggedIn = isLoggedIn
         }
@@ -432,6 +441,7 @@ struct SettingsResetLifecycle: Equatable {
         ) {
             self.localCardCount = nil
             self.localCardCountError = error
+            self.unsyncedCardCount = 0
             self.hasCustomPreferences = hasCustomPreferences
             self.isLoggedIn = isLoggedIn
         }
@@ -442,6 +452,10 @@ struct SettingsResetLifecycle: Equatable {
 
         var isResetComplete: Bool {
             isReadable && localCardCount == 0 && !hasCustomPreferences
+        }
+
+        var requiresUnsyncedAcknowledgement: Bool {
+            isReadable && unsyncedCardCount > 0
         }
     }
 
@@ -460,6 +474,21 @@ struct SettingsResetLifecycle: Equatable {
                 ? nil
                 : L10n.string("無法讀取本機資料，重設已停用。"),
             canRetry: before.isReadable
+        )
+    }
+
+    /// Reset stopped before deleting anything because unsynced rows exist; the
+    /// user can retry with an explicit acknowledgement.
+    static func blockedByUnsynced(before: Snapshot) -> Self {
+        .init(
+            phase: .preReset,
+            before: before,
+            after: before,
+            terminalMessage: L10n.format(
+                "尚有 %@ 未同步，已停止重設。請先同步，或確認放棄未同步資料。",
+                L10n.format("card_count_plural", Int64(before.unsyncedCardCount))
+            ),
+            canRetry: true
         )
     }
 
@@ -557,4 +586,6 @@ struct SettingsPresenterActions {
     var toggleSoundFeedback: (Bool) -> Void = { _ in }
     var toggleHapticFeedback: (Bool) -> Void = { _ in }
     var resetLocalData: () -> Void = {}
+    /// Reset after the user explicitly accepted losing rows that never synced.
+    var resetLocalDataDiscardingUnsynced: () -> Void = {}
 }

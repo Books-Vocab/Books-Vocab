@@ -53,8 +53,9 @@ private struct SettingsConfigurationPayloadError: LocalizedError {
     ) -> SettingsResetLifecycle.Snapshot
     func resetLocalData(
         authManager: any AuthManaging,
-        kgService: any LocalDataResetting,
-        modelContext: ModelContext
+        kgService: any LocalDataResetting & UserConfigServing,
+        modelContext: ModelContext,
+        acknowledgeUnsyncedLoss: Bool
     ) async
     func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator) async -> Bool
 }
@@ -75,6 +76,9 @@ final class SettingsCoordinator: SettingsCoordinating {
     var deleteAccountError: String?
     var configurationIssue: SettingsConfigurationIssue? = nil
     var resetLifecycle: SettingsResetLifecycle?
+    /// Auth identity that produced `resetLifecycle`, so another account never
+    /// inherits that account's terminal card or stale before-snapshot.
+    private var resetOwnerUserID: String?
     var manualLoginUserId = ""
     var debugLocalServerURL = ""
     var observationPreviewLines: [String] = []
@@ -168,7 +172,10 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// Clear transient UI owned by the previous auth identity before loading
     /// the next one. Persistent preferences and server-backed settings are
     /// reloaded by `loadData`; only the leaf sync presentation belongs here.
-    func resetForAccountBoundary() {
+    func resetForAccountBoundary(authManager: (any AuthManaging)? = nil) {
+        if let authManager {
+            reconcileResetLifecycle(currentUserID: authenticatedUserID(authManager))
+        }
         activeResyncTask?.cancel()
         activeResyncTask = nil
         activeResyncTaskID &+= 1
@@ -204,6 +211,25 @@ final class SettingsCoordinator: SettingsCoordinating {
         }
 #endif
         syncProgress.reset()
+    }
+
+    /// A different signed-in account drops the previous account's reset card.
+    /// A logout keeps it (the signed-out surface does not render it) but
+    /// releases ownership, so any later sign-in, even the same account, starts
+    /// from a fresh snapshot.
+    private func reconcileResetLifecycle(currentUserID: String?) {
+        guard resetLifecycle != nil else {
+            resetOwnerUserID = nil
+            return
+        }
+        guard let currentUserID else {
+            resetOwnerUserID = nil
+            return
+        }
+        if resetOwnerUserID != currentUserID {
+            resetLifecycle = nil
+            resetOwnerUserID = nil
+        }
     }
 
     func loadData(
@@ -598,27 +624,60 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// the terminal boundary instead of disappearing during logout cleanup.
     func resetLocalData(
         authManager: any AuthManaging,
-        kgService: any LocalDataResetting,
-        modelContext: ModelContext
+        kgService: any LocalDataResetting & UserConfigServing,
+        modelContext: ModelContext,
+        acknowledgeUnsyncedLoss: Bool = false
     ) async {
         guard authManager.isLoggedIn,
               resetLifecycle?.phase != .resetting
         else { return }
 
-        let lifecycleBefore = resetLifecycle?.before
-            ?? readResetSnapshot(authManager: authManager, modelContext: modelContext)
+        let requestGeneration = accountGeneration
+        let ownerUserID = authenticatedUserID(authManager)
+        // A failed attempt keeps its original before-snapshot so the
+        // before/after pair stays meaningful across retries; every other
+        // phase re-reads, since unsynced rows may have synced meanwhile.
+        let lifecycleBefore = resetLifecycle?.phase == .failed
+            ? (resetLifecycle?.before ?? readResetSnapshot(authManager: authManager, modelContext: modelContext))
+            : readResetSnapshot(authManager: authManager, modelContext: modelContext)
         guard lifecycleBefore.isReadable else {
             resetLifecycle = .preReset(before: lifecycleBefore)
+            resetOwnerUserID = ownerUserID
+            return
+        }
+        if lifecycleBefore.requiresUnsyncedAcknowledgement, !acknowledgeUnsyncedLoss {
+            resetLifecycle = .blockedByUnsynced(before: lifecycleBefore)
+            resetOwnerUserID = ownerUserID
             return
         }
         let pending = SettingsResetLifecycle.preReset(before: lifecycleBefore).resetting()
         resetLifecycle = pending
+        resetOwnerUserID = ownerUserID
+
+        // Server first: a failed push aborts before any local mutation, so
+        // there is nothing to roll back and a retry starts clean.
+        if ownerUserID != nil {
+            do {
+                try await resetStateStore.pushDefaultPreferences(to: kgService)
+            } catch {
+                guard requestGeneration == accountGeneration else { return }
+                AppLog.kg.error("Settings reset default-config push failed: \(error.localizedDescription)")
+                resetLifecycle = pending.failed(
+                    after: lifecycleBefore,
+                    message: L10n.string("無法將預設設定同步到伺服器，本機資料未變動，請重試。")
+                )
+                return
+            }
+            guard requestGeneration == accountGeneration else { return }
+        }
 
         do {
             try await kgService.clearLocalData(
                 container: modelContext.container,
                 reason: "settings_reset_local_data"
             )
+            // Another account may own the preference namespaces by now.
+            guard requestGeneration == accountGeneration else { return }
             resetStateStore.resetPreferences()
             let after = readResetSnapshot(authManager: authManager, modelContext: modelContext)
             guard after.isResetComplete else {
@@ -630,6 +689,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 message: L10n.string("本機資料與設定已重設。")
             )
         } catch {
+            guard requestGeneration == accountGeneration else { return }
             AppLog.kg.error("Settings local reset failed: \(error.localizedDescription)")
             let after: SettingsResetLifecycle.Snapshot
             if let incomplete = error as? SettingsResetIncompleteError {

@@ -14,6 +14,9 @@ protocol SettingsResetStorePort: AnyObject {
         modelContext: ModelContext
     ) -> SettingsResetLifecycle.Snapshot
     func resetPreferences()
+    /// Push the default review/auto-link configs so the server and other
+    /// devices converge with the local reset instead of out-voting it later.
+    func pushDefaultPreferences(to configService: any UserConfigServing) async throws
 }
 
 @MainActor
@@ -29,8 +32,14 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
                 $0.isArchived == false
             })
             let localCardCount = try modelContext.fetch(descriptor).count
+            // Every row reset deletes that the server has not confirmed:
+            // pending (0) or failed (2), including queued deletes/archives.
+            let unsyncedCardCount = try modelContext.fetchCount(
+                FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.syncStatus != 1 })
+            )
             return .init(
                 localCardCount: localCardCount,
+                unsyncedCardCount: unsyncedCardCount,
                 hasCustomPreferences: hasCustomPreferences,
                 isLoggedIn: authManager.isLoggedIn
             )
@@ -56,6 +65,39 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
         AutoLinkSettingsStore.shared.setEnabled(true)
         FeedbackSettingsStore.shared.setSoundFeedbackEnabled(false)
         FeedbackSettingsStore.shared.setHapticFeedbackEnabled(true)
+    }
+
+    /// Stamps every config with one fresh `updated_at` so the defaults win LWW
+    /// on the server and on the user's other devices.
+    static func pushDefaultPreferences(to configService: any UserConfigServing) async throws {
+        let stamp = Date().timeIntervalSince1970
+        let defaults = ReviewSettings.default
+        _ = try await configService.updateReviewModeConfig(
+            KGReviewModeConfig(
+                mode: defaults.mode.rawValue,
+                custom_initial_interval_hours: defaults.customInitialIntervalHours,
+                custom_remembered_multiplier: defaults.customRememberedMultiplier,
+                custom_forgot_multiplier: defaults.customForgotMultiplier,
+                custom_minimum_interval_hours: defaults.customMinimumIntervalHours,
+                custom_maximum_interval_hours: defaults.customMaximumIntervalHours,
+                updated_at: stamp
+            )
+        )
+        _ = try await configService.updateReviewClockConfig(
+            KGReviewClockConfig(is_paused: false, paused_at: nil, updated_at: stamp)
+        )
+        _ = try await configService.updateAutoLinkConfig(
+            KGAutoLinkConfig(enabled: true, updated_at: stamp)
+        )
+    }
+
+    func pushDefaultPreferences(to configService: any UserConfigServing) async throws {
+#if DEBUG
+        // UI-test worlds have no reachable config server; the push itself is
+        // covered by unit tests, so the reset-lifecycle UI flow opts out.
+        if ProcessInfo.processInfo.environment["KG_UI_TEST_SETTINGS_RESET_SKIP_CONFIG_PUSH"] == "1" { return }
+#endif
+        try await Self.pushDefaultPreferences(to: configService)
     }
 
     private var hasCustomPreferences: Bool {
