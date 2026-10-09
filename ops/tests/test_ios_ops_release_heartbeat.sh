@@ -1,28 +1,64 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_DIR="$ROOT/ops"
 secret='super-secret-review-token'
 tmp="$(mktemp -d)"
+# Isolate the machine-global task registry so parallel runs and other lanes
+# cannot make the heartbeat wait on a shared lock (#2671).
+export KG_TASK_REGISTRY_PATH="$tmp/task_registry.json"
 trap 'rm -rf "$tmp"' EXIT
+# A bare `set -e` assertion would otherwise exit silently (issue #2671). Report
+# the failing command and every captured stream, with the secret redacted.
+trap 'echo "FAILED line $LINENO: ${BASH_COMMAND//$secret/[REDACTED]}" >&2
+  for f in "$tmp"/*.stderr "$tmp"/stderr; do
+    [[ -f "$f" ]] || continue
+    echo "--- ${f##*/} ---" >&2
+    sed "s/$secret/[REDACTED]/g" "$f" >&2
+  done' ERR
 
 # shellcheck source=../lib/ios_ops_core.sh
 source "$ROOT/ops/lib/ios_ops_core.sh"
 
+# The child stays alive until the test has seen a live heartbeat. A fixed sleep
+# races the machine-global task-registry lock: under contention the child can
+# finish before the runner ever heartbeats (#2671).
 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
   ios_ops_stream_capture release-fixture \
-    bash -c 'sleep 2; printf '\''{"status":"pass"}\n'\''' _ \
-    "$secret" >"$tmp/stdout" 2>"$tmp/stderr"
+    bash -c 'for _ in $(seq 3000); do [[ -e "$2" ]] && break; sleep 0.1; done; printf '\''{"status":"pass"}\n'\''' _ \
+    "$secret" "$tmp/release" >"$tmp/stdout" 2>"$tmp/stderr" &
+capture_pid=$!
+for _ in $(seq 300); do
+  grep -qE 'phase=heartbeat .* alive=true' "$tmp/stderr" 2>/dev/null && break
+  sleep 0.1
+done
+if ! grep -qE 'phase=heartbeat .* alive=true' "$tmp/stderr" 2>/dev/null; then
+  kill "$capture_pid" 2>/dev/null || true
+  echo "no heartbeat within 30s; captured stderr (secret redacted):" >&2
+  sed "s/$secret/[REDACTED]/g" "$tmp/stderr" >&2
+  exit 1
+fi
+: >"$tmp/release"
+wait "$capture_pid"
 
 jq -e '.status == "pass"' "$tmp/stdout" >/dev/null
 [[ "$(wc -l <"$tmp/stdout" | tr -d ' ')" == "1" ]]
-grep -qE 'source=release-fixture phase=start elapsed=0\.0s pid=not-spawned alive=false argCount=[0-9]+' "$tmp/stderr"
-grep -qE 'source=release-fixture phase=spawned elapsed=[0-9.]+s pid=[0-9]+ alive=true' "$tmp/stderr"
-grep -qE 'source=release-fixture phase=heartbeat elapsed=[0-9.]+s pid=[0-9]+ alive=true' "$tmp/stderr"
-grep -qE 'source=release-fixture phase=done elapsed=[0-9.]+s pid=[0-9]+ alive=false rc=0' "$tmp/stderr"
+expect_progress() {
+  local pattern="$1" file="$2"
+  if ! grep -qE -- "$pattern" "$file"; then
+    echo "missing progress line /$pattern/; captured stderr (secret redacted):" >&2
+    sed "s/$secret/[REDACTED]/g" "$file" >&2
+    exit 1
+  fi
+}
+expect_progress 'source=release-fixture phase=start elapsed=0\.0s pid=not-spawned alive=false argCount=[0-9]+' "$tmp/stderr"
+expect_progress 'source=release-fixture phase=spawned elapsed=[0-9.]+s pid=[0-9]+ alive=true' "$tmp/stderr"
+expect_progress 'source=release-fixture phase=heartbeat elapsed=[0-9.]+s pid=[0-9]+ alive=true' "$tmp/stderr"
+expect_progress 'source=release-fixture phase=done elapsed=[0-9.]+s pid=[0-9]+ alive=false rc=0' "$tmp/stderr"
 if grep -qF "$secret" "$tmp/stderr"; then
-  echo "raw argv leaked to progress stderr" >&2
+  echo "raw argv leaked to progress stderr; captured stderr (secret redacted):" >&2
+  sed "s/$secret/[REDACTED]/g" "$tmp/stderr" >&2
   exit 1
 fi
 
@@ -135,8 +171,8 @@ fi
 
 # A provider timeout remains structured, and its runner-enforced rc=124 is
 # preserved without corrupting workflow JSON or silently falling back to a
-# mutation. Keep the budget above task-registry startup so the deadline reaches
-# the live child process rather than expiring before it has a process group.
+# mutation. The 5s budget sits above task-registry startup so the deadline
+# reaches the live child process; the 30s fixture delay only needs to outlast it.
 printf '9\n' >"$fixture/project-settings.rc"
 KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.02 \
@@ -146,9 +182,9 @@ jq -e '.schema == "kg.ios.workflow.v1" and .version == "unknown"' "$tmp/nonzero.
 grep -q 'source=workflow-project-settings phase=done .* rc=9' "$tmp/nonzero.stderr"
 rm "$fixture/project-settings.rc"
 
-printf '2\n' >"$fixture/asc-versions.delay"
+printf '30\n' >"$fixture/asc-versions.delay"
 KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
-KG_IOS_OPS_ASC_TIMEOUT_SECONDS=1 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
+KG_IOS_OPS_ASC_TIMEOUT_SECONDS=5 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
 KG_IOS_OPS_RELEASE_SOURCE_SECRET_FIXTURE="$secret" \
   bash "$ROOT/ops/ios_ops.sh" workflow release --json \
   >"$tmp/timeout.json" 2>"$tmp/timeout.stderr"

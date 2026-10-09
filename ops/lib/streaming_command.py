@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import math
 import os
 import queue
@@ -74,6 +75,11 @@ def _child_env(env: dict[str, str] | None) -> dict[str, str]:
     return resolved
 
 
+# Identity read retry budget: 20 x 10ms = 200ms worst case in the spawn path.
+_IDENTITY_RETRY_ATTEMPTS = 20
+_IDENTITY_RETRY_DELAY_SECONDS = 0.01
+
+
 def _terminate_process_group(
     proc: subprocess.Popen[bytes], timeout: float = 5.0
 ) -> None:
@@ -81,6 +87,21 @@ def _terminate_process_group(
     try:
         os.killpg(proc.pid, signal.SIGTERM)
     except ProcessLookupError:
+        proc.wait()
+        return
+    except PermissionError:
+        # EPERM from a zombie leader is harmless; from a live one the group
+        # signal failed, so fall back to the child itself with a bounded wait.
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        # Best-effort group KILL so descendants cannot hold inherited pipes open;
+        # EPERM/ESRCH here mean the group is unreachable or already gone.
+        with contextlib.suppress(PermissionError, ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
         proc.wait()
         return
 
@@ -197,6 +218,14 @@ def run_streamed_command(
         )
         raise
     start_identity = process_start_identity(proc.pid)
+    # A child caught mid-exit can fail the OS identity query while poll() still
+    # reports it alive (the 2/8 `exit 9` flake of #2671).  Retry briefly; a real
+    # identity failure still falls through to the fail-closed branch below.
+    for _ in range(_IDENTITY_RETRY_ATTEMPTS):
+        if start_identity is not None or proc.poll() is not None:
+            break
+        time.sleep(_IDENTITY_RETRY_DELAY_SECONDS)
+        start_identity = process_start_identity(proc.pid)
     # ``start_new_session=True`` makes the child's PGID equal its PID.  The
     # leader may exit between Popen and this read (common for `locale` or
     # `exit 124`), in which case an exact-PID OS query is already impossible.
