@@ -135,4 +135,19 @@ make_meta "$reachable" "$(git rev-parse HEAD)"
 run_capture "$TMP/reachable.out" ./ops/docs_lint.sh --files "$reachable"
 require_grep "ERROR: 0" "$TMP/reachable.out"
 
+
+# #2820: scratch files live in a private mktemp dir cleaned by an EXIT trap,
+# never at predictable /tmp paths.
+if grep -n '/tmp/kg_docs_' ops/docs_lint.sh; then
+  echo "docs_lint.sh still uses fixed /tmp/kg_docs_* paths" >&2
+  exit 1
+fi
+mkdir "$TMP/scratch"
+TMPDIR="$TMP/scratch" run_capture "$TMP/scratch.out" ./ops/docs_lint.sh --files docs/reference/tech_index.md
+if [ -n "$(ls -A "$TMP/scratch")" ]; then
+  echo "docs_lint.sh leaked scratch files into TMPDIR:" >&2
+  ls -A "$TMP/scratch" >&2
+  exit 1
+fi
+
 echo "docs-lint tests: PASS"
