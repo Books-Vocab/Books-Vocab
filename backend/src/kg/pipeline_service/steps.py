@@ -10,6 +10,7 @@ from openai import OpenAIError
 
 from ..exceptions import QuotaExceededError
 from ..ops_cli_shared import _normalize_persisted_bool
+from ..text_utils import normalize_nfc_lower
 from ..types import UserRecord
 from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
@@ -105,7 +106,7 @@ def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
         if clean is None:
             skipped += 1
         else:
-            result_map[clean["word"].lower()] = clean
+            result_map[normalize_nfc_lower(clean["word"])] = clean
     return result_map, skipped
 
 
@@ -146,6 +147,8 @@ async def _step_enrich(
     )
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
+    batch_errors: list[str] = []
+    got_results = False
 
     # aclosing: a consumer-side failure (e.g. SQLite busy in batch_update) must
     # shut the stream's executor down now, not at GC, and before _run_step's
@@ -156,14 +159,16 @@ async def _step_enrich(
         async for msg in stream:
             if msg.get("status") == "error":
                 logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
+                batch_errors.append(str(msg.get("detail")))
 
             if msg.get("results"):
+                got_results = True
                 result_map, skipped = _index_enrichment_results(msg["results"])
                 if skipped:
                     logger.warning("[%s] Skipped %d malformed enrichment items", uid, skipped)
                 batch_updates: list[tuple[str, dict]] = []
                 for card in targets:
-                    enrichment = result_map.get(card.content.lower())
+                    enrichment = result_map.get(normalize_nfc_lower(card.content))
                     if not enrichment:
                         continue
                     kwargs: dict[str, Any] = {}
@@ -184,6 +189,8 @@ async def _step_enrich(
                 if batch_updates:
                     updated += cards.batch_update(batch_updates)
 
+    if batch_errors and not got_results:
+        raise RuntimeError(f"Enrich failed for all batches: {batch_errors[0]}")
     logger.info("[%s] Enriched %d cards", uid, updated)
     return updated
 

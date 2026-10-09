@@ -1110,3 +1110,29 @@ def test_step_enrich_closes_stream_when_consumer_raises(monkeypatch):
         assert closed == [True]
 
     asyncio.run(run())
+
+
+def test_step_enrich_raises_when_all_batches_error(monkeypatch):
+    """An error terminal with zero results must fail the step, not record ok/0."""
+    import kg.enrich as enrich_mod
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {"status": "error", "detail": "provider down"}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    with pytest.raises(RuntimeError, match="provider down"):
+        asyncio.run(_run_step_enrich("u_allerr", _CardsRecordingUpdates(), _RecLogger()))
+
+
+def test_step_enrich_matches_nfc_and_whitespace_variants(monkeypatch):
+    """Result word differing by NFC form / surrounding whitespace still updates its card."""
+    import kg.enrich as enrich_mod
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [{"word": "  Café ", "pos": "n.", "note": "n"}]}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    cards = _CardsRecordingUpdates()
+    cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None)]
+    updated = asyncio.run(_run_step_enrich("u_nfc", cards, _RecLogger()))
+    assert updated == 1
