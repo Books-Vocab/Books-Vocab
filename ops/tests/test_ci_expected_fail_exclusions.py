@@ -160,3 +160,30 @@ def test_coverage_gate_registers_the_expected_fail_test() -> None:
     dispatcher = (ROOT / "ops/test_ops.sh").read_text()
     section = dispatcher.split("ops-ci-coverage)", 1)[1].split(";;", 1)[0]
     assert "ops/tests/test_ci_expected_fail_exclusions.py" in section
+
+
+def test_a_runner_exiting_64_is_a_tool_error_not_an_expected_failure(
+    tmp_path: Path,
+) -> None:
+    runner = make_runner(tmp_path, 64)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
+    assert_runner_tool_error(result)
+    assert "如預期失敗" not in result.stdout
+
+
+def test_an_inconclusive_runner_exit_75_is_a_tool_error(tmp_path: Path) -> None:
+    runner = make_runner(tmp_path, 75)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
+    assert_runner_tool_error(result)
+    assert "如預期失敗" not in result.stdout
+
+
+def test_an_unknown_test_group_message_is_a_tool_error_even_at_exit_1(
+    tmp_path: Path,
+) -> None:
+    runner = tmp_path / "unknown-group-runner.sh"
+    runner.write_text('#!/bin/sh\necho "✗ unknown test group: $1" >&2\nexit 1\n')
+    runner.chmod(runner.stat().st_mode | stat.S_IXUSR)
+    result = run("./ops/ci_expected_fail_exclusions.sh", env=fixture_env(runner))
+    assert_runner_tool_error(result)
+    assert "如預期失敗" not in result.stdout
