@@ -34,6 +34,8 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
             let localCardCount = try modelContext.fetch(descriptor).count
             // Every row reset deletes that the server has not confirmed:
             // pending (0) or failed (2), including queued deletes/archives.
+            // Cards only: unsynced notebooks (reset deletes them too) are not
+            // counted, as the warning copy and count are card-denominated.
             let unsyncedCardCount = try modelContext.fetchCount(
                 FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.syncStatus != 1 })
             )
@@ -67,7 +69,7 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
         FeedbackSettingsStore.shared.setHapticFeedbackEnabled(true)
     }
 
-    /// Stamps every config with one fresh `updated_at` so the defaults win LWW
+    /// Stamps every server-synced config (review, clock, auto-link, translation) with one fresh `updated_at` so the defaults win LWW
     /// on the server and on the user's other devices.
     static func pushDefaultPreferences(to configService: any UserConfigServing) async throws {
         let stamp = Date().timeIntervalSince1970
@@ -88,6 +90,13 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
         )
         _ = try await configService.updateAutoLinkConfig(
             KGAutoLinkConfig(enabled: true, updated_at: stamp)
+        )
+        _ = try await configService.updateTranslationConfig(
+            KGTranslationConfig(
+                source_lang: TranslationLanguage.en.rawValue,
+                target_lang: TranslationLanguage.zhHant.rawValue,
+                updated_at: stamp
+            )
         )
     }
 

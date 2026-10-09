@@ -139,7 +139,7 @@ struct SettingsAccountDetailView: View {
             SettingsSectionHeader(title: L10n.string("危險操作"), icon: "exclamationmark.triangle")
 
             if let resetLifecycle = danger.resetLifecycle {
-                resetBoundaryCard(resetLifecycle)
+                resetBoundaryCard(resetLifecycle, confirmation: danger.currentSnapshot ?? resetLifecycle.before)
             }
 
             VocabStateMessageCard(
@@ -174,7 +174,7 @@ struct SettingsAccountDetailView: View {
         .accessibilityIdentifier("settings.account.dangerGroup")
     }
 
-    private func resetBoundaryCard(_ lifecycle: SettingsResetLifecycle) -> some View {
+    private func resetBoundaryCard(_ lifecycle: SettingsResetLifecycle, confirmation: SettingsResetLifecycle.Snapshot) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             HStack(spacing: appSkin.spacing.controlGap) {
                 Image(systemName: resetSystemImage(for: lifecycle.phase))
@@ -242,7 +242,7 @@ struct SettingsAccountDetailView: View {
                 isPresented: $showResetConfirmation,
                 titleVisibility: .visible
             ) {
-                let discardsUnsynced = lifecycle.before.requiresUnsyncedAcknowledgement
+                let discardsUnsynced = confirmation.requiresUnsyncedAcknowledgement
                 Button(
                     discardsUnsynced ? L10n.string("放棄未同步並重設") : L10n.string("重設本機資料"),
                     role: .destructive
@@ -256,10 +256,10 @@ struct SettingsAccountDetailView: View {
                 .accessibilityIdentifier("settings.account.resetBoundary.confirm")
                 Button(L10n.string("取消"), role: .cancel) {}
             } message: {
-                if lifecycle.before.requiresUnsyncedAcknowledgement {
+                if confirmation.requiresUnsyncedAcknowledgement {
                     Text(L10n.format(
                         "尚有 %@ 未同步，重設後將永久遺失。",
-                        L10n.format("card_count_plural", Int64(lifecycle.before.unsyncedCardCount))
+                        L10n.format("card_count_plural", Int64(confirmation.unsyncedCardCount))
                     ))
                 } else {
                     Text(resetDescription(for: .preReset))

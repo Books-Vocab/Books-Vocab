@@ -634,19 +634,20 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         let requestGeneration = accountGeneration
         let ownerUserID = authenticatedUserID(authManager)
-        // A failed attempt keeps its original before-snapshot so the
-        // before/after pair stays meaningful across retries; every other
-        // phase re-reads, since unsynced rows may have synced meanwhile.
+        // The unsynced gate always reads fresh: rows created after a failed
+        // attempt must be acknowledged too. Only a failed retry keeps its
+        // original `before` for the before/after display.
+        let fresh = readResetSnapshot(authManager: authManager, modelContext: modelContext)
         let lifecycleBefore = resetLifecycle?.phase == .failed
-            ? (resetLifecycle?.before ?? readResetSnapshot(authManager: authManager, modelContext: modelContext))
-            : readResetSnapshot(authManager: authManager, modelContext: modelContext)
-        guard lifecycleBefore.isReadable else {
-            resetLifecycle = .preReset(before: lifecycleBefore)
+            ? (resetLifecycle?.before ?? fresh)
+            : fresh
+        guard fresh.isReadable else {
+            resetLifecycle = .preReset(before: fresh)
             resetOwnerUserID = ownerUserID
             return
         }
-        if lifecycleBefore.requiresUnsyncedAcknowledgement, !acknowledgeUnsyncedLoss {
-            resetLifecycle = .blockedByUnsynced(before: lifecycleBefore)
+        if fresh.requiresUnsyncedAcknowledgement, !acknowledgeUnsyncedLoss {
+            resetLifecycle = .blockedByUnsynced(before: fresh)
             resetOwnerUserID = ownerUserID
             return
         }

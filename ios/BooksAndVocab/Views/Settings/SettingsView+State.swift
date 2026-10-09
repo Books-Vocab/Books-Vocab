@@ -53,6 +53,10 @@ extension SettingsView {
         coordinator.readResetSnapshot(authManager: authManager, modelContext: modelContext)
     }
 
+    func resetCardLifecycle(fresh: SettingsResetLifecycle.Snapshot) -> SettingsResetLifecycle {
+        coordinator.resetLifecycle?.refreshed(with: fresh) ?? .preReset(before: fresh)
+    }
+
     var presenterState: SettingsPresenterState {
         let pro = subscriptionManager.entitlements.pro
         return SettingsPresenterState(
@@ -133,7 +137,8 @@ extension SettingsView {
             danger: authManager.isLoggedIn
                 ? .init(
                     isDeletingAccount: coordinator.isDeletingAccount,
-                    resetLifecycle: coordinator.resetLifecycle ?? .preReset(before: resetBeforeSnapshot)
+                    resetLifecycle: resetCardLifecycle(fresh: resetBeforeSnapshot),
+                    currentSnapshot: resetBeforeSnapshot
                 )
                 : nil
         )

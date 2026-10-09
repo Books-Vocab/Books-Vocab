@@ -377,10 +377,19 @@ struct SettingsPresenterState {
     struct DangerSection {
         let isDeletingAccount: Bool
         let resetLifecycle: SettingsResetLifecycle?
+        /// Fresh read of local state for the confirmation dialog, so a retry
+        /// never reasons from a stale before-snapshot. `nil` falls back to the
+        /// lifecycle's own `before`.
+        let currentSnapshot: SettingsResetLifecycle.Snapshot?
 
-        init(isDeletingAccount: Bool, resetLifecycle: SettingsResetLifecycle? = nil) {
+        init(
+            isDeletingAccount: Bool,
+            resetLifecycle: SettingsResetLifecycle? = nil,
+            currentSnapshot: SettingsResetLifecycle.Snapshot? = nil
+        ) {
             self.isDeletingAccount = isDeletingAccount
             self.resetLifecycle = resetLifecycle
+            self.currentSnapshot = currentSnapshot
         }
     }
 
@@ -490,6 +499,13 @@ struct SettingsResetLifecycle: Equatable {
             ),
             canRetry: true
         )
+    }
+
+    /// A blocked card goes stale once the user syncs. Re-derive it from a
+    /// fresh snapshot; every other phase keeps its recorded before/after pair.
+    func refreshed(with fresh: Snapshot) -> Self {
+        guard phase == .preReset, before.requiresUnsyncedAcknowledgement, fresh.isReadable else { return self }
+        return fresh.requiresUnsyncedAcknowledgement ? .blockedByUnsynced(before: fresh) : .preReset(before: fresh)
     }
 
     func resetting() -> Self {

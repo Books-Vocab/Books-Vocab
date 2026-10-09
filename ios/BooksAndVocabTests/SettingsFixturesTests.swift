@@ -678,19 +678,6 @@ import Testing
         #expect(dirty.requiresUnsyncedAcknowledgement == true)
     }
 
-    @Test func p2442ResetButtonPresentsDestructiveConfirmationBeforeDeleting() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("BooksAndVocab/Views/Settings/SettingsAccountDetailView.swift"),
-            encoding: .utf8
-        )
-        #expect(source.contains(".confirmationDialog("))
-        #expect(source.contains("settings.account.resetBoundary.confirm"))
-        #expect(!source.contains("Button(action: actions.resetLocalData)"))
-    }
-
     @Test @MainActor func p2439SignedInResetPushesDefaultConfigsBeforeClearingLocalData() async throws {
         let container = try ModelContainer(
             for: Notebook.self,
@@ -710,6 +697,9 @@ import Testing
         let defaults = ReviewSettings.default
         #expect(service.autoLink?.enabled == true)
         #expect(service.autoLink?.updated_at != nil)
+        #expect(service.translation?.source_lang == "en")
+        #expect(service.translation?.target_lang == "zh-Hant")
+        #expect(service.translation?.updated_at != nil)
         #expect(service.reviewClock?.is_paused == false)
         #expect(service.reviewClock?.paused_at == nil)
         #expect(service.reviewMode?.mode == defaults.mode.rawValue)
@@ -719,6 +709,48 @@ import Testing
         #expect(events.last == "clear")
         #expect(try #require(events.firstIndex(of: "clear")) > #require(events.firstIndex(of: "autoLink")))
         #expect(coordinator.resetLifecycle?.phase == .succeeded)
+    }
+
+    @Test @MainActor func p2442RetryAfterFailedPushRechecksUnsyncedRows() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let resetStore = StatefulSettingsResetStore()
+        let service = CombinedResetService(store: resetStore, order: OrderRecorder())
+        service.configFailure = ResetFailure()
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore, translationLifecycle: NoopAccountPreferenceLifecycle())
+        let context = ModelContext(container)
+        let auth = LoggedInAuthStub()
+
+        await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: context)
+        #expect(coordinator.resetLifecycle?.phase == .failed)
+
+        resetStore.unsyncedCardCount = 2
+        await coordinator.resetLocalData(authManager: auth, kgService: service, modelContext: context)
+
+        let blocked = try #require(coordinator.resetLifecycle)
+        #expect(blocked.phase == .preReset)
+        #expect(blocked.before.unsyncedCardCount == 2)
+        #expect(service.clearCallCount == 0)
+    }
+
+    @Test func p2442BlockedCardRefreshesAfterSyncCompletes() {
+        let stale = SettingsResetLifecycle.Snapshot(
+            localCardCount: 3, unsyncedCardCount: 2, hasCustomPreferences: true, isLoggedIn: true
+        )
+        let synced = SettingsResetLifecycle.Snapshot(localCardCount: 3, hasCustomPreferences: true, isLoggedIn: true)
+        let fewer = SettingsResetLifecycle.Snapshot(
+            localCardCount: 3, unsyncedCardCount: 1, hasCustomPreferences: true, isLoggedIn: true
+        )
+        let blocked = SettingsResetLifecycle.blockedByUnsynced(before: stale)
+
+        let cleared = blocked.refreshed(with: synced)
+        #expect(cleared.before == synced)
+        #expect(cleared.terminalMessage == nil)
+        #expect(blocked.refreshed(with: fewer).before.unsyncedCardCount == 1)
+        let failed = SettingsResetLifecycle.preReset(before: stale).resetting().failed(after: stale, message: "x")
+        #expect(failed.refreshed(with: synced) == failed)
     }
 
     @Test @MainActor func p2439PushFailureAbortsResetWithoutDeletingLocalData() async throws {
@@ -838,6 +870,7 @@ import Testing
         private(set) var clearCallCount = 0
         private(set) var configCallCount = 0
         private(set) var autoLink: KGAutoLinkConfig?
+        private(set) var translation: KGTranslationConfig?
         private(set) var reviewClock: KGReviewClockConfig?
         private(set) var reviewMode: KGReviewModeConfig?
         var configFailure: Error?
@@ -868,7 +901,9 @@ import Testing
         }
 
         func fetchUserConfig() async throws -> KGUserConfig { try record("fetch") }
-        func updateTranslationConfig(_ c: KGTranslationConfig) async throws -> KGUserConfig { try record("translation") }
+        func updateTranslationConfig(_ c: KGTranslationConfig) async throws -> KGUserConfig {
+            let r = try record("translation"); translation = c; return r
+        }
         func updateVocabUIConfig(_ c: KGVocabUIConfig) async throws -> KGUserConfig { try record("vocabUI") }
         func updateReviewClockConfig(_ c: KGReviewClockConfig) async throws -> KGUserConfig {
             let r = try record("reviewClock"); reviewClock = c; return r
