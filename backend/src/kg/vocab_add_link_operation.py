@@ -254,6 +254,26 @@ def create_operation(
         return _select(operation_id) or {}, True
 
 
+def find_operation(*, user_id: str, idempotency_key: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the stored operation for this key, or ``None``; a changed payload conflicts.
+
+    Lets a replay be answered before any live-state validation (e.g. source card
+    lookup) that may have changed since the original admission.
+    """
+    with _lock:
+        row = (
+            _get_conn()
+            .execute(f"{_SELECT} WHERE user_id = ? AND idempotency_key = ?", (user_id, idempotency_key))
+            .fetchone()
+        )
+    if row is None:
+        return None
+    existing = _row_to_dict(row)
+    if existing["request_hash"] != _request_hash(payload):
+        raise IdempotencyConflict("Idempotency-Key was reused with a different request")
+    return existing
+
+
 def get_operation(user_id: str, operation_id: str) -> dict[str, Any] | None:
     with _lock:
         return _select(operation_id, user_id)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -98,12 +99,30 @@ def _merge_card_review_state(
     )
 
 
+def _coalesce_entries(existing: ReviewStateEntry, entry: ReviewStateEntry) -> ReviewStateEntry:
+    """Combine two entries for one logical card: newest schedule, max counts."""
+    entry_last = _clamp_last_reviewed(parse_datetime(entry.last_reviewed_at))
+    existing_last = _clamp_last_reviewed(parse_datetime(existing.last_reviewed_at))
+    if entry_last is None:
+        return existing
+    if existing_last is None:
+        return entry
+    newest = entry if entry_last >= existing_last else existing
+    return newest.model_copy(
+        update={
+            "review_count": max(entry.review_count, existing.review_count),
+            "lapse_count": max(entry.lapse_count, existing.lapse_count),
+        }
+    )
+
+
 def push_review_states(
     entries: list[ReviewStateEntry],
     *,
     cards_store: Any,
     logger: logging.Logger,
     notebook_id: str | None = None,
+    exclude_notebook_ids: Collection[str] = (),
 ) -> dict[str, int]:
     """Merge client review states into server cards. Returns {updated, skipped}.
 
@@ -111,6 +130,7 @@ def push_review_states(
     preventing cross-notebook pollution for same-word cards.
     Entries without ``card_id`` fall back to word-based matching (backward compat).
     """
+    excluded = frozenset(exclude_notebook_ids)
     # Build lookup indices lazily: word-index only when needed.
     cards_by_word: dict[str, list[Any]] | None = None
 
@@ -119,7 +139,7 @@ def push_review_states(
         if cards_by_word is None:
             cards_by_word = {}
             for card in cards_store.all(notebook_id=notebook_id):
-                if card.is_deleted:
+                if card.is_deleted or card.notebook_id in excluded:
                     continue
                 cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
         return cards_by_word
@@ -141,33 +161,20 @@ def push_review_states(
             continue
 
         duplicate_entries += 1
-        existing = coalesced_entries[position]
-        entry_last = _clamp_last_reviewed(parse_datetime(entry.last_reviewed_at))
-        existing_last = _clamp_last_reviewed(parse_datetime(existing.last_reviewed_at))
-        if entry_last is None:
-            continue
-        if existing_last is None:
-            coalesced_entries[position] = entry
-            continue
-
-        newest = entry if entry_last >= existing_last else existing
-        coalesced_entries[position] = newest.model_copy(
-            update={
-                "review_count": max(entry.review_count, existing.review_count),
-                "lapse_count": max(entry.lapse_count, existing.lapse_count),
-            }
-        )
+        coalesced_entries[position] = _coalesce_entries(coalesced_entries[position], entry)
 
     skipped = duplicate_entries
     # Pre-fetch all cards with card_id in one batch to avoid N+1
     _card_ids_to_fetch = {e.card_id for e in coalesced_entries if e.card_id}
     _cards_by_id = cards_store.get_batch(_card_ids_to_fetch) if _card_ids_to_fetch else {}
-    work: list[tuple[ReviewStateEntry, datetime, Any]] = []
+    # Entries of different key spaces (card_id vs word) can resolve to one card;
+    # coalesce per card id so the batch writer never sees competing tuples.
+    work_by_card: dict[str, tuple[ReviewStateEntry, datetime, Any]] = {}
     for entry in coalesced_entries:
         # Prefer card_id for precise matching; fall back to word matching.
         if entry.card_id:
             card = _cards_by_id.get(entry.card_id)
-            eligible = card is not None and not card.is_deleted
+            eligible = card is not None and not card.is_deleted and card.notebook_id not in excluded
             cards = [card] if eligible else []
         else:
             cards = _get_cards_by_word().get(_normalize_word(entry.word), [])
@@ -179,7 +186,16 @@ def push_review_states(
         if client_last is None:
             skipped += 1
             continue
-        work.extend((entry, client_last, card) for card in cards)
+        for card in cards:
+            held = work_by_card.get(card.id)
+            if held is None:
+                work_by_card[card.id] = (entry, client_last, card)
+                continue
+            skipped += 1
+            merged = _coalesce_entries(held[0], entry)
+            merged_last = _clamp_last_reviewed(parse_datetime(merged.last_reviewed_at)) or held[1]
+            work_by_card[card.id] = (merged, merged_last, card)
+    work = list(work_by_card.values())
 
     # The merge decision is based on a snapshot, so the write is compare-and-set
     # on the fields the decision read; a card changed by a concurrent writer is

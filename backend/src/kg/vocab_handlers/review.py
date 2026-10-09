@@ -15,22 +15,22 @@ from ..review_events import pull_review_events, push_review_events
 from ..vocab_review import push_review_states
 
 
-class CardStore(Protocol):
-    ...
+class CardStore(Protocol): ...
 
 
-class ReviewEventStore(Protocol):
-    ...
+class ReviewEventStore(Protocol): ...
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> CardStore:
-        ...
+    def __call__(self, user_dir: Path) -> CardStore: ...
+
+
+class NotebookStoreFactory(Protocol):
+    def __call__(self, user_dir: Path) -> Any: ...
 
 
 class ReviewEventStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> ReviewEventStore:
-        ...
+    def __call__(self, user_dir: Path) -> ReviewEventStore: ...
 
 
 def push_review_response(
@@ -40,9 +40,17 @@ def push_review_response(
     card_store_factory: CardStoreFactory,
     logger: Logger,
     notebook_id: str | None = None,
+    notebook_store_factory: NotebookStoreFactory | None = None,
 ) -> ReviewStatePushResponse:
     cards = card_store_factory(user["dir"])
-    result = push_review_states(req.entries, cards_store=cards, logger=logger, notebook_id=notebook_id)
+    # Staged (copy-in-progress) notebooks are hidden from the pull path; the
+    # global push must not write review state into their cards either.
+    staged_ids: list[str] = []
+    if notebook_id is None and notebook_store_factory is not None:
+        staged_ids = notebook_store_factory(user["dir"]).staged_ids()
+    result = push_review_states(
+        req.entries, cards_store=cards, logger=logger, notebook_id=notebook_id, exclude_notebook_ids=staged_ids
+    )
     return ReviewStatePushResponse(**result)
 
 

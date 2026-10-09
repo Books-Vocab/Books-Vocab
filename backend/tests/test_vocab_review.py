@@ -42,6 +42,7 @@ class _ReviewCard:
     last_review_feedback: int = 0
     next_review_at: datetime | None = None
     is_deleted: bool = False
+    notebook_id: str = "default"
 
 
 class _FakeCardsStore:
