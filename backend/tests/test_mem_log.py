@@ -224,3 +224,12 @@ def test_access_log_filter_installed_once(access_logger):
     from kg.mem_log import _SensitiveQueryRedactionFilter
 
     assert sum(isinstance(f, _SensitiveQueryRedactionFilter) for f in logger.filters) == 1
+
+
+def test_emit_caps_oversized_message():
+    """#2303: one huge log line must not bloat the ring buffer."""
+    handler = _MemoryLogHandler(maxlen=10)
+    handler.emit(_record(msg="x" * 50_000))
+    (row,) = handler.get()
+    assert len(row["msg"]) <= 2100
+    assert row["msg"].startswith("xxx")
