@@ -73,6 +73,9 @@ class _GoogleStateStore:
     def issue(self, nonce: str, *, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         with self._lock:
+            # Insertion order == expiry order (constant ttl): drop expired head.
+            while self._issued and next(iter(self._issued.values())) <= now:
+                self._issued.popitem(last=False)
             self._issued[nonce] = now + self._ttl
             while len(self._issued) > self._max:
                 self._issued.popitem(last=False)

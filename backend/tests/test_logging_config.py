@@ -90,4 +90,4 @@ def test_google_callback_error_payload_is_one_parseable_record(web_auth_env):  #
     # logged message itself carries no raw control characters or forged-record
     # structure (the value is logged as an escaped repr).
     assert "\n" not in msg and "\r" not in msg
-    assert msg.endswith("'x\\n\"}{\"level\":\"ERROR\"\\r'")
+    assert msg.endswith('\'x\\n"}{"level":"ERROR"\\r\'')

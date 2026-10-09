@@ -15,12 +15,12 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 ## TL;DR
 
-- 後端正確性目前**依賴單一 Uvicorn worker**。三處關鍵狀態存在於 process 記憶體，
+- 後端正確性目前**依賴單一 Uvicorn worker**。四處關鍵狀態存在於 process 記憶體，
   跨 worker 不共享；多開 worker 會放大額度超支、破壞 singleflight 去重、製造
   pipeline 孤兒競態。
 - 這個不變量被兩道防線釘死：`worker_guard` 的 `flock`（fail-loud）與
   Dockerfile 的 `--workers 1`。
-- 真要擴展前，三處狀態都必須先搬到共享儲存（Redis / DB）。在那之前，擴 worker =
+- 真要擴展前，四處狀態都必須先搬到共享儲存（Redis / DB）。在那之前，擴 worker =
   正確性 bug，不是效能優化。
 
 ## 一、Process-local 狀態與 single-worker 不變量
@@ -29,7 +29,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 |---|------|------|----------------------|
 | 1 | 額度 in-flight reservation | `backend/src/kg/quota_service.py:138`（`_reservations`） | 每個 worker 各持一份 `_reservations`，有效超支天花板變成 `N × 真實 per-user 上限` |
 | 2 | translate singleflight 去重表 | `backend/src/kg/translate_service.py:31`（`_INFLIGHT`） | dedup 只在單 process 內生效；N worker → 同一 (word, context) 最多被重複翻譯 N 次，浪費成本且競態 |
-| 3 | pipeline 孤兒 reap | `backend/src/kg/pipeline_log.py:71`（`reap_orphaned_runs(data_root)`，API startup 取得 worker 鎖後對 `settings.data_dir` 觸發） | 每個 worker 啟動都跑一次 reap；多 worker 同時 reap 會互相把對方仍在跑的 `running` row 誤判成 `interrupted` |
+| 3 | pipeline 孤兒 reap | `backend/src/kg/pipeline_log.py:71`（`reap_orphaned_runs(data_root)`，API startup 取得 worker 鎖後對 `settings.data_dir` 觸發） | 每個 worker 啟動都跑一次 reap；多 worker 同時 reap 會互相把對方仍在跑的 `running` row 誤判成 `interrupted` || 4 | Google OAuth 單次使用 state 簽發表 | `backend/src/kg/routers/web_auth.py`（`_google_states`） | login 與 callback 落在不同 worker → 查無 nonce 回 400；需共享儲存才能 scale-out。重啟會遺失進行中的 state（600s 視窗） |
 
 ### 不變量如何被釘死
 
@@ -48,7 +48,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 ## 二、遷移路徑（真要擴展時）
 
-三處狀態的搬遷彼此獨立，可分批做；但**任何一處未搬完就擴 worker = 正確性回歸**。
+四處狀態的搬遷彼此獨立，可分批做；但**任何一處未搬完就擴 worker = 正確性回歸**。
 
 ### 1. 額度 reservation → Redis
 

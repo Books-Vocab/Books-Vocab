@@ -207,6 +207,16 @@ def test_issued_google_states_expire_and_are_bounded():
     assert store.consume("f", now=105) is True
 
 
+def test_issue_prunes_expired_entries():
+    from kg.routers import web_auth
+
+    store = web_auth._GoogleStateStore(ttl_seconds=10, max_entries=100)
+    store.issue("old1", now=0)
+    store.issue("old2", now=1)
+    store.issue("fresh", now=50)
+    assert list(store._issued) == ["fresh"]
+
+
 def test_oauth_callback_with_mismatched_state_rejected(web_auth_env):
     """End-to-end CSRF guard: cookie-stored nonce ≠ provider-returned state
     must yield 400 with no session cookie set."""
