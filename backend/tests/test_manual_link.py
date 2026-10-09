@@ -254,3 +254,15 @@ class TestDeleteGraphLink:
         store.hard_delete_link(lk.id)
         store.add_candidate("a", "b", 0.85)
         assert store.candidate_count() == 0
+
+
+class TestAddLinkPersistFailure:
+    def test_failed_persist_rolls_back_in_memory_link(self, store, monkeypatch):
+        def boom(*_a, **_k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(store, "_flush_links", boom)
+        with pytest.raises(OSError):
+            store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        assert store.find_link_between("a", "b") is None
+        assert store.has_link("a", "b") is False
