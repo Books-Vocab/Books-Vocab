@@ -36,7 +36,7 @@ fi
 
 survived=()
 for group in "${groups[@]}"; do
-  "$RUNNER" "$group" >/dev/null 2>&1
+  runner_out="$("$RUNNER" "$group" 2>&1)"
   runner_status=$?
 
   case "$runner_status" in
@@ -48,7 +48,14 @@ for group in "${groups[@]}"; do
     # Shell reserves these for an executable that could not be launched.
     runner_tool_error "failed to launch for group $group (exit=$runner_status)"
     ;;
+  64|75)
+    # 64 = unknown group arm, 75 = inconclusive (lock/disk wait): neither proves the group fails.
+    runner_tool_error "inconclusive for group $group (exit=$runner_status)"
+    ;;
   *)
+    if [[ "$runner_out" == *"unknown test group"* ]]; then
+      runner_tool_error "unknown test group: $group"
+    fi
     echo "  ✓ macOS-only group $group 在 Linux runner 如預期失敗"
     ;;
   esac
