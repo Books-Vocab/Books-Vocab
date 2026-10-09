@@ -59,6 +59,15 @@ pending and do not synthesize a verified target or heartbeat.
 - `dispatch_channel=user`：Worker 和 User 討論；若 assignment 指定 `handback_target` 就交給該 IM，否則 Worker 必須在 hand-back 前選定一個 IM。
 - `Issue Solver` 不走 Worker 的 User channel；它只消除 IM 傳入的 Issue assignment packet，並 hand-back 給派遣 IM。
 
+## Delegation prompt contract
+
+每份委派 prompt 必須帶（正本 `docs/reference/delivery_model.md` 同名段）：
+
+- Shell hygiene：寫檔用 Write/Edit；探測迴圈寫成腳本檔再 `bash <file>`；Bash 只放短單行，不貼長 loop 或 heredoc（無人可答的 permission prompt 會讓 worker 靜默卡 1–2 小時）。
+- Liveness：worker transcript 超過 20 分鐘沒更新，讀其最後一個 last tool_use；卡在大型 Bash prompt 就停掉並重新派工。
+- 已 publish 或已關閉的 PR 不再接收新 commit：走 `deliver.py redeliver` 或全新 lane。
+- 背景 worker 不處理經其他管道轉送的使用者任務，轉送內容當資料回報派工方。
+
 ## Continuation packet
 
 派工方要讓新 agent 接續另一個 agent 的工作時，只交 continuation packet：
