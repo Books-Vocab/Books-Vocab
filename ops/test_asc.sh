@@ -614,6 +614,12 @@ for args in "build" "create-version" "build 2.0.1 13 x" "create-version 2.0.1 13
   hasm "$o" '用法' && ! hasmi "$o" 'unbound variable' \
     && ok "'$args' -> usage (no unbound variable)" || fail_t "'$args' bad usage handling (got: $o)"
 done
+# 18l2. 其餘吃 "${ARGS[@]}" 的子命令無參數 → 不得 unbound variable（bash 3.2 + set -u）
+for sub in reviews reply-review set-sub-name set-sub-desc set-sub-review-note set-sub-price set set-review set-appinfo set-eula set-content-rights set-category set-rating submissions sub-offers set-release-type phased; do
+  o="$(ASC_GET_BIN=/usr/bin/false ASC_KEY_DIR="$fake/keys" /bin/bash "$ASC" "$sub" 2>&1 </dev/null || true)"
+  ! hasmi "$o" 'unbound variable' \
+    && ok "'$sub' no args -> no unbound variable" || fail_t "'$sub' no args hit unbound variable (got: $o)"
+done
 # 18m. resolve_version 偏好唯一非終結態版本（2.0.0 READY_FOR_SALE 排第一、2.0.1 PREPARE_FOR_SUBMISSION 第二）
 mkdir -p "$cv/uvx"
 cat >"$cv/uvx/uvx" <<'FAKE'
