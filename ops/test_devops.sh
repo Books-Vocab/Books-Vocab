@@ -295,6 +295,53 @@ awk '/^cmd_status\(\)/,/^}/' "$KG" | grep -q 'VERSION' \
   && ok "KG status shows deployed version" \
   || fail_t "KG status missing version display"
 
+# ── 7b. deploy 失敗語意（#2278）：build 失敗／版本不符必須非 0，且不記 deploy.log / Sentry ──
+section "Deploy failure semantics (build failure, version mismatch)"
+DF_FIX="$(mktemp -d)"
+mkdir -p "$DF_FIX/bin" "$DF_FIX/local" "$DF_FIX/remote" "$DF_FIX/backups"
+git -C "$DF_FIX/local" init -q && git -C "$DF_FIX/local" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+cat > "$DF_FIX/bin/docker" <<'DEOF'
+#!/usr/bin/env bash
+echo "compose-out-line"
+exit "${DF_COMPOSE_RC:-0}"
+DEOF
+chmod +x "$DF_FIX/bin/docker"
+cat > "$DF_FIX/ssh_stub.sh" <<'SEOF'
+#!/usr/bin/env bash
+cmd="${@: -1}"
+case "$cmd" in
+  *"docker compose up"*) cd "$DF_FIX/remote" && PATH="$DF_FIX/bin:$PATH" exec bash -c "$cmd" ;;
+  *"curl -o /dev/null"*) printf '200' ;;
+  *"curl -s"*) printf '{"version":"%s","sentry":true}' "$DF_REPORTED" ;;
+  *"git rev-parse HEAD"*"VERSION"*) ;;
+  *"git rev-parse HEAD"*) printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' ;;
+esac
+exit 0
+SEOF
+chmod +x "$DF_FIX/ssh_stub.sh"
+_df() {  # $1=compose rc  $2=reported version; prints combined output, returns cmd_deploy rc
+  : > "$DF_FIX/marks"; rm -f "$DF_FIX/backups/deploy.log"
+  DF_FIX="$DF_FIX" DF_COMPOSE_RC="$1" DF_REPORTED="$2" KG_SSH_CMD="$DF_FIX/ssh_stub.sh" KG_REMOTE_DIR="$DF_FIX/remote" \
+    DEVOPS_SOURCE_ONLY=1 KG_SKIP_SMOKE=1 bash -c '
+      source "$1"; LOCAL_DIR="$DF_FIX/local"; BACKUP_DIR="$DF_FIX/backups"; REMOTE_DIR="$DF_FIX/remote"
+      acquire_deploy_lock() { :; }; preflight() { :; }; sleep() { :; }
+      record_sentry_release() { echo sentry >> "$DF_FIX/marks"; }
+      cmd_deploy' _ "$KG" 2>&1
+}
+df_rc=0; df_out=$(_df 1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) || df_rc=$?
+[[ "$df_rc" != 0 ]] && ok "failed compose build makes deploy exit non-zero" || fail_t "failed compose build was swallowed (rc=0)"
+grep -q 'compose-out-line' <<<"$df_out" && ok "compose output tail is still shown on build failure" || fail_t "compose output tail lost on failure"
+[[ ! -e "$DF_FIX/backups/deploy.log" && ! -s "$DF_FIX/marks" ]] \
+  && ok "failed build writes no deploy.log and records no Sentry release" || fail_t "failed build still recorded deploy/Sentry"
+df_rc=0; df_out=$(_df 0 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) || df_rc=$?
+[[ "$df_rc" != 0 ]] && ok "version mismatch exits non-zero even with KG_SKIP_SMOKE=1" || fail_t "version mismatch only warned (rc=0)"
+[[ ! -e "$DF_FIX/backups/deploy.log" && ! -s "$DF_FIX/marks" ]] \
+  && ok "version mismatch writes no deploy.log and records no Sentry release" || fail_t "mismatch still recorded deploy/Sentry"
+df_rc=0; df_out=$(_df 0 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) || df_rc=$?
+[[ "$df_rc" == 0 ]] && grep -q 'compose-out-line' <<<"$df_out" && grep -q 'sha=aaaaaaaa' "$DF_FIX/backups/deploy.log" && grep -q sentry "$DF_FIX/marks" \
+  && ok "success path records deploy.log and Sentry release" || fail_t "success path broken (rc=$df_rc): $df_out"
+rm -rf "$DF_FIX"
+
 # ── 8. ops-cli transport quoting（argv 安全序列化）──────────────────────────
 # 根因回歸:ops-cli 的 SQL 過去用 $* 扁平化 + 遠端 bash 二次解析,引號/括號/% 全毀。
 # 用 KG_SSH_CMD stub 攔截最終遠端指令字串,確認任意特殊字元的 SQL 原封不動穿越。
