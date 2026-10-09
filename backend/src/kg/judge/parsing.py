@@ -23,7 +23,16 @@ def _all_parse_error(
     """
     if raw_decisions is not None:
         for cid, _, _ in candidates:
-            raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
+            raw_decisions.append(
+                {
+                    "to_id": cid,
+                    "verdict": "parse_error",
+                    "confidence": 0.0,
+                    "accepted": 0,
+                    "reject_reason": "parse_error",
+                    "reason": "",
+                }
+            )
     return {cid: None for cid, _, _ in candidates}
 
 
@@ -98,13 +107,24 @@ def _parse_batch_response(
                 # consuming the next unused item for this word (FIFO).
                 item = _next_unconsumed(word)
                 if item:
-                    logger.debug("Judge reorder detected: pos %d expected '%s' got '%s', used word fallback", i, word, pos_word)
+                    logger.debug(
+                        "Judge reorder detected: pos %d expected '%s' got '%s', used word fallback", i, word, pos_word
+                    )
         else:
             item = _next_unconsumed(word)  # beyond response length, try word lookup
 
         if not item:
             if raw_decisions is not None:
-                raw_decisions.append({"to_id": cid, "verdict": "no_response", "confidence": 0.0, "accepted": 0, "reject_reason": "no_response", "reason": ""})
+                raw_decisions.append(
+                    {
+                        "to_id": cid,
+                        "verdict": "no_response",
+                        "confidence": 0.0,
+                        "accepted": 0,
+                        "reject_reason": "no_response",
+                        "reason": "",
+                    }
+                )
             results[cid] = None
             continue
         # This response item now belongs to this candidate — even if it is later
@@ -123,16 +143,36 @@ def _parse_batch_response(
             # keep the link (don't reject) but never persist an invalid confidence.
             confidence = max(0.0, min(1.0, confidence))
             reason_val = item.get("reason", "")
+            if not isinstance(reason_val, str):
+                reason_val = ""
         except (ValueError, TypeError):
             if raw_decisions is not None:
-                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
+                raw_decisions.append(
+                    {
+                        "to_id": cid,
+                        "verdict": "parse_error",
+                        "confidence": 0.0,
+                        "accepted": 0,
+                        "reject_reason": "parse_error",
+                        "reason": "",
+                    }
+                )
             results[cid] = None
             continue
 
         if link_val == "not_applicable" or confidence < confidence_threshold:
             reject = "not_applicable" if link_val == "not_applicable" else "low_confidence"
             if raw_decisions is not None:
-                raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 0, "reject_reason": reject, "reason": reason_val})
+                raw_decisions.append(
+                    {
+                        "to_id": cid,
+                        "verdict": link_val,
+                        "confidence": confidence,
+                        "accepted": 0,
+                        "reject_reason": reject,
+                        "reason": reason_val,
+                    }
+                )
             results[cid] = None
             continue
 
@@ -140,18 +180,45 @@ def _parse_batch_response(
             LinkKind(link_val)
         except ValueError:
             if raw_decisions is not None:
-                raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 0, "reject_reason": "invalid_kind", "reason": reason_val})
+                raw_decisions.append(
+                    {
+                        "to_id": cid,
+                        "verdict": link_val,
+                        "confidence": confidence,
+                        "accepted": 0,
+                        "reject_reason": "invalid_kind",
+                        "reason": reason_val,
+                    }
+                )
             results[cid] = None
             continue
 
         if raw_decisions is not None:
-            raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 1, "reject_reason": None, "reason": reason_val})
+            raw_decisions.append(
+                {
+                    "to_id": cid,
+                    "verdict": link_val,
+                    "confidence": confidence,
+                    "accepted": 1,
+                    "reject_reason": None,
+                    "reason": reason_val,
+                }
+            )
         results[cid] = Judgement(link=link_val, confidence=confidence, reason=reason_val)
 
     # Any candidates beyond response length → None
-    for cid, _, _ in candidates[len(data):]:
+    for cid, _, _ in candidates[len(data) :]:
         if raw_decisions is not None and cid not in {d["to_id"] for d in raw_decisions}:
-            raw_decisions.append({"to_id": cid, "verdict": "no_response", "confidence": 0.0, "accepted": 0, "reject_reason": "no_response", "reason": ""})
+            raw_decisions.append(
+                {
+                    "to_id": cid,
+                    "verdict": "no_response",
+                    "confidence": 0.0,
+                    "accepted": 0,
+                    "reject_reason": "no_response",
+                    "reason": "",
+                }
+            )
         results.setdefault(cid, None)
 
     return results

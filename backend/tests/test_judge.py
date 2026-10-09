@@ -18,6 +18,7 @@ def _make_client(content: str | None):
 
 def _judge_with(content: str | None) -> Judge:
     from kg.tracked_llm import TrackedLLM
+
     return Judge(llm=TrackedLLM(_make_client(content), "test_user"))
 
 
@@ -71,6 +72,7 @@ class TestJudgeEvaluateSingle:
 
 # ── Batch evaluate ──
 
+
 class TestJudgeEvaluateBatch:
     def test_batch_with_array_response(self):
         content = (
@@ -78,10 +80,14 @@ class TestJudgeEvaluateBatch:
             ' {"word": "stately", "link": "contrasts_with", "confidence": 0.9, "reason": "r2"}]'
         )
         judge = _judge_with(content)
-        results = judge.evaluate_batch("cowering", "畏縮", [
-            ("id1", "hunkered", "蹲伏"),
-            ("id2", "stately", "莊嚴的"),
-        ])
+        results = judge.evaluate_batch(
+            "cowering",
+            "畏縮",
+            [
+                ("id1", "hunkered", "蹲伏"),
+                ("id2", "stately", "莊嚴的"),
+            ],
+        )
         assert results["id1"].link == "shares_usage"
         assert results["id2"].link == "contrasts_with"
 
@@ -95,10 +101,14 @@ class TestJudgeEvaluateBatch:
         # LLM returns fewer items than candidates
         content = '[{"word": "x", "link": "shares_usage", "confidence": 0.8, "reason": "r"}]'
         judge = _judge_with(content)
-        results = judge.evaluate_batch("a", "m", [
-            ("id1", "x", "mx"),
-            ("id2", "y", "my"),
-        ])
+        results = judge.evaluate_batch(
+            "a",
+            "m",
+            [
+                ("id1", "x", "mx"),
+                ("id2", "y", "my"),
+            ],
+        )
         assert results["id1"] is not None
         assert results["id2"] is None
 
@@ -120,6 +130,7 @@ class TestJudgeEvaluateBatch:
 
 # ── Judge confidence_threshold pass-through (Defect 2) ──
 
+
 class TestJudgeConfidenceThreshold:
     def test_default_threshold_is_0_7(self):
         # 0.6 link rejected under default threshold
@@ -130,6 +141,7 @@ class TestJudgeConfidenceThreshold:
 
     def test_lowered_threshold_accepts_mid_confidence(self):
         from kg.tracked_llm import TrackedLLM
+
         content = '[{"word": "x", "link": "shares_usage", "confidence": 0.6, "reason": "r"}]'
         judge = Judge(
             llm=TrackedLLM(_make_client(content), "test_user"),
@@ -141,6 +153,7 @@ class TestJudgeConfidenceThreshold:
 
 
 # ── _parse_batch_response unit tests ──
+
 
 class TestParseBatchResponse:
     def test_positional_matching(self):
@@ -174,10 +187,13 @@ class TestParseBatchResponse:
             '[{"word": "beta", "link": "contrasts_with", "confidence": 0.9, "reason": "r2"},'
             ' {"word": "alpha", "link": "shares_usage", "confidence": 0.8, "reason": "r1"}]'
         )
-        results = _parse_batch_response(content, [
-            ("id1", "alpha", "ma"),
-            ("id2", "beta", "mb"),
-        ])
+        results = _parse_batch_response(
+            content,
+            [
+                ("id1", "alpha", "ma"),
+                ("id2", "beta", "mb"),
+            ],
+        )
         # Despite reversed order, word fallback assigns correctly
         assert results["id1"].link == "shares_usage"
         assert results["id2"].link == "contrasts_with"
@@ -188,11 +204,14 @@ class TestParseBatchResponse:
             '[{"word": "alpha", "link": "shares_usage", "confidence": 0.8, "reason": "r1"},'
             ' {"word": "gamma", "link": "contrasts_with", "confidence": 0.9, "reason": "r3"}]'
         )
-        results = _parse_batch_response(content, [
-            ("id1", "alpha", "ma"),
-            ("id2", "beta", "mb"),
-            ("id3", "gamma", "mc"),
-        ])
+        results = _parse_batch_response(
+            content,
+            [
+                ("id1", "alpha", "ma"),
+                ("id2", "beta", "mb"),
+                ("id3", "gamma", "mc"),
+            ],
+        )
         assert results["id1"].link == "shares_usage"
         assert results["id2"] is None  # beta missing from response
         assert results["id3"].link == "contrasts_with"  # found via word fallback
@@ -264,6 +283,7 @@ class TestJudgeChunking:
             chunk_sizes.append(n)
             # Return array of correct size
             import json
+
             items = [{"link": "shares_usage", "confidence": 0.8, "reason": "r"} for _ in range(n)]
             resp = MagicMock()
             resp.choices = [MagicMock()]
@@ -306,3 +326,12 @@ class TestJudgeChunking:
 
         assert mock_client.chat.completions.create.call_count == 1
         assert len(results) == MAX_BATCH_SIZE
+
+
+class TestEmptyChoices:
+    def test_batch_empty_choices_returns_all_none(self):
+        client = _make_client("[]")
+        client.chat.completions.create.return_value.choices = []
+        judge = Judge(llm=__import__("kg.tracked_llm", fromlist=["TrackedLLM"]).TrackedLLM(client, "test_user"))
+        result = judge.evaluate_batch("a", "x", [("c1", "b", "y")])
+        assert result == {"c1": None}

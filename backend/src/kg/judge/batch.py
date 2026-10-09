@@ -15,9 +15,15 @@ logger = logging.getLogger(__name__)
 class Judge:
     """LLM-based relationship judge (batch mode)."""
 
-    def __init__(self, llm: TrackedLLM, model: str | None = None,
-                 *, user_id: str = "", notebook_id: str = "default",
-                 confidence_threshold: float = 0.7) -> None:
+    def __init__(
+        self,
+        llm: TrackedLLM,
+        model: str | None = None,
+        *,
+        user_id: str = "",
+        notebook_id: str = "default",
+        confidence_threshold: float = 0.7,
+    ) -> None:
         self.llm = llm
         self.model = model
         self.user_id = user_id
@@ -46,11 +52,22 @@ class Judge:
         if len(candidates) > MAX_BATCH_SIZE:
             merged: dict[str, Judgement | None] = {}
             for start in range(0, len(candidates), MAX_BATCH_SIZE):
-                chunk = candidates[start:start + MAX_BATCH_SIZE]
-                merged.update(self._call_batch(target_word, target_meaning, chunk, from_id=from_id, similarities=similarities, max_links=max_links))
+                chunk = candidates[start : start + MAX_BATCH_SIZE]
+                merged.update(
+                    self._call_batch(
+                        target_word,
+                        target_meaning,
+                        chunk,
+                        from_id=from_id,
+                        similarities=similarities,
+                        max_links=max_links,
+                    )
+                )
             return merged
 
-        return self._call_batch(target_word, target_meaning, candidates, from_id=from_id, similarities=similarities, max_links=max_links)
+        return self._call_batch(
+            target_word, target_meaning, candidates, from_id=from_id, similarities=similarities, max_links=max_links
+        )
 
     def _call_batch(
         self,
@@ -63,10 +80,7 @@ class Judge:
         max_links: int | None = None,
     ) -> dict[str, Judgement | None]:
         """Single LLM call for a batch of candidates."""
-        cand_lines = "\n".join(
-            f"{i+1}. {word} ({meaning})"
-            for i, (_, word, meaning) in enumerate(candidates)
-        )
+        cand_lines = "\n".join(f"{i + 1}. {word} ({meaning})" for i, (_, word, meaning) in enumerate(candidates))
         user_msg = BATCH_USER_TEMPLATE.format(
             target_word=target_word,
             target_meaning=target_meaning,
@@ -77,10 +91,8 @@ class Judge:
             # .replace (not .format): the prompt embeds a literal JSON schema
             # whose braces would make str.format raise KeyError. Only the two
             # named placeholders are substituted.
-            system_prompt = (
-                SELECTIVE_BATCH_SYSTEM_PROMPT
-                .replace("{n}", str(len(candidates)))
-                .replace("{max_links}", str(max_links))
+            system_prompt = SELECTIVE_BATCH_SYSTEM_PROMPT.replace("{n}", str(len(candidates))).replace(
+                "{max_links}", str(max_links)
             )
         else:
             system_prompt = BATCH_SYSTEM_PROMPT
@@ -96,25 +108,31 @@ class Judge:
             temperature=0.1,
         )
 
-        content = resp.choices[0].message.content
+        content = resp.choices[0].message.content if resp.choices else None
         raw_decisions: list[dict] = []
         result = _parse_batch_response(
-            content, candidates,
+            content,
+            candidates,
             raw_decisions=raw_decisions,
             confidence_threshold=self.confidence_threshold,
         )
         if self.user_id and raw_decisions:
             try:
                 from .. import judge_log
+
                 for d in raw_decisions:
                     judge_log.record(
-                        user_id=self.user_id, notebook_id=self.notebook_id,
-                        from_id=from_id, to_id=d["to_id"],
+                        user_id=self.user_id,
+                        notebook_id=self.notebook_id,
+                        from_id=from_id,
+                        to_id=d["to_id"],
                         similarity=(similarities or {}).get(d["to_id"]),
-                        verdict=d["verdict"], confidence=d["confidence"],
+                        verdict=d["verdict"],
+                        confidence=d["confidence"],
                         accepted=bool(d["accepted"]),
                         reject_reason=d.get("reject_reason"),
-                        reason=d.get("reason", ""), source="auto",
+                        reason=d.get("reason", ""),
+                        source="auto",
                     )
             except Exception:
                 logger.warning("Failed to write judge_log", exc_info=True)
@@ -135,7 +153,8 @@ class Judge:
         key = to_id or "_single"
         sims = {key: similarity} if similarity is not None else None
         results = self.evaluate_batch(
-            word_a, meaning_a,
+            word_a,
+            meaning_a,
             [(key, word_b, meaning_b)],
             from_id=from_id,
             similarities=sims,

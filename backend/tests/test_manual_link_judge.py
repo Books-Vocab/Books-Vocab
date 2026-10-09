@@ -113,3 +113,12 @@ class TestManualLinkJudge:
 
         with pytest.raises(QuotaExceededError):
             judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
+
+
+def test_empty_choices_degrades_instead_of_raising():
+    client = _make_client("{}")
+    client.chat.completions.create.return_value.choices = []
+    judge = ManualLinkJudge(TrackedLLM(client, "test_user"))
+    result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
+    assert result is not None
+    assert result.link == "shares_usage"
