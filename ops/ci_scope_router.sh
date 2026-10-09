@@ -284,9 +284,11 @@ case "$source" in
     # commits to this PR's scope. No common ancestor cannot be scoped, so it
     # selects every suite like any other unclassifiable input.
     if diff_base="$(git merge-base "$base" "$head")"; then
+      # --no-renames: a rename must list both its source and destination, or a
+      # move out of backend/ would hide the backend change (Issue #2763).
       while IFS= read -r -d '' path; do
         classify_path "$path"
-      done < <(git diff --name-only -z "$diff_base" "$head")
+      done < <(git diff --no-renames --name-only -z "$diff_base" "$head")
     else
       printf 'ci_scope_router: no merge base for %s and %s; selecting every suite\n' "$base" "$head" >&2
       select_all
