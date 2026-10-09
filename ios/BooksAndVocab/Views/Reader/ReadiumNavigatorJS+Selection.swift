@@ -84,10 +84,38 @@ extension ReadiumNavigatorJS {
             return null;
         }
 
-        function extractContextFromElement(startEl, word) {
+        // Offset of (node, index) inside container.textContent; -1 when unavailable.
+        function textOffsetInContainer(container, node, index) {
+            try {
+                var r = document.createRange();
+                r.selectNodeContents(container);
+                r.setEnd(node, index);
+                return r.toString().length;
+            } catch (err) { return -1; }
+        }
+
+        // Occurrence of needle in haystack closest to hint (first occurrence when hint < 0).
+        function nearestIndexOf(haystack, needle, hint) {
+            var best = -1;
+            var pos = haystack.indexOf(needle);
+            while (pos >= 0) {
+                if (best < 0 || Math.abs(pos - hint) < Math.abs(best - hint)) best = pos;
+                if (hint < 0 || pos > hint) break;
+                pos = haystack.indexOf(needle, pos + 1);
+            }
+            return best;
+        }
+
+        // tapOffset: index of the tapped word within the context container text (-1 = unknown).
+        function extractContextFromElement(startEl, word, tapOffset) {
             var container = findContextContainer(startEl);
             var fullText = container ? container.textContent : (startEl ? startEl.textContent : word);
+            var rawText = fullText;
             fullText = fullText.trim();
+            var hint = -1;
+            if (typeof tapOffset === 'number' && tapOffset >= 0) {
+                hint = Math.max(0, tapOffset - (rawText.length - rawText.replace(/^\\s+/, '').length));
+            }
 
             // Use Intl.Segmenter for locale-aware sentence splitting (Safari 14.1+)
             var sentences;
@@ -103,7 +131,7 @@ extension ReadiumNavigatorJS {
 
             if (!sentences || sentences.length <= 1) {
                 if (fullText.length <= 300) return fullText;
-                var wordPos = fullText.toLowerCase().indexOf(word.toLowerCase());
+                var wordPos = nearestIndexOf(fullText.toLowerCase(), word.toLowerCase(), hint);
                 if (wordPos < 0) wordPos = Math.floor(fullText.length / 2);
                 var start = Math.max(0, wordPos - 150);
                 var end = Math.min(fullText.length, wordPos + word.length + 150);
@@ -112,12 +140,19 @@ extension ReadiumNavigatorJS {
 
             var wordLower = word.toLowerCase();
             var targetIdx = -1;
+            var firstMatch = -1;
+            var cursor = 0;
+            var starts = [];
             for (var i = 0; i < sentences.length; i++) {
-                if (sentences[i].toLowerCase().indexOf(wordLower) >= 0) {
-                    targetIdx = i;
-                    break;
-                }
+                var sStart = fullText.indexOf(sentences[i], cursor);
+                if (sStart < 0) sStart = cursor;
+                starts.push(sStart);
+                cursor = sStart + sentences[i].length;
+                if (sentences[i].toLowerCase().indexOf(wordLower) < 0) continue;
+                if (firstMatch < 0) firstMatch = i;
+                if (hint >= sStart && hint < cursor) { targetIdx = i; break; }
             }
+            if (targetIdx < 0) targetIdx = firstMatch;
             if (targetIdx < 0) return fullText.substring(0, 300).trim();
 
             // Return: previous sentence + target sentence + next sentence
@@ -131,7 +166,7 @@ extension ReadiumNavigatorJS {
 
             // Hard cap at 500 chars (word-centered)
             if (result.length > 500) {
-                var wp = result.toLowerCase().indexOf(wordLower);
+                var wp = nearestIndexOf(result.toLowerCase(), wordLower, hint >= 0 ? hint - starts[from] : -1);
                 if (wp < 0) wp = Math.floor(result.length / 2);
                 var s = Math.max(0, wp - 200);
                 var e = Math.min(result.length, wp + word.length + 200);
@@ -165,6 +200,7 @@ extension ReadiumNavigatorJS {
             return {
                 textNode: textNode,
                 text: text,
+                start: start,
                 word: word,
                 range: wordRange,
                 rect: wordRange.getBoundingClientRect()
@@ -231,7 +267,8 @@ extension ReadiumNavigatorJS {
                         window.webkit.messageHandlers.wordTap.postMessage(
                             JSON.stringify({
                                 word: vocabWord,
-                                context: extractContextFromElement(vocabSpan.parentElement, vocabWord)
+                                context: extractContextFromElement(vocabSpan.parentElement, vocabWord,
+                                    textOffsetInContainer(findContextContainer(vocabSpan.parentElement), vocabSpan, 0))
                             })
                         );
                         return;
@@ -265,7 +302,8 @@ extension ReadiumNavigatorJS {
             window.webkit.messageHandlers.wordTap.postMessage(
                 JSON.stringify({
                     word: wordData.word,
-                    context: extractContextFromElement(wordData.textNode.parentElement, wordData.word)
+                    context: extractContextFromElement(wordData.textNode.parentElement, wordData.word,
+                        textOffsetInContainer(findContextContainer(wordData.textNode.parentElement), wordData.textNode, wordData.start))
                 })
             );
         }, true);
