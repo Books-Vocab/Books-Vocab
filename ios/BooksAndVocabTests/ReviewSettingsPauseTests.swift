@@ -108,4 +108,34 @@ struct ReviewSettingsPauseTests {
         #expect(settings.isProgressPaused == true)
         #expect(settings.progressPausedAt == second)
     }
+
+    // MARK: - activity clock vs due reference while paused
+
+    @Test func liveClockWhilePausedKeepsWallClockForActivityAndFrozenReferenceForDue() throws {
+        var settings = ReviewSettings.default
+        let pausedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        settings.pauseProgress(at: pausedAt)
+        let wall = pausedAt.addingTimeInterval(3 * 86_400)
+
+        let clock = ReviewCalendarClock.live(
+            settings: settings,
+            timeZone: try #require(TimeZone(identifier: "UTC")),
+            wallClockNow: wall
+        )
+
+        #expect(clock.now == wall)
+        #expect(clock.dueNow == pausedAt)
+    }
+
+    @Test func liveClockWhileUnpausedUsesWallClockForBoth() throws {
+        let wall = Date(timeIntervalSince1970: 1_700_000_000)
+        let clock = ReviewCalendarClock.live(
+            settings: .default,
+            timeZone: try #require(TimeZone(identifier: "UTC")),
+            wallClockNow: wall
+        )
+
+        #expect(clock.now == wall)
+        #expect(clock.dueNow == wall)
+    }
 }

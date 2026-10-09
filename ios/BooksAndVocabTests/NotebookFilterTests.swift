@@ -102,6 +102,46 @@ struct NotebookFilterTests {
         #expect(NotebookFilter.load(from: suite!).selectedIds.isEmpty)
     }
 
+    @Test func reloadFromStorageAdoptsValueSavedByAnotherTab() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var overview = NotebookFilter(selectedIds: ["nb-home"])
+        overview.save(to: suite!)
+        NotebookFilter(selectedIds: ["nb-work"]).save(to: suite!)
+
+        let firstReload = overview.reloadFromStorage(defaults: suite!)
+        #expect(firstReload)
+        #expect(overview.selectedIds == ["nb-work"])
+        let secondReload = overview.reloadFromStorage(defaults: suite!)
+        #expect(!secondReload, "no change when already in sync")
+    }
+
+    @Test func resetForAccountChangeClearsAndPersists() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var filter = NotebookFilter(selectedIds: ["nb-a"])
+        filter.save(to: suite!)
+
+        filter.resetForAccountChange(defaults: suite!)
+
+        #expect(filter.selectedIds.isEmpty)
+        #expect(NotebookFilter.load(from: suite!).selectedIds.isEmpty)
+    }
+
+    @Test func overviewTabSyncsFilterAndResetsAtAccountBoundary() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        #expect(source.contains("resetForAccountChange"))
+        #expect(source.contains("reloadFromStorage"))
+        #expect(source.contains("UserDefaults.didChangeNotification"))
+    }
+
     @Test func notebookListResetsFilterAtAccountBoundary() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

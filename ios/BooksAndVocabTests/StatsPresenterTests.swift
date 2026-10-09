@@ -293,6 +293,28 @@ struct StatsPresenterTests {
         #expect(summary.reviewedToday == 2, "only records with today's dayKey count")
     }
 
+    @Test func pausedClock_activityUsesWallClockWhileDueUsesFrozenReference() throws {
+        var settings = ReviewSettings.default
+        let wall = Self.canonicalClock.now
+        let pausedAt = day(-3)
+        settings.pauseProgress(at: pausedAt)
+        let clock = ReviewCalendarClock.live(
+            settings: settings, timeZone: Self.canonicalClock.timeZone, wallClockNow: wall
+        )
+        let due = syncedEntry(dueOffset: -3)
+
+        let summary = StatsPresentation.buildSummary(
+            from: [due],
+            reviewRecords: (0..<20).map { _ in review(dayOffset: 0) } + [review(dayOffset: -1)],
+            clock: clock
+        )
+
+        #expect(summary.reviewedToday == 20, "manual reviews at wall-clock today count while paused")
+        #expect(summary.currentStreak == 2, "streak anchors on wall-clock today, not the pause date")
+        #expect(summary.dueToday == 1, "due projection stays on the frozen reference")
+        #expect(summary.forecast.first?.id == Self.canonicalClock.dayKey(pausedAt))
+    }
+
     // MARK: - Streaks
 
     @Test func currentStreak_countsConsecutiveDaysEndingToday() {
