@@ -43,17 +43,31 @@ class CachedUserStore:
         self._ttl = ttl
         self._cache: dict[str, Any] | None = None
         self._cache_time: float = 0.0
+        self._cache_signature: tuple[int, int, int] | None = None
         self._lock = threading.Lock()
+
+    def _signature(self) -> tuple[int, int, int] | None:
+        """Cheap identity of the on-disk file; ``None`` when it is missing."""
+        try:
+            st = self._users_file.stat()
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size, st.st_ino)
 
     def load(self) -> dict[str, dict[str, object]]:
         with self._lock:
             now = time.monotonic()
-            if self._cache is not None and (now - self._cache_time) < self._ttl:
-                return copy.deepcopy(self._cache)
-            data = load_users_from(self._users_file, self._normalize_fn)
-            self._cache = data
-            self._cache_time = now
-            return copy.deepcopy(data)
+            signature = self._signature()
+            if self._cache is not None and (now - self._cache_time) < self._ttl and signature == self._cache_signature:
+                snapshot = self._cache
+            else:
+                snapshot = load_users_from(self._users_file, self._normalize_fn)
+                self._cache = snapshot
+                self._cache_time = now
+                self._cache_signature = signature
+        # The cached dict is replaced wholesale, never mutated in place, so the
+        # copy can run outside the lock without blocking concurrent readers.
+        return copy.deepcopy(snapshot)
 
     def save(self, users: dict[str, dict[str, object]]) -> None:
         save_users_to(self._users_file, users, self._normalize_fn)
@@ -61,11 +75,13 @@ class CachedUserStore:
         with self._lock:
             self._cache = normalized
             self._cache_time = time.monotonic()
+            self._cache_signature = self._signature()
 
     def invalidate(self) -> None:
         with self._lock:
             self._cache = None
             self._cache_time = 0.0
+            self._cache_signature = None
 
 
 def load_users_from(

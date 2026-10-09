@@ -158,3 +158,59 @@ class TestCachedUserStoreInvalidate:
 
         assert store._cache is None
         assert store._cache_time == 0.0
+
+
+class TestCachedUserStoreExternalWrite:
+    """#2799: a file replaced behind the cache must not be served within the TTL."""
+
+    def test_external_write_within_ttl_is_seen(self, tmp_path):
+        users_file = tmp_path / "users.json"
+        _write_users(users_file, {"u1": {"config": {}}})
+        store = CachedUserStore(users_file, _normalize_fn, ttl=60.0)
+        store.load()
+
+        _write_users(users_file, {"u1": {"config": {}}, "u2": {"config": {"revoked": True}}})
+
+        assert "u2" in store.load()
+
+    def test_external_atomic_replace_with_same_size_is_seen(self, tmp_path):
+        users_file = tmp_path / "users.json"
+        _write_users(users_file, {"u1": {"config": {"k": "a"}}})
+        store = CachedUserStore(users_file, _normalize_fn, ttl=60.0)
+        store.load()
+
+        tmp = tmp_path / "other.json"
+        _write_users(tmp, {"u1": {"config": {"k": "b"}}})
+        tmp.replace(users_file)
+
+        assert store.load()["u1"]["config"]["k"] == "b"
+
+    def test_external_delete_within_ttl_is_seen(self, tmp_path):
+        users_file = tmp_path / "users.json"
+        _write_users(users_file, {"u1": {"config": {}}})
+        store = CachedUserStore(users_file, _normalize_fn, ttl=60.0)
+        store.load()
+
+        users_file.unlink()
+
+        assert store.load() == {}
+
+    def test_own_save_does_not_force_reread(self, tmp_path):
+        users_file = tmp_path / "users.json"
+        _write_users(users_file, {"u1": {"config": {}}})
+        store = CachedUserStore(users_file, _normalize_fn, ttl=60.0)
+        store.load()
+        store.save({"u1": {"config": {"lang": "en"}}})
+
+        original_read_text = Path.read_text
+        reads = 0
+
+        def counted(self, *args, **kwargs):
+            nonlocal reads
+            if self == users_file:
+                reads += 1
+            return original_read_text(self, *args, **kwargs)
+
+        with patch.object(Path, "read_text", counted):
+            assert store.load()["u1"]["config"] == {"lang": "en"}
+        assert reads == 0
