@@ -145,9 +145,17 @@ final class BookshelfImportService: BookshelfImporting {
         try fm.createDirectory(at: Book.booksDirectory, withIntermediateDirectories: true)
         try await Self.copyFileChunked(from: url, to: dest, progress: progress)
 
-        let coverData = PDFDocument(url: dest)
-            .flatMap { $0.page(at: 0)?.thumbnail(of: CGSize(width: 300, height: 400), for: .artBox) }
-            .flatMap { $0.jpegData(compressionQuality: 0.8) }
+        // 封面渲染（PDF 解析＋縮圖＋JPEG 編碼）離開 MainActor；壞檔／零頁 PDF 拋 corruptedHeader，
+        // 並清掉已複製的 dest，避免留下無法開啟的孤檔。
+        let coverData: Data
+        do {
+            coverData = try await Task.detached(priority: .userInitiated) {
+                try Self.makePDFCover(at: dest)
+            }.value
+        } catch {
+            try? fm.removeItem(at: dest)
+            throw error
+        }
 
         return ImportedBookDraft(
             title: title,
@@ -156,6 +164,18 @@ final class BookshelfImportService: BookshelfImporting {
             fileName: fileName,
             format: .pdf
         )
+    }
+
+    /// 由 PDF 第一頁產生 JPEG 封面。nil 文件、零頁或無法編碼皆視為損壞檔。
+    nonisolated static func makePDFCover(at url: URL) throws -> Data {
+        guard let doc = PDFDocument(url: url), doc.pageCount > 0,
+              let page = doc.page(at: 0),
+              let data = page.thumbnail(of: CGSize(width: 300, height: 400), for: .artBox)
+                  .jpegData(compressionQuality: 0.8)
+        else {
+            throw BookshelfImportError.corruptedHeader(format: "PDF")
+        }
+        return data
     }
 
     /// 以 ~512 KB 區塊複製檔案，每塊回報一次進度。背景執行緒執行避免阻塞 MainActor。

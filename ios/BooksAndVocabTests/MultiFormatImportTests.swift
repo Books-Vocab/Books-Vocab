@@ -128,6 +128,37 @@ struct MultiFormatImportTests {
         #expect(PDFDocument(data: truncated) == nil)
     }
 
+    // MARK: - PDF cover helper (#2537 #2557)
+
+    private func writeTempPDF(_ data: Data) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).pdf")
+        try data.write(to: url)
+        return url
+    }
+
+    @Test func pdfCover_validPDFReturnsJPEG() throws {
+        let url = try writeTempPDF(makePDFData(text: "Cover."))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let data = try BookshelfImportService.makePDFCover(at: url)
+        #expect(data.starts(with: [0xFF, 0xD8]))
+    }
+
+    @Test func pdfCover_corruptFileThrowsCorruptedHeader() throws {
+        let url = try writeTempPDF(Data("not a pdf at all".utf8))
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(throws: BookshelfImportError.self) {
+            try BookshelfImportService.makePDFCover(at: url)
+        }
+    }
+
+    @Test func pdfCover_zeroPageThrowsCorruptedHeader() throws {
+        let url = try writeTempPDF(Data("%PDF-1.4".utf8))
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(throws: BookshelfImportError.self) {
+            try BookshelfImportService.makePDFCover(at: url)
+        }
+    }
+
     // MARK: - Originals copy naming (#2440)
     // `Book.booksDirectory` is not injectable, so the real import path is not exercised here;
     // the shared naming rule (used by import and delete) and the delete side are unit-tested.
