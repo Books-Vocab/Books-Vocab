@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from sqlalchemy.engine import Engine
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import IntegrityError
 
 from ..sqlite_utils import ensure_columns
 from ..text_utils import normalize_nfc_lower
@@ -36,36 +39,73 @@ def init_schema(engine: Engine) -> None:
 def _create_indexes(engine: Engine) -> None:
     """Ensure all secondary indexes on the card table exist."""
     with engine.connect() as conn:
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_card_updated_at ON card (updated_at)"
-        )
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_card_updated_at ON card (updated_at)")
         # Composite index backing cursor pagination — row-value comparison and
         # ORDER BY both use (updated_at, id). Kept alongside the single-column
         # index above (still used by get_modified_since's `updated_at >` scan).
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_card_updated_at_id ON card (updated_at, id)"
-        )
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_card_content ON card (content)"
-        )
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_card_content_nocase ON card (content COLLATE NOCASE)"
-        )
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_card_content_nfc_lower "
-            "ON card (content_nfc_lower)"
-        )
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_card_notebook_id ON card (notebook_id)"
-        )
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_card_updated_at_id ON card (updated_at, id)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_card_content ON card (content)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_card_content_nocase ON card (content COLLATE NOCASE)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_card_content_nfc_lower ON card (content_nfc_lower)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_card_notebook_id ON card (notebook_id)")
         # Unique constraint to prevent duplicate active cards.
         # Uses partial index (is_deleted=0) so soft-deleted duplicates
         # don't block re-creation.
-        conn.exec_driver_sql(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_card_content_notebook "
-            "ON card (content COLLATE NOCASE, notebook_id) WHERE is_deleted = 0"
-        )
+        try:
+            conn.exec_driver_sql(_CREATE_UNIQUE_CONTENT_INDEX)
+        except IntegrityError:
+            # Legacy DB predating the index holds active case-variant
+            # duplicates: soft-delete the losers, then retry once.
+            conn.rollback()
+            _soft_delete_legacy_duplicates(conn)
+            conn.exec_driver_sql(_CREATE_UNIQUE_CONTENT_INDEX)
         conn.commit()
+
+
+_SQLITE_TS = "%Y-%m-%d %H:%M:%S.%f"  # SQLAlchemy DateTime storage format
+_CREATE_UNIQUE_CONTENT_INDEX = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_card_content_notebook "
+    "ON card (content COLLATE NOCASE, notebook_id) WHERE is_deleted = 0"
+)
+
+
+def _soft_delete_legacy_duplicates(conn: Connection) -> None:
+    """Soft-delete active duplicates under the unique index's own key.
+
+    Key is (content COLLATE NOCASE, notebook_id), so duplicates are never
+    collapsed across notebooks. Keeper = highest review_count, then earliest
+    created_at, then lowest id; the keeper's updated_at is bumped after the
+    deletes so incremental sync converges (same contract as `deduplicate`).
+    """
+    rows = conn.exec_driver_sql(
+        "SELECT id, content, notebook_id, review_count, created_at FROM card "
+        "WHERE is_deleted = 0 AND (content COLLATE NOCASE, notebook_id) IN ("
+        "SELECT content COLLATE NOCASE, notebook_id FROM card WHERE is_deleted = 0 "
+        "GROUP BY content COLLATE NOCASE, notebook_id HAVING COUNT(*) > 1)"
+    ).fetchall()
+    groups: dict[tuple[str, str], list[tuple]] = {}
+    for row in rows:
+        key = (str(row[1]).lower(), row[2])
+        groups.setdefault(key, []).append(row)
+    now = datetime.now(UTC).strftime(_SQLITE_TS)
+    bump = (datetime.now(UTC) + timedelta(milliseconds=1)).strftime(_SQLITE_TS)
+    for members in groups.values():
+        # NOCASE folds ASCII only; Python lower() can over-group, so re-split
+        # on the exact SQLite key by lowering ASCII alone.
+        by_sql_key: dict[str, list[tuple]] = {}
+        for m in members:
+            ascii_key = "".join(c.lower() if c < "\x80" else c for c in m[1])
+            by_sql_key.setdefault(ascii_key, []).append(m)
+        for dupes in by_sql_key.values():
+            if len(dupes) < 2:
+                continue
+            dupes.sort(key=lambda r: (-(r[3] or 0), str(r[4]), r[0]))
+            for loser in dupes[1:]:
+                conn.exec_driver_sql(
+                    "UPDATE card SET is_deleted = 1, updated_at = ? WHERE id = ?",
+                    (now, loser[0]),
+                )
+            conn.exec_driver_sql("UPDATE card SET updated_at = ? WHERE id = ?", (bump, dupes[0][0]))
 
 
 def _retire_dictionary_card_schema(engine: Engine) -> None:
@@ -78,9 +118,7 @@ def _retire_dictionary_card_schema(engine: Engine) -> None:
         for table in _RETIRED_DICTIONARY_CARD_TABLES:
             conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{table}"')
 
-        existing_columns = {
-            row[1] for row in conn.exec_driver_sql("PRAGMA table_info(card)").fetchall()
-        }
+        existing_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(card)").fetchall()}
         for column in _RETIRED_DICTIONARY_CARD_COLUMNS:
             if column in existing_columns:
                 conn.exec_driver_sql(f'ALTER TABLE card DROP COLUMN "{column}"')
@@ -115,8 +153,7 @@ def _migrate_content_nfc_lower(engine: Engine) -> None:
         ensure_columns(conn, "card", {"content_nfc_lower": "TEXT DEFAULT ''"})
         # Backfill any rows where the column is empty/null but content isn't.
         rows = conn.exec_driver_sql(
-            "SELECT id, content FROM card "
-            "WHERE content_nfc_lower IS NULL OR content_nfc_lower = ''"
+            "SELECT id, content FROM card WHERE content_nfc_lower IS NULL OR content_nfc_lower = ''"
         ).fetchall()
         for card_id, content in rows:
             if content:

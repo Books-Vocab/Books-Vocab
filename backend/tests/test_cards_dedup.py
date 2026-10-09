@@ -318,3 +318,30 @@ class TestDeleteBumpDisjointInvariant:
         # No content key survives more than once.
         assert len(keys) == len(set(keys))
         assert set(keys) == {"one", "two", "three"}
+
+
+class TestOpenWithLegacyDuplicates:
+    """Opening a pre-index DB holding case-variant duplicates must not crash."""
+
+    def test_open_repairs_duplicates_then_creates_index(self, tmp_path):
+        path = tmp_path / "cards.db"
+        seed = CardStore(path=path)
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        keep = _insert_dup(seed, "Ephemeral", review_count=4, created_at=base)
+        _insert_dup(seed, "ephemeral", created_at=base + timedelta(days=1))
+        # Same text in another notebook is NOT a duplicate (#2695 scoping).
+        other = _insert_dup(seed, "ephemeral", notebook_id="nb2", created_at=base)
+        seed.close()
+
+        reopened = CardStore(path=path)  # raised IntegrityError before the fix
+        try:
+            active = _active(reopened)
+            assert {c.id for c in active} == {keep.id, other.id}
+            assert len(_deleted(reopened)) == 1
+            with reopened.engine.connect() as conn:
+                idx = conn.exec_driver_sql(
+                    "SELECT 1 FROM sqlite_master WHERE name = 'uq_card_content_notebook'"
+                ).first()
+            assert idx is not None
+        finally:
+            reopened.close()
