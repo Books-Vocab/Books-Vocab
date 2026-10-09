@@ -367,6 +367,39 @@ class TestLinkSameNotebook:
         assert purged == []
         assert preview == purged
 
+    @pytest.mark.parametrize(
+        "bad_row",
+        [
+            lambda ml, nl: {
+                "id": "b1",
+                "from_id": ml,
+                "to_id": nl,
+                "kind": "no_such_kind",
+                "confidence": 0.5,
+                "reason": "r",
+            },
+            lambda ml, nl: {"id": "b2", "to_id": nl, "status": "rejected"},
+        ],
+        ids=["unknown-kind", "rejected-without-from_id"],
+    )
+    def test_card_move_dry_run_fails_like_commit_on_invalid_link_row(self, tmp_path, bad_row):
+        """#2706 CR P2:store 載入遇壞 row 會拋錯;dry-run 必須同樣失敗,不可綠燈放行到 commit 半途崩潰。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        ml, nl = _card_by_content(tmp_path, uid, "ml")["id"], _card_by_content(tmp_path, uid, "nl")["id"]
+        (_user_dir(tmp_path, uid) / "graph_default.json").write_text(json.dumps([bad_row(ml, nl)]))
+        src_nb = _card_by_content(tmp_path, uid, "ml")["notebook_id"]
+
+        rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+        assert rd.returncode != 0
+        assert "link row" in (rd.stdout + rd.stderr)
+
+        rc = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--commit", "--json")
+        assert rc.returncode != 0
+        assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_nb
+
 
 class TestNotebookDeleteCascade:
     def test_rejects_nonempty_without_cascade(self, tmp_path):

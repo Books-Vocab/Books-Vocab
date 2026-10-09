@@ -77,16 +77,11 @@ def read_card_links(links_path: Path, card_id: str) -> list[GraphLink]:
     """Read-only: active/hidden links touching ``card_id`` as ``get_links_for`` would return them.
 
     Reads ``links_path`` directly (no store construction, no legacy migration, no
-    rewrite), with the same row rules as a store load; unparseable rows are skipped.
+    rewrite), with the same row rules as a store load. An unparseable row raises
+    (ValueError/KeyError/TypeError), exactly as a store load does, so a preview
+    fails where the commit would fail.
     """
-    usable = []
-    for row in _PersistenceMixin._read_json_list(links_path):
-        try:
-            parse_link_rows([row])
-        except (ValueError, KeyError, TypeError):
-            continue
-        usable.append(row)
-    links = parse_link_rows(usable, source=links_path)[0]
+    links = parse_link_rows(_PersistenceMixin._read_json_list(links_path), source=links_path)[0]
     return [lk for lk in links.values() if lk.status in ("active", "hidden") and card_id in (lk.from_id, lk.to_id)]
 
 

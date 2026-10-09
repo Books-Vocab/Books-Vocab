@@ -340,7 +340,11 @@ def _preview_link_ids(user_dir: Path, notebook_id: str, card_id: str) -> list[st
     path = user_dir / f"graph_{notebook_id}.json"
     if notebook_id == "default" and not path.exists():
         path = user_dir / "graph.json"
-    return [lk.id for lk in read_card_links(path, card_id)]
+    try:
+        links = read_card_links(path, card_id)
+    except (ValueError, KeyError, TypeError) as exc:  # pydantic ValidationError 亦為 ValueError
+        raise EditError(f"graph {path} 含無法解析的 link row，commit 亦會失敗") from exc
+    return [lk.id for lk in links]
 
 
 def cmd_card_move(args: argparse.Namespace) -> int:
