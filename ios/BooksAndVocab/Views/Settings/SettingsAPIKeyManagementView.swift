@@ -40,7 +40,8 @@ struct SettingsAPIKeyManagementView: View {
         .navigationTitle(SettingsAPIKeyCopy.navigationTitle)
         .inlineNavigationBarTitle()
         .settingsDetailNavigationBackButton()
-        .task {
+        .task(id: subscriptionManager.hasProAccess) {
+            // Keyed on entitlement so a late Pro grant fetches keys and a lapse drops them (#2551).
             await loadKeys()
         }
         .onDisappear {
@@ -256,7 +257,13 @@ struct SettingsAPIKeyManagementView: View {
 
     @MainActor
     private func loadKeys() async {
-        guard subscriptionManager.hasProAccess, !isLoading else { return }
+        guard subscriptionManager.hasProAccess else {
+            keys = []
+            revealedAPIKey = nil
+            errorMessage = nil
+            return
+        }
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
