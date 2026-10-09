@@ -76,6 +76,14 @@ jobs:
           set -euo pipefail
           ./ops/ci_scope_router.sh --base "$BASE_SHA" --head "$HEAD_SHA" --format github-output >> "$GITHUB_OUTPUT"
 
+      # Sibling PRs each fit the base headroom yet can jointly exceed the ceiling (#2869).
+      - name: Check complexity budget
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ./ops/complexity.py check --base "$BASE_SHA"
+
       - name: Check ops test coverage classification
         run: ./ops/tests/test_ops_ci_coverage.sh
 

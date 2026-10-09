@@ -260,6 +260,16 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   [[ -n "$scope_router_step" ]] \
     || fail "merge-group required gate has no scope router step block"
   merge_group_assert_unmasked_step "scope router" "$scope_router_step" no
+  # Parallel merges can each fit the base headroom yet jointly exceed the ceiling (#2869):
+  # the merge group must run the complexity budget against the resolved fork point.
+  complexity_step="$(merge_group_step_containing './ops/complexity.py check')"
+  [[ -n "$complexity_step" ]] \
+    || fail "merge-group required gate has no ./ops/complexity.py check step"
+  grep -Eq '^[[:space:]]+\./ops/complexity\.py check --base "\$BASE_SHA"[[:space:]]*$' <<<"$complexity_step" \
+    || fail "merge-group complexity step does not check against the resolved merge-group base (--base \"\$BASE_SHA\")"
+  grep -Fq 'BASE_SHA: ${{ steps.base.outputs.sha }}' <<<"$complexity_step" \
+    || fail "merge-group complexity BASE_SHA is not the resolved origin/main merge base"
+  merge_group_assert_unmasked_step "complexity" "$complexity_step" no
   if grep -Eq '^    continue-on-error:' <<<"$merge_group_required_block"; then
     fail "merge-group required job sets job-level continue-on-error"
   fi
