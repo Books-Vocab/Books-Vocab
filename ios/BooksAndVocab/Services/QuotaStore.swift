@@ -6,6 +6,9 @@ final class QuotaStore: QuotaProviding {
 
     private(set) var fraction: Double = 1.0
     private(set) var resetSeconds: Int = 0
+    /// Bumped by `reset()`. Writers capture it before a network request and pass it back via
+    /// `ifEpoch:` so a response from a previous account cannot overwrite a reset store (#2722).
+    private(set) var epoch: Int = 0
 
     var isExhausted: Bool { fraction <= 0 }
 
@@ -27,10 +30,21 @@ final class QuotaStore: QuotaProviding {
         self.resetSeconds = resetSeconds
     }
 
+    func update(fraction: Double, resetSeconds: Int, ifEpoch epoch: Int) {
+        guard epoch == self.epoch else { return }
+        update(fraction: fraction, resetSeconds: resetSeconds)
+    }
+
+    func update(from response: HTTPURLResponse, ifEpoch epoch: Int) {
+        guard epoch == self.epoch else { return }
+        update(from: response)
+    }
+
     /// Restores the pristine pre-fetch state. Called on logout / account-switch so a new
     /// account never inherits the previous account's remaining quota (account A's number
     /// flashing under account B until the next response header overwrites it).
     func reset() {
+        self.epoch &+= 1
         self.fraction = 1.0
         self.resetSeconds = 0
     }

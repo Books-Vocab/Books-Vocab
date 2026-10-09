@@ -44,6 +44,8 @@ extension KGService {
             await handleUnauthorized(modelContainer: nil, reason: "healthcheck_401")
             isConnected = false
         } catch {
+            // 取消不是連線判決（換頁/timer 重啟）；保留現狀（#2719）。
+            if error is CancellationError { return }
             isConnected = false
             AppLog.kg.error("Health check failed: \(error.localizedDescription)")
             // healthcheck runs on a timer — only surface unexpected (non-network/cancel) failures
@@ -56,12 +58,13 @@ extension KGService {
 
     func fetchQuota() async {
         guard connectivityGate.isConnected, await authSession.isLoggedIn else { return }
+        let epoch = await MainActor.run { QuotaStore.shared.epoch }
         do {
             let (data, httpResponse) = try await authenticatedRequest(path: "api/user/quota")
             guard httpResponse.statusCode == 200 else { return }
             struct QuotaPayload: Decodable { let fraction: Double; let reset_seconds: Int }
             let payload = try JSONDecoder().decode(QuotaPayload.self, from: data)
-            await MainActor.run { QuotaStore.shared.update(fraction: payload.fraction, resetSeconds: payload.reset_seconds) }
+            await MainActor.run { QuotaStore.shared.update(fraction: payload.fraction, resetSeconds: payload.reset_seconds, ifEpoch: epoch) }
         } catch {
             AppLog.kg.warning("fetchQuota failed: \(error.localizedDescription)")
             // fetchQuota runs on a timer — only surface unexpected (non-network/cancel)

@@ -88,3 +88,33 @@ struct HealthCheckPendingTokenTests {
         #expect(service.isConnected == false)
     }
 }
+
+// MARK: - #2719 a cancelled probe is not a connectivity verdict
+
+private final class CancellingTransport: KGHTTPTransport, @unchecked Sendable {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        throw URLError(.cancelled)
+    }
+}
+
+@MainActor
+private final class ReadyTokenAuthSession: AuthSessionProviding {
+    let isLoggedIn = true
+    let token: String? = "header.eyJleHAiOjQxMzg2Njg0MDB9.signature"
+}
+
+@MainActor
+struct HealthCheckCancellationTests {
+    /// 任務被取消（換頁／timer 重啟）時 healthCheck 不可把已連線狀態翻成離線。
+    @Test func cancelledHealthCheckKeepsIsConnected() async {
+        let service = KGService(
+            authSession: ReadyTokenAuthSession(),
+            sessionInvalidator: RecordingInvalidator(),
+            transport: CancellingTransport(),
+            connectivityGate: FixedConnectivityGate(isConnected: true)
+        )
+        service.isConnected = true
+        await service.healthCheck()
+        #expect(service.isConnected == true)
+    }
+}
