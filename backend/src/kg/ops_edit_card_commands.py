@@ -341,17 +341,36 @@ def cmd_card_move(args: argparse.Namespace) -> int:
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
     target_nb = _resolve_notebook_id_for_command(ctx.user_dir, args.to_notebook)
-    plan = {"card_ref": args.card, "to_notebook": target_nb}
+    plan: dict[str, Any] = {"card_ref": args.card, "to_notebook": target_nb}
     state: dict[str, Any] = {}
+
+    def check_move(store: Any) -> Any:
+        card = _resolve_card_id(store, args.card)
+        if card.notebook_id == target_nb:
+            raise EditError(f"卡已在 notebook {target_nb},無需移動")
+        clash = store.find_by_content(card.content, notebook_id=target_nb)
+        if clash is not None and clash.id != card.id:
+            raise EditError(f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}")
+        return card
+
+    if not ctx.commit:
+        # dry-run 不會呼叫 apply_fn:唯讀部分(解析卡、同本/clash 檢查、link 掃描)在此預演,
+        # 讓 preview 與 --commit 同樣失敗,並列出將被硬刪的 link(#2706)。
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = check_move(store)
+        purge_ids: list[str] = []
+        with closing(_notebook_store(ctx.user_dir)) as nb_store:
+            all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
+        for gnb in sorted(all_nb_ids):
+            purge_ids.extend(lk.id for lk in _graph_store(ctx.user_dir, gnb).get_links_for(card.id))
+        plan["card_id"] = card.id
+        plan["purge_link_ids"] = purge_ids
+        plan["purge_count"] = len(purge_ids)
+        plan["purge_note"] = "commit 會硬刪這些 link 並封鎖該 pair 重新 judge(搬本後必跨本)"
 
     def apply_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:
-            card = _resolve_card_id(store, args.card)
-            if card.notebook_id == target_nb:
-                raise EditError(f"卡已在 notebook {target_nb},無需移動")
-            clash = store.find_by_content(card.content, notebook_id=target_nb)
-            if clash is not None and clash.id != card.id:
-                raise EditError(f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}")
+            card = check_move(store)
             moved_id = card.id
             # 搬本前先硬刪所有 notebook graph 中涉及此卡的 link(搬後必跨本)。掃全部本
             # (default + 所有既存)的 graph,找 from/to == moved_id 的 link 刪除。

@@ -283,6 +283,30 @@ class TestLinkSameNotebook:
         assert json.loads(rm.stdout)["result"]["purged_count"] == 1
         assert len(_graph_links(tmp_path, uid, src_id)) == 0
 
+    def test_card_move_dry_run_previews_purge_and_writes_nothing(self, tmp_path):
+        """#2706:dry-run 列出將硬刪的 link,且不動資料。"""
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Src")
+        _mk_notebook(tmp_path, uid, "Dst")
+        for w in ("ml", "nl"):
+            assert (
+                _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--notebook", "Src", "--commit").returncode
+                == 0
+            )
+        link_args = ("link-add", uid, "ml", "nl", "--kind", "shares_usage", "--confidence", "0.7")
+        r = _edit(str(tmp_path), *link_args, "--reason", "r", "--notebook", "Src", "--commit", "--json")
+        assert r.returncode == 0, r.stderr
+        src_id = next(n["id"] for n in _notebook_rows(tmp_path, uid) if n["name"] == "Src")
+        link_id = _graph_links(tmp_path, uid, src_id)[0]["id"]
+
+        rd = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--json")
+        assert rd.returncode == 0, rd.stderr
+        plan = json.loads(rd.stdout)["plan"]
+        assert plan["purge_link_ids"] == [link_id]
+        assert plan["purge_count"] == 1
+        assert len(_graph_links(tmp_path, uid, src_id)) == 1
+        assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_id
+
 
 class TestNotebookDeleteCascade:
     def test_rejects_nonempty_without_cascade(self, tmp_path):
