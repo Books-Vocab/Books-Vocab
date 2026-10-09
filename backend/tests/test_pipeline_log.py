@@ -209,3 +209,15 @@ def test_get_run_matches_get_runs_row_shape():
     pipeline_log.end_run("shape", "completed")
 
     assert pipeline_log.get_run("shape", "u1") == pipeline_log.get_runs("u1")[0]
+
+
+def test_delete_for_users_is_idempotent_and_user_scoped():
+    pipeline_log.start_run("r1", "deleted", "nb1", "manual")
+    pipeline_log.start_run("r2", "deleted", "nb2", "auto")
+    pipeline_log.start_run("r3", "other", "nb1", "manual")
+
+    assert pipeline_log.delete_for_users(["deleted", "deleted"]) == 2
+    assert pipeline_log.delete_for_users(["deleted"]) == 0
+    assert pipeline_log.delete_for_users([]) == 0
+    assert pipeline_log.get_runs("deleted") == []
+    assert len(pipeline_log.get_runs("other")) == 1

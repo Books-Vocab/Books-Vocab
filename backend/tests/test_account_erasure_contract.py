@@ -158,7 +158,7 @@ def test_delete_account_removes_global_podcast_progress_for_canonical_and_linked
 
 
 def test_delete_account_removes_global_log_stores_for_canonical_and_linked_users(isolated_api):
-    from kg import judge_log, llm_error_log, translate_log, vocab_add_link_operation
+    from kg import judge_log, llm_error_log, pipeline_log, token_tracker, translate_log, vocab_add_link_operation
     from kg.api import app
     from kg.deps import _shared_deck_store
 
@@ -202,6 +202,8 @@ def test_delete_account_removes_global_log_stores_for_canonical_and_linked_users
             accepted=True,
         )
         llm_error_log.record(user_id=uid, call_type="judge", error_class="RateLimitError")
+        token_tracker.record(uid, "judge", 10, 5)
+        pipeline_log.start_run(f"run-{uid}", uid, "nb", "manual")
         assert shared_store.record_copy(uid, f"k-{uid}", "deck", 1, "nb")
 
     def counts() -> dict[str, dict[str, int]]:
@@ -212,6 +214,8 @@ def test_delete_account_removes_global_log_stores_for_canonical_and_linked_users
             ("tch", translate_log, "translate_cache_hits"),
             ("judge", judge_log, "judge_log"),
             ("llm", llm_error_log, "llm_errors"),
+            ("tokens", token_tracker, "token_usage"),
+            ("runs", pipeline_log, "pipeline_runs"),
         ):
             with mod._lock:
                 rows = mod._get_conn().execute(f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id").fetchall()
