@@ -74,40 +74,36 @@ struct VocabActivityHeatmap: View {
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
             ScrollView(.horizontal, showsIndicators: false) {
-                ScrollViewReader { proxy in
-                    HStack(alignment: .top, spacing: 0) {
-                        // Weekday labels
-                        VStack(alignment: .trailing, spacing: 0) {
-                            ForEach(0..<7, id: \.self) { row in
-                                if let index = Self.weekdayIndices.firstIndex(of: row) {
-                                    Text(weekdayLabels[index])
-                                        .font(appSkin.typography.monoLabel)
-                                        .foregroundStyle(appSkin.palette.quaternaryText)
-                                        .frame(height: cellSize + cellSpacing)
-                                } else {
-                                    Color.clear
-                                        .frame(height: cellSize + cellSpacing)
-                                }
-                            }
-                        }
-                        .padding(.trailing, appSkin.spacing.rowMicroGap)
-
-                        HStack(spacing: cellSpacing) {
-                            ForEach(Array(grid.enumerated()), id: \.offset) { weekIndex, column in
-                                VStack(spacing: cellSpacing) {
-                                    ForEach(column, id: \.key) { cell in
-                                        cellView(cell)
-                                    }
-                                }
-                                .id(weekIndex)
+                HStack(alignment: .top, spacing: 0) {
+                    // Weekday labels
+                    VStack(alignment: .trailing, spacing: 0) {
+                        ForEach(0..<7, id: \.self) { row in
+                            if let index = Self.weekdayIndices.firstIndex(of: row) {
+                                Text(weekdayLabels[index])
+                                    .font(appSkin.typography.monoLabel)
+                                    .foregroundStyle(appSkin.palette.quaternaryText)
+                                    .frame(height: cellSize + cellSpacing)
+                            } else {
+                                Color.clear
+                                    .frame(height: cellSize + cellSpacing)
                             }
                         }
                     }
-                    .onAppear {
-                        proxy.scrollTo(grid.count - 1, anchor: .trailing)
+                    .padding(.trailing, appSkin.spacing.rowMicroGap)
+
+                    HStack(spacing: cellSpacing) {
+                        ForEach(Array(grid.enumerated()), id: \.offset) { weekIndex, column in
+                            VStack(spacing: cellSpacing) {
+                                ForEach(column, id: \.key) { cell in
+                                    cellView(cell)
+                                }
+                            }
+                            .id(weekIndex)
+                        }
                     }
                 }
             }
+            .defaultScrollAnchor(.trailing)
 
             // Legend
             HStack(spacing: appSkin.spacing.rowMicroGap) {
