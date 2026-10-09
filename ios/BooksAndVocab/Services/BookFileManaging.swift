@@ -24,8 +24,18 @@ final class LocalBookFileManager: BookFileManaging {
     /// （`Book.iCloudBooksDirectory` 刻意不快取 nil），且解析可能阻塞，不可在 init 固化。
     private let fixedLocations: [URL]?
 
-    init(locations: [URL]? = nil) {
+    private let pendingDeletions: PendingBookDeletionStore?
+    private let iCloudAvailable: () -> Bool
+
+    /// `pendingDeletions` 預設：用預設位置（正式路徑）時為 `.standard`，注入固定位置（測試）時為 nil。
+    init(
+        locations: [URL]? = nil,
+        pendingDeletions: PendingBookDeletionStore? = nil,
+        iCloudAvailable: @escaping () -> Bool = { Book.iCloudBooksDirectory != nil }
+    ) {
         self.fixedLocations = locations
+        self.pendingDeletions = pendingDeletions ?? (locations == nil ? .standard : nil)
+        self.iCloudAvailable = iCloudAvailable
     }
 
     static func defaultLocations() -> [URL] {
@@ -44,6 +54,9 @@ final class LocalBookFileManager: BookFileManaging {
     func deleteBookFile(named fileName: String) throws {
         // 空檔名會讓 appendingPathComponent 指回目錄本身 → removeItem 會整個目錄刪掉
         guard !fileName.isEmpty else { return }
+
+        // iCloud 不可用時解析不到 iCloud 目錄，刪不到它的副本：記 tombstone，iCloud 回來時由 reconciler 補刪（#2750）。
+        if !iCloudAvailable() { pendingDeletions?.insert(fileName) }
 
         var failures: [(url: URL, error: Error)] = []
         for location in fixedLocations ?? Self.defaultLocations() {

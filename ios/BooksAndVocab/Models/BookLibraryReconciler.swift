@@ -12,12 +12,18 @@ struct BookLibraryReconciler {
     let rootDirectory: URL
     let legacyDirectories: [URL]
     let manifestStore: BookManifestStore
+    let pendingDeletions: PendingBookDeletionStore
+    let isICloudAvailable: () -> Bool
 
     init(
         rootDirectory: URL = Book.booksDirectory,
         legacyDirectories: [URL]? = nil,
-        manifestStore: BookManifestStore? = nil
+        manifestStore: BookManifestStore? = nil,
+        pendingDeletions: PendingBookDeletionStore = .standard,
+        isICloudAvailable: @escaping () -> Bool = { Book.iCloudBooksDirectory != nil }
     ) {
+        self.pendingDeletions = pendingDeletions
+        self.isICloudAvailable = isICloudAvailable
         self.rootDirectory = rootDirectory
         self.legacyDirectories = legacyDirectories ?? Self.defaultLegacyDirectories()
         self.manifestStore = manifestStore ?? BookManifestStore(rootDirectory: rootDirectory)
@@ -29,6 +35,7 @@ struct BookLibraryReconciler {
         allowBareFileRecovery: Bool = false
     ) throws -> BookLibraryReconcileResult {
         Self.sweepStaleImportTemps(in: rootDirectory)
+        completePendingDeletions()
         let filesByName = scanBookFiles()
         let manifests = manifestStore.readAll()
         let manifestsByFileName = Self.manifestsByFileName(manifests)
@@ -94,6 +101,28 @@ struct BookLibraryReconciler {
         #endif
 
         return result
+    }
+
+    /// 完成「iCloud 不可用時刪除」遺留的 tombstone（#2750）：iCloud 可用後才刪得到它的檔案與 manifest，
+    /// 必須在掃描前做，否則下面的恢復流程會把書救回來。iCloud 仍不可用時原樣保留。
+    /// 任一位置刪除失敗則保留 tombstone，下次 reconcile 重試。
+    private func completePendingDeletions() {
+        let pending = pendingDeletions.fileNames
+        guard !pending.isEmpty, isICloudAvailable() else { return }
+        let remover = LocalBookFileManager(locations: [rootDirectory] + legacyDirectories)
+        let manifests = manifestStore.readAll()
+        for fileName in pending {
+            do {
+                try remover.deleteBookFile(named: fileName)
+            } catch {
+                AppLog.book.warning("pending book deletion failed, will retry (\(fileName, privacy: .public)): \(error.localizedDescription)")
+                continue
+            }
+            for manifest in manifests where manifest.fileName == fileName {
+                manifestStore.delete(bookId: manifest.bookId)
+            }
+            pendingDeletions.remove(fileName)
+        }
     }
 
     @MainActor

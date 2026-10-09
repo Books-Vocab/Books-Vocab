@@ -208,3 +208,29 @@ struct BookManifestStore {
         return decoder
     }()
 }
+
+/// iCloud 不可用時刪除的書（#2750）：此時 `defaultLocations()` 解析不到 iCloud 目錄，
+/// 刪檔會「成功」但 iCloud 的檔案與 manifest 還在，iCloud 回來後 reconcile 會把書救回。
+/// 這裡在**本機**記下待補刪的檔名（UserDefaults，不進 iCloud），由 reconciler 在 iCloud 可用時完成刪除。
+struct PendingBookDeletionStore {
+    private static let key = "pendingBookDeletionFileNames"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    static var standard: PendingBookDeletionStore { PendingBookDeletionStore() }
+
+    var fileNames: Set<String> {
+        Set(defaults.stringArray(forKey: Self.key) ?? [])
+    }
+
+    func insert(_ fileName: String) {
+        defaults.set(Array(fileNames.union([fileName])).sorted(), forKey: Self.key)
+    }
+
+    func remove(_ fileName: String) {
+        defaults.set(Array(fileNames.subtracting([fileName])).sorted(), forKey: Self.key)
+    }
+}
