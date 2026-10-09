@@ -32,6 +32,7 @@ def _review(
     conclusion: str = "success",
     job: bool = False,
     run: int = 1,
+    output: dict[str, str] | None = None,
 ):
     """One `agent-review` check run: the Actions job, or a verdict it posted.
 
@@ -45,6 +46,7 @@ def _review(
         "conclusion": conclusion if status == "completed" else None,
         "external_id": "" if job else f"kg.agent-review.v1:{run}:{HEAD}",
         "details_url": f"{url}/job/9" if job else url,
+        "output": output or {"title": None, "summary": None},
     }
 
 
@@ -859,6 +861,100 @@ def test_accepting_no_review_never_queues_while_the_review_is_still_running() ->
     )
     assert code == 1, result
     assert "timed out" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+# What agent-review.yml really posts when the bot never answered.
+_UNAVAILABLE = {
+    "title": "Independent agent review unavailable",
+    "summary": f"No exact-head review or fresh reviewer reaction from {BOT} "
+    f"was observed for {HEAD}.",
+}
+_NEUTRAL_UNAVAILABLE = [
+    _review(job=True),
+    _review(conclusion="neutral", output=_UNAVAILABLE),
+]
+
+
+def _polls(world: FakeWorld) -> int:
+    return len(_calls_at(world, _is_review_read))
+
+
+def test_accept_no_review_takes_a_settled_neutral_at_once_without_polling() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE])
+    reason = "CR verdict: no blockers at the exact head"
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", reason
+    )
+    assert code == 0, result
+    assert _polls(world) == 1
+    assert world.sleeps == []
+    assert result["review"]["accepted_no_review"] == reason
+    assert any(
+        f"accepted #77 without an exact-head review ({reason})" in line
+        for line in result["log"]
+    )
+
+
+def test_a_settled_neutral_without_accept_refuses_at_once_when_the_bot_is_down() -> (
+    None
+):
+    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert _polls(world) == 1
+    assert world.sleeps == []
+    assert "agent-review neutral: review bot unavailable" in result["error"]
+    assert "have CR review the exact head" in result["error"]
+    assert "--accept-no-review '<CR verdict>'" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_usage_limit_summary_also_counts_as_the_bot_being_down() -> None:
+    quota = {"title": "Review", "summary": "You have reached your usage limits."}
+    world = FakeWorld(
+        review_runs=[[_review(job=True), _review(conclusion="neutral", output=quota)]]
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert _polls(world) == 1
+    assert "review bot unavailable" in result["error"]
+
+
+def test_a_neutral_without_the_marker_and_without_accept_keeps_waiting() -> None:
+    other = {"title": "Something else", "summary": "stopped waiting"}
+    world = FakeWorld(
+        review_runs=[[_review(job=True), _review(conclusion="neutral", output=other)]]
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert _polls(world) > 1
+    assert "never settled" in result["error"]
+
+
+def test_a_pending_review_is_still_waited_for_before_a_neutral_is_accepted() -> None:
+    world = FakeWorld(
+        review_runs=[
+            [_review("in_progress", job=True)],
+            _NEUTRAL_UNAVAILABLE,
+        ]
+    )
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "CR ok"
+    )
+    assert code == 0, result
+    assert _polls(world) == 2
+    assert world.sleeps != []
+
+
+def test_accepting_no_review_does_not_override_a_failed_review() -> None:
+    failed = [_review(conclusion="failure", job=True), _review(conclusion="failure")]
+    world = FakeWorld(review_runs=[[*_NEUTRAL_UNAVAILABLE, *failed]])
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "CR ok"
+    )
+    assert code == 1, result
+    assert f"agent-review failed on {HEAD}" in result["error"]
     assert not _calls_at(world, _is_queue)
 
 

@@ -355,6 +355,9 @@ def review_bots(workflow: str) -> tuple[str, ...]:
     return tuple(bots)
 
 
+BOT_DOWN_MARKERS = ("review unavailable", "usage limit")
+
+
 def review_verdict(runs: list[dict[str, Any]]) -> str | None:
     """The settled `agent-review` verdict of one head, or None while pending.
 
@@ -377,6 +380,22 @@ def review_verdict(runs: list[dict[str, Any]]) -> str | None:
         r.get("conclusion") for r in done
     }
     return next((v for v in ("success", "neutral") if v in verdicts), None)
+
+
+def bot_down(runs: list[dict[str, Any]]) -> bool:
+    """Whether a completed neutral `agent-review` run says the bot never answered.
+
+    agent-review.yml posts neutral "Independent agent review unavailable" when
+    no exact-head review arrived; a quota reply ("usage limits") reads the same.
+    """
+    for run in runs:
+        if run.get("status") != "completed" or run.get("conclusion") != "neutral":
+            continue
+        out = run.get("output") or {}
+        text = f"{out.get('title') or ''} {out.get('summary') or ''}".lower()
+        if any(m in text for m in BOT_DOWN_MARKERS):
+            return True
+    return False
 
 
 def review_run_id(run: dict[str, Any]) -> int | None:
@@ -1027,11 +1046,14 @@ class Delivery:
         def settled() -> str | None:
             # `neutral` only says the workflow stopped waiting (20 x 15s) for
             # the bot; the bot often reviews later and a new run posts the
-            # real verdict, so only success/failure ends the wait.
+            # real verdict, so only success/failure ends the wait, unless the
+            # operator already accepts no review or the run says the bot is down.
             listed = self.gh_pages(f"{runs}&filter=all&per_page=100", "check_runs")
             mine = self.runs_of_pr(repo, number, head_ref, listed, owners)
             foreign[0] = sum(r.get("name") == REVIEW_CHECK for r in listed) - len(mine)
             seen[0] = review_verdict(mine)
+            if seen[0] == "neutral" and (no_review or bot_down(mine)):
+                return "neutral"  # settled for good: do not wait out --timeout
             return seen[0] if seen[0] in ("success", "failure") else None
 
         no_review = (self.args.accept_no_review or "").strip()
@@ -1056,6 +1078,14 @@ class Delivery:
                     "or pass --accept-no-review '<reason>'"
                 ) from exc
             verdict = "neutral"
+        if verdict == "neutral":
+            if not no_review:
+                raise DeliverError(
+                    f"refusing to queue #{number}: {REVIEW_CHECK} neutral: review "
+                    f"bot unavailable ({bots[0]} did not review {head}); have CR "
+                    "review the exact head and re-run with "
+                    "--accept-no-review '<CR verdict>'"
+                )
             self.say(f"accepted #{number} without an exact-head review ({no_review})")
         findings = review_findings(
             self.gh_pages(f"repos/{repo}/pulls/{number}/comments?per_page=100"),
