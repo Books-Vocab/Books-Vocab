@@ -325,6 +325,7 @@ struct NotebookListContent: View {
                             name: appearance.name,
                             color: appearance.color,
                             coverPattern: appearance.coverPattern,
+                            coverImagePath: appearance.coverImagePath,
                             modelContext: modelContext,
                             kgService: kgService,
                             toastCoordinator: toastCoordinator
