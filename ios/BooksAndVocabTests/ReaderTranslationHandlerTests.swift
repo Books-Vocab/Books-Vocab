@@ -320,6 +320,24 @@ struct ReaderTranslationHandlerTests {
         #expect(handler.lookedUpWords.contains("zeta"), "fresh save must also track looked-up state for reader underlining")
     }
 
+    @Test func handleWordSelected_selectionChangedDuringYield_savesCapturedSelectionOnly() async {
+        let service = MockTranslating()
+        service.quickResult = .success(TranslationResult(translation: "A-translation", partOfSpeech: nil, explanation: nil))
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+
+        handler.handleWordSelected(word: "alpha", context: "ctx", vocabularyContext: ctx)
+        let shown = await waitUntil { handler.translationResult != nil }
+        #expect(shown)
+        // Task is parked on its post-success yield; user taps word B now.
+        handler.wordSelection = WordSelection(word: "bravo", context: "ctx", position: .zero)
+        await drain(handler)
+
+        #expect(!ctx.savedSelections.contains { $0.word == "bravo" }, "A's translation must never be saved against B's selection")
+        #expect(ctx.savedSelections.map(\.word) == ["alpha"])
+        #expect(ctx.savedTranslations == ["A-translation"])
+    }
+
     @Test func handleWordSelected_clearsPreviousExplanationLoadingState() async {
         let service = MockTranslating()
         service.explanationResult = .success(("explanation", 0.1))
