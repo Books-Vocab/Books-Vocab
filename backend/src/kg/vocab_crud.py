@@ -330,6 +330,10 @@ def archive_vocab_word(
     word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None
 ) -> ArchiveWordResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
+    prior = bool(card.is_archived)
+    if prior == archived:
+        # Already in the requested state (idempotent retry): nothing to change.
+        return ArchiveWordResponse(word=word, id=card.id, archived=archived)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
         try:
@@ -345,7 +349,7 @@ def archive_vocab_word(
             # sync, then re-raise (mirrors delete_vocab_word).
             logger.error("Graph operation failed for card %s", card.id, exc_info=True)
             try:
-                cards_store.update(card.id, is_archived=not archived)
+                cards_store.update(card.id, is_archived=prior)
             except Exception:
                 logger.exception("Rollback failed for card %s after graph error", card.id)
             raise
@@ -638,6 +642,9 @@ def batch_archive_vocab_words(
     """
 
     def _archive(card: Any) -> None:
+        prior = bool(card.is_archived)
+        if prior == archived:
+            return  # already in the requested state: no update, no graph op
         cards_store.update(card.id, is_archived=archived)
         if graph is not None:
             try:
@@ -653,7 +660,7 @@ def batch_archive_vocab_words(
                 # sync (mirrors batch_delete_vocab_words).
                 logger.error("Graph operation failed for card %s", card.id, exc_info=True)
                 try:
-                    cards_store.update(card.id, is_archived=not archived)
+                    cards_store.update(card.id, is_archived=prior)
                 except Exception:
                     logger.exception("Rollback failed for card %s after graph error", card.id)
                 raise _GraphOpFailed from exc

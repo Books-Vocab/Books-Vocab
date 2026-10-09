@@ -112,7 +112,7 @@ class TestArchiveVocabWord:
         assert graph.removed_candidates_for == ["c1"]
 
     def test_unarchive_restores_graph_links(self):
-        card = _FakeCard(id="c1", content="hello")
+        card = _FakeCard(id="c1", content="hello", is_archived=True)
         cards = _FakeCardsStore([card])
         graph = _FakeArchiveGraph()
         result = archive_vocab_word("hello", archived=False, cards_store=cards, graph=graph)
@@ -214,3 +214,40 @@ def test_list_vocab_cards_global_no_per_card_get(n):
     assert spy.get_calls == []
     assert len(spy.batch_calls) <= 1
     assert seen["c0"] == [("c0", "c1")]
+
+
+class _RaisingArchiveGraph(_FakeArchiveGraph):
+    def cleanup_for_card(self, card_id, source="manual"):
+        raise RuntimeError("graph boom")
+
+    def restore_links_for(self, card_id, cards_store, source="manual"):
+        raise RuntimeError("graph boom")
+
+
+class _UpdateSpyCards(_FakeCardsStore):
+    def __init__(self, cards):
+        super().__init__(cards)
+        self.update_calls = []
+
+    def update(self, card_id, **kwargs):
+        self.update_calls.append((card_id, kwargs))
+        super().update(card_id, **kwargs)
+
+
+class TestArchiveRollbackRestoresPriorState:
+    """#2543: rollback restores the captured prior state, not `not archived`."""
+
+    @pytest.mark.parametrize("archived", [True, False])
+    def test_already_in_requested_state_is_noop_even_if_graph_would_raise(self, archived):
+        cards = _UpdateSpyCards([_FakeCard(id="c1", content="hello", is_archived=archived)])
+        result = archive_vocab_word("hello", archived=archived, cards_store=cards, graph=_RaisingArchiveGraph())
+        assert result.archived is archived
+        assert cards.update_calls == []
+        assert cards.get("c1").is_archived is archived
+
+    @pytest.mark.parametrize("archived", [True, False])
+    def test_graph_failure_rolls_back_to_prior_state(self, archived):
+        cards = _UpdateSpyCards([_FakeCard(id="c1", content="hello", is_archived=not archived)])
+        with pytest.raises(RuntimeError):
+            archive_vocab_word("hello", archived=archived, cards_store=cards, graph=_RaisingArchiveGraph())
+        assert cards.get("c1").is_archived is (not archived)
