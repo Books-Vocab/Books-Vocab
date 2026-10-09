@@ -89,6 +89,15 @@ struct SubscriptionPaywallCopyTests {
         #expect(!line.contains("$4.99"))   // admin branch wins over product price
     }
 
+    /// #2430: "%1$@ · … %@" mixed numbered and unnumbered specs, so the second
+    /// argument was dropped and the price printed twice instead of the expiry date.
+    @Test(arguments: [AppLanguage.english, .traditionalChinese, .simplifiedChinese, .japanese, .korean])
+    func priceExpiryLine_showsPriceOnceAndExpiry(language: AppLanguage) {
+        let line = L10n.format("%@ · 到期 %@", language: language, "NT$170", "2026-12-31")
+        #expect(line.contains("2026-12-31"))
+        #expect(line.components(separatedBy: "NT$170").count == 2)   // price exactly once
+    }
+
     @Test func billedAmount_productPriceWinsOverRemote() {
         let s = status(priceDisplay: "NT$170")
         let line = SubscriptionPaywallCopy.billedAmount(s, productDisplayPrice: "$4.99")

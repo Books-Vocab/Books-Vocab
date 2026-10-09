@@ -222,7 +222,7 @@
 "%@ 刪除" = "%@ deleted";
 "%@ 新增, %@ 已存在" = "%1$@ added, %2$@ already existed";
 "%@ / month · %@ 天免費試用" = "%1$@ / month · %2$@-day free trial";
-"%@ · 到期 %@" = "%1$@ · expires %@";
+"%@ · 到期 %@" = "%@ · expires %@";
 "預設提供 %@ 天免費試用" = "Includes a default %@-day free trial";
 "%@ / month" = "%@ / month";
 "包含 %@ 天免費試用" = "Includes %@-day free trial";

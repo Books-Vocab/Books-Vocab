@@ -69,8 +69,7 @@ mkplural() {  # $1 = dir, $2 = locale:ValueType:forms (space-sep, forms like "on
   printf 'let s = L10n.format("k_plural", Int64(3))\n' >"$d/App.swift"
   for loc in en zh-Hant zh-Hans ja ko; do
     mkdir -p "$d/$loc.lproj"
-    [[ "$loc" == en ]] && printf '"k_plural" = "%%lld cards";\n' >"$d/$loc.lproj/Localizable.strings" \
-      || : >"$d/$loc.lproj/Localizable.strings"
+    printf '"k_plural" = "%%lld cards";\n' >"$d/$loc.lproj/Localizable.strings"
     vt=lld; forms="one other"; spec=NSStringPluralRuleType
     [[ "$loc" == "${PL_LOC:-}" ]] && { vt="${PL_VT:-lld}"; forms="${PL_FORMS:-one other}"; spec="${PL_SPEC:-NSStringPluralRuleType}"; }
     {
@@ -101,6 +100,32 @@ mkplural "$PL/pl_nofile"; rm "$PL/pl_nofile/zh-Hans.lproj/Localizable.stringsdic
 expect "missing stringsdict file" 1 "plural_missing:" "zh-Hans"
 mkplural "$PL/pl_bad"; printf 'not a plist' >"$PL/pl_bad/ja.lproj/Localizable.stringsdict"; lint "$PL/pl_bad" --strict
 expect "unparseable stringsdict" 1 "plural_missing:" "ja"
+
+echo "── Check D: every en key exists in zh-Hans/ja/ko (L10n falls back to en, so a gap ships English) and no value mixes %1$@ with %@ ──"
+mkparity() {  # $1 = dir, then "locale=value" overrides ("locale=" drops the key); every locale gets key "k" = "v %@ %@" by default
+  local d="$1" loc v ov; shift
+  for loc in en zh-Hant zh-Hans ja ko; do
+    mkdir -p "$d/$loc.lproj"; v='v %1$@ %2$@'
+    for ov in "$@"; do [[ "${ov%%=*}" == "$loc" ]] && v="${ov#*=}"; done
+    if [[ -n "$v" ]]; then printf '"k" = "%s";\n' "$v" >"$d/$loc.lproj/Localizable.strings"; else : >"$d/$loc.lproj/Localizable.strings"; fi
+  done
+}
+mkparity "$TMP/par_ok"; lint "$TMP/par_ok" --strict
+expect "all locales carry the key, fully numbered specs" 0
+mkparity "$TMP/par_plain" 'en=v %@ %@' 'ja=v %@ %@'; lint "$TMP/par_plain" --strict
+expect "unnumbered specs are fine" 0
+mkparity "$TMP/par_gap" 'ja='; lint "$TMP/par_gap" --strict
+expect "key missing from ja" 1 "locale_missing:" "[ja]" "k"
+mkparity "$TMP/par_gap_ko" 'ko=' 'zh-Hans='; lint "$TMP/par_gap_ko" --strict
+expect "key missing from ko and zh-Hans" 1 "[ko]" "[zh-Hans]"
+mkparity "$TMP/par_hant" 'zh-Hant='; lint "$TMP/par_hant" --strict
+expect "zh-Hant is the source language, its missing key is the fallback itself" 0
+mkparity "$TMP/par_mixed" 'ko=v %1$@ %@'; lint "$TMP/par_mixed" --strict
+expect "ko mixes %1\$@ with %@" 1 "format_mixed:" "[ko]"
+mkparity "$TMP/par_mixed_en" 'en=v %@ %2$@'; lint "$TMP/par_mixed_en" --strict
+expect "en mixes %@ with %2\$@" 1 "format_mixed:" "[en]"
+mkparity "$TMP/par_gap_report" 'ja='; lint "$TMP/par_gap_report" --report
+expect "--report stays discovery-only" 0
 
 echo "── --strict fails with exit 2 when the baseline has no localized_calls= line ──"
 printf 'findings=0\n' >"$TMP/nowm.txt"
