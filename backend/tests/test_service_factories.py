@@ -1,4 +1,5 @@
 """Tests for store cache eviction behavior."""
+
 from __future__ import annotations
 
 import threading
@@ -12,6 +13,7 @@ from kg.service_factories import _get_cached, clear_store_cache, create_library_
 def test_evicted_store_engine_is_disposed_not_closed():
     """LRU eviction disposes the engine (store stays usable); close() is for deletion."""
     import kg.service_factories as sf
+
     old_max = sf._STORE_CACHE_MAX
 
     try:
@@ -100,6 +102,7 @@ def test_factory_runs_outside_lock():
     """factory() must execute without holding _STORE_CACHE_LOCK so slow
     SQLite/npy initialisation doesn't block other cache lookups."""
     import kg.service_factories as sf
+
     clear_store_cache()
     try:
         observed_locked: list[bool] = []
