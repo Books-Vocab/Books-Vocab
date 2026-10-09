@@ -48,6 +48,7 @@ def test_register_rejects_scope_owned_by_another_active_claim(tmp_path: Path) ->
             "status": "active",
             "external_ids": [],
             "scope_paths": ["ops/shared.py"],
+            "ghost": True,  # the claimed path never existed (#2771)
         }
     ]
 
