@@ -93,10 +93,11 @@ async def verify_google_token(token: str, client_id: str) -> VerifiedIdentity:
 
     except ValueError as e:
         # Invalid token signature or claims
-        logger.warning("Google token validation failed: %s", e)
+        # Log the type only: google-auth messages can embed the raw token (#2712).
+        logger.warning("Google token validation failed: %s", type(e).__name__)
         raise HTTPException(status_code=401, detail="Invalid token") from e
     except (GoogleAuthError, OSError) as e:
         # Client-side token issue (expired / malformed / network during verify).
         # Mirrors the JWT validation branch above — not a server error.
-        logger.warning("Google token verification error: %s", e)
+        logger.warning("Google token verification error: %s", type(e).__name__)
         raise HTTPException(status_code=401, detail="Google authentication failed") from e

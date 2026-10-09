@@ -272,3 +272,20 @@ class TestGoogleTokenNonBlocking:
         assert len(ticks) >= 10, (
             f"event loop stalled — only {len(ticks)} ticks during blocking verify"
         )
+
+
+class TestTokenNotLogged:
+    """The raw ID token must never reach logs (#2712)."""
+
+    SECRET = "eyJSECRET-token-bytes.payload.signature"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("exc_type", [ValueError, GoogleAuthError, OSError])
+    async def test_failure_log_omits_token(self, caplog, exc_type):
+        caplog.set_level("DEBUG")
+        with patch("kg.google_auth.id_token.verify_oauth2_token") as mock_verify:
+            mock_verify.side_effect = exc_type(f"Can't parse segment: b'{self.SECRET}'")
+            with pytest.raises(HTTPException):
+                await google_auth.verify_google_token(self.SECRET, CLIENT_ID)
+        assert caplog.records
+        assert all("SECRET" not in r.getMessage() for r in caplog.records)
