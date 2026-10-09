@@ -6,6 +6,7 @@ import logging
 from datetime import timedelta
 
 from kg.api_models import ReviewStateEntry
+from kg.cards import CardStore
 from kg.vocab_review import push_review_states
 from test_sync_merge import _entry, _iso, _make_store, _now
 
@@ -295,3 +296,46 @@ class TestPushReviewStates:
 
 
 # ============================================================================
+
+
+class _RacingStore(CardStore):
+    """Runs ``race`` once, right after the first ``get_batch`` snapshot is taken."""
+
+    race = None
+
+    def get_batch(self, card_ids):
+        snapshot = super().get_batch(card_ids)
+        race, self.race = self.race, None
+        if race is not None:
+            race()
+        return snapshot
+
+
+class TestPushReviewStatesConcurrentWriter:
+    def test_concurrent_newer_review_is_not_clobbered(self, tmp_path):
+        """A review landing between snapshot and write must survive an older client push (#2798)."""
+        store = _RacingStore(tmp_path / "cards.db")
+        card = store.add("evoke", "喚起")
+        store.update(card.id, last_reviewed_at=_now() - timedelta(hours=3), review_count=3)
+        newest = _now()
+        store.race = lambda: store.update(card.id, last_reviewed_at=newest, review_count=9, review_streak=7)
+
+        entry = _entry("evoke", _iso(_now() - timedelta(hours=1)), card_id=card.id, review_count=4, review_streak=1)
+        push_review_states([entry], cards_store=store, logger=logging.getLogger())
+
+        stored = store.get(card.id)
+        assert stored.review_count == 9
+        assert stored.review_streak == 7
+
+    def test_concurrent_count_bump_is_not_lowered(self, tmp_path):
+        """The counts-only branch must not write a stale max() over a concurrent bump (#2798)."""
+        store = _RacingStore(tmp_path / "cards.db")
+        card = store.add("lucid", "清晰的")
+        server_time = _now()
+        store.update(card.id, last_reviewed_at=server_time, review_count=3)
+        store.race = lambda: store.update(card.id, review_count=10)
+
+        entry = _entry("lucid", _iso(server_time - timedelta(hours=1)), card_id=card.id, review_count=5)
+        push_review_states([entry], cards_store=store, logger=logging.getLogger())
+
+        assert store.get(card.id).review_count == 10

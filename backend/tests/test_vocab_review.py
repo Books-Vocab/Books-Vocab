@@ -13,7 +13,7 @@ that are otherwise easy to regress:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -47,21 +47,25 @@ class _FakeCardsStore:
 
     def all(self, notebook_id: str | None = None) -> list[_ReviewCard]:
         self.all_calls.append(notebook_id)
-        return [c for c in self._cards if not c.is_deleted]
+        return [replace(c) for c in self._cards if not c.is_deleted]
 
     def get_batch(self, ids: set[str]) -> dict[str, _ReviewCard]:
         self.get_batch_calls.append(set(ids))
-        return {c.id: c for c in self._cards if c.id in ids}
+        # Copies, like a DB read: the store only changes through a write.
+        return {c.id: replace(c) for c in self._cards if c.id in ids}
 
-    def batch_update(self, updates: list[tuple[str, dict[str, Any]]]) -> None:
-        self.batch_update_calls.append(list(updates))
+    def batch_update_if_unchanged(self, updates: list[tuple[str, dict[str, Any], dict[str, Any]]]) -> list[str]:
+        self.batch_update_calls.append([(cid, patch) for cid, patch, _ in updates])
         by_id = {c.id: c for c in self._cards}
-        for cid, patch in updates:
+        rejected: list[str] = []
+        for cid, patch, expected in updates:
             c = by_id.get(cid)
-            if c is None:
+            if c is None or c.is_deleted or any(getattr(c, k) != v for k, v in expected.items()):
+                rejected.append(cid)
                 continue
             for k, v in patch.items():
                 setattr(c, k, v)
+        return rejected
 
 
 class _FakeStatsStore:
@@ -141,6 +145,27 @@ class TestPushReviewStatesFakes:
             )
             after = datetime.now(UTC)
             assert before <= card.last_reviewed_at <= after
+
+    def test_skewed_client_next_review_shifted_back_by_same_offset(self):
+        card = _ReviewCard(id="c1", content="run")
+        store = _FakeCardsStore([card])
+        skew = timedelta(days=1)
+        real_now = datetime.now(UTC)
+        push_review_states(
+            [
+                _entry(
+                    word="run",
+                    card_id="c1",
+                    last_reviewed_at=_iso(real_now + skew),
+                    next_review_at=_iso(real_now + skew + timedelta(hours=24)),
+                    review_interval_hours=24.0,
+                )
+            ],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+        expected = real_now + timedelta(hours=24)
+        assert abs(card.next_review_at - expected) < timedelta(seconds=30)
 
     def test_future_clock_skew_does_not_freeze_later_push(self):
         card = _ReviewCard(id="c1", content="run")

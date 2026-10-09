@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -401,3 +402,29 @@ class CardMutationMixin:
                     changed += 1
             session.commit()
         return changed
+
+    def batch_update_if_unchanged(self, updates: list[tuple[str, dict, dict]]) -> list[str]:
+        """Compare-and-set variant of :meth:`batch_update` for read-merge-write callers.
+
+        Each item is ``(card_id, kwargs, expected)``; ``expected`` maps column
+        names to the values the caller's merge decision was based on. The write
+        is one ``UPDATE ... WHERE id = ? AND is_deleted = 0 AND <expected>``, so
+        a concurrent writer that changed any guarded column makes it a no-op.
+        Returns the ids that were not written (conflicted, deleted or missing)
+        so the caller can re-read and re-merge instead of clobbering.
+        """
+        if not updates:
+            return []
+        now = datetime.now(UTC)
+        rejected: list[str] = []
+        with Session(self.engine) as session:
+            for card_id, (kw, expected) in {cid: (kw, ex) for cid, kw, ex in updates}.items():
+                conditions = [Card.id == card_id, Card.is_deleted.is_(False)]
+                for column, value in expected.items():
+                    attr = getattr(Card, column)
+                    conditions.append(attr.is_(None) if value is None else attr == value)
+                result = session.exec(sa_update(Card).where(*conditions).values(**kw, updated_at=now))
+                if result.rowcount == 0:
+                    rejected.append(card_id)
+            session.commit()
+        return rejected
