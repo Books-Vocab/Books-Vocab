@@ -123,6 +123,8 @@ def _parse_batch_response(
             # keep the link (don't reject) but never persist an invalid confidence.
             confidence = max(0.0, min(1.0, confidence))
             reason_val = item.get("reason", "")
+            if not isinstance(reason_val, str):
+                reason_val = ""
         except (ValueError, TypeError):
             if raw_decisions is not None:
                 raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})

@@ -306,3 +306,12 @@ class TestJudgeChunking:
 
         assert mock_client.chat.completions.create.call_count == 1
         assert len(results) == MAX_BATCH_SIZE
+
+
+class TestEmptyChoices:
+    def test_batch_empty_choices_returns_all_none(self):
+        client = _make_client("[]")
+        client.chat.completions.create.return_value.choices = []
+        judge = Judge(llm=__import__("kg.tracked_llm", fromlist=["TrackedLLM"]).TrackedLLM(client, "test_user"))
+        result = judge.evaluate_batch("a", "x", [("c1", "b", "y")])
+        assert result == {"c1": None}

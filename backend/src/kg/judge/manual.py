@@ -129,7 +129,7 @@ class ManualLinkJudge:
             )
             return self._degraded(from_id=from_id, to_id=to_id)
 
-        content = resp.choices[0].message.content or ""
+        content = (resp.choices[0].message.content if resp.choices else None) or ""
 
         data = self._parse_judgement(content)
         if not isinstance(data, dict):

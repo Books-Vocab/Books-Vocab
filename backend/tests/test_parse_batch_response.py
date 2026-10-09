@@ -396,3 +396,17 @@ class TestConfidenceThreshold:
         cands = [("c1", "word1", "m1")]
         result = _parse_batch_response(json.dumps(items), cands, confidence_threshold=0.55)
         assert result["c1"] is None
+
+
+# ── Non-string reason must not crash the whole batch (#2698) ──
+
+class TestNonStringReason:
+    @pytest.mark.parametrize("bad_reason", [None, 5, ["x"], {"a": 1}])
+    def test_non_str_reason_degrades_to_empty_reason(self, bad_reason):
+        content = json.dumps([
+            {"word": "word1", "link": "contrasts_with", "confidence": 0.9, "reason": bad_reason},
+        ])
+        raw: list[dict] = []
+        result = _parse_batch_response(content, CANDIDATES[:1], raw_decisions=raw)
+        assert result["c1"] == Judgement(link="contrasts_with", confidence=0.9, reason="")
+        assert raw[0]["reason"] == ""

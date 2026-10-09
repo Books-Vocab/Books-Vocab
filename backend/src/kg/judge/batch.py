@@ -96,7 +96,7 @@ class Judge:
             temperature=0.1,
         )
 
-        content = resp.choices[0].message.content
+        content = resp.choices[0].message.content if resp.choices else None
         raw_decisions: list[dict] = []
         result = _parse_batch_response(
             content, candidates,
