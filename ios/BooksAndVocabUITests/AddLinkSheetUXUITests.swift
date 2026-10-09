@@ -52,8 +52,10 @@ final class AddLinkSheetUXUITests: UITestCase {
         )
 
         app.typeText("\n")
+        // The flash lasts ~1.4s but XCUITest's idle wait plus a snapshot take longer
+        // on a loaded simulator (#2885), so assert the latched pulse count, not "on".
         XCTAssertTrue(
-            marker("addLink.create.highlight", in: app).waitUntilValueEquals("on", timeout: 5),
+            marker("addLink.create.highlightPulses", in: app).waitUntilValueEquals("1", timeout: 5),
             "Return on an unknown word must point at the create entry"
         )
         XCTAssertTrue(app.keyboards.firstMatch.waitUntilGone(timeout: 5), "Return must put the keyboard away")

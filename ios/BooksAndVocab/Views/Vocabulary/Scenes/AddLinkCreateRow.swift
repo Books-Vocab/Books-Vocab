@@ -15,6 +15,9 @@ struct AddLinkCreateRow: View {
     let notebookLine: String
     /// Brief emphasis (#2038): Return on a word nothing has points here instead of creating.
     var isHighlighted = false
+    /// How many times the highlight has flashed. The flash lasts ~1.4s, shorter than
+    /// a UI test's poll latency, so tests read this latched count instead of `isHighlighted`.
+    var highlightPulses = 0
     /// Why the entry cannot be used right now (offline, #2039). The entry stays
     /// listed — disabled and explained — instead of disappearing.
     var disabledReason: String? = nil
@@ -51,6 +54,7 @@ struct AddLinkCreateRow: View {
                 marker("addLink.create.title", value: title)
                 marker("addLink.create.notebook", value: notebookLine)
                 marker("addLink.create.highlight", value: isHighlighted ? "on" : "off")
+                marker("addLink.create.highlightPulses", value: String(highlightPulses))
                 if let disabledReason {
                     marker("addLink.create.disabledReason", value: disabledReason)
                 }
