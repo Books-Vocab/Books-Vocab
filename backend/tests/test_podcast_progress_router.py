@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, get_args, get_origin, get_type_hints
 
 import pytest
@@ -81,3 +82,40 @@ def test_progress_rejects_boolean_seconds_before_persistence(isolated_api, field
         ).status_code
         == 404
     )
+
+
+def _post_progress(api, position_sec: float, updated_at: str):
+    return api.client.post(
+        "/api/podcasts/sample/1/progress",
+        json={"position_sec": position_sec, "duration_sec": 3000.0, "updated_at": updated_at},
+        headers=api.headers,
+    )
+
+
+def test_progress_far_future_updated_at_is_clamped_to_now(isolated_api):
+    before = datetime.now(UTC)
+    response = _post_progress(isolated_api, 1200.0, "2099-01-01T00:00:00Z")
+    after = datetime.now(UTC)
+
+    assert response.status_code == 200
+    stored = datetime.fromisoformat(response.json()["updated_at"])
+    assert before <= stored <= after
+
+
+def test_progress_updated_at_within_tolerance_is_unchanged(isolated_api):
+    instant = datetime.now(UTC) + timedelta(minutes=2)
+
+    response = _post_progress(isolated_api, 1200.0, instant.isoformat())
+
+    assert response.status_code == 200
+    assert datetime.fromisoformat(response.json()["updated_at"]) == instant
+
+
+def test_progress_correct_clock_write_wins_after_far_future_write(isolated_api):
+    _post_progress(isolated_api, 1200.0, "2099-01-01T00:00:00Z")
+    later = datetime.now(UTC) + timedelta(seconds=1)
+
+    response = _post_progress(isolated_api, 1500.0, later.isoformat())
+
+    assert response.status_code == 200
+    assert response.json()["position_sec"] == 1500.0
