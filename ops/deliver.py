@@ -344,6 +344,13 @@ def next_stage(record: dict[str, Any] | None, pr: dict[str, Any] | None) -> str:
         if pr.get("state") == "MERGED":
             return "cleanup"
         if pr.get("state") == "OPEN":
+            # A publish that died after creating the PR leaves the lane short
+            # of ``published``; waiting would queue an unpublished record (#2448).
+            status = record.get("status") if record else None
+            if status == "active":
+                return "receipt" if record.get("handback_seal") else "hand-back"
+            if status == "cleanup_pending":
+                return "release-published"
             return "wait-required"
         raise DeliverError(
             f"PR #{pr.get('number')} is {pr.get('state')}; open a fresh lane"
@@ -976,6 +983,14 @@ class Delivery:
             raise DeliverError("no PR to wait on")
         number = int(pr["number"])
         self.after_publish(pr)
+        if stage == "release-published":
+            self.mutate(
+                [*delivery, "release-published", "--pr", str(number)],
+                self.home,
+                "release-published",
+            )
+            self.say(f"released the local lane of published #{number}")
+            stage = "wait-required"
         if stage == "wait-required":
             self.wait_for("required check", lambda: self._required(repo, number))
             self.say(f"required passed on #{number}")

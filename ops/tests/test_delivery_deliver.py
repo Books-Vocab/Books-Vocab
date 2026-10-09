@@ -447,6 +447,18 @@ def test_check_outcomes_come_from_exit_codes_and_run_to_the_end() -> None:
         ({"status": "active", "handback_seal": {"x": 1}}, None, "receipt"),
         ({"status": "published"}, None, "wait-required"),
         (None, {"state": "OPEN", "number": 1}, "wait-required"),
+        ({"status": "published"}, {"state": "OPEN", "number": 1}, "wait-required"),
+        ({"status": "active"}, {"state": "OPEN", "number": 1}, "hand-back"),
+        (
+            {"status": "active", "handback_seal": {"x": 1}},
+            {"state": "OPEN", "number": 1},
+            "receipt",
+        ),
+        (
+            {"status": "cleanup_pending"},
+            {"state": "OPEN", "number": 1},
+            "release-published",
+        ),
         ({"status": "published"}, {"state": "MERGED", "number": 1}, "cleanup"),
     ],
 )
@@ -644,6 +656,37 @@ def test_a_published_lane_resumes_without_rerunning_checks() -> None:
     assert result["lane"] == "LANE-1"
     assert not any(c[0] == "bash" for c in world.calls)
     assert world.names() == []
+
+
+def test_an_open_pr_on_a_half_published_lane_completes_publish_not_ready() -> None:
+    world = FakeWorld(
+        record={
+            "branch": "feat/thing",
+            "status": "active",
+            "handback_seal": {"x": 1},
+            "base_sha": "f" * 40,
+            "external_ids": ["LANE-1"],
+        },
+        prs=[{"number": 9, "state": "OPEN"}],
+    )
+    code, result = ship(world)
+    assert code == 0
+    assert world.names() == ["receipt", "publish"]
+    assert result["result"] == "ready-to-merge"
+
+
+def test_a_cleanup_pending_lane_with_an_open_pr_is_released_before_waiting() -> None:
+    world = FakeWorld(
+        record={
+            "branch": "feat/thing",
+            "status": "cleanup_pending",
+            "external_ids": ["LANE-1"],
+        },
+        prs=[{"number": 9, "state": "OPEN"}],
+    )
+    code, _result = ship(world)
+    assert code == 0
+    assert world.names() == ["release-published"]
 
 
 def test_a_merged_pr_goes_straight_to_cleanup() -> None:
