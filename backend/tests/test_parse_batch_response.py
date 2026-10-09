@@ -15,6 +15,7 @@ CANDIDATES = [
 
 # ── 1. Empty / None content ──────────────────────────────────
 
+
 class TestEmptyContent:
     def test_none_content_returns_all_none(self):
         result = _parse_batch_response(None, CANDIDATES)
@@ -36,6 +37,7 @@ class TestEmptyContent:
 
 # ── 2. JSON decode error ─────────────────────────────────────
 
+
 class TestJsonDecodeError:
     def test_invalid_json_returns_all_none(self):
         result = _parse_batch_response("not json {{{", CANDIDATES)
@@ -49,6 +51,7 @@ class TestJsonDecodeError:
 
 
 # ── 3. Dict wrapper unwrap ────────────────────────────────────
+
 
 class TestDictWrapperUnwrap:
     @pytest.mark.parametrize("wrapper_key", ["results", "judgements", "items", "candidates"])
@@ -67,6 +70,7 @@ class TestDictWrapperUnwrap:
 
 # ── 4. Single object dict ────────────────────────────────────
 
+
 class TestSingleObjectDict:
     def test_single_object_with_link_key_wrapped_in_list(self):
         content = json.dumps({"word": "word1", "link": "contrasts_with", "confidence": 0.9, "reason": "r"})
@@ -82,6 +86,7 @@ class TestSingleObjectDict:
 
 
 # ── 5. Non-list / non-dict ───────────────────────────────────
+
 
 class TestNonListNonDict:
     def test_string_json_becomes_empty(self):
@@ -101,6 +106,7 @@ class TestNonListNonDict:
 
 
 # ── 6. Positional match ──────────────────────────────────────
+
 
 class TestPositionalMatch:
     def test_positional_match_word_matches(self):
@@ -125,6 +131,7 @@ class TestPositionalMatch:
 
 
 # ── 7. LLM reorder ───────────────────────────────────────────
+
 
 class TestLLMReorder:
     def test_reorder_falls_back_to_word_lookup(self):
@@ -184,6 +191,7 @@ class TestDuplicateWordReorder:
 
 # ── 8. not_applicable rejection ──────────────────────────────
 
+
 class TestNotApplicable:
     def test_not_applicable_returns_none(self):
         items = [
@@ -206,6 +214,7 @@ class TestNotApplicable:
 
 
 # ── 9. Low confidence rejection ──────────────────────────────
+
 
 class TestLowConfidence:
     def test_confidence_below_0_7_returns_none(self):
@@ -236,6 +245,7 @@ class TestLowConfidence:
 
 
 # ── 10. Invalid LinkKind ─────────────────────────────────────
+
 
 class TestInvalidLinkKind:
     def test_confusable_returns_none(self):
@@ -268,6 +278,7 @@ class TestInvalidLinkKind:
 
 # ── 11. Beyond response length ───────────────────────────────
 
+
 class TestBeyondResponseLength:
     def test_fewer_items_than_candidates(self):
         items = [
@@ -290,6 +301,7 @@ class TestBeyondResponseLength:
 
 
 # ── 12. Happy path ───────────────────────────────────────────
+
 
 class TestHappyPath:
     def test_full_valid_batch(self):
@@ -335,6 +347,7 @@ class TestHappyPath:
 
 # ── Edge: raw_decisions=None (default) doesn't crash ─────────
 
+
 class TestRawDecisionsNone:
     def test_no_raw_decisions_param(self):
         items = [{"word": "word1", "link": "contrasts_with", "confidence": 0.9, "reason": "r"}]
@@ -348,6 +361,7 @@ class TestRawDecisionsNone:
 
 
 # ── Defect 1: confidence clamping [0, 1] ─────────────────────
+
 
 class TestConfidenceClamp:
     def test_confidence_above_one_clamped_to_one(self):
@@ -375,6 +389,7 @@ class TestConfidenceClamp:
 
 # ── Defect 2: parameterized confidence threshold ─────────────
 
+
 class TestConfidenceThreshold:
     def test_default_threshold_unchanged(self):
         # 0.6 < default 0.7 → rejected (backward compatible)
@@ -400,12 +415,15 @@ class TestConfidenceThreshold:
 
 # ── Non-string reason must not crash the whole batch (#2698) ──
 
+
 class TestNonStringReason:
     @pytest.mark.parametrize("bad_reason", [None, 5, ["x"], {"a": 1}])
     def test_non_str_reason_degrades_to_empty_reason(self, bad_reason):
-        content = json.dumps([
-            {"word": "word1", "link": "contrasts_with", "confidence": 0.9, "reason": bad_reason},
-        ])
+        content = json.dumps(
+            [
+                {"word": "word1", "link": "contrasts_with", "confidence": 0.9, "reason": bad_reason},
+            ]
+        )
         raw: list[dict] = []
         result = _parse_batch_response(content, CANDIDATES[:1], raw_decisions=raw)
         assert result["c1"] == Judgement(link="contrasts_with", confidence=0.9, reason="")
