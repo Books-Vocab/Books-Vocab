@@ -147,6 +147,7 @@ exec "$FAKE_UV_PYTHON" "$@"
 # finds none. FAKE_AWS_SABOTAGE makes staging vanish right after metadata.json —
 # the last upload before reconcile — is sent.
 _FAKE_AWS_LIVE = """#!/bin/sh
+case " $* " in *" --endpoint-url "*) [ -n "${FAKE_AWS_ENDPOINT_FAILS:-}" ] && { echo "endpoint-attempt $*" >> "$FAKE_AWS_LOG"; exit 5; } ;; esac
 src=; dst=
 for a; do src=$dst; dst=$a; done
 [ "$dst" = - ] && exit 1
@@ -632,3 +633,15 @@ def test_make_preview_survives_empty_movflags_under_set_u(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     assert "-movflags" not in dst.read_text()
+
+
+def test_failed_endpoint_call_is_not_retried_on_the_default_endpoint(live_upload):
+    """run_aws must not fall back to the default endpoint/identity when the
+    endpoint-scoped call fails (#2818: `A && B || C` reran it)."""
+    live_upload.run(
+        AWS_ENDPOINT_URL="https://endpoint.invalid", FAKE_AWS_ENDPOINT_FAILS="1"
+    )
+
+    lines = live_upload.aws_log.read_text().splitlines()
+    assert lines, "harness never reached aws"
+    assert all(line.startswith("endpoint-attempt") for line in lines), lines
