@@ -123,6 +123,7 @@ SHA_PID=$!
 { wc -c <"$STAGE/.size.fifo" >"$STAGE/.size"; } &
 SIZE_PID=$!
 
+ps=(0 0 0 0)
 set +e
 tar -C "$STAGE" \
     --exclude='._*' \
@@ -136,8 +137,16 @@ tar -C "$STAGE" \
   | aws s3 cp - "$S3_URI" \
       --region "$REGION" \
       --expected-size 2000000000 \
-      --no-progress
-rc=${PIPESTATUS[3]}
+      --no-progress || ps=("${PIPESTATUS[@]}")
+# `|| ps=(...)` also keeps the ERR trap from pre-empting the record on a failed
+# stage. The upload (aws) status wins; otherwise any earlier stage (tar, tee)
+# failing must still fail the run: a clean upload of a broken archive is not a backup.
+rc=${ps[3]}
+note=""
+if [[ "$rc" -eq 0 ]]; then
+  if [[ "${ps[0]}" -ne 0 ]]; then rc=${ps[0]}; note=" tar exited ${ps[0]}"
+  elif [[ "${ps[1]}" -ne 0 || "${ps[2]}" -ne 0 ]]; then rc=${ps[1]}; [[ "$rc" -ne 0 ]] || rc=${ps[2]}; note=" tee exited $rc"; fi
+fi
 wait "$SHA_PID"
 wait "$SIZE_PID"
 SHA_PID=""; SIZE_PID=""
@@ -151,5 +160,5 @@ if [[ -z "$SIZE" || ! "$SHA" =~ ^[0-9A-Fa-f]{64}$ ]]; then
   fi
   die "$rc" "backup record incomplete: empty or invalid bytes/sha256"
 fi
-log "exit=$rc bytes=$SIZE sha256=$SHA key=$KEY"
+log "exit=$rc bytes=$SIZE sha256=$SHA key=$KEY$note"
 exit "$rc"
