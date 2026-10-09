@@ -32,6 +32,7 @@ struct BookshelfSyncTests {
         var resultError: String?
         private(set) var callCount = 0
         var onSync: (@MainActor () async -> Void)?
+        var outcome: SyncRoundOutcome = .completed
 
         init(resultError: String? = nil) { self.resultError = resultError }
 
@@ -42,6 +43,11 @@ struct BookshelfSyncTests {
                 await hook()
             }
             lastBackgroundSyncError = resultError
+        }
+
+        func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome {
+            await backgroundSync(container: container)
+            return outcome
         }
     }
 
@@ -114,6 +120,40 @@ struct BookshelfSyncTests {
         #expect(toast.current?.message == message)
         // read-then-clear: the shared field must be wiped so the next consumer
         // (scenePhase / another explicit trigger) can't re-surface this failure.
+        #expect(stub.lastBackgroundSyncError == nil)
+    }
+
+    // #2720: another trigger holds the sync claim -> `.didNotRun` with error nil; must not claim success.
+    @Test func explicitSync_claimHeld_didNotRun_showsNoSuccessToast() async throws {
+        let stub = StubBackgroundSync(resultError: nil)
+        stub.outcome = .didNotRun
+        let toast = AppToastCoordinator()
+        await ExplicitSync.run(
+            kgService: stub,
+            isLoggedIn: true,
+            isDemoMode: false,
+            container: try makeContainer(),
+            toastCoordinator: toast
+        )
+
+        #expect(toast.current == nil)
+    }
+
+    @Test func explicitSync_didNotRun_withError_stillWarns() async throws {
+        let message = "目前沒有網路連線，背景同步已跳過".localized
+        let stub = StubBackgroundSync(resultError: message)
+        stub.outcome = .didNotRun
+        let toast = AppToastCoordinator()
+        await ExplicitSync.run(
+            kgService: stub,
+            isLoggedIn: true,
+            isDemoMode: false,
+            container: try makeContainer(),
+            toastCoordinator: toast
+        )
+
+        #expect(toast.current?.style == .warning)
+        #expect(toast.current?.message == message)
         #expect(stub.lastBackgroundSyncError == nil)
     }
 
