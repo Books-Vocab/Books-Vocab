@@ -168,12 +168,14 @@ container ports and host ownership remain governed by `docs/sop/deploy.md` and
 ./ops/release.sh promote backend <sha> --same-version "<reason>" --yes    # redeploy without a version bump
 ```
 
-Preconditions (each refuses with a message; no `--force` exists):
+Preconditions (each refuses with a message; the push is lease-guarded, there is no unconditional `--force`, and the ancestry guard enforces fast-forward):
 
 1. `<sha>` is a full SHA and an ancestor of the live `refs/heads/main` tip. Refs are matched by exact full name (a stray `a/main` or `a/prod` branch is never mistaken for them).
 2. Live `origin/prod` is an ancestor of `<sha>`: fast-forward only.
 3. `backend/pyproject.toml` and `backend/src/kg/api.py` agree at `<sha>` and are greater than the version at `origin/prod` (equal only with `--same-version <reason>`).
 4. Every `backend-quality` check-run of `<sha>` is `completed`/`success` (`gh api --paginate .../commits/<sha>/check-runs?check_name=backend-quality&filter=all`, all pages merged). Strict: skipped, neutral, in-progress, missing, truncated or unparseable evidence refuses, and so does an earlier failed attempt that was later re-run green (`filter=all` keeps superseded runs); promote a main commit whose CI ran green first time (a backend-touching merge).
+
+The gate matches the exact check-run name `backend-quality`; if that job is ever renamed or nested (e.g. "caller / backend-quality"), every SHA is refused and the gate must be updated.
 
 The push is `git push --force-with-lease=refs/heads/prod:<observed-prod> origin <sha>:refs/heads/prod`: if anyone moves `prod` between the checks and the push, it is refused. `--same-version` also appends `<time> promote backend <sha> same-version <ver> reason=<reason>` to the local `.cache/release/promote.log` and echoes the reason in the push output.
 

@@ -1435,7 +1435,8 @@ cmd_promote() {
   fi
   acquire_release_lock
   # lease 綁定「檢查時看到的 prod_old」：check 與 push 之間若有人前進 prod，即使對 git 仍是合法 FF 也會被拒。
-  # 無 + refspec，故 lease 之外仍保留 non-FF 拒絕；永不 force。
+  # 注意：--force-with-lease=ref:expect 是 forced update，git 會略過 client 端 non-FF 拒絕。
+  # 安全性來自：上方 ancestry guard 強制 fast-forward；lease 對 prod_old 做 compare-and-swap，使 push 原子。
   git -C "$ROOT" push --force-with-lease="refs/heads/prod:${prod_old}" origin "${sha}:refs/heads/prod" \
     || err "push origin ${sha}:refs/heads/prod 失敗（prod 可能在檢查後被前進；lease=${prod_old}）"
   [[ "$(remote_head_sha prod)" == "$sha" ]] \
