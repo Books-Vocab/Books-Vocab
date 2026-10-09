@@ -38,6 +38,17 @@ done
 grep -Fqx "      - '.claude/skills/devops/SKILL.md'" .github/workflows/backend-quality.yml \
   || fail "backend-quality main push trigger omits the devops skill roster contract"
 
+# Issue #2326: cross-tree test dependencies must trigger the post-merge push run
+# of the suite that reads them, mirroring ops/ci_scope_router.sh.
+for dep in 'ops/data_inspect.py' 'ops/official_decks/**' 'ops/seeds/marketing_demo.json' 'docs/registry.yml' 'docs/reference/testing/backend_strategy.md' 'ios/BooksAndVocab/Views/Podcast/PodcastAccess.swift'; do
+  grep -Fqx "      - '$dep'" .github/workflows/backend-quality.yml \
+    || fail "backend-quality push paths omit cross-tree dependency: $dep"
+done
+for dep in 'backend/ops_cli.py' 'backend/ops_edit.py' 'backend/src/kg/ops_*' 'backend/tests/ops_helpers.py'; do
+  grep -Fqx "      - '$dep'" .github/workflows/ops-suite.yml \
+    || fail "ops-suite push paths omit backend ops-CLI dependency: $dep"
+done
+
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
 grep -Fq 'if: ${{ github.event_name == '\''workflow_dispatch'\'' }}' "$PR_GATE" \

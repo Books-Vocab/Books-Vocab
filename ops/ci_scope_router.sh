@@ -126,6 +126,19 @@ classify_path() {
       ;;
   esac
 
+  # Cross-tree test dependencies (Issue #2326). Backend tests read these files
+  # from outside backend/, and ops tests drive these backend files. Neither case
+  # returns, so the path still gets its normal tree selection below. Keep both
+  # lists aligned with backend-quality.yml / ops-suite.yml push.paths.
+  case "$path" in
+    ops/data_inspect.py|ops/official_decks/*|ops/seeds/marketing_demo.json|docs/registry.yml|docs/reference/testing/backend_strategy.md|ios/BooksAndVocab/Views/Podcast/PodcastAccess.swift)
+      backend=true
+      ;;
+    backend/ops_cli.py|backend/ops_edit.py|backend/src/kg/ops_*|backend/tests/ops_helpers.py)
+      ops=true
+      ;;
+  esac
+
   # lab/podcast tests run in the Linux ops suite (lab-podcast group, Issue #2064);
   # the rest of lab/ keeps routing fail-closed.
   case "$path" in
@@ -190,9 +203,14 @@ classify_path() {
   esac
 
   # Documentation and GitHub metadata have their own required checks. They do
-  # not justify compiling an unrelated application target.
+  # not justify compiling an unrelated application target. lab/llm_eval is
+  # covered by the llm-eval job that pr-gate runs on every PR (Issue #2319).
   case "$path" in
-    docs/*|README.md|LICENSE|.github/ISSUE_TEMPLATE/*|.github/pull_request_template.md)
+    docs/*|README.md|LICENSE|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md|lab/llm_eval/*)
+      return
+      ;;
+    CLAUDE.md|AGENTS.md|.githooks/*|.gitignore|.gitattributes|.github/dependabot.yml)
+      ops=true
       return
       ;;
   esac

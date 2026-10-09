@@ -73,6 +73,38 @@ assert_plan 'devops skill roster change selects only backend confidence' \
 assert_plan 'unknown source fails closed to all confidence suites' \
   'new-top-level-runtime-config.toml' \
   '{"backend":true,"ops":true,"ios":true}'
+assert_plan 'PR template (#2319) selects no suite' \
+  '.github/PULL_REQUEST_TEMPLATE.md' \
+  '{"backend":false,"ops":false,"ios":false}'
+assert_plan 'lab/llm_eval is covered by the always-on llm-eval job (#2319)' \
+  'lab/llm_eval/runner.py' \
+  '{"backend":false,"ops":false,"ios":false}'
+for p in CLAUDE.md AGENTS.md .githooks/pre-commit .gitignore .gitattributes .github/dependabot.yml; do
+  assert_plan "agent/repo meta $p selects only ops (#2319)" \
+    "$p" \
+    '{"backend":false,"ops":true,"ios":false}'
+done
+assert_plan 'unknown new root dir still fails closed (#2319)' \
+  'newdir/x' \
+  '{"backend":true,"ops":true,"ios":true}'
+for p in ops/data_inspect.py ops/official_decks/build_official.py ops/seeds/marketing_demo.json; do
+  assert_plan "$p is read by backend tests: ops plus backend (#2326)" \
+    "$p" \
+    '{"backend":true,"ops":true,"ios":false}'
+done
+for p in docs/registry.yml docs/reference/testing/backend_strategy.md; do
+  assert_plan "$p is read by backend tests: backend only (#2326)" \
+    "$p" \
+    '{"backend":true,"ops":false,"ios":false}'
+done
+assert_plan 'PodcastAccess.swift parity: ios plus backend (#2326)' \
+  'ios/BooksAndVocab/Views/Podcast/PodcastAccess.swift' \
+  '{"backend":true,"ops":false,"ios":true}'
+for p in backend/ops_cli.py backend/ops_edit.py backend/src/kg/ops_edit_app.py backend/tests/ops_helpers.py; do
+  assert_plan "$p is driven by ops tests: backend plus ops (#2326)" \
+    "$p" \
+    '{"backend":true,"ops":true,"ios":false}'
+done
 
 if actual="$($ROUTER --all --format json)" \
   && jq -e -n --argjson actual "$actual" '$actual == {backend: true, ops: true, ios: true, ios_mode: "full", ios_selectors: ""}' >/dev/null; then
