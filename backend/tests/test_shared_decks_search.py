@@ -109,3 +109,15 @@ def test_deck_search_does_not_match_json_syntax_in_tags(shared_decks_api):
 
     assert response.status_code == 200, response.text
     assert response.json()["decks"] == []
+
+
+@pytest.mark.parametrize("query", ["école", "ÉCOLE"])
+def test_deck_search_folds_non_ascii_case_for_publisher_and_tag(shared_decks_api, query):
+    _insert_deck(shared_decks_api.store, "deck-author", "Unrelated", publisher="École Lab")
+    _insert_deck(shared_decks_api.store, "deck-tag", "Other", tags=["École"])
+    _insert_deck(shared_decks_api.store, "deck-none", "Nothing", publisher="Lab", tags=["x"])
+
+    response = shared_decks_api.client.get("/api/decks", params={"q": query})
+
+    assert response.status_code == 200, response.text
+    assert sorted(deck["deckId"] for deck in response.json()["decks"]) == ["deck-author", "deck-tag"]
