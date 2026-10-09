@@ -12,7 +12,15 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from fastapi import HTTPException
 
-from . import judge_log, llm_error_log, podcast_progress, translate_log, vocab_add_link_operation
+from . import (
+    judge_log,
+    llm_error_log,
+    pipeline_log,
+    podcast_progress,
+    token_tracker,
+    translate_log,
+    vocab_add_link_operation,
+)
 from .account_erasure import ObjectStorageClient, delete_account_assets
 from .api_models import (
     AutoLinkConfig,
@@ -339,6 +347,8 @@ def delete_user_account_response(
                 translate_log.delete_for_users(ids_to_delete)
                 judge_log.delete_for_users(ids_to_delete)
                 llm_error_log.delete_for_users(ids_to_delete)
+                token_tracker.delete_for_users(ids_to_delete)
+                pipeline_log.delete_for_users(ids_to_delete)
                 if shared_deck_store is not None:
                     shared_deck_store.delete_copy_logs_for(ids_to_delete)
                 _tombstone_accounts(users, ids_to_delete, purge_external_api_keys=purge_external_api_keys)

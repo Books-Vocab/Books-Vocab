@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -237,3 +238,22 @@ def get_run(run_id: str, user_id: str) -> dict | None:
             (run_id, user_id),
         ).fetchone()
     return _run_from_row(row) if row is not None else None
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every pipeline_runs row owned by the supplied user IDs.
+
+    Account erasure hook: the database lives at the data root, not under each
+    user's directory. Idempotent; unrelated user IDs are never touched.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+    with _lock:
+        conn = _get_conn()
+        deleted = conn.executemany(
+            "DELETE FROM pipeline_runs WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        conn.commit()
+    return deleted

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from . import runtime_data_root
@@ -138,3 +139,22 @@ def get_all_stats() -> dict[str, dict]:
         bucket["calls"] += calls
         bucket["cost_usd"] += token_cost_usd(call_type, t_in, t_out, provider=provider, cached_tokens=total_cached or 0)
     return stats
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every token_usage row owned by the supplied user IDs.
+
+    Account erasure hook: the database lives at the data root, not under each
+    user's directory. Idempotent; unrelated user IDs are never touched.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+    with _lock:
+        conn = _get_conn()
+        deleted = conn.executemany(
+            "DELETE FROM token_usage WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        ).rowcount
+        conn.commit()
+    return deleted

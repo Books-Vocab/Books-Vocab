@@ -126,3 +126,16 @@ def test_get_all_stats_unaffected_by_new_columns(tmp_path, monkeypatch):
         "calls": 2,
     }
     assert bucket["cost_usd"] > 0
+
+
+def test_delete_for_users_is_idempotent_and_user_scoped(tmp_path, monkeypatch):
+    tt = _reset(tmp_path, monkeypatch)
+    tt.record("deleted", "judge", 10, 5)
+    tt.record("deleted", "translate_quick", 10, 5)
+    tt.record("other", "judge", 10, 5)
+    assert tt.delete_for_users(["deleted", "deleted"]) == 2
+    assert tt.delete_for_users(["deleted"]) == 0
+    assert tt.delete_for_users([]) == 0
+    rows = tt._get_conn().execute("SELECT user_id FROM token_usage").fetchall()
+    _teardown(tt)
+    assert rows == [("other",)]
