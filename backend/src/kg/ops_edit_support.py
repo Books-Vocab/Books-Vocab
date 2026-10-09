@@ -57,7 +57,7 @@ from kg.ops_edit_shared import (
     users_lock_file,
     world_backup_root,
 )
-from kg.ops_shared import data_dir  # noqa: F401 - re-exported for ops_edit_* command modules
+from kg.ops_shared import NOTEBOOK_FILE_SPECS, data_dir  # noqa: F401 - re-exported for ops_edit_* command modules
 from kg.ops_world_projection import project_user_world  # noqa: F401 - re-exported for ops_edit_* command modules
 from kg.review_events import ReviewEventStore
 from kg.user_store import load_users_from, parse_datetime, save_users_to
@@ -343,19 +343,32 @@ def _mutate_users(data_dir_path: Path, mutate) -> dict[str, Any]:
 
 def _restore_user_record_snapshot(
     data_dir_path: Path, uid: str, *, record: dict[str, Any] | None, email_index: dict[str, Any] | None
-) -> None:
+) -> list[str]:
     """把 per-user backup 內嵌的 users.json snapshot merge 回目前 users.json。
 
     restore 粒度是「單帳號」，所以不能用備份裡的整份 users.json 覆蓋現況；只回復
     target uid 的 record 與對應 email index 條目，避免誤傷其他帳號。
     """
 
-    if record is None and not email_index:
-        return
+    skipped: list[str] = []
 
     def mutate(users: dict[str, Any]) -> dict[str, Any]:
         if record is not None:
             users[uid] = record
+        # 還原即撤銷 operator user-delete 蓋的墓碑(無論 snapshot 是否含 record),
+        # 否則還原後的帳號 token 永遠 401。
+        revoked = users.get("_revoked_before")
+        if isinstance(revoked, dict):
+            revoked.pop(uid, None)
+            if not revoked:
+                users.pop("_revoked_before", None)
+        terminated = users.get("_terminated")
+        if isinstance(terminated, list) and uid in terminated:
+            remaining = [t for t in terminated if t != uid]
+            if remaining:
+                users["_terminated"] = remaining
+            else:
+                users.pop("_terminated", None)
         idx = users.setdefault("_email_index", {})
         if not isinstance(idx, dict):
             idx = {}
@@ -365,11 +378,18 @@ def _restore_user_record_snapshot(
             idx.pop(email, None)
         if email_index:
             for email, mapped_uid in email_index.items():
-                if mapped_uid == uid:
-                    idx[email] = uid
+                if mapped_uid != uid:
+                    continue
+                owner = idx.get(email)
+                if owner is not None and owner != uid:
+                    # 該 email 已被他人佔用:不搶,交由 operator 處理(見 #2704)。
+                    skipped.append(email)
+                    continue
+                idx[email] = uid
         return {"restored": uid}
 
     _mutate_users(data_dir_path, mutate)
+    return skipped
 
 
 def _extract_user_backup_members(
@@ -446,7 +466,10 @@ _CLONE_GLOBS = (
 # 目標端「屬於 vocab 層」的判定:clone 前清空,避免殘留舊 notebook 的孤兒
 # graph/embeddings 與 -wal/-shm/.lock。review_events.db 一併清(由本次合成重建)。
 _VOCAB_DB_STEMS = ("cards.db", "notebooks.db", "daily_review_stats.db", "review_events.db")
-_VOCAB_PREFIXES = ("graph_", "embeddings_", "candidates_", "card_ids_", "blocked_")
+# 由 ops_shared.NOTEBOOK_FILE_SPECS 推導(含 pending_judge_ 與 notebook 化前的 legacy 檔名),
+# 避免 seed --replace / clone-demo 漏清 `_migrate_legacy_file` 會 rename 回來的舊檔。
+_VOCAB_PREFIXES = tuple(template.split("{nb}")[0] for template, _ in NOTEBOOK_FILE_SPECS.values())
+_VOCAB_LEGACY_NAMES = tuple(legacy for _, legacy in NOTEBOOK_FILE_SPECS.values() if legacy)
 _CLONE_TMP_SUFFIX = ".clone-tmp"
 
 
@@ -457,6 +480,11 @@ def _is_vocab_file(name: str) -> bool:
     for stem in _VOCAB_DB_STEMS:
         if name == stem or name.startswith(stem + "-") or name.startswith(stem + "."):
             return True
+    if any(
+        name == legacy or name.startswith(legacy + ".") or name.startswith(legacy + "-")
+        for legacy in _VOCAB_LEGACY_NAMES
+    ):
+        return True
     return any(name.startswith(p) for p in _VOCAB_PREFIXES)
 
 

@@ -17,6 +17,7 @@ from kg.user_store import parse_datetime as real_parse_datetime
 def _load_users_fn(users_file: Path):
     def _load():
         return json.loads(users_file.read_text())
+
     return _load
 
 
@@ -131,11 +132,7 @@ def test_traversal_sub_rejected_and_no_dir_escapes(tmp_path, malicious_sub):
     assert exc_info.value.status_code == 401
     # No directory may have escaped the sandbox: data_dir must contain only
     # the users.json we wrote plus (at most) an empty users/ dir.
-    escaped = [
-        p
-        for p in tmp_path.rglob("*")
-        if p.is_dir() and "users" not in p.relative_to(tmp_path).parts[:1]
-    ]
+    escaped = [p for p in tmp_path.rglob("*") if p.is_dir() and "users" not in p.relative_to(tmp_path).parts[:1]]
     assert not escaped, f"traversal created stray dirs: {escaped}"
 
 
@@ -143,7 +140,7 @@ def test_traversal_sub_rejected_and_no_dir_escapes(tmp_path, malicious_sub):
     "legit_sub",
     [
         "001234.fedcba9876543210abcdef0123456789.1234",  # Apple opaque sub
-        "117209385123456789012",                          # Google numeric sub
+        "117209385123456789012",  # Google numeric sub
         "user-abc",
         "user_abc",
         "ABC123",
@@ -316,3 +313,37 @@ def test_token_issued_before_deletion_same_second_is_rejected(tmp_path, monkeypa
         )
     assert exc_info.value.status_code == 401
     assert "deleted" in str(exc_info.value.detail).lower()
+
+
+def test_operator_deleted_user_old_token_rejected_and_dir_not_recreated(tmp_path, monkeypatch):
+    """#2709: ops-edit user-delete must revoke outstanding JWTs, not just drop the record."""
+    import argparse
+
+    import kg.ops_edit_user_commands as user_cmd
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    settings = make_settings(tmp_path)
+    ns = dict(
+        uid="doomed",
+        commit=True,
+        json=True,
+        provider="google",
+        email="d@x.com",
+        allow_existing=False,
+        reassign_email=False,
+    )
+    user_cmd.cmd_user_create(argparse.Namespace(**ns))
+    token = create_jwt_token(
+        "doomed", "google", jwt_secret=TEST_JWT_SECRET, jwt_algorithm=TEST_ALGORITHM, jwt_expiry_minutes=60
+    )
+    user_cmd.cmd_user_delete(argparse.Namespace(**ns))
+
+    with pytest.raises(HTTPException) as exc:
+        resolve_current_user(
+            token,
+            settings=settings,
+            load_users=_load_users_fn(tmp_path / "users.json"),
+            parse_datetime=real_parse_datetime,
+        )
+    assert exc.value.status_code == 401
+    assert not (tmp_path / "users" / "doomed").exists()

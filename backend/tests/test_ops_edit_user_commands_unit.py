@@ -24,6 +24,7 @@ def _make_args(**kwargs) -> argparse.Namespace:
         "provider": "google",
         "email": "u1@test.com",
         "allow_existing": False,
+        "reassign_email": False,
         "translation_source": None,
         "translation_target": None,
         "review_clock": None,
@@ -74,6 +75,56 @@ class TestUserCreate:
         assert rc == 0
 
 
+class TestUserCreateEmailCollision:
+    def _seed_owner(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(_make_args(uid="owner", email="a@x.com", commit=True))
+
+    def _index(self, tmp_path):
+        return load_users_from(tmp_path / "users.json", lambda x: (x, False))["_email_index"]
+
+    def test_commit_refuses_email_owned_by_other_uid(self, tmp_path, monkeypatch):
+        self._seed_owner(tmp_path, monkeypatch)
+        rc = user_cmd.cmd_user_create(_make_args(uid="demo1", email="a@x.com", commit=True))
+        assert rc != 0
+        assert self._index(tmp_path)["a@x.com"] == "owner"
+        assert not (tmp_path / "users" / "demo1").exists()
+
+    def test_dry_run_reports_conflict(self, tmp_path, monkeypatch, capsys):
+        self._seed_owner(tmp_path, monkeypatch)
+        capsys.readouterr()
+        user_cmd.cmd_user_create(_make_args(uid="demo1", email="a@x.com"))
+        plan = json.loads(capsys.readouterr().out)["plan"]
+        assert plan["email_owner"] == "owner"
+        assert plan["email_conflict"] is True
+
+    def test_reassign_flag_allows_override(self, tmp_path, monkeypatch):
+        self._seed_owner(tmp_path, monkeypatch)
+        rc = user_cmd.cmd_user_create(_make_args(uid="demo1", email="a@x.com", reassign_email=True, commit=True))
+        assert rc == 0
+        assert self._index(tmp_path)["a@x.com"] == "demo1"
+
+    def test_same_uid_allow_existing_is_not_a_conflict(self, tmp_path, monkeypatch):
+        self._seed_owner(tmp_path, monkeypatch)
+        rc = user_cmd.cmd_user_create(_make_args(uid="owner", email="a@x.com", allow_existing=True, commit=True))
+        assert rc == 0
+
+
+class TestRestoreEmailCollision:
+    def test_restore_does_not_steal_email_from_other_uid(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="a@x.com", commit=True))
+        user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+        user_cmd.cmd_user_create(_make_args(uid="newowner", email="a@x.com", commit=True))
+
+        rc = user_cmd.cmd_restore(_make_args(uid="doomed", commit=True))
+
+        assert rc == 0
+        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
+        assert users["_email_index"]["a@x.com"] == "newowner"
+        assert "doomed" in users
+
+
 # ── cmd_user_delete ──────────────────────────────────────────────────────
 
 
@@ -120,6 +171,29 @@ class TestUserDelete:
         assert users["_subscription_index"] == {"txn-keep": "keeper"}
         assert "keeper" in users
         assert (tmp_path / "users" / "keeper").exists()
+
+    def test_commit_revokes_tokens_and_terminates_uid(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="doomed@test.com", commit=True))
+        user_cmd.cmd_user_create(_make_args(uid="keeper", email="keeper@test.com", commit=True))
+
+        user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+
+        users = json.loads((tmp_path / "users.json").read_text())
+        assert "doomed" in users["_revoked_before"]
+        assert users["_terminated"] == ["doomed"]
+        assert "keeper" not in users["_revoked_before"]
+
+    def test_restore_lifts_tombstone(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(_make_args(uid="doomed", email="doomed@test.com", commit=True))
+        user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+
+        user_cmd.cmd_restore(_make_args(uid="doomed", commit=True))
+
+        users = json.loads((tmp_path / "users.json").read_text())
+        assert "doomed" not in users.get("_revoked_before", {})
+        assert "doomed" not in users.get("_terminated", [])
 
     def test_absent_uid_raises(self, tmp_path, monkeypatch):
         from kg.ops_edit_support import EditError

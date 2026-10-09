@@ -7,7 +7,6 @@ from argparse import Namespace
 from _ops_edit_support import *  # noqa: F403
 
 
-
 class TestSeedReplace:
     def _seed(self, tmp_path, uid, spec, *extra):
         p = tmp_path / "spec.json"
@@ -27,9 +26,7 @@ class TestSeedReplace:
 
         def snapshot():
             return {
-                path.name: path.read_bytes()
-                for path in sorted(_user_dir(tmp_path, uid).iterdir())
-                if path.is_file()
+                path.name: path.read_bytes() for path in sorted(_user_dir(tmp_path, uid).iterdir()) if path.is_file()
             }
 
         before = snapshot()
@@ -47,9 +44,7 @@ class TestSeedReplace:
         monkeypatch.setattr(seed_commands, "data_dir", lambda: tmp_path)
         monkeypatch.setattr(seed_commands, "build_seed_plan", unexpected_plan)
         with pytest.raises(seed_commands.EditError, match=rf"{collection}\[0\].*JSON object"):
-            seed_commands.cmd_seed(Namespace(
-                uid=uid, commit=True, json=True, replace=True, spec=str(path)
-            ))
+            seed_commands.cmd_seed(Namespace(uid=uid, commit=True, json=True, replace=True, spec=str(path)))
         assert planned == []
         assert snapshot() == before
 
@@ -66,10 +61,8 @@ class TestSeedReplace:
 
     def test_replace_moves_card_between_notebooks_without_duplicating(self, tmp_path):
         uid = _mk_user(tmp_path)
-        spec_a = {"notebooks": [{"name": "A"}],
-                  "cards": [{"content": "w", "meaning": "m", "notebook": "A"}]}
-        spec_b = {"notebooks": [{"name": "B"}],
-                  "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]}
+        spec_a = {"notebooks": [{"name": "A"}], "cards": [{"content": "w", "meaning": "m", "notebook": "A"}]}
+        spec_b = {"notebooks": [{"name": "B"}], "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]}
         r0 = self._seed(tmp_path, uid, spec_a, "--commit", "--json")
         assert r0.returncode == 0, r0.stderr
         r1 = self._seed(tmp_path, uid, spec_b, "--replace", "--commit", "--json")
@@ -94,26 +87,37 @@ class TestSeedReplace:
         assert r3.returncode == 0, r3.stdout + r3.stderr
         assert len(_card_rows(tmp_path, uid2)) == 2
 
+    def test_replace_wipes_legacy_and_pending_judge_files(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        user_dir = _user_dir(tmp_path, uid)
+        names = ("graph.json", "candidates.json", "blocked.json", "embeddings.npy", "card_ids.json")
+        for name in (*names, "pending_judge_default.json"):
+            (user_dir / name).write_text("stale")
+        r = self._seed(
+            tmp_path, uid, {"cards": [{"content": "fresh", "meaning": "m"}]}, "--replace", "--commit", "--json"
+        )
+        assert r.returncode == 0, r.stderr
+        for name in (*names, "pending_judge_default.json"):
+            assert not (user_dir / name).exists(), name
+
     def test_replace_dry_run_does_not_touch_disk(self, tmp_path):
         import hashlib
 
         uid = _mk_user(tmp_path)
-        r0 = self._seed(tmp_path, uid,
-                        {"cards": [{"content": "w", "meaning": "m"}]}, "--commit", "--json")
+        r0 = self._seed(tmp_path, uid, {"cards": [{"content": "w", "meaning": "m"}]}, "--commit", "--json")
         assert r0.returncode == 0, r0.stderr
+
         # 快照整個 user_dir 而非單一 cards.db:plan 期 `_count_active_cards` 以
         # mode=ro 開檔,SQLite 在「有 -wal 無 -shm」時會重建 -shm 旁檔,而它跑在
         # plan["wipe_files"] 之後 —— 只 hash cards.db 看不到這種副作用。
         def _snapshot():
             d = _user_dir(tmp_path, uid)
-            return {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                    for p in sorted(d.iterdir()) if p.is_file()}
+            return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(d.iterdir()) if p.is_file()}
 
         before = _snapshot()
         assert "cards.db" in before
 
-        r1 = self._seed(tmp_path, uid,
-                        {"cards": [{"content": "other", "meaning": "m2"}]}, "--replace", "--json")
+        r1 = self._seed(tmp_path, uid, {"cards": [{"content": "other", "meaning": "m2"}]}, "--replace", "--json")
         assert r1.returncode == 0, r1.stdout + r1.stderr
         after = _snapshot()
         # 既有檔一 byte 未變。
@@ -130,11 +134,20 @@ class TestSeedReplace:
 
     def test_replace_verify_reports_exact_shape(self, tmp_path):
         uid = _mk_user(tmp_path)
-        r = self._seed(tmp_path, uid,
-                       {"notebooks": [{"name": "A"}],
-                        "cards": [{"content": "alpha", "meaning": "m1", "notebook": "A"},
-                                  {"content": "beta", "meaning": "m2", "notebook": "A"}]},
-                       "--replace", "--commit", "--json")
+        r = self._seed(
+            tmp_path,
+            uid,
+            {
+                "notebooks": [{"name": "A"}],
+                "cards": [
+                    {"content": "alpha", "meaning": "m1", "notebook": "A"},
+                    {"content": "beta", "meaning": "m2", "notebook": "A"},
+                ],
+            },
+            "--replace",
+            "--commit",
+            "--json",
+        )
         assert r.returncode == 0, r.stdout + r.stderr
         verified = json.loads(r.stdout)["verified"]
         assert verified["ok"] is True
@@ -144,9 +157,9 @@ class TestSeedReplace:
 
     def test_replace_rebuilds_default_notebook(self, tmp_path):
         uid = _mk_user(tmp_path)
-        r = self._seed(tmp_path, uid,
-                       {"cards": [{"content": "plain", "meaning": "m"}]},
-                       "--replace", "--commit", "--json")
+        r = self._seed(
+            tmp_path, uid, {"cards": [{"content": "plain", "meaning": "m"}]}, "--replace", "--commit", "--json"
+        )
         assert r.returncode == 0, r.stdout + r.stderr
         card = _card_by_content(tmp_path, uid, "plain")
         assert card is not None
@@ -158,8 +171,10 @@ class TestSeedReplace:
         # 收集失敗、連累無關測試。
         from kg.ops_edit_seed_commands import _seed_shape_diff
 
-        expected = [{"nb_id": "n1", "content": "Alpha", "meaning": ""},
-                    {"nb_id": "n2", "content": "beta", "meaning": ""}]
+        expected = [
+            {"nb_id": "n1", "content": "Alpha", "meaning": ""},
+            {"nb_id": "n2", "content": "beta", "meaning": ""},
+        ]
         actual = [("n1", "alpha"), ("n2", "gamma")]
         extra, missing = _seed_shape_diff(expected, actual)
         # Alpha/alpha 經 normalize_nfc_lower 視為同一張 → 不進 extra/missing。
@@ -174,31 +189,29 @@ class TestSeedReplace:
 
         expected = [{"nb_id": "nbB", "content": "w", "meaning": "m"}]
         # 殘留:舊本 nbA 的 w 沒被清掉,新本 nbB 又建了一張 → 重複卡。
-        dirty = _seed_replace_verdict(expected, [("nbA", "w"), ("nbB", "w")],
-                                      link_errors=[], field_mismatches=[],
-                                      dangling_config=[])
+        dirty = _seed_replace_verdict(
+            expected, [("nbA", "w"), ("nbB", "w")], link_errors=[], field_mismatches=[], dangling_config=[]
+        )
         assert dirty["ok"] is False
         assert dirty["extra_cards"] == ["w@nbA"]
         assert dirty["missing_cards"] == []
         # 卡留在舊本、新本沒建(換分類只做了一半):筆數**對得上**,只有集合差抓得到。
-        misplaced = _seed_replace_verdict(expected, [("nbA", "w")],
-                                          link_errors=[], field_mismatches=[],
-                                          dangling_config=[])
+        misplaced = _seed_replace_verdict(
+            expected, [("nbA", "w")], link_errors=[], field_mismatches=[], dangling_config=[]
+        )
         assert misplaced["ok"] is False
         assert misplaced["extra_cards"] == ["w@nbA"]
         assert misplaced["missing_cards"] == ["w@nbB"]
         # 大小寫變體重複(同本 w + W):正規化後兩者 key 相同,集合差**看不見**它,
         # 只有「筆數要對得上」那一半抓得到。兩個 clause 各抓一種重複形狀,缺一不可。
-        case_dupe = _seed_replace_verdict(expected, [("nbB", "w"), ("nbB", "W")],
-                                          link_errors=[], field_mismatches=[],
-                                          dangling_config=[])
+        case_dupe = _seed_replace_verdict(
+            expected, [("nbB", "w"), ("nbB", "W")], link_errors=[], field_mismatches=[], dangling_config=[]
+        )
         assert case_dupe["ok"] is False
         assert case_dupe["extra_cards"] == []
         assert case_dupe["missing_cards"] == []
         # 乾淨狀態才給綠 —— 沒有正控的沉默不能當通過。
-        clean = _seed_replace_verdict(expected, [("nbB", "w")],
-                                      link_errors=[], field_mismatches=[],
-                                      dangling_config=[])
+        clean = _seed_replace_verdict(expected, [("nbB", "w")], link_errors=[], field_mismatches=[], dangling_config=[])
         assert clean["ok"] is True
         assert clean["extra_cards"] == []
 
@@ -207,10 +220,13 @@ class TestSeedReplace:
         # 在 replace 下必須**在 wipe 之前**就紅。否則 dry-run 報綠、--commit 清空
         # 整層後才在 _resolve_nb 撞紅,而錯誤輸出還寫著 "committed": false。
         uid = _mk_user(tmp_path)
-        r0 = self._seed(tmp_path, uid,
-                        {"notebooks": [{"name": "A"}],
-                         "cards": [{"content": "w", "meaning": "m", "notebook": "A"}]},
-                        "--commit", "--json")
+        r0 = self._seed(
+            tmp_path,
+            uid,
+            {"notebooks": [{"name": "A"}], "cards": [{"content": "w", "meaning": "m", "notebook": "A"}]},
+            "--commit",
+            "--json",
+        )
         assert r0.returncode == 0, r0.stderr
         # spec 未宣告 A,卻用 A 當 card 的 notebook。
         undeclared = {"cards": [{"content": "z", "meaning": "m2", "notebook": "A"}]}
@@ -228,15 +244,25 @@ class TestSeedReplace:
         # 正控:未加這道檢查前上面那條也會綠(它靠 _resolve_nb 事後爆)。這條確保
         # 新檢查沒有把合法的 spec 一起擋掉 —— 沒有正控的沉默不算通過。
         uid = _mk_user(tmp_path)
-        r = self._seed(tmp_path, uid,
-                       {"notebooks": [{"name": "B"}],
-                        "cards": [{"content": "x", "meaning": "m", "notebook": "B"},
-                                  {"content": "x2", "meaning": "m", "notebook": "B"},
-                                  {"content": "y", "meaning": "m", "notebook": "default"},
-                                  {"content": "q", "meaning": "m"}],
-                        "links": [{"from": "x", "to": "x2", "kind": "shares_usage",
-                                   "confidence": 0.5, "reason": "r", "notebook": "B"}]},
-                       "--replace", "--commit", "--json")
+        r = self._seed(
+            tmp_path,
+            uid,
+            {
+                "notebooks": [{"name": "B"}],
+                "cards": [
+                    {"content": "x", "meaning": "m", "notebook": "B"},
+                    {"content": "x2", "meaning": "m", "notebook": "B"},
+                    {"content": "y", "meaning": "m", "notebook": "default"},
+                    {"content": "q", "meaning": "m"},
+                ],
+                "links": [
+                    {"from": "x", "to": "x2", "kind": "shares_usage", "confidence": 0.5, "reason": "r", "notebook": "B"}
+                ],
+            },
+            "--replace",
+            "--commit",
+            "--json",
+        )
         assert r.returncode == 0, r.stdout + r.stderr
         verified = json.loads(r.stdout)["verified"]
         assert verified["ok"] is True, verified
@@ -248,20 +274,26 @@ class TestSeedReplace:
         # 剛被清掉的舊 id。卡的形狀完全正確,只看卡就會報綠 —— 這是同族的第三種
         # 說謊,demo 帳號「新選詞歸哪本」實際上懸空。
         uid = _mk_user(tmp_path)
-        r0 = self._seed(tmp_path, uid,
-                        {"notebooks": [{"name": "A"}],
-                         "cards": [{"content": "w", "meaning": "m", "notebook": "A"}]},
-                        "--commit", "--json")
+        r0 = self._seed(
+            tmp_path,
+            uid,
+            {"notebooks": [{"name": "A"}], "cards": [{"content": "w", "meaning": "m", "notebook": "A"}]},
+            "--commit",
+            "--json",
+        )
         assert r0.returncode == 0, r0.stderr
         old_id = next(n["id"] for n in _notebook_rows(tmp_path, uid) if n["name"] == "A")
-        rc = _edit(str(tmp_path), "user-config-set", uid, "--active-notebook", "A",
-                   "--commit", "--json")
+        rc = _edit(str(tmp_path), "user-config-set", uid, "--active-notebook", "A", "--commit", "--json")
         assert rc.returncode == 0, rc.stderr
 
-        r1 = self._seed(tmp_path, uid,
-                        {"notebooks": [{"name": "B"}],
-                         "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]},
-                        "--replace", "--commit", "--json")
+        r1 = self._seed(
+            tmp_path,
+            uid,
+            {"notebooks": [{"name": "B"}], "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]},
+            "--replace",
+            "--commit",
+            "--json",
+        )
         verified = json.loads(r1.stdout)["verified"]
         # 卡的形狀是對的 —— 正是「只看卡會報綠」的那一半。
         assert verified["extra_cards"] == []
@@ -279,10 +311,14 @@ class TestSeedReplace:
     def test_replace_clean_run_has_no_dangling_config(self, tmp_path):
         # 正控:沒設過 active notebook 的帳號不該被這道檢查誤傷。
         uid = _mk_user(tmp_path)
-        r = self._seed(tmp_path, uid,
-                       {"notebooks": [{"name": "B"}],
-                        "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]},
-                       "--replace", "--commit", "--json")
+        r = self._seed(
+            tmp_path,
+            uid,
+            {"notebooks": [{"name": "B"}], "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]},
+            "--replace",
+            "--commit",
+            "--json",
+        )
         assert r.returncode == 0, r.stdout + r.stderr
         verified = json.loads(r.stdout)["verified"]
         assert verified["dangling_config"] == []
@@ -295,8 +331,7 @@ class TestSeedReplace:
         # --json stdout(cmd_seed 自己為 spec 解析捍衛過同一條契約),operator 會
         # 拿到空 stdout 卻已經沒有資料。壞掉必須是**具名的紅**,不是 crash。
         uid = _mk_user(tmp_path)
-        spec = {"notebooks": [{"name": "B"}],
-                "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]}
+        spec = {"notebooks": [{"name": "B"}], "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]}
         (tmp_path / "users.json").write_text("{ this is not json")
         r = self._seed(tmp_path, uid, spec, "--replace", "--commit", "--json")
         # stdout 仍是合法 JSON —— 這條斷言碰的字串是 CLI 的 stdout 本身。
@@ -312,10 +347,14 @@ class TestSeedReplace:
         users = json.loads((tmp_path / "users.json").read_text())
         users[uid].setdefault("config", {})["vocab_ui"] = {"active_notebook_id": {"oops": 1}}
         (tmp_path / "users.json").write_text(json.dumps(users))
-        r = self._seed(tmp_path, uid,
-                       {"notebooks": [{"name": "B"}],
-                        "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]},
-                       "--replace", "--commit", "--json")
+        r = self._seed(
+            tmp_path,
+            uid,
+            {"notebooks": [{"name": "B"}], "cards": [{"content": "w", "meaning": "m", "notebook": "B"}]},
+            "--replace",
+            "--commit",
+            "--json",
+        )
         payload = json.loads(r.stdout)
         assert payload["verified"]["ok"] is False
         assert any("型別非法" in s for s in payload["verified"]["dangling_config"]), payload

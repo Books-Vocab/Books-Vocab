@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email")
     p.add_argument("--provider", default="google", choices=["google", "apple", "demo"])
     p.add_argument("--allow-existing", action="store_true", help="user 已存在時 merge record")
+    p.add_argument("--reassign-email", action="store_true", help="email 已屬他人 uid 時仍改指向本 uid(預設拒絕)")
     p.set_defaults(func=cmd_user_create)
 
     p = sub.add_parser(
@@ -106,7 +107,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cover", help="cover_pattern")
     p.set_defaults(func=cmd_notebook_create)
 
-    p = sub.add_parser("user-config-set", parents=[jp, cp], help="更新 user config(translation/review clock/mode/vocab UI)")
+    p = sub.add_parser(
+        "user-config-set", parents=[jp, cp], help="更新 user config(translation/review clock/mode/vocab UI)"
+    )
     p.add_argument("uid")
     p.add_argument("--translation-source")
     p.add_argument("--translation-target")
@@ -130,7 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--confidence", type=float, required=True)
     p.add_argument("--reason", required=True)
     p.add_argument("--notebook", default="default")
-    p.add_argument("--if-exists", choices=["keep", "update"], default="keep", help="既有 pair 存在時：keep=維持既有值(預設)；update=改寫 confidence/kind/reason")
+    p.add_argument(
+        "--if-exists",
+        choices=["keep", "update"],
+        default="keep",
+        help="既有 pair 存在時：keep=維持既有值(預設)；update=改寫 confidence/kind/reason",
+    )
     p.set_defaults(func=cmd_link_add)
 
     p = sub.add_parser("link-delete", parents=[jp, cp], help="硬刪一條連結")
@@ -142,17 +150,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("seed", parents=[jp, cp], help="一次性灌整套 demo(notebooks+cards+links)")
     p.add_argument("uid")
     p.add_argument("spec", help="seed spec JSON 檔路徑")
-    p.add_argument("--replace", action="store_true",
-                   help="先清空目標帳號整層 vocab 再灌;spec 即最終狀態,identity(users.json)不動")
+    p.add_argument(
+        "--replace", action="store_true", help="先清空目標帳號整層 vocab 再灌;spec 即最終狀態,identity(users.json)不動"
+    )
     p.set_defaults(func=cmd_seed)
 
-    p = sub.add_parser("clone-demo", parents=[jp, cp], help="高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history")
+    p = sub.add_parser(
+        "clone-demo", parents=[jp, cp], help="高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history"
+    )
     p.add_argument("source_uid", help="來源帳號 uid(讀取,不變更)")
     p.add_argument("target_uid", help="目標 demo 帳號 uid(覆蓋 vocab 層;identity 不動)")
     p.add_argument("--expect-source-fingerprint", help="要求來源 vocab 層指紋相符，避免來源漂移導致 clone 結果改變")
     p.set_defaults(func=cmd_clone_demo)
 
-    p = sub.add_parser("world-snapshot", parents=[jp, cp], help="建立整個 data_dir world snapshot（users.json + users/* + 根目錄 DB）")
+    p = sub.add_parser(
+        "world-snapshot", parents=[jp, cp], help="建立整個 data_dir world snapshot（users.json + users/* + 根目錄 DB）"
+    )
     p.add_argument("--label", default="world")
     p.set_defaults(func=cmd_world_snapshot)
 
@@ -212,7 +225,9 @@ def main() -> None:
     try:
         code = args.func(args)
     except EditError as exc:
-        emit({"mode": "error", "action": args.cmd, "error": str(exc), "committed": False},
-             json_mode=getattr(args, "json", False))
+        emit(
+            {"mode": "error", "action": args.cmd, "error": str(exc), "committed": False},
+            json_mode=getattr(args, "json", False),
+        )
         sys.exit(1)
     sys.exit(code or 0)
