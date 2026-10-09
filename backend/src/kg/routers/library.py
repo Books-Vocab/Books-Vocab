@@ -132,7 +132,8 @@ def _library_s3_client(settings: KGSettings):
             # presigned PUT could not pin the declared byte_size (#2525).
             signature_version="s3v4",
             # Regional virtual-hosted URL: the global host 307-redirects non-us-east-1 buckets.
-            s3={"addressing_style": "virtual"},
+            # Custom endpoints (MinIO, localstack) keep botocore's default addressing.
+            s3={"addressing_style": "virtual"} if settings.library_bucket_endpoint_url is None else None,
             connect_timeout=5,
             read_timeout=10,
             retries={"total_max_attempts": 3, "mode": "standard"},
@@ -257,11 +258,16 @@ def download_asset(book_id: str, user: CurrentUser, request: Request):
     # The key is recorded when the upload URL is minted, before any bytes
     # exist; only redirect once the object is really there.
     try:
-        client.head_object(Bucket=settings.library_bucket, Key=book.asset_object_key)
+        head = client.head_object(Bucket=settings.library_bucket, Key=book.asset_object_key)
     except Exception as exc:
         if _object_missing(exc):
             raise ConflictError("Book asset has not been uploaded yet") from exc
         raise
+    # A same-format re-upload reuses the key; if its bytes never landed the old
+    # body is still there, so the recorded size no longer matches (#2527).
+    stored_size = head.get("ContentLength")
+    if stored_size is not None and book.asset_byte_size is not None and stored_size != book.asset_byte_size:
+        raise ConflictError("Book asset upload is incomplete")
     download_url = client.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.library_bucket, "Key": book.asset_object_key},

@@ -167,7 +167,7 @@ class _MissingObject(Exception):
 
 class _RecordingS3:
     def __init__(self, existing=None, delete_error=None):
-        self.existing = set(existing or ())
+        self.existing = dict.fromkeys(existing or (), 10)
         self.deleted = []
         self.delete_error = delete_error
 
@@ -177,7 +177,7 @@ class _RecordingS3:
     def head_object(self, *, Bucket, Key):
         if Key not in self.existing:
             raise _MissingObject()
-        return {}
+        return {"ContentLength": self.existing[Key]}
 
     def delete_object(self, *, Bucket, Key):
         if self.delete_error:
@@ -210,7 +210,7 @@ def test_download_before_bytes_uploaded_is_conflict(isolated_api, monkeypatch):
     key = _request_upload(isolated_api, book_id).json()["object_key"]
 
     assert _download(isolated_api, book_id).status_code == 409
-    s3.existing.add(key)
+    s3.existing[key] = 10
     assert _download(isolated_api, book_id).status_code == 307
 
 
@@ -265,3 +265,17 @@ def test_switching_to_local_only_deletes_prior_object(isolated_api, monkeypatch)
     old = _request_upload(isolated_api, book_id).json()["object_key"]
     assert _request_upload(isolated_api, book_id, local_only=True).json()["storage"] == "local"
     assert s3.deleted == [old]
+
+
+def test_failed_same_key_reupload_with_different_size_is_conflict(isolated_api, monkeypatch):
+    """#2527: stale bytes under a reused key must not be served against new metadata."""
+    s3 = _RecordingS3()
+    _bucket_api(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api)
+    key = _request_upload(isolated_api, book_id).json()["object_key"]
+    s3.existing[key] = 10
+    assert _download(isolated_api, book_id).status_code == 307
+
+    # Re-upload declares a different size but the new bytes never land.
+    assert _request_upload(isolated_api, book_id, byte_size=99).status_code == 200
+    assert _download(isolated_api, book_id).status_code == 409

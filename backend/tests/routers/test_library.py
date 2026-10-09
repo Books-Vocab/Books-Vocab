@@ -236,7 +236,8 @@ class TestCreateBook:
         assert new["is_deleted"] is False
         assert new["id"] != old["id"]
         assert new["title"] == "New"
-        assert new.get("position_locator") is None
+        assert new["locator"] is None
+        assert new["progression"] is None
         assert c.patch(f"/api/library/books/{new['id']}", json={"title": "Renamed"}, headers=h).status_code == 200
         pos_body2 = {"locator": "loc2", "progression": 0.1, "updated_at": "2026-06-14T10:00:00Z"}
         assert c.put(f"/api/library/books/{new['id']}/position", json=pos_body2, headers=h).status_code == 200
