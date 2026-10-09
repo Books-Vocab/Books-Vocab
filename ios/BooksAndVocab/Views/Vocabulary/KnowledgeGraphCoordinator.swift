@@ -17,7 +17,7 @@ import SwiftUI
     func toggleSettings()
     func resetForces()
     func handleNodeTap(_ nodeID: String, allEntries: [VocabularyEntry])
-    func loadGraphData(authManager: any AuthManaging, kgService: any KGServing) async
+    func loadGraphData(authManager: any AuthManaging, kgService: any KGServing, notebookIDs: [String]) async
 }
 
 @Observable @MainActor
@@ -61,7 +61,8 @@ final class KnowledgeGraphCoordinator: KnowledgeGraphCoordinating {
 
     func loadGraphData(
         authManager: any AuthManaging,
-        kgService: any KGServing
+        kgService: any KGServing,
+        notebookIDs: [String]
     ) async {
         guard authManager.isLoggedIn else { return }
 
@@ -76,7 +77,7 @@ final class KnowledgeGraphCoordinator: KnowledgeGraphCoordinating {
         defer { isLoading = false }
 
         do {
-            links = try await kgService.pullGraphLinks()
+            links = try await kgService.pullGraphLinks(notebookIDs: notebookIDs)
         } catch {
             errorMessage = SyncFailurePresentation.reason(for: error)
         }

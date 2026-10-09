@@ -154,8 +154,8 @@ struct StatsPresenter: View {
             summary = StatsPresentation.project(inputs)
         }
         .task(id: graphKey) {
-            // Fetches default or single-notebook links. Re-runs only when graphKey
-            // changes (auth state, selected notebook, graph-link revision, or
+            // Fetches links per notebook in scope and merges them. Re-runs only when graphKey
+            // changes (auth state, request scope, graph-link revision, or
             // retryToken bump from the inline error retry button), NOT on every
             // view appearance —
             // appearance ≠ staleness. The graph-link revision keeps a local
@@ -201,11 +201,9 @@ struct StatsPresenter: View {
             return
         }
         do {
-            if let selectedNotebookId {
-                graphLinks = try await kgService.pullGraphLinks(notebookId: selectedNotebookId)
-            } else {
-                graphLinks = try await kgService.pullGraphLinks()
-            }
+            graphLinks = try await kgService.pullGraphLinks(
+                notebookIDs: KnowledgeGraphNotebookScope.notebookIDs(for: filter, entries: filteredEntries)
+            )
             graphLoadError = false
         } catch {
             // Failure is scoped to the graph card only — summary is built from
@@ -283,8 +281,8 @@ struct StatsPresenter: View {
     }
 
     /// Graph thumbnail refresh trigger. A single notebook filter changes the
-    /// request scope and must invalidate this cache; all/multi-notebook filters
-    /// retain the default request path. `forecastDays` is irrelevant. Auth
+    /// request scope and must invalidate this cache; links are fetched per
+    /// notebook in scope and merged, so the key hashes the full scope. `forecastDays` is irrelevant. Auth
     /// toggles and entries.count (new cards may trigger backend link
     /// generation) trigger a re-pull; `retryToken` is bumped by the inline
     /// retry button so users can re-fetch after a network failure without
@@ -292,12 +290,8 @@ struct StatsPresenter: View {
     private var graphKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
-        let graphLinksRevision = syncedEntries
-            .map { "\($0.id)|\($0.graphLinksJSON)" }
-            .sorted()
-            .joined(separator: "\u{1F}")
-        hasher.combine(graphLinksRevision)
-        hasher.combine(selectedNotebookId)
+        hasher.combine(KnowledgeGraphNotebookScope.linksRevision(of: syncedEntries))
+        hasher.combine(KnowledgeGraphNotebookScope.requestKey(for: filter, entries: filteredEntries))
         hasher.combine(authManager.isLoggedIn)
         hasher.combine(authManager.isDemoMode)
         hasher.combine(retryToken)

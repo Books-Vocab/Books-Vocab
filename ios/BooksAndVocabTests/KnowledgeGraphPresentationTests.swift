@@ -85,6 +85,126 @@ struct KnowledgeGraphPresentationTests {
         )
     }
 
+    @Test func graphNotebookScope_fromEntries_returnsSortedDistinctSyncedNotebooks() {
+        let a = Self.entry(word: "a", cardID: "a", notebookID: "nb-b")
+        let b = Self.entry(word: "b", cardID: "b", notebookID: "nb-a")
+        let c = Self.entry(word: "c", cardID: "c", notebookID: "nb-b")
+        let unsynced = Self.entry(word: "d", cardID: "d", notebookID: "nb-z")
+        unsynced.kgCardId = nil
+
+        #expect(KnowledgeGraphNotebookScope.notebookIDs(from: [a, b, c, unsynced]) == ["nb-a", "nb-b"])
+        #expect(KnowledgeGraphNotebookScope.notebookIDs(from: []) == ["default"])
+    }
+
+    @Test func graphNotebookScope_forFilter_usesSelectionElseEntries() {
+        let a = Self.entry(word: "a", cardID: "a", notebookID: "nb-a")
+        let b = Self.entry(word: "b", cardID: "b", notebookID: "nb-b")
+
+        #expect(
+            KnowledgeGraphNotebookScope.notebookIDs(
+                for: NotebookFilter(selectedIds: ["nb-2", "nb-1"]), entries: [a, b]
+            ) == ["nb-1", "nb-2"]
+        )
+        #expect(
+            KnowledgeGraphNotebookScope.notebookIDs(for: NotebookFilter(selectedIds: []), entries: [a, b])
+                == ["nb-a", "nb-b"]
+        )
+    }
+
+    @Test func pullGraphLinks_fansOutAcrossNotebooks_andDedupes() async throws {
+        let service = RecordingGraphService(linksByNotebook: [
+            "nb-a": [Self.link(id: "l1", from: "a1", to: "a2")],
+            "nb-b": [Self.link(id: "l1", from: "a1", to: "a2"), Self.link(id: "l2", from: "b1", to: "b2")],
+        ])
+        let links = try await service.pullGraphLinks(notebookIDs: ["nb-a", "nb-b"])
+        #expect(links.map(\.id) == ["l1", "l2"])
+        #expect(service.requested == ["nb-a", "nb-b"])
+        #expect(service.defaultPullCount == 0, "multi-notebook scope must never fall back to the default notebook")
+    }
+
+    @Test func pullGraphLinks_skipsForbiddenNotebook_butPropagatesOtherErrors() async throws {
+        let service = RecordingGraphService(
+            linksByNotebook: ["nb-b": [Self.link(id: "l2", from: "b1", to: "b2")]],
+            errorsByNotebook: ["nb-gone": KGError.httpError(statusCode: 403, detail: "gone")]
+        )
+        let links = try await service.pullGraphLinks(notebookIDs: ["nb-gone", "nb-b"])
+        #expect(links.map(\.id) == ["l2"])
+
+        let failing = RecordingGraphService(
+            linksByNotebook: [:],
+            errorsByNotebook: ["nb-x": KGError.httpError(statusCode: 500, detail: "boom")]
+        )
+        await #expect(throws: KGError.self) {
+            _ = try await failing.pullGraphLinks(notebookIDs: ["nb-x"])
+        }
+        let offline = RecordingGraphService(linksByNotebook: [:], errorsByNotebook: ["nb-x": KGError.offline])
+        await #expect(throws: KGError.self) {
+            _ = try await offline.pullGraphLinks(notebookIDs: ["nb-x"])
+        }
+    }
+
+    @Test func pullGraphLinks_emptyIDs_makesNoRequest() async throws {
+        let service = RecordingGraphService(linksByNotebook: [:])
+        let links = try await service.pullGraphLinks(notebookIDs: [])
+        #expect(links.isEmpty)
+        #expect(service.requested.isEmpty)
+        #expect(service.defaultPullCount == 0)
+    }
+
+    @Test func nonDefaultNotebookNodes_getDegreeFromFanOutLinks() async throws {
+        let b1 = Self.entry(word: "b1", cardID: "b1", notebookID: "nb-b")
+        let b2 = Self.entry(word: "b2", cardID: "b2", notebookID: "nb-b")
+        let service = RecordingGraphService(linksByNotebook: [
+            "nb-a": [],
+            "nb-b": [Self.link(id: "l", from: "b1", to: "b2")],
+        ])
+        let a1 = Self.entry(word: "a1", cardID: "a1", notebookID: "nb-a")
+        let entries = [a1, b1, b2]
+        let links = try await service.pullGraphLinks(
+            notebookIDs: KnowledgeGraphNotebookScope.notebookIDs(from: entries)
+        )
+        let nodes = KnowledgeGraphPresentation.nodes(from: entries, links: links)
+        #expect(nodes.map(\.id) == ["b1", "b2"])
+        #expect(nodes.allSatisfy { $0.degree == 1 })
+    }
+
+    @MainActor
+    @Test func graphLinksRevision_changesWhenEntryLinkStateChanges() {
+        let e = Self.entry(word: "a", cardID: "a")
+        let before = KnowledgeGraphNotebookScope.linksRevision(of: [e])
+        e.graphLinksJSON = "[{\"changed\":true}]"
+        #expect(KnowledgeGraphNotebookScope.linksRevision(of: [e]) != before)
+    }
+
+    @MainActor
+    @Test func graphRequestKey_differsAcrossFilterScopes() {
+        let a = Self.entry(word: "a", cardID: "a", notebookID: "A")
+        let b = Self.entry(word: "b", cardID: "b", notebookID: "B")
+        let c = Self.entry(word: "c", cardID: "c", notebookID: "C")
+        let all = [a, b, c]
+        let key = { (ids: Set<String>) in
+            KnowledgeGraphNotebookScope.requestKey(for: NotebookFilter(selectedIds: ids), entries: all)
+        }
+        #expect(key(["A", "B"]) != key(["A", "C"]))
+        #expect(key(["A", "B"]) != key([]))
+        #expect(key(["A", "B"]) == key(["B", "A"]))
+    }
+
+    @Test func pullGraphLinks_singleNotebook_issuesExactlyOneRequest() async throws {
+        let service = RecordingGraphService(linksByNotebook: ["x": [Self.link(id: "l", from: "a", to: "b")]])
+        let links = try await service.pullGraphLinks(notebookIDs: ["x"])
+        #expect(links.map(\.id) == ["l"])
+        #expect(service.requested == ["x"])
+        #expect(service.defaultPullCount == 0)
+    }
+
+    @MainActor
+    @Test func graphLinksRevision_isOrderIndependent() {
+        let a = Self.entry(word: "a", cardID: "a")
+        let b = Self.entry(word: "b", cardID: "b")
+        #expect(KnowledgeGraphNotebookScope.linksRevision(of: [a, b]) == KnowledgeGraphNotebookScope.linksRevision(of: [b, a]))
+    }
+
     // MARK: - Error branch carries a retry action
 
     @Test func errorState_includesRetryAction() {
@@ -181,7 +301,8 @@ struct KnowledgeGraphPresentationTests {
     private static func entry(
         word: String,
         cardID: String,
-        archived: Bool = false
+        archived: Bool = false,
+        notebookID: String = "default"
     ) -> VocabularyEntry {
         let entry = VocabularyEntry(
             word: word,
@@ -191,6 +312,7 @@ struct KnowledgeGraphPresentationTests {
         )
         entry.syncStatus = VocabularySyncState.synced.rawValue
         entry.kgCardId = cardID
+        entry.notebookId = notebookID
         entry.isArchived = archived
         return entry
     }
@@ -205,5 +327,34 @@ struct KnowledgeGraphPresentationTests {
             reason: "test"
         )
     }
+}
+private final class RecordingGraphService: GraphServing {
+    let linksByNotebook: [String: [KGGraphLink]]
+    let errorsByNotebook: [String: Error]
+    private(set) var requested: [String] = []
+    private(set) var defaultPullCount = 0
+
+    init(linksByNotebook: [String: [KGGraphLink]], errorsByNotebook: [String: Error] = [:]) {
+        self.linksByNotebook = linksByNotebook
+        self.errorsByNotebook = errorsByNotebook
+    }
+
+    func pullGraphLinks() async throws -> [KGGraphLink] {
+        defaultPullCount += 1
+        return []
+    }
+
+    func pullGraphLinks(notebookId: String) async throws -> [KGGraphLink] {
+        requested.append(notebookId)
+        if let error = errorsByNotebook[notebookId] { throw error }
+        return linksByNotebook[notebookId] ?? []
+    }
+
+    func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink {
+        throw KGError.offline
+    }
+    func deleteLink(linkId: String, notebookId: String) async throws {}
+    func hideLink(linkId: String, notebookId: String) async throws {}
+    func unhideLink(linkId: String, notebookId: String) async throws {}
 }
 #endif

@@ -6,6 +6,42 @@ enum KnowledgeGraphNotebookScope {
         guard filter.selectedIds.count == 1 else { return nil }
         return filter.selectedIds.first
     }
+
+    /// Notebooks whose links back the nodes in `entries` (all synced cards).
+    static func notebookIDs(from entries: [VocabularyEntry]) -> [String] {
+        let ids = Set(entries.filter { $0.kgCardId != nil }.map(\.notebookId))
+        return ids.isEmpty ? ["default"] : ids.sorted()
+    }
+
+    static func notebookIDs(for filter: NotebookFilter, entries: [VocabularyEntry]) -> [String] {
+        filter.isFiltered ? filter.selectedIds.sorted() : notebookIDs(from: entries)
+    }
+
+    /// Changes whenever any entry's local link state (add / hide / delete)
+    /// changes, so the full graph can re-pull like the Stats thumbnail does.
+    static func linksRevision(of entries: [VocabularyEntry]) -> Int {
+        // Order-independent (wrapping sum of per-entry hashes): no string
+        // building or sorting on the view-body hot path.
+        var sum = 0
+        for entry in entries {
+            var hasher = Hasher()
+            hasher.combine(entry.id)
+            hasher.combine(entry.graphLinksJSON)
+            sum = sum &+ hasher.finalize()
+        }
+        var hasher = Hasher()
+        hasher.combine(entries.count)
+        hasher.combine(sum)
+        return hasher.finalize()
+    }
+
+    /// Hash of the actual request scope (notebooks pulled), so a filter change
+    /// between multi-notebook sets re-triggers the link pull.
+    static func requestKey(for filter: NotebookFilter, entries: [VocabularyEntry]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(notebookIDs(for: filter, entries: entries))
+        return hasher.finalize()
+    }
 }
 
 struct KnowledgeGraphView: View {
@@ -57,7 +93,7 @@ struct KnowledgeGraphView: View {
             onResetForces: coordinator.resetForces,
             onNodeTapped: handleNodeTap
         )
-        .task {
+        .task(id: loadTrigger) {
             guard shouldLoadGraphData else { return }
             await loadGraphData()
         }
@@ -131,27 +167,22 @@ struct KnowledgeGraphView: View {
         coordinator.handleNodeTap(nodeID, allEntries: allEntries)
     }
 
+    /// Reload key: scope plus local link state, so edges refresh after the
+    /// detail sheet hides / deletes / adds a link (#2538).
+    private var loadTrigger: Int {
+        var hasher = Hasher()
+        hasher.combine(notebookId)
+        hasher.combine(KnowledgeGraphNotebookScope.linksRevision(of: allEntries))
+        return hasher.finalize()
+    }
+
     private func loadGraphData() async {
-        guard let notebookId else {
-            await coordinator.loadGraphData(authManager: authManager, kgService: kgService)
-            return
-        }
-        guard authManager.isLoggedIn else { return }
-
-        if authManager.isDemoMode {
-            coordinator.links = DemoDataProvider.demoGraphLinks
-            return
-        }
-
-        coordinator.isLoading = true
-        coordinator.errorMessage = nil
-        defer { coordinator.isLoading = false }
-
-        do {
-            coordinator.links = try await kgService.pullGraphLinks(notebookId: notebookId)
-        } catch {
-            coordinator.errorMessage = SyncFailurePresentation.reason(for: error)
-        }
+        await coordinator.loadGraphData(
+            authManager: authManager,
+            kgService: kgService,
+            notebookIDs: notebookId.map { [$0] }
+                ?? KnowledgeGraphNotebookScope.notebookIDs(from: allEntries)
+        )
     }
 
     /// Synchronous entry point for the error-state retry button — the only
