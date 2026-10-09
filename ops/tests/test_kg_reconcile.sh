@@ -1036,7 +1036,7 @@ for rcode in 503 000 404; do
   out="$(MOCK_READY_LOCAL=$rcode run_recon --once 2>"$SC/ready.err")"; rc=$?
   [[ "$(get_verdict "$out")" == "unhealthy" ]] && ok "ready noop[$rcode]: verdict unhealthy" || bad "ready noop[$rcode]: expected unhealthy, got '$(get_verdict "$out")' (out=$out)"
   [[ "$rc" -ne 0 ]] && ok "ready noop[$rcode]: exit 非 0" || bad "ready noop[$rcode]: exit 0 — 壞掉的儲存層被當成健康"
-  grep -q "ALERT: readiness 失敗" "$SC/ready.err" && ok "ready noop[$rcode]: ALERT 已寫 stderr" || bad "ready noop[$rcode]: 無 ALERT"
+  grep -q "ALERT: readiness" "$SC/ready.err" && ok "ready noop[$rcode]: ALERT 已寫 stderr" || bad "ready noop[$rcode]: 無 ALERT"
   [[ ! -s "$COMPOSELOG" ]] && ok "ready noop[$rcode]: 不 rebuild" || bad "ready noop[$rcode]: compose 被呼叫"
 done
 
@@ -1107,6 +1107,38 @@ out="$(MOCK_READY_LOCAL_SEQ="200 503" run_recon --once 2>"$SC/ready.err")"; rc=$
 grep -q "^poison " "$STATE" 2>/dev/null && bad "ready host-state: 不該 poison 無辜的 sha" || ok "ready host-state: 未 poison"
 grep -q "host state" "$SC/ready.err" && ok "ready host-state: ALERT 指出 host state" || bad "ready host-state: 無 host state ALERT"
 grep -q "host_unready=1" "$DEPLOYLOG" && ok "ready host-state: deploy.log 記錄 host_unready" || bad "ready host-state: deploy.log=$(cat "$DEPLOYLOG" 2>/dev/null)"
+
+# 2d) 容器掛了（readiness 000）不得封死自動修復：有待部署 commit 就照部署；
+#     部署前 000 → PRE_READY=0，部署後 ready 失敗不做 host-state 歸因，照常 rollback + poison。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_READY_LOCAL_SEQ="000 000 200" run_recon --once 2>"$SC/ready.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "deployed" && "$rc" -eq 0 ]] && ok "ready 000 + 待部署修復: 照常 deployed" || bad "ready 000 + 待部署修復: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "HTTP 000" "$SC/ready.err" && ok "ready 000: 仍發 ALERT" || bad "ready 000: 無 ALERT"
+[[ -s "$COMPOSELOG" ]] && ok "ready 000: compose 有跑" || bad "ready 000: compose 沒跑 — 自動修復被封死"
+
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_READY_LOCAL_SEQ="000 000 503" run_recon --once 2>"$SC/ready.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "rolled-back" && "$rc" -ne 0 ]] && ok "ready 000→503: PRE_READY=0 照舊 rolled-back" || bad "ready 000→503: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "^poison " "$STATE" && ok "ready 000→503: 照舊 poison（不做 host-state 歸因）" || bad "ready 000→503: 未 poison"
+grep -q "host_unready" "$DEPLOYLOG" 2>/dev/null && bad "ready 000→503: 不該有 host_unready" || ok "ready 000→503: 無 host_unready"
+
+# 2e) 000 且沒有東西可部署 → 不能報健康
+for kind in none docs; do
+  new_scratch "$kind"
+  MOCK_CURL="$(make_mock_curl "" "$SC")"
+  out="$(MOCK_READY_LOCAL=000 run_recon --once 2>/dev/null)"; rc=$?
+  [[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 ]] && ok "ready 000 無可部署[$kind]: unhealthy 非 0" || bad "ready 000 無可部署[$kind]: verdict=$(get_verdict "$out") rc=$rc"
+done
 
 # 3) deploy gate：外部 readiness 壞（info 200 + health 401 都綠）→ 回滾 reason=smoke
 new_scratch backend
