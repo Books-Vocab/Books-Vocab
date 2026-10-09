@@ -128,9 +128,23 @@ def _is_frozen() -> dict[str, Any] | None:
     path = _freeze_path()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except FileNotFoundError:
         return None
-    return payload if isinstance(payload, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return _unreadable_freeze(path, type(exc).__name__)
+    if not isinstance(payload, dict):
+        return _unreadable_freeze(path, "payload is not a JSON object")
+    return payload
+
+
+def _unreadable_freeze(path: Path, detail: str) -> dict[str, Any]:
+    # Fail closed: a freeze file that exists but cannot be trusted blocks
+    # mutations until `freeze off` (or `freeze on --force`) replaces it.
+    return {
+        "schema": "kg.worktree.freeze.v1",
+        "reason": f"freeze state unreadable ({detail}): {path}",
+        "unreadable": True,
+    }
 
 
 def _write_freeze(payload: dict[str, Any] | None) -> None:

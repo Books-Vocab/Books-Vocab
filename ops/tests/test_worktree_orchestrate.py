@@ -3599,3 +3599,38 @@ def test_resolve_remove_rerun_ignores_a_mismatched_abandoned_record(
     )
     assert coordinator.cmd_resolve(args) == coordinator.registry.EXIT_CLAIMED
     assert ["branch", "-D", "--", args.branch] not in calls
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [b"{not json", b"[1, 2]", b"\xff\xfe\x00bad", b"null"],
+    ids=["bad-json", "non-dict", "bad-utf8", "null"],
+)
+def test_freeze_fails_closed_on_unreadable_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, contents: bytes
+) -> None:
+    path = tmp_path / "worktree-freeze.json"
+    path.write_bytes(contents)
+    monkeypatch.setattr(coordinator, "_freeze_path", lambda: path)
+    refusal = coordinator._require_unfrozen("open")
+    assert refusal is not None
+    assert "frozen" in refusal
+
+
+def test_freeze_fails_closed_on_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "worktree-freeze.json"
+    path.mkdir()  # reading a directory raises OSError (not FileNotFoundError)
+    monkeypatch.setattr(coordinator, "_freeze_path", lambda: path)
+    assert coordinator._require_unfrozen("open") is not None
+
+
+def test_freeze_absent_file_is_not_frozen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        coordinator, "_freeze_path", lambda: tmp_path / "worktree-freeze.json"
+    )
+    assert coordinator._is_frozen() is None
+    assert coordinator._require_unfrozen("open") is None
