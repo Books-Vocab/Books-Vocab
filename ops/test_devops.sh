@@ -342,6 +342,14 @@ df_rc=0; df_out=$(_df 0 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) || df_rc=$?
   && ok "success path records deploy.log and Sentry release" || fail_t "success path broken (rc=$df_rc): $df_out"
 rm -rf "$DF_FIX"
 
+# env-drift（#2314）：遠端 .env 放 host 路徑，container_root 必須是遠端真實 repo 目錄，不可是字面 "/app"。
+awk '/^cmd_env_drift\(\)/,/^}$/' "$KG" | grep -v '^[[:space:]]*#' | grep -q '"/app"' \
+  && fail_t "cmd_env_drift still passes the literal /app as container_root" \
+  || ok "cmd_env_drift does not pass the literal /app"
+awk '/^cmd_env_drift\(\)/,/^}$/' "$KG" | grep -v '^[[:space:]]*#' | grep -q '"\$remote_real_dir" "\$SERVER"' \
+  && ok "cmd_env_drift passes the resolved remote dir as container_root" \
+  || fail_t "cmd_env_drift must pass \$remote_real_dir as container_root"
+
 # ── 8. ops-cli transport quoting（argv 安全序列化）──────────────────────────
 # 根因回歸:ops-cli 的 SQL 過去用 $* 扁平化 + 遠端 bash 二次解析,引號/括號/% 全毀。
 # 用 KG_SSH_CMD stub 攔截最終遠端指令字串,確認任意特殊字元的 SQL 原封不動穿越。

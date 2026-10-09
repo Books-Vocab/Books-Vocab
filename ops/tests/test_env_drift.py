@@ -90,3 +90,44 @@ def test_remote_failure_still_exits_with_message(fake_ssh: Path) -> None:
 def test_option_like_remote_path_is_not_a_cat_flag(fake_ssh: Path) -> None:
     with pytest.raises(SystemExit):
         env_drift._read_remote("--version", "fixture")
+
+
+# ── compare_envs: host-path layout (#2314) ──────────────────────────────────
+# .env 放 host 路徑（docs/sop/deploy.md）；devops.sh 傳入遠端 repo 真實目錄當 container_root。
+_KEYS = ("APP_STORE_ROOT_CA_PATH", "APP_STORE_CONNECT_PRIVATE_KEY_PATH")
+
+
+def _compare(local_path: str, remote_path: str) -> list[tuple[str, str, str, str]]:
+    local = dict.fromkeys(_KEYS, local_path)
+    remote = dict.fromkeys(_KEYS, remote_path)
+    return env_drift.compare_envs(
+        local,
+        remote,
+        local_dir=Path("/Users/x/kg/backend"),
+        container_root="/Users/y/kg-prod/backend",
+    )
+
+
+def test_compare_envs_host_path_layout_has_no_drift() -> None:
+    assert (
+        _compare(
+            "/Users/x/kg/backend/certs/AuthKey_X.p8",
+            "/Users/y/kg-prod/backend/certs/AuthKey_X.p8",
+        )
+        == []
+    )
+
+
+def test_compare_envs_host_path_different_filename_is_drift_per_key() -> None:
+    mismatches = _compare(
+        "/Users/x/kg/backend/certs/AuthKey_X.p8",
+        "/Users/y/kg-prod/backend/certs/AuthKey_Y.p8",
+    )
+    assert sorted(m[0] for m in mismatches) == sorted(_KEYS)
+
+
+def test_compare_envs_remote_path_outside_certs_is_drift() -> None:
+    mismatches = _compare(
+        "/Users/x/kg/backend/certs/AuthKey_X.p8", "/app/certs/AuthKey_X.p8"
+    )
+    assert sorted(m[0] for m in mismatches) == sorted(_KEYS)

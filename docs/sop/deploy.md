@@ -312,10 +312,10 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/Users/chenliangyu/project/kg/backend/certs/A
 - unsigned fallback 開關是否被錯誤打開
 - backend 自己的啟動規則（直接呼叫 `kg.settings.load_settings` 與 `kg.llm.providers.validate_provider_routing`）：`JWT_SECRET` 存在、非佔位值、長度 >= 32，以及所有已路由 LLM provider 的 API key 非空；細節與 gate 範圍見 `docs/runbook/system.md`「部署前 env-check 的 backend 啟動規則」。env-check 不在 `deploy` 內自動執行，部署前請手動跑 `./ops/devops_kg_safe.sh env-check`；`release_train` 會執行並阻擋
 
-`./devops.sh env-drift` 會在 deploy 後檢查本地/遠端 `.env` 是否一致：
+`./devops.sh env-drift` 是手動／advisory 檢查，**deploy 不會自動執行**，drift 也不會讓 deploy 失敗；需要時自行跑，它檢查本地/遠端 `.env` 是否一致：
 - 一般 key 要求值完全相同
-- host-specific path key（例如 App Store cert path）允許本地/遠端主機路徑不同，但要求檔名一致且位於各自主機的預期 `certs/` 目錄
-- 若 drift 存在，deploy 會直接失敗，避免 runtime 配置悄悄偏離
+- host-specific path key（例如 App Store cert path）允許本地/遠端主機路徑不同，但要求檔名一致且位於各自主機 repo 目錄下的 `certs/`（遠端為 `<遠端 repo 真實目錄>/certs/`，與上方 host 路徑 `.env` 佈局一致；不是容器內 `/app/certs`）
+- 有 drift 時指令以非 0 結束（僅回報）
 
 ### Sentry 錯誤追蹤 **(SoT)**
 

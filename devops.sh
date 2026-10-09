@@ -281,7 +281,7 @@ cmd_env_drift() {
   local remote_real_dir
   remote_real_dir=$(run_remote "cd $REMOTE_DIR >/dev/null 2>&1 && pwd")
   "$DEVOPS_SCRIPT_DIR/ops/env_drift.py" \
-    "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "/app" "$SERVER"
+    "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$remote_real_dir" "$SERVER"
 }
 
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
