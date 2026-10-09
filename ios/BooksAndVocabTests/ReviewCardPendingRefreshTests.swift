@@ -121,8 +121,8 @@ struct ReviewCardPendingRefreshTests {
         let cardKey = before.card.reviewCardKey
         before.measurementCache.record(80, for: key(.example, card: cardKey), level: .natural)
 
-        // The AddLink success path (TodayReviewView onLinked) must call this, not rebuildCacheForEntry.
-        state.refreshPendingLinksForEntry(entry)
+        // The AddLink success path (TodayReviewView onLinked) goes through this entry point.
+        state.addLinkDidSucceed(for: entry)
 
         let after = try #require(state.preparedCardCache[entry.id])
         #expect(after.measurementCache === before.measurementCache, "success must not rebuild the cache")
