@@ -25,6 +25,12 @@ class ParseTimestamp(Protocol):
     def __call__(self, value: object) -> datetime | None: ...
 
 
+# Types that carry no status of their own but whose signed transaction/renewal
+# info is authoritative: the snapshot keeps the transaction-derived status
+# (so expiry is never resurrected) and only refreshes fields like will_renew.
+_TRANSACTION_DERIVED_TYPES = frozenset({"DID_CHANGE_RENEWAL_STATUS"})
+
+
 def notification_status(notification_type: str | None, subtype: str | None) -> str | None:
     """Map an App Store Server Notification V2 type to a subscription status.
 
@@ -227,7 +233,10 @@ def decode_notification_payload(
     # caller's indeterminate_status fail-safe (which only checks the status
     # field) skips the snapshot write. Known types keep their transaction-
     # derived status unchanged.
-    if notification_status(notification_type, subtype) is None:
+    if (
+        str(notification_type or "").upper() not in _TRANSACTION_DERIVED_TYPES
+        and notification_status(notification_type, subtype) is None
+    ):
         _logger.warning(
             "Signed App Store notification type %r is unknown/indeterminate; "
             "clearing transaction-derived status to trigger fail-safe",
