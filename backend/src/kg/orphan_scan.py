@@ -478,6 +478,14 @@ def fix(
             f"user registry in {data_dir / 'users.json'} is empty but log tables have rows; refusing to treat all as orphans"
         )
 
+    # A missing notebooks.db would make every live card look orphaned (#2705).
+    for uid, udir in _iter_user_dirs(data_dir, user_ids):
+        nb_db = udir / "notebooks.db"
+        if not nb_db.exists() and any(not is_del for _cid, _nb, is_del in _all_cards_with_state(udir / "cards.db")):
+            raise UserRegistryUnavailable(
+                f"notebooks.db missing for user {uid} while cards.db has live cards; refusing to treat all as orphans"
+            )
+
     report = scan(data_dir=data_dir)
     summary: dict[str, Any] = {
         "dry_run": dry_run,
