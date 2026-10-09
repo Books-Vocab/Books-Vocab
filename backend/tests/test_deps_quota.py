@@ -45,8 +45,7 @@ def mock_db():
     """)
     conn.commit()
     lock = threading.Lock()
-    with patch("kg.quota_service._get_conn", return_value=conn), \
-         patch("kg.quota_service._lock", lock):
+    with patch("kg.quota_service._get_conn", return_value=conn), patch("kg.quota_service._lock", lock):
         yield conn
     conn.close()
 
@@ -61,10 +60,8 @@ def _stable_limits():
 
 def _insert_usage(conn, user_id, call_type, input_tokens, output_tokens=0, created_at=None):
     conn.execute(
-        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at) "
-        "VALUES (?,?,?,?,?)",
-        (user_id, call_type, input_tokens, output_tokens,
-         created_at or datetime.now(UTC).isoformat()),
+        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at) VALUES (?,?,?,?,?)",
+        (user_id, call_type, input_tokens, output_tokens, created_at or datetime.now(UTC).isoformat()),
     )
     conn.commit()
 

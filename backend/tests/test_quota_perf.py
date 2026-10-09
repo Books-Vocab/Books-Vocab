@@ -8,6 +8,7 @@ import pytest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def isolated_tracker(tmp_path, monkeypatch):
     """Patch token_tracker to use a fresh DB in tmp_path."""
@@ -15,6 +16,7 @@ def isolated_tracker(tmp_path, monkeypatch):
     import importlib
 
     import kg.token_tracker as tt
+
     importlib.reload(tt)
     tt._conn = None
     yield tt
@@ -27,8 +29,8 @@ def isolated_tracker(tmp_path, monkeypatch):
 # Task 1: composite index
 # ---------------------------------------------------------------------------
 
-class TestCompositeIndex:
 
+class TestCompositeIndex:
     def test_idx_user_created_exists(self, isolated_tracker):
         conn = isolated_tracker._get_conn()
         rows = conn.execute("PRAGMA index_list(token_usage)").fetchall()
@@ -46,12 +48,13 @@ class TestCompositeIndex:
 # Task 2: check_and_get_quota
 # ---------------------------------------------------------------------------
 
-class TestCheckAndGetQuota:
 
+class TestCheckAndGetQuota:
     def _fresh_quota_service(self, isolated_tracker):
         import importlib
 
         import kg.quota_service as qs
+
         importlib.reload(qs)
         return qs
 
