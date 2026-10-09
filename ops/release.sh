@@ -18,7 +18,7 @@
 #   ./ops/release.sh release <backend|ios> <x.y.z>  # dedicated lane candidate；dry-run 預設
 #   ./ops/release.sh promote backend <merged-main-sha> [--same-version <reason>] [--wait]
 #                                                # 唯一推進 origin/prod 的路徑（FF-only，永不 force）；dry-run 預設，--yes 才 push；
-#                                                # 守衛：完整 SHA 在 live origin/main、prod 為其 ancestor、backend 版號提升、backend-quality 全綠；
+#                                                # 守衛：完整 SHA 在 live refs/heads/main、prod 為其 ancestor、backend 版號提升、backend-quality 每個 run 皆 success；push 帶 --force-with-lease；
 #                                                # --wait 輪詢 /api/system/info 至 version==短 SHA（KG_PROMOTE_WAIT_SECS 600 / KG_PROMOTE_POLL_SECS 15）
 #   ./ops/release.sh resume ios <x.y.z> <build> --pr <n> --merged-source <sha>
 #                                                # merged main 後，dry-run 預設；--yes 才 upload
@@ -200,11 +200,18 @@ ios_remote_tag_commit() {
   ' <<<"$refs"
 }
 
+# 精確 ref 查詢：`ls-remote --heads origin prod` 會連 refs/heads/a/prod 一起列出，NR==1 可能是別的分支。
+# 這裡只問 refs/heads/<branch>，並以完整 ref 名逐行比對；沒有該 ref 回空字串。
+remote_head_sha() {  # $1=branch
+  local ref="refs/heads/$1" output rc=0
+  output="$(git -C "$ROOT" ls-remote origin "$ref" 2>/dev/null)" || rc=$?
+  (( rc == 0 )) || err "無法查詢 live origin/$1（git ls-remote exit ${rc}）；fail-closed。"
+  awk -v ref="$ref" '$2 == ref { print $1; exit }' <<<"$output"
+}
+
 live_origin_main() {
-  local output rc=0 sha
-  output="$(git -C "$ROOT" ls-remote --heads origin main 2>/dev/null)" || rc=$?
-  (( rc == 0 )) || err "無法查詢 live origin/main（git ls-remote exit ${rc}）；fail-closed。"
-  sha="$(awk 'NR==1{print $1}' <<<"$output")"
+  local sha
+  sha="$(remote_head_sha main)" || exit $?
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || err "live origin/main 缺少 exact commit SHA；fail-closed。"
   printf '%s\n' "$sha"
 }
@@ -1374,17 +1381,27 @@ promote_version_at() {  # $1=ref → pyproject 與 api.py 的 backend 版號（�
   printf '%s\n' "$py"
 }
 
-promote_assert_backend_quality() {  # $1=sha：該 SHA 的 backend-quality check-run 必須存在且全數 success
+# CI 證據（嚴格版）：server-side 只取名為 backend-quality 的 check-run（filter=all 含被 rerun 取代的舊 run），
+# --paginate 取全頁，jq -s 合併。**該名稱的每一個 run（含舊的失敗 attempt）都必須 completed/success**；
+# skipped／neutral／in_progress／缺席都不算綠。代價：曾失敗後 rerun 轉綠的 SHA 也會被拒，
+# 改 promote 之後有綠燈無失敗 attempt 的 main commit。total_count 與實收 run 數不符 → 視為不完整。
+# seam：KG_CHECK_RUNS_JSON_CMD <sha> 回傳 raw gh JSON（可為多頁串接），讓測試走真的 jq 過濾器。
+promote_assert_backend_quality() {  # $1=sha
   local sha="$1" out rc=0
-  if [[ -n "${KG_CHECKS_CMD:-}" ]]; then out="$($KG_CHECKS_CMD "$sha" 2>&1)" || rc=$?
+  if [[ -n "${KG_CHECK_RUNS_JSON_CMD:-}" ]]; then out="$($KG_CHECK_RUNS_JSON_CMD "$sha" 2>&1)" || rc=$?
   else
     command -v gh >/dev/null 2>&1 || err "找不到 gh；無法讀 ${sha} 的 CI 證據，拒絕 promote。"
-    out="$(gh api "repos/${KG_GH_REPO}/commits/${sha}/check-runs?per_page=100" 2>&1)" || rc=$?
+    out="$(gh api --paginate "repos/${KG_GH_REPO}/commits/${sha}/check-runs?check_name=backend-quality&filter=all&per_page=100" 2>&1)" || rc=$?
   fi
   (( rc == 0 )) || err "讀取 ${sha} 的 check-runs 失敗（exit ${rc}）：${out:-<empty>}；無證據即拒絕。"
-  jq -e '[.check_runs[]? | select(.name == "backend-quality" or (.name | endswith("/ backend-quality")))]
-         | length > 0 and all(.status == "completed" and .conclusion == "success")' <<<"$out" >/dev/null 2>&1 \
-    || err "${sha} 沒有全綠的 backend-quality check-run（紅、進行中或根本沒跑）；拒絕 promote。選有 backend 變更且 CI 綠的 main commit。"
+  jq -s -e 'length > 0 and all(.[]; type == "object" and (.check_runs | type) == "array")' <<<"$out" >/dev/null 2>&1 \
+    || err "${sha} 的 check-runs 回應無法解析（非 JSON 或缺 check_runs）：${out:0:200}；拒絕 promote。"
+  jq -s -e '([.[].check_runs[]] | length) == (.[0].total_count // -1)' <<<"$out" >/dev/null 2>&1 \
+    || err "${sha} 的 check-runs 回應不完整（total_count 與實收 run 數不符，疑似分頁截斷）；拒絕 promote。"
+  jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")] | length > 0' <<<"$out" >/dev/null 2>&1 \
+    || err "${sha} 沒有任何 backend-quality check-run（CI 沒跑）；拒絕 promote。選有 backend 變更且 CI 綠的 main commit。"
+  jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")] | all(.status == "completed" and .conclusion == "success")' <<<"$out" >/dev/null 2>&1 \
+    || err "${sha} 沒有全綠的 backend-quality check-run（任一 run 為失敗、skipped、neutral、進行中皆不算；含被 rerun 取代的舊 attempt）；拒絕 promote。"
 }
 
 cmd_promote() {
@@ -1393,7 +1410,7 @@ cmd_promote() {
   [[ "$target" == backend || "$target" == api ]] || err "promote 只支援 backend（得到 '${target}'）"
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || err "請提供完整 40 字元 SHA（不收縮寫／branch 名）：'${sha}'"
   live="$(live_origin_main)"
-  prod_old="$(git -C "$ROOT" ls-remote --heads origin prod | awk 'NR==1{print $1}')"
+  prod_old="$(remote_head_sha prod)" || exit $?
   [[ "$prod_old" =~ ^[0-9a-f]{40}$ ]] || err "查不到 live origin/prod（首次 seed 屬拓樸遷移，見 docs/sop/release.md）；fail-closed。"
   git -C "$ROOT" fetch -q origin main prod || err "git fetch origin main prod 失敗；fail-closed。"
   git -C "$ROOT" merge-base --is-ancestor "$sha" "$live" 2>/dev/null \
@@ -1417,9 +1434,18 @@ cmd_promote() {
     return 0
   fi
   acquire_release_lock
-  git -C "$ROOT" push origin "${sha}:refs/heads/prod" || err "push origin ${sha}:refs/heads/prod 失敗"
-  [[ "$(git -C "$ROOT" ls-remote --heads origin prod | awk 'NR==1{print $1}')" == "$sha" ]] \
+  # lease 綁定「檢查時看到的 prod_old」：check 與 push 之間若有人前進 prod，即使對 git 仍是合法 FF 也會被拒。
+  # 無 + refspec，故 lease 之外仍保留 non-FF 拒絕；永不 force。
+  git -C "$ROOT" push --force-with-lease="refs/heads/prod:${prod_old}" origin "${sha}:refs/heads/prod" \
+    || err "push origin ${sha}:refs/heads/prod 失敗（prod 可能在檢查後被前進；lease=${prod_old}）"
+  [[ "$(remote_head_sha prod)" == "$sha" ]] \
     || err "push 後 origin/prod 不等於 ${sha}；請人工查證。"
+  if [[ -n "$PROMOTE_SAME_VERSION" ]]; then  # 稽核：理由落地到本機 ledger（.cache 已 gitignore），push 輸出也印一次
+    mkdir -p "$ROOT/.cache/release"
+    printf '%s promote backend %s same-version %s reason=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sha" "$ver_new" "$PROMOTE_SAME_VERSION" \
+      >>"$ROOT/.cache/release/promote.log"
+    echo "  same-version audit：reason=${PROMOTE_SAME_VERSION}（已記 .cache/release/promote.log）"
+  fi
   echo "✓ origin/prod = ${sha}（felix reconciler 約 90s 內接手 deploy + health/smoke gate，失敗自動回滾）"
   echo "  驗證："
   echo "    curl -s ${KG_PUBLIC_URL}/api/system/info   # version 應為 ${sha:0:7}"

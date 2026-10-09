@@ -1891,9 +1891,24 @@ fin_rc=0; fin_out="$(KG_PR_CMD="$fx_fin/.git/pr-fixture/pr-stub.sh" bash "$fx_fi
 # ── 24. promote backend：FF-only origin/prod，四道前置守衛 + dry-run 預設 ─────
 section "Promote backend (FF-only origin/prod)"
 TMP7="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$TMP5" "$TMP6" "$TMP7"' EXIT
-P_OK='{"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"success"}]}'
-P_RED='{"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"failure"}]}'
-P_NONE='{"check_runs":[{"name":"agent-review","status":"completed","conclusion":"success"}]}'
+P_REAL_GIT="$(command -v git)"
+mkdir -p "$TMP7/shim"
+# git shim：記錄每次呼叫的 argv（證明「沒有 push 嘗試」與 lease 參數），再 exec 真 git。
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$KG_TEST_GITLOG"\nexec "%s" "$@"\n' "$P_REAL_GIT" > "$TMP7/shim/git"
+chmod +x "$TMP7/shim/git"
+# gh shim：記錄 argv，輸出 $KG_TEST_GH_OUT（驗證真實 gh 路徑的 query 參數）。
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$KG_TEST_GHLOG"\ncat "$KG_TEST_GH_OUT"\n' > "$TMP7/shim/gh"
+chmod +x "$TMP7/shim/gh"
+# 單一 backend-quality run / 單頁 JSON / 多頁（gh --paginate 會串接多個 JSON 物件）。
+pr_run() {  # $1=status $2=conclusion(或 null) [$3=name]
+  local c="$2"; [[ "$c" == null ]] || c="\"$c\""
+  printf '{"name":"%s","status":"%s","conclusion":%s}' "${3:-backend-quality}" "$1" "$c"
+}
+pr_page() {  # $1=total_count，其餘=run JSON
+  local n="$1"; shift; local IFS=,
+  printf '{"total_count":%s,"check_runs":[%s]}' "$n" "$*"
+}
+P_OK="$(pr_page 1 "$(pr_run completed success)")"
 p_commit() {  # $1=fixture $2=version $3=message → commit sha
   printf '[project]\nversion = "%s"\n' "$2" > "$1/backend/pyproject.toml"
   printf 'app = FastAPI(\n        title="kg",\n        version="%s",\n)\n' "$2" > "$1/backend/src/kg/api.py"
@@ -1909,19 +1924,26 @@ mk_promote_fx() {  # $1=name；設 P_FX/P_REMOTE/P_BASE(=prod)/P_TGT(=main tip, 
   P_TGT="$(p_commit "$P_FX" 1.0.1 bump)"
   git -C "$P_FX" push -q origin main "$P_BASE:refs/heads/prod"
   printf '#!/usr/bin/env bash\ncat "%s/checks.json"\n' "$P_FX" > "$P_FX/checks.sh"; chmod +x "$P_FX/checks.sh"
-  printf '%s' "$P_OK" > "$P_FX/checks.json"
+  printf '#!/usr/bin/env bash\nprintf "{\\"version\\":\\"%%s\\"}\\n200" "$(cat "%s/live_version")"\n' "$P_FX" > "$P_FX/curl.sh"; chmod +x "$P_FX/curl.sh"
+  printf '%s' "$P_OK" > "$P_FX/checks.json"; printf 'unknown' > "$P_FX/live_version"
+  : > "$P_FX/git.log"
 }
-p_run() {  # $@=release.sh args → P_OUT/P_RC
-  P_RC=0; P_OUT="$(KG_CHECKS_CMD="$P_FX/checks.sh" bash "$P_FX/ops/release.sh" promote backend "$@" 2>&1)" || P_RC=$?
+p_run() {  # $@=release.sh args → P_OUT/P_RC；git 呼叫記在 $P_FX/git.log
+  P_RC=0
+  P_OUT="$(PATH="$TMP7/shim:$PATH" KG_TEST_GITLOG="$P_FX/git.log" KG_CHECK_RUNS_JSON_CMD="$P_FX/checks.sh" \
+    CURL_BIN="$P_FX/curl.sh" KG_PROMOTE_WAIT_SECS=0 KG_PROMOTE_POLL_SECS=1 \
+    bash "$P_FX/ops/release.sh" promote backend "$@" 2>&1)" || P_RC=$?
 }
 p_prod() { git --git-dir="$P_REMOTE" rev-parse refs/heads/prod; }
+p_pushed() { grep -qE '(^| )push( |$)' "$P_FX/git.log"; }  # 0 = 有 push 嘗試
 
 mk_promote_fx happy
 p_run "$P_TGT"
-[[ $P_RC -eq 0 && "$(p_prod)" == "$P_BASE" && "$P_OUT" == *"dry-run"* && "$P_OUT" == *"$P_TGT"* ]] \
+[[ $P_RC -eq 0 && "$(p_prod)" == "$P_BASE" && "$P_OUT" == *"dry-run"* && "$P_OUT" == *"$P_TGT"* ]] && ! p_pushed \
   && ok "promote dry-run prints plan and pushes nothing" || fail_t "promote dry-run wrong (rc=$P_RC): $P_OUT"
 p_run "${P_TGT:0:12}"
-[[ $P_RC -ne 0 && "$(p_prod)" == "$P_BASE" ]] && ok "promote refuses abbreviated SHA" || fail_t "abbreviated SHA accepted: $P_OUT"
+[[ $P_RC -ne 0 && "$P_OUT" == *"完整 40 字元 SHA"* && "$(p_prod)" == "$P_BASE" ]] \
+  && ok "promote refuses abbreviated SHA" || fail_t "abbreviated SHA accepted: $P_OUT"
 p_run "$P_TGT" --yes
 [[ $P_RC -eq 0 && "$(p_prod)" == "$P_TGT" && "$P_OUT" == *"/api/system/info"* ]] \
   && ok "promote --yes fast-forwards origin/prod and prints verification" || fail_t "promote --yes failed (rc=$P_RC): $P_OUT"
@@ -1930,36 +1952,113 @@ mk_promote_fx notmain
 git -C "$P_FX" checkout -q -b side
 P_SIDE="$(p_commit "$P_FX" 1.0.2 unmerged)"
 p_run "$P_SIDE" --yes
-[[ $P_RC -ne 0 && "$P_OUT" == *"origin/main"* && "$(p_prod)" == "$P_BASE" ]] \
+[[ $P_RC -ne 0 && "$P_OUT" == *"不是 live origin/main"* && "$(p_prod)" == "$P_BASE" ]] && ! p_pushed \
   && ok "promote refuses SHA not on live origin/main" || fail_t "non-main SHA accepted (rc=$P_RC): $P_OUT"
 
+# P2：ref 必須精確比對 refs/heads/prod|main；散落的 a/prod、a/main、x/main 不可被誤認。
+mk_promote_fx strayref
+P_STRAY="$(git -C "$P_FX" commit-tree "$P_BASE^{tree}" -p "$P_BASE" -m stray)"
+git -C "$P_FX" push -q origin "$P_STRAY:refs/heads/a/prod"
+git -C "$P_FX" push -q origin "$P_BASE:refs/heads/a/main" "$P_BASE:refs/heads/x/main" "$P_BASE:refs/heads/x/prod"
+p_run "$P_TGT" --yes
+[[ $P_RC -eq 0 && "$(p_prod)" == "$P_TGT" ]] \
+  && ok "promote uses exact refs/heads/main and refs/heads/prod (ignores a/prod, a/main, x/main)" \
+  || fail_t "stray ref confused promote (rc=$P_RC): $P_OUT"
+[[ "$(git --git-dir="$P_REMOTE" rev-parse refs/heads/a/prod)" != "$P_TGT" && "$(git --git-dir="$P_REMOTE" rev-parse refs/heads/a/main)" == "$P_BASE" ]] \
+  && ok "stray branches untouched by promote" || fail_t "promote touched a stray branch"
+
+# P2：non-FF 必須由 script 自己的守衛擋下（斷言 script 專屬訊息 + 零 push 嘗試；git 自身的
+# non-fast-forward 拒絕訊息不含「永不 force」）。
 mk_promote_fx nonff
 git -C "$P_FX" checkout -q -b fork "$P_BASE"
 P_FORK="$(p_commit "$P_FX" 1.0.9 fork)"; git -C "$P_FX" push -q origin "$P_FORK:refs/heads/prod" --force
 p_run "$P_TGT" --yes
-[[ $P_RC -ne 0 && "$P_OUT" == *"fast-forward"* && "$(p_prod)" == "$P_FORK" ]] \
-  && ok "promote refuses non-fast-forward (never forces)" || fail_t "non-FF accepted (rc=$P_RC): $P_OUT"
+[[ $P_RC -ne 0 && "$P_OUT" == *"只允許 fast-forward（永不 force"* && "$(p_prod)" == "$P_FORK" ]] && ! p_pushed \
+  && ok "promote refuses non-fast-forward via its own guard, with no push attempt" || fail_t "non-FF guard wrong (rc=$P_RC): $P_OUT"
+
+# P3：check 與 push 之間 prod 被別人前進（對 git 而言仍是合法 FF）→ lease 必須擋下。
+mk_promote_fx race
+git -C "$P_FX" checkout -q main
+P_TGT2="$(p_commit "$P_FX" 1.0.2 bump2)"; git -C "$P_FX" push -q origin main
+printf '#!/usr/bin/env bash\n[[ -e "%s/raced" ]] || { touch "%s/raced"; git -C "%s" push -q origin %s:refs/heads/prod; }\ncat "%s/checks.json"\n' \
+  "$P_FX" "$P_FX" "$P_FX" "$P_TGT" "$P_FX" > "$P_FX/checks.sh"
+p_run "$P_TGT2" --yes
+[[ $P_RC -ne 0 && "$(p_prod)" == "$P_TGT" ]] && grep -q -- "--force-with-lease=refs/heads/prod:$P_BASE" "$P_FX/git.log" \
+  && ok "promote push carries a lease on the observed prod and is refused when prod moved" \
+  || fail_t "lease did not protect against a concurrent prod move (rc=$P_RC prod=$(p_prod)): $P_OUT"
 
 mk_promote_fx sameversion
 git -C "$P_FX" push -q origin "$P_TGT:refs/heads/prod"
 P_DOC="$(p_commit "$P_FX" 1.0.1 docs-only)"; git -C "$P_FX" push -q origin main
 p_run "$P_DOC" --yes
-[[ $P_RC -ne 0 && "$P_OUT" == *"版本"* && "$(p_prod)" == "$P_TGT" ]] \
+[[ $P_RC -ne 0 && "$P_OUT" == *"backend 版本未提升"* && "$(p_prod)" == "$P_TGT" ]] \
   && ok "promote refuses un-bumped backend version" || fail_t "un-bumped version accepted (rc=$P_RC): $P_OUT"
 p_run "$P_DOC" --same-version
-[[ $P_RC -ne 0 ]] && ok "promote --same-version requires a reason" || fail_t "--same-version without reason accepted"
+[[ $P_RC -ne 0 && "$P_OUT" == *"--same-version 需要一段理由文字"* ]] && ok "promote --same-version requires a reason" || fail_t "--same-version without reason accepted: $P_OUT"
+p_run "$P_DOC" --same-version "redeploy after rollback"
+[[ $P_RC -eq 0 && ! -e "$P_FX/.cache/release/promote.log" ]] \
+  && ok "same-version dry-run writes no audit ledger" || fail_t "dry-run wrote ledger or failed (rc=$P_RC): $P_OUT"
 p_run "$P_DOC" --same-version "redeploy after rollback" --yes
-[[ $P_RC -eq 0 && "$(p_prod)" == "$P_DOC" ]] \
-  && ok "promote --same-version <reason> allows redeploy" || fail_t "same-version redeploy failed (rc=$P_RC): $P_OUT"
+[[ $P_RC -eq 0 && "$(p_prod)" == "$P_DOC" && "$P_OUT" == *"redeploy after rollback"* ]] \
+  && ok "promote --same-version <reason> allows redeploy and echoes the reason" || fail_t "same-version redeploy failed (rc=$P_RC): $P_OUT"
+grep -q "$P_DOC.*same-version.*redeploy after rollback" "$P_FX/.cache/release/promote.log" 2>/dev/null \
+  && ok "same-version reason is appended to the local promote ledger" || fail_t "ledger missing same-version audit line"
 
-mk_promote_fx red
-printf '%s' "$P_RED" > "$P_FX/checks.json"; p_run "$P_TGT" --yes
-[[ $P_RC -ne 0 && "$P_OUT" == *"backend-quality"* && "$(p_prod)" == "$P_BASE" ]] \
-  && ok "promote refuses red backend-quality" || fail_t "red CI accepted (rc=$P_RC): $P_OUT"
-printf '%s' "$P_NONE" > "$P_FX/checks.json"; p_run "$P_TGT" --yes
-[[ $P_RC -ne 0 && "$(p_prod)" == "$P_BASE" ]] && ok "promote refuses missing backend-quality evidence" || fail_t "missing CI accepted: $P_OUT"
-printf 'not json' > "$P_FX/checks.json"; p_run "$P_TGT" --yes
-[[ $P_RC -ne 0 && "$(p_prod)" == "$P_BASE" ]] && ok "promote refuses unreadable check-runs" || fail_t "garbage CI accepted: $P_OUT"
+# CI 證據：走真實 jq 過濾器（seam 在 raw gh JSON 層）。
+mk_promote_fx ci
+p_ci() {  # $1=label $2=refusal-substring(空=應通過) $3=raw JSON
+  printf '%s' "$3" > "$P_FX/checks.json"; p_run "$P_TGT" --yes
+  if [[ -z "$2" ]]; then
+    [[ $P_RC -eq 0 && "$(p_prod)" == "$P_TGT" ]] && ok "CI: $1" || fail_t "CI: $1 should pass (rc=$P_RC): $P_OUT"
+    git -C "$P_FX" push -q --force origin "$P_BASE:refs/heads/prod"
+  else
+    [[ $P_RC -ne 0 && "$P_OUT" == *"$2"* && "$(p_prod)" == "$P_BASE" ]] && ! p_pushed \
+      && ok "CI: $1" || fail_t "CI: $1 should refuse with '$2' (rc=$P_RC): $P_OUT"
+  fi
+}
+P_NOTGREEN="沒有全綠的 backend-quality"
+p_ci "failure refused"                 "$P_NOTGREEN" "$(pr_page 1 "$(pr_run completed failure)")"
+p_ci "skipped refused"                 "$P_NOTGREEN" "$(pr_page 1 "$(pr_run completed skipped)")"
+p_ci "neutral refused"                 "$P_NOTGREEN" "$(pr_page 1 "$(pr_run completed neutral)")"
+p_ci "in_progress refused"             "$P_NOTGREEN" "$(pr_page 1 "$(pr_run in_progress null)")"
+p_ci "failed rerun after success refused" "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success)" "$(pr_run completed failure)")"
+p_ci "missing backend-quality refused" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success agent-review)")"
+p_ci "empty check_runs refused"        "沒有任何 backend-quality check-run" "$(pr_page 0)"
+p_ci "garbage refused"                 "check-runs 回應無法解析" "not json"
+p_ci "empty output refused"            "check-runs 回應無法解析" ""
+p_ci "truncated page (total_count 3, 1 run) refused" "check-runs 回應不完整" "$(pr_page 3 "$(pr_run completed success)")"
+p_ci "page 2 failure not hidden"       "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success)")$(pr_page 2 "$(pr_run completed failure)")"
+p_ci "all runs green over two pages"   ""            "$(pr_page 2 "$(pr_run completed success)")$(pr_page 2 "$(pr_run completed success)")"
+p_ci "other checks failing are ignored" ""           "$(pr_page 2 "$(pr_run completed success)" "$(pr_run completed failure agent-review)")"
+printf '#!/usr/bin/env bash\necho "boom" >&2; exit 3\n' > "$P_FX/checks.sh"
+p_run "$P_TGT" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"check-runs 失敗（exit 3）"* && "$(p_prod)" == "$P_BASE" ]] \
+  && ok "CI: gh failure refused (no evidence)" || fail_t "gh failure accepted (rc=$P_RC): $P_OUT"
+
+# 真實 gh 路徑：必須帶 server-side 過濾 + --paginate（用 PATH gh shim 驗 argv）。
+mk_promote_fx ghargs
+printf '%s' "$P_OK" > "$P_FX/gh_out.json"; : > "$P_FX/gh.log"
+P_RC=0; P_OUT="$(PATH="$TMP7/shim:$PATH" KG_TEST_GITLOG="$P_FX/git.log" KG_TEST_GHLOG="$P_FX/gh.log" KG_TEST_GH_OUT="$P_FX/gh_out.json" \
+  bash "$P_FX/ops/release.sh" promote backend "$P_TGT" 2>&1)" || P_RC=$?
+[[ $P_RC -eq 0 ]] && grep -q -- "--paginate" "$P_FX/gh.log" && grep -q "check_name=backend-quality" "$P_FX/gh.log" \
+  && grep -q "filter=all" "$P_FX/gh.log" && grep -q "commits/$P_TGT/check-runs" "$P_FX/gh.log" \
+  && ok "gh query is paginated and server-side filtered to backend-quality (filter=all)" \
+  || fail_t "gh argv wrong (rc=$P_RC): $(cat "$P_FX/gh.log") :: $P_OUT"
+
+# --wait：收斂成功 / 逾時 / 線上版本是別的 SHA。
+mk_promote_fx wait
+printf '%s' "${P_TGT:0:7}" > "$P_FX/live_version"
+p_run "$P_TGT" --yes --wait
+[[ $P_RC -eq 0 && "$P_OUT" == *"生產已收斂"* ]] && ok "--wait: converges when live version matches the promoted SHA" || fail_t "--wait success path failed (rc=$P_RC): $P_OUT"
+mk_promote_fx waitold
+printf '%s' "${P_BASE:0:7}" > "$P_FX/live_version"
+p_run "$P_TGT" --yes --wait
+[[ $P_RC -eq 1 && "$P_OUT" == *"逾時"* && "$(p_prod)" == "$P_TGT" ]] && ok "--wait: times out with rc=1 when the live version never converges" || fail_t "--wait timeout wrong (rc=$P_RC): $P_OUT"
+mk_promote_fx waitwrong
+printf 'deadbee' > "$P_FX/live_version"
+p_run "$P_TGT" --yes --wait
+[[ $P_RC -eq 1 && "$P_OUT" == *"線上仍是 version=deadbee"* && "$P_OUT" != *"生產已收斂"* ]] \
+  && ok "--wait: a wrong deployed SHA is never read as converged" || fail_t "--wait accepted wrong SHA (rc=$P_RC): $P_OUT"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
