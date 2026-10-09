@@ -70,7 +70,6 @@ def client_env(tmp_path):
 
 
 class TestUserLocksLRU:
-
     def test_locks_capped_at_max(self):
         async def run():
             api_mod._USER_LOCKS.clear()
@@ -80,9 +79,7 @@ class TestUserLocksLRU:
             return len(api_mod._USER_LOCKS)
 
         size = asyncio.run(run())
-        assert size <= api_mod._MAX_USER_LOCKS, (
-            f"_USER_LOCKS grew to {size}, expected <= {api_mod._MAX_USER_LOCKS}"
-        )
+        assert size <= api_mod._MAX_USER_LOCKS, f"_USER_LOCKS grew to {size}, expected <= {api_mod._MAX_USER_LOCKS}"
 
     def test_recent_user_kept_after_eviction(self):
         async def run():
@@ -151,19 +148,17 @@ class TestInputValidation:
         assert "[REDACTED]" in caplog.text
         assert r.json()["detail"][0]["input"] == "[REDACTED]"
 
-    def test_validation_error_log_redacts_camel_case_secret_body_fields(self, client_env, caplog):
+    def test_vocab_rejected_reason_never_echoes_secret_input(self, client_env):
         client, _user_id, headers, _ = client_env
-
-        caplog.set_level(logging.WARNING, logger="kg.api")
         r = client.post(
             "/api/vocab",
             json=[{"word": "x" * 201, "translation": "test", "accessToken": "secret-access-token"}],
             headers=headers,
         )
 
-        assert r.status_code == 422, r.text
-        assert "secret-access-token" not in caplog.text
-        assert "[REDACTED]" in caplog.text
+        assert r.status_code == 200, r.text
+        assert len(r.json()["rejected"]) == 1
+        assert "secret-access-token" not in r.text
 
     def test_validation_error_redacts_camel_case_secret_error_input(self):
         redacted = api_mod._redact_validation_payload(
@@ -192,9 +187,7 @@ class TestInputValidation:
         }
 
     def test_validation_body_regex_redacts_non_json_secret_keys(self):
-        redacted = api_mod._redact_validation_body(
-            "apiKey=secret-api-key&client-secret=secret-client&safe=visible"
-        )
+        redacted = api_mod._redact_validation_body("apiKey=secret-api-key&client-secret=secret-client&safe=visible")
 
         assert redacted == "[non-json body omitted: secret-like field present]"
         assert "secret-api-key" not in redacted
@@ -240,32 +233,35 @@ class TestInputValidation:
         # Any status other than 422 means Pydantic accepted the input
         assert r.status_code != 422, f"Exactly 500 chars should be accepted, got {r.status_code}"
 
-    def test_vocab_word_too_long_returns_422(self, client_env):
+    def test_vocab_word_too_long_is_rejected(self, client_env):
         client, user_id, headers, _ = client_env
         r = client.post(
             "/api/vocab",
             json=[{"word": "x" * 201, "translation": "test", "context": ""}],
             headers=headers,
         )
-        assert r.status_code == 422, r.text
+        assert r.status_code == 200, r.text
+        assert len(r.json()["rejected"]) == 1
 
-    def test_vocab_translation_too_long_returns_422(self, client_env):
+    def test_vocab_translation_too_long_is_rejected(self, client_env):
         client, user_id, headers, _ = client_env
         r = client.post(
             "/api/vocab",
             json=[{"word": "hello", "translation": "x" * 1001, "context": ""}],
             headers=headers,
         )
-        assert r.status_code == 422, r.text
+        assert r.status_code == 200, r.text
+        assert len(r.json()["rejected"]) == 1
 
-    def test_vocab_context_too_long_returns_422(self, client_env):
+    def test_vocab_context_too_long_is_rejected(self, client_env):
         client, user_id, headers, _ = client_env
         r = client.post(
             "/api/vocab",
             json=[{"word": "hello", "translation": "test", "context": "x" * 5001}],
             headers=headers,
         )
-        assert r.status_code == 422, r.text
+        assert r.status_code == 200, r.text
+        assert len(r.json()["rejected"]) == 1
 
 
 # ============================================================================
@@ -274,7 +270,6 @@ class TestInputValidation:
 
 
 class TestRequestBodySizeLimit:
-
     def test_large_body_returns_413(self, client_env):
         client, user_id, headers, _ = client_env
         large_body = b"x" * (11 * 1024 * 1024)  # 11MB
@@ -382,9 +377,7 @@ class TestVocabIntakeBatchCap:
         # FastAPI request-validation error: detail is a list of loc/type dicts.
         # The handler's guard instead returns {"code":"ValidationError",...}.
         detail = body.get("detail")
-        assert isinstance(detail, list), (
-            f"expected FastAPI validation-error list, got {body!r}"
-        )
+        assert isinstance(detail, list), f"expected FastAPI validation-error list, got {body!r}"
         types = {err.get("type") for err in detail}
         assert "too_long" in types, f"expected too_long error, got {detail!r}"
 
@@ -394,9 +387,7 @@ class TestVocabIntakeBatchCap:
 
         from kg.routers import vocab as vocab_router
 
-        hints = typing.get_type_hints(
-            vocab_router.add_vocab, include_extras=True
-        )
+        hints = typing.get_type_hints(vocab_router.add_vocab, include_extras=True)
         entries_hint = hints["entries"]
         metadata = getattr(entries_hint, "__metadata__", ())
         # The cap can sit directly on a constraint marker (annotated-types
@@ -410,6 +401,4 @@ class TestVocabIntakeBatchCap:
                 inner_len = getattr(inner, "max_length", None)
                 if inner_len is not None:
                     max_lengths.append(inner_len)
-        assert 500 in max_lengths, (
-            f"entries field must carry max_length=500, metadata={metadata!r}"
-        )
+        assert 500 in max_lengths, f"entries field must carry max_length=500, metadata={metadata!r}"

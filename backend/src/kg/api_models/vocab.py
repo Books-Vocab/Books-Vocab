@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 from kg.api_models.common import VocabSource, _normalize_context
 
@@ -31,9 +31,18 @@ class VocabEntry(BaseModel):
         return _normalize_context(v) if isinstance(v, str) else v
 
 
+class RejectedVocabItem(BaseModel):
+    """One batch item the server refused (#2248); the rest of the batch still applies."""
+
+    index: int  # position in the submitted array
+    word: str | None = None  # 原始 submitted word（可能缺失／非字串時為 None）
+    reason: str  # 欄位＋訊息，絕不回顯 input（可能含祕密欄位）
+
+
 class VocabAddResponse(BaseModel):
     created: int
     skipped: int
+    rejected: list[RejectedVocabItem] = Field(default_factory=list)
     duplicates: list[str]  # client 送出的『原始』word（未清洗），供 iOS 配對出列
     cardIds: dict[str, str]  # 原始 submitted word -> card_id（非清洗後 word；見 vocab_intake）
 
@@ -144,3 +153,20 @@ def _validate_batch_words(words: list[str]) -> None:
             raise ValueError("word must be non-empty")
         if len(word) > MAX_BATCH_WORD_LENGTH:
             raise ValueError(f"word too long (max {MAX_BATCH_WORD_LENGTH})")
+
+
+_ENTRY_ADAPTER: TypeAdapter[VocabEntry] = TypeAdapter(VocabEntry)
+
+
+def parse_vocab_batch(raw: list[Any]) -> tuple[list[VocabEntry], list[RejectedVocabItem]]:
+    """Validate each item independently so one bad item doesn't 422 the batch."""
+    entries: list[VocabEntry] = []
+    rejected: list[RejectedVocabItem] = []
+    for index, item in enumerate(raw):
+        try:
+            entries.append(_ENTRY_ADAPTER.validate_python(item))
+        except ValidationError as exc:
+            reason = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
+            word = item.get("word") if isinstance(item, dict) else None
+            rejected.append(RejectedVocabItem(index=index, word=word if isinstance(word, str) else None, reason=reason))
+    return entries, rejected

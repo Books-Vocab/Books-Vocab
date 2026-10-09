@@ -95,9 +95,11 @@ from kg.api_models.vocab import (
     BatchDeleteResponse,
     CardPreferencesUpdateRequest,
     DeleteWordResponse,
+    RejectedVocabItem,
     VocabAddResponse,
     VocabContentUpdateRequest,
     VocabEntry,
+    parse_vocab_batch,
 )
 from kg.api_models.vocab_add_link import (
     AddLinkOperationRequest,
@@ -180,9 +182,11 @@ __all__ = [
     "UserConfigRequest",
     "UserConfigResponse",
     "UserProfileResponse",
+    "RejectedVocabItem",
     "VocabAddResponse",
     "VocabContentUpdateRequest",
     "VocabEntry",
+    "parse_vocab_batch",
     "VocabSource",
     "VocabUIConfig",
     "_normalize_context",
