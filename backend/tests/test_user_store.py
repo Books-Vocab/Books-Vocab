@@ -27,8 +27,8 @@ def _default_subscription():
 # parse_datetime
 # ===========================================================================
 
-class TestParseDatetime:
 
+class TestParseDatetime:
     def test_iso_with_z_suffix(self):
         result = parse_datetime("2024-01-15T12:00:00Z")
         assert isinstance(result, datetime)
@@ -81,8 +81,8 @@ class TestParseDatetime:
 # normalize_users_payload
 # ===========================================================================
 
-class TestLoadUsersFrom:
 
+class TestLoadUsersFrom:
     def test_non_object_json_payload_raises_bounded_decode_error(self, tmp_path):
         users_file = tmp_path / "users.json"
         users_file.write_text("[]")
@@ -95,7 +95,6 @@ class TestLoadUsersFrom:
 
 
 class TestNormalizeUsersPayload:
-
     def _normalize(self, users):
         return normalize_users_payload(users, _default_subscription)
 
@@ -155,8 +154,8 @@ class TestNormalizeUsersPayload:
 # collect_account_ids_for_deletion
 # ===========================================================================
 
-class TestCollectAccountIdsForDeletion:
 
+class TestCollectAccountIdsForDeletion:
     def test_no_linked_accounts_returns_only_self(self):
         users = {"u1": {"config": {}}}
         canonical, ids = collect_account_ids_for_deletion(users, "u1")
