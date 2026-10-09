@@ -191,6 +191,14 @@ findings="$(awk '
     if (match($0, /\.bookshelf\([[:space:]]*$/)) pending = 1
   }
 ' "${files[@]}")"
+# awk exits non-zero on the first unreadable input and emits nothing for later files,
+# so a bare capture would scan a partial set and can go green (#2817).
+awk_rc=$?
+if [[ "$awk_rc" -ne 0 ]]; then
+  err "error: awk failed (exit $awk_rc) while scanning $SCAN_DIR — an unreadable .swift file?"
+  err "hint: 只掃到一部分檔案的 lint 不能算綠；修好檔案權限後重跑。"
+  exit 2
+fi
 
 known() { printf '%s\n' "$KNOWN_IDS" | grep -Fxq -- "$1"; }
 
