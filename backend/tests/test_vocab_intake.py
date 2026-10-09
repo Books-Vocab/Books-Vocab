@@ -236,6 +236,34 @@ class TestDeriveInflections:
         assert "studies" in infl and "studied" in infl
         assert calls == ["qzqzqz", "study"]
 
+    def test_unknown_lemma_log_does_not_leak_user_text(self, monkeypatch, caplog):
+        """WARNING logs become Sentry breadcrumbs; they must not carry the user's word/root (#2823)."""
+        import sys
+        import types
+
+        fake_mod = types.ModuleType("lemminflect")
+        fake_mod.getAllInflections = lambda lemma: {} if lemma == "secretroot" else {"VBZ": ("x",)}  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "lemminflect", fake_mod)
+        with caplog.at_level(logging.DEBUG):
+            _derive_inflections("secretword", "secretroot", logger=logging.getLogger("test.intake"))
+        assert caplog.records
+        assert all("secretword" not in r.getMessage() and "secretroot" not in r.getMessage() for r in caplog.records)
+
+    def test_lemminflect_failure_log_does_not_leak_user_text(self, monkeypatch, caplog):
+        import sys
+        import types
+
+        def boom(lemma: str):
+            raise ValueError("bad")
+
+        fake_mod = types.ModuleType("lemminflect")
+        fake_mod.getAllInflections = boom  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "lemminflect", fake_mod)
+        with caplog.at_level(logging.DEBUG):
+            _derive_inflections("secretword", "secretroot", logger=logging.getLogger("test.intake"))
+        assert caplog.records
+        assert all("secretroot" not in r.getMessage() and "secretword" not in r.getMessage() for r in caplog.records)
+
 
 # --------------------------------------------------------------------- #
 # add_vocab_entries

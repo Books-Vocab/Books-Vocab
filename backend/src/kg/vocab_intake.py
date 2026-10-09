@@ -60,7 +60,7 @@ def _derive_inflections(word: str, root_form: str | None, *, logger: logging.Log
 
         infl_map = getAllInflections(root)
         if not infl_map:
-            logger.warning("lemminflect found no inflections for root '%s', falling back to '%s'", root, word)
+            logger.warning("lemminflect found no inflections for root; falling back to word")
             root = word.lower()
             infl_map = getAllInflections(root)
         seen = {word.lower()}
@@ -71,7 +71,7 @@ def _derive_inflections(word: str, root_form: str | None, *, logger: logging.Log
                     inflections.append(lowered)
                     seen.add(lowered)
     except (ImportError, ValueError, KeyError, TypeError) as exc:
-        logger.warning("lemminflect failed for root '%s': %s", root, exc)
+        logger.warning("lemminflect failed: %s", type(exc).__name__)
 
     return root, inflections
 
