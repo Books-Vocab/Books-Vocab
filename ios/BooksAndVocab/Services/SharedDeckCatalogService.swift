@@ -73,8 +73,14 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
         if let token = await kgService.authTokenWithoutInvalidation() {
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, _) = try await session.data(for: request)
-        return data
+        do {
+            let (data, _) = try await session.data(for: request)
+            return data
+        } catch let error as URLError where error.code == .cancelled {
+            // Task 被取消時 URLSession 拋 `URLError.cancelled` 而非 `CancellationError`；
+            // 在傳輸邊界正規化，呼叫端只接 `CancellationError` 才不會把取消當失敗（#2747）。
+            throw CancellationError()
+        }
     }
 
     // MARK: - Filters / query

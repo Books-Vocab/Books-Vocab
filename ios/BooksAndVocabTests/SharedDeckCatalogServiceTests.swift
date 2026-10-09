@@ -438,6 +438,30 @@ struct SharedDeckCatalogServiceTests {
         #expect(invalidator.events.isEmpty)
     }
 
+    /// #2747：傳輸層的 `URLError.cancelled`（task 被取消時 URLSession 的拋法）必須在邊界
+    /// 被正規化成 `CancellationError`，否則 `syncAll` / detail load 只接 `CancellationError`，
+    /// 會把取消當成失敗記錄。
+    @Test func optionallyAuthedData_maps_urlError_cancelled_to_CancellationError() async {
+        let service = KGService(
+            authSession: FixedTokenSession(expiresIn: 3600),
+            sessionInvalidator: RecordingSessionInvalidator()
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CancelledURLProtocol.self]
+        do {
+            _ = try await SharedDeckCatalogService.optionallyAuthedData(
+                from: "https://decks.test/api/decks?probe=cancelled",
+                kgService: service,
+                session: URLSession(configuration: configuration)
+            )
+            Issue.record("應該丟出 CancellationError")
+        } catch is CancellationError {
+            // expected
+        } catch {
+            Issue.record("預期 CancellationError，實際：\(error)")
+        }
+    }
+
     /// 跑一次 browse 並取回**這一次**送出的 request。
     ///
     /// `marker` 讓每個 case 有自己的 URL：探針是 static 的，用 `reset()` 清空會在兩支
@@ -521,6 +545,14 @@ private final class BrowseProbeURLProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocolDidFinishLoading(self)
     }
 
+    override func stopLoading() {}
+}
+
+/// 一律以 `URLError(.cancelled)` 失敗；只掛 local session，不 register。
+private final class CancelledURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.cancelled)) }
     override func stopLoading() {}
 }
 #endif
