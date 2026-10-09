@@ -41,6 +41,9 @@ struct VocabActivityHeatmap: View {
     }()
 
     @State private var grid: [[CellData]] = []
+    // Explicit position (not `.defaultScrollAnchor`): `grid` fills async after `.task`, so the
+    // strip grows from label-only to overflowing; re-pinning on `grid.count` is deterministic.
+    @State private var scrollPosition = ScrollPosition(edge: .trailing)
 
     private var activeProjectionClock: StatsProjectionClock {
         explicitProjectionClock ?? projectionClock
@@ -103,10 +106,8 @@ struct VocabActivityHeatmap: View {
                     }
                 }
             }
-            // Roles are explicit: a bare anchor also trailing-aligns content narrower than
-            // the viewport (wide phones). `.sizeChanges` re-anchors when `grid` fills async.
-            .defaultScrollAnchor(.trailing, for: .initialOffset)
-            .defaultScrollAnchor(.trailing, for: .sizeChanges)
+            .scrollPosition($scrollPosition)
+            .onChange(of: grid.count) { scrollPosition.scrollTo(edge: .trailing) }
 
             // Legend
             HStack(spacing: appSkin.spacing.rowMicroGap) {
@@ -124,6 +125,8 @@ struct VocabActivityHeatmap: View {
                     .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
+        // Keep per-day cells individually addressable inside the enclosing Button.
+        .accessibilityElement(children: .contain)
         .task(id: activeProjectionClock) { grid = buildGrid(activity: activity, weeks: weeks) }
         .onChange(of: activity) { _, new in grid = buildGrid(activity: new, weeks: weeks) }
         .enableInjection()
