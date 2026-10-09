@@ -651,6 +651,56 @@ def test_scope_set_on_malformed_claim_remains_fail_closed_without_repair(
     )
 
 
+@pytest.mark.parametrize("bad_scope", [None, {}, {"schema": "kg.worktree.scope.v1"}])
+def test_scope_set_repairs_record_whose_only_defect_is_its_own_scope(
+    tmp_path: Path, bad_scope: object
+) -> None:
+    state_path = tmp_path / "registry.json"
+    good = {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": "ops/repaired.py", "operation": "modify"}],
+    }
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/null-scope",
+                        "path": str(tmp_path / "null-scope"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-NULL-SCOPE"],
+                        "claim_generation": 0,
+                        "base": "a" * 40,
+                        "base_sha": "a" * 40,
+                        "created_at": "2026-10-09T00:00:00Z",
+                        "scope": bad_scope,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert registry.load_state(state_path)["problems"]
+
+    rc = registry.main(
+        [
+            "scope-set",
+            "--state",
+            str(state_path),
+            "--branch",
+            "feat/null-scope",
+            "--scope",
+            json.dumps(good),
+            "--json",
+        ]
+    )
+
+    assert rc == registry.EXIT_OK
+    state = registry.load_state(state_path)
+    assert state["records"][0]["scope"] == good
+    assert not state.get("problems")
+
+
 @pytest.mark.parametrize("claim_generation", [None, -1, True, 1.5, "1"])
 def test_invalid_claim_generation_is_visible_and_blocks_only_matching_mutation(
     tmp_path: Path, capsys, claim_generation: object

@@ -256,13 +256,25 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
             )
             return EXIT_USAGE
         record = matches[0]
-        blockers = mutation_blockers_for_target(
-            state,
-            branch=record.get("branch"),
-            path=record.get("path"),
-            external_ids_value=record.get("external_ids"),
-            scope=record.get("scope"),
+        # scope-set is the repair path for a record whose own Scope is the only
+        # malformed fact (#2658); every other defect stays fail-closed.
+        own_index = next(
+            (i for i, item in enumerate(state["records"]) if item is record), None
         )
+        blockers = [
+            problem
+            for problem in mutation_blockers_for_target(
+                state,
+                branch=record.get("branch"),
+                path=record.get("path"),
+                external_ids_value=record.get("external_ids"),
+                scope=record.get("scope"),
+            )
+            if not (
+                problem.get("kind") == "registry-scope-invalid"
+                and problem.get("index") == own_index
+            )
+        ]
         if blockers:
             print(
                 json.dumps(

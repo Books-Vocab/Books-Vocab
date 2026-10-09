@@ -226,6 +226,15 @@ def _registry_register(
     return rc, record
 
 
+def _open_usage_refusal(args: argparse.Namespace, reason: str) -> int:
+    _emit(
+        {"schema": SCHEMA, "action": "refused", "reason": reason},
+        as_json=args.json,
+        human=f"✗ open refused: {reason}",
+    )
+    return EXIT_USAGE
+
+
 def cmd_open(args: argparse.Namespace) -> int:
     refusal = _require_unfrozen("open")
     if refusal:
@@ -266,6 +275,20 @@ def cmd_open(args: argparse.Namespace) -> int:
             human=f"✗ open refused: path exists: {worktree}",
         )
         return EXIT_USAGE
+    if (
+        getattr(args, "scope", None) is None
+        and getattr(args, "scope_file", None) is None
+    ):
+        return _open_usage_refusal(
+            args, "--scope or --scope-file is required to open a lane (#2658)"
+        )
+    if (
+        getattr(args, "delegated", False)
+        and not (getattr(args, "codex_thread_id", None) or "").strip()
+    ):
+        return _open_usage_refusal(
+            args, "--codex-thread-id is required for delegated open (#2658)"
+        )
     external_ids = list(getattr(args, "external_id", []) or [])
     requires_external_id = bool(
         getattr(args, "delegated", False) or getattr(args, "codex_thread_id", None)
@@ -2078,7 +2101,9 @@ def _parser() -> argparse.ArgumentParser:
             "--delegated or --codex-thread-id is supplied, provide at least "
             "one --external-id with a non-blank value. This validation runs "
             "before base resolution, registry, branch, or worktree mutation; "
-            "legacy non-owner open semantics are unchanged."
+            "legacy non-owner open semantics are unchanged. open also "
+            "requires --scope or --scope-file, and --delegated requires "
+            "--codex-thread-id (#2658)."
         ),
     )
     common(op)

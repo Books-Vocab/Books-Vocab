@@ -387,6 +387,63 @@ def test_open_requires_external_id_before_registry_or_worktree_mutation(
     assert not worktree.exists()
 
 
+def _open_refusal_args(tmp_path: Path, **overrides: object) -> Namespace:
+    values: dict[str, object] = {
+        "slug": "refusal-lane",
+        "intent": "fix direct lane identity",
+        "type": "debug",
+        "path": str(tmp_path / "worktree"),
+        "external_id": ["DIRECT-TEST-REFUSAL"],
+        "base": "origin/main",
+        "codex_thread_id": "owner-thread",
+        "delegated": True,
+        "state": str(tmp_path / "registry.json"),
+        "scope": json.dumps(_scope_for("ops/example.py")),
+        "scope_file": None,
+        "json": True,
+    }
+    values.update(overrides)
+    return Namespace(**values)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        (
+            {"scope": None},
+            "--scope or --scope-file is required to open a lane (#2658)",
+        ),
+        (
+            {"codex_thread_id": None},
+            "--codex-thread-id is required for delegated open (#2658)",
+        ),
+    ],
+)
+def test_open_refuses_missing_scope_or_owner_before_any_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    overrides: dict[str, object],
+    reason: str,
+) -> None:
+    monkeypatch.setattr(coordinator, "_require_unfrozen", lambda command: None)
+    for name in ("_resolve_commit", "_registry_register", "_git"):
+        monkeypatch.setattr(
+            coordinator,
+            name,
+            lambda *_a, **_k: pytest.fail("refusal must precede every mutation"),
+        )
+
+    args = _open_refusal_args(tmp_path, **overrides)
+
+    assert coordinator.cmd_open(args) == coordinator.EXIT_USAGE
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "refused"
+    assert payload["reason"] == reason
+    assert not (tmp_path / "worktree").exists()
+    assert not (tmp_path / "registry.json").exists()
+
+
 def test_open_accepts_external_id_for_owner_bound_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
