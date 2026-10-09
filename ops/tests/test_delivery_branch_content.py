@@ -45,6 +45,30 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     return repo, _git(repo, "rev-parse", "HEAD")
 
 
+def _commit_present(repo: Path, sha: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "-C", str(repo), "cat-file", "-e", f"{sha}^{{commit}}"],
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _expunge_commits(repo: Path, *shas: str) -> None:
+    """Make unreferenced commits absent from the object store, deterministically.
+
+    `prune` cannot remove packed objects, so unpack-and-repack first (`-a -d`
+    drops unreachable packed objects), then prune any loose leftovers. Callers
+    must have deleted every ref to the commits; fail loudly otherwise.
+    """
+    _git(repo, "reflog", "expire", "--expire=now", "--all")
+    _git(repo, "repack", "-a", "-d", "-q")
+    _git(repo, "prune", "--expire=now")
+    for sha in shas:
+        assert not _commit_present(repo, sha), f"could not expunge {sha}"
+
+
 def _remote_only_repo(tmp_path: Path) -> tuple[Path, str, str]:
     repo, base_sha = _repo(tmp_path)
     remote = tmp_path / "origin.git"
@@ -110,10 +134,27 @@ def _remote_only_repo_with_missing_live_base(
         ],
         check=False,
     )
-    _git(repo, "reflog", "expire", "--expire=now", "--all")
-    _git(repo, "prune", "--expire=now")
+    _expunge_commits(repo, base_sha, remote_head)
     assert initial_sha != base_sha
     return repo, base_sha, remote_head
+
+
+def test_expunge_commits_removes_packed_unreferenced_commit(tmp_path: Path) -> None:
+    repo, base_sha = _repo(tmp_path)
+    _git(repo, "switch", "-qc", "gone")
+    (repo / "g.txt").write_text("g\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "packed then orphaned")
+    packed = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "repack", "-d", "-q")
+    _git(repo, "switch", "-q", "main")
+    _git(repo, "branch", "-D", "gone")
+    assert _commit_present(repo, packed)
+
+    _expunge_commits(repo, packed)
+
+    assert not _commit_present(repo, packed)
+    assert _commit_present(repo, base_sha)
 
 
 def test_parse_commit_summaries_preserves_bounded_truncation() -> None:
@@ -212,16 +253,7 @@ def test_git_adapter_fetches_missing_remote_object_before_content_queries(
         ],
         check=False,
     )
-    _git(repo, "reflog", "expire", "--expire=now", "--all")
-    _git(repo, "prune", "--expire=now")
-
-    assert (
-        subprocess.run(
-            ["git", "-C", str(repo), "cat-file", "-e", f"{remote_head}^{{commit}}"],
-            check=False,
-        ).returncode
-        != 0
-    )
+    _expunge_commits(repo, remote_head)
 
     evidence = GitCliAdapter(repo=repo).inspect_branch_content(
         branch="feat/remote-only",
@@ -271,21 +303,8 @@ def test_git_adapter_fetches_missing_remote_head_and_live_base_before_merge_base
 ) -> None:
     repo, base_sha, remote_head = _remote_only_repo_with_missing_live_base(tmp_path)
 
-    for commit_sha in (base_sha, remote_head):
-        assert (
-            subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(repo),
-                    "cat-file",
-                    "-e",
-                    f"{commit_sha}^{{commit}}",
-                ],
-                check=False,
-            ).returncode
-            != 0
-        )
+    assert not _commit_present(repo, base_sha)
+    assert not _commit_present(repo, remote_head)
 
     evidence = GitCliAdapter(repo=repo).inspect_branch_content(
         branch="feat/remote-only",
