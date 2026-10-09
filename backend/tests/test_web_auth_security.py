@@ -215,6 +215,10 @@ def test_issue_prunes_expired_entries():
     store.issue("old2", now=1)
     store.issue("fresh", now=50)
     assert list(store._issued) == ["fresh"]
+    # Over-pruning guard: a later issue inside the TTL must keep unexpired entries.
+    store.issue("later", now=51)
+    assert "fresh" in store._issued
+    assert store.consume("fresh", now=52) is True
 
 
 def test_oauth_callback_with_mismatched_state_rejected(web_auth_env):
