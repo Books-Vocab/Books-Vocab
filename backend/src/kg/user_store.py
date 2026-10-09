@@ -184,17 +184,22 @@ def parse_datetime(raw: Any) -> datetime | None:
             return raw.replace(tzinfo=UTC)
         return raw.astimezone(UTC)
     if isinstance(raw, (int, float)):
-        return datetime.fromtimestamp(float(raw), tz=UTC)
+        try:
+            return datetime.fromtimestamp(float(raw), tz=UTC)
+        except (ValueError, OverflowError, OSError):
+            return None
     if isinstance(raw, str):
         try:
             parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
             if parsed.tzinfo is None:
                 return parsed.replace(tzinfo=UTC)
             return parsed.astimezone(UTC)
+        except OverflowError:
+            return None
         except ValueError:
             try:
                 return datetime.fromtimestamp(float(raw), tz=UTC)
-            except ValueError:
+            except (ValueError, OverflowError, OSError):
                 return None
     return None
 
