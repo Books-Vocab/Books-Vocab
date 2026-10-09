@@ -19,12 +19,14 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
+from kg.migrations import resolve_users_root
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def _has_cjk(text: str) -> bool:
-    return any('\u4e00' <= ch <= '\u9fff' for ch in text)
+    return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 
 
 def migrate_user_graph(user_dir: Path, client, model: str) -> int:
@@ -105,19 +107,15 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
                             "LLM returned malformed JSON for %s; trying regex fallback",
                             link.id,
                         )
-                        m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+                        m = re.search(r"\{[^{}]*\}", content, re.DOTALL)
                         data = json.loads(m.group()) if m else {}
 
                     if data.get("link") == "not_applicable":
-                        logger.warning(
-                            "    Link %s: LLM says not_applicable, keeping old", link.id
-                        )
+                        logger.warning("    Link %s: LLM says not_applicable, keeping old", link.id)
                         continue
                     new_reason = data.get("reason", "")
                     if not new_reason:
-                        logger.warning(
-                            "    Link %s: empty reason from LLM, keeping old", link.id
-                        )
+                        logger.warning("    Link %s: empty reason from LLM, keeping old", link.id)
                         continue
 
                     old_reason = link.reason
@@ -161,17 +159,14 @@ def main() -> None:
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
     from openai import OpenAI
+
     client = OpenAI(
         api_key=api_key,
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
 
-    # User dirs live under data_dir/users/ (production layout)
-    users_root = data_dir / "users" if (data_dir / "users").is_dir() else data_dir
-    user_dirs = sorted([
-        d for d in users_root.iterdir()
-        if d.is_dir() and (d / "cards.db").exists()
-    ])
+    users_root = resolve_users_root(data_dir)
+    user_dirs = sorted([d for d in users_root.iterdir() if d.is_dir() and (d / "cards.db").exists()])
     logger.info("Found %d user directories", len(user_dirs))
 
     grand_total = 0

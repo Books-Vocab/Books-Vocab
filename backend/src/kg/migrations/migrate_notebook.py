@@ -14,6 +14,8 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
+from kg.migrations import resolve_users_root
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,12 @@ def migrate_user(user_dir: Path) -> None:
                         bak.name,
                         dst_bak.name,
                     )
+        elif old_path.exists():
+            logger.warning(
+                "  Skipped %s -> %s: destination exists, reconcile manually",
+                old_name,
+                new_name,
+            )
 
 
 def main() -> None:
@@ -70,8 +78,7 @@ def main() -> None:
         logger.error("Data directory %s does not exist", data_dir)
         sys.exit(1)
 
-    # User dirs live under data_dir/users/ (production layout)
-    users_root = data_dir / "users" if (data_dir / "users").is_dir() else data_dir
+    users_root = resolve_users_root(data_dir)
     user_dirs = []
     for d in sorted(users_root.iterdir()):
         if not d.is_dir():
@@ -81,6 +88,9 @@ def main() -> None:
         else:
             logger.warning("Skipping %s: no cards.db", d.name)
     logger.info("Found %d user directories to migrate", len(user_dirs))
+    if not user_dirs:
+        logger.error("No user directories with cards.db under %s", users_root)
+        sys.exit(1)
 
     failed = 0
     for user_dir in user_dirs:

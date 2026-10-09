@@ -529,3 +529,31 @@ def test_migrate_graph_reasons_no_graph_files_returns_zero(tmp_path):
     updated = migrate_user_graph(user_dir, client, model="fake-model")
     assert updated == 0
     client.chat.completions.create.assert_not_called()
+
+
+def test_migrate_notebook_main_exits_nonzero_when_no_users_found(tmp_path, monkeypatch, caplog):
+    from kg.migrations import migrate_notebook as mod
+
+    monkeypatch.setattr("sys.argv", ["migrate_notebook", str(tmp_path)])
+    with caplog.at_level("INFO"), pytest.raises(SystemExit) as exc:
+        mod.main()
+    assert exc.value.code == 1
+    assert not any("Migration complete" in r.getMessage() for r in caplog.records)
+
+
+def test_migrate_notebook_warns_when_rename_destination_exists(tmp_path, caplog):
+    from kg.migrations.migrate_notebook import migrate_user
+
+    user_dir = _make_legacy_user_dir(tmp_path)
+    (user_dir / "graph_default.json").write_text("{}")
+    with caplog.at_level("WARNING"):
+        migrate_user(user_dir)
+    assert any("graph.json" in r.getMessage() and "exists" in r.getMessage() for r in caplog.records)
+
+
+def test_resolve_users_root(tmp_path):
+    from kg.migrations import resolve_users_root
+
+    assert resolve_users_root(tmp_path) == tmp_path
+    (tmp_path / "users").mkdir()
+    assert resolve_users_root(tmp_path) == tmp_path / "users"
