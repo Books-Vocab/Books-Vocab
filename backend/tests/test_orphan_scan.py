@@ -838,3 +838,21 @@ def test_fix_propagates_locked_database_instead_of_reporting_success(env, monkey
         holder.close()
     with sqlite3.connect(str(db)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM translate_log WHERE user_id = 'ghost_user'").fetchone()[0] == 1
+
+
+def _live_card_states(env) -> list[int]:
+    with sqlite3.connect(str(env.user_dir / "cards.db")) as conn:
+        return [r[0] for r in conn.execute("SELECT is_deleted FROM card")]
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_fix_refuses_when_notebooks_db_missing(env, dry_run):
+    """#2705: a vanished notebooks.db must not make every live card an orphan."""
+    from kg.orphan_scan import UserRegistryUnavailable, fix
+
+    (env.user_dir / "notebooks.db").unlink()
+    before = _live_card_states(env)
+    assert before and not any(before)
+    with pytest.raises(UserRegistryUnavailable):
+        fix(data_dir=env.data_dir, confirm=True, dry_run=dry_run)
+    assert _live_card_states(env) == before
