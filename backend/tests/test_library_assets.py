@@ -373,4 +373,4 @@ def test_presigned_put_url_signs_content_length_with_real_client(isolated_api, m
     query = parse_qs(url.query)
     assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
     assert "content-length" in query["X-Amz-SignedHeaders"][0].split(";")
-    assert "kg-library-test" in url.netloc or url.path.startswith("/kg-library-test")
+    assert url.netloc.startswith("kg-library-test.s3.") and url.netloc != "kg-library-test.s3.amazonaws.com"

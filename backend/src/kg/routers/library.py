@@ -131,6 +131,8 @@ def _library_s3_client(settings: KGSettings):
             # SigV4 is required: SigV2 query auth does not sign Content-Length, so the
             # presigned PUT could not pin the declared byte_size (#2525).
             signature_version="s3v4",
+            # Regional virtual-hosted URL: the global host 307-redirects non-us-east-1 buckets.
+            s3={"addressing_style": "virtual"},
             connect_timeout=5,
             read_timeout=10,
             retries={"total_max_attempts": 3, "mode": "standard"},
