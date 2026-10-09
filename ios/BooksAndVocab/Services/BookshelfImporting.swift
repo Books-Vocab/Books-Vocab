@@ -182,7 +182,8 @@ final class BookshelfImportService: BookshelfImporting {
     ///
     /// 原子性：先寫到同目錄的隱藏 temp 檔，全部寫完才 `moveItem` 到最終位置（同卷 rename
     /// 近似原子）。crash / 被殺 / 寫入失敗時最終路徑**不會**出現截斷的半檔（半檔只會是
-    /// 被 reconciler 忽略的隱藏 `.tmp`，且失敗時即清除），避免下次以半檔開書或 bare
+    /// 被 reconciler 忽略的隱藏 `.tmp`；一般失敗即清除，被殺/crash 遺留者由
+    /// `BookLibraryReconciler.sweepStaleImportTemps` 於 reconcile 時依年齡回收），避免下次以半檔開書或 bare
     /// recovery 具現壞書。對齊 TXT/MD 既有的 tmp→move 模式。
     nonisolated static func copyFileChunked(
         from src: URL,

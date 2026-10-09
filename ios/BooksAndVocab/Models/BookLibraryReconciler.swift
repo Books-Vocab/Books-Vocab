@@ -28,6 +28,7 @@ struct BookLibraryReconciler {
         context: ModelContext,
         allowBareFileRecovery: Bool = false
     ) throws -> BookLibraryReconcileResult {
+        Self.sweepStaleImportTemps(in: rootDirectory)
         let filesByName = scanBookFiles()
         let manifests = manifestStore.readAll()
         let manifestsByFileName = Self.manifestsByFileName(manifests)
@@ -305,6 +306,34 @@ struct BookLibraryReconciler {
             )
         }
         #endif
+    }
+
+    /// `copyFileChunked` 的 `.<uuid>.tmp` 只在 Swift catch 路徑清除；被殺/jetsam/crash 會留下半檔（#2724）。
+    /// 清掉超過 `maxAge` 未動的 UUID 命名 temp：進行中的匯入持續寫入（mtime 更新），不會被誤刪。
+    /// 盡力而為：任何錯誤都忽略。回傳刪除數量。
+    @discardableResult
+    static func sweepStaleImportTemps(
+        in directory: URL,
+        maxAge: TimeInterval = 3600,
+        now: Date = Date()
+    ) -> Int {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return 0 }
+        var removed = 0
+        for url in contents {
+            let name = url.lastPathComponent
+            guard name.hasPrefix("."), name.hasSuffix(".tmp") else { continue }
+            let stem = String(name.dropFirst().dropLast(".tmp".count))
+            guard UUID(uuidString: stem) != nil,
+                  let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  now.timeIntervalSince(modified) > maxAge
+            else { continue }
+            if (try? fm.removeItem(at: url)) != nil { removed += 1 }
+        }
+        return removed
     }
 
     private func scanBookFiles() -> [String: URL] {
