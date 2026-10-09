@@ -585,6 +585,50 @@ cv_body="$(awk '/^cmd_create_version\(\)/,/^}/' "$ASC")"
 hasm "$cv_body" 'write_raw' \
   && fail_t "create-version calls write_raw directly (bypasses gate)" || ok "create-version delegates writes to emit_write"
 
+# 18i. 版號比較用 sort -V（2.0.9 → 2.0.10 允許；live 2.0.10 → 2.0.9 拒絕）
+printf '{"data":[{"id":"v209","attributes":{"versionString":"2.0.9","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}' >"$cv/versions.json"
+o="$(cv_run create-version 2.0.10 13 --yes)"
+hasm "$(cat "$cv/writes.log")" 'POST /v1/appStoreVersions' \
+  && ok "live 2.0.9 -> 2.0.10 allowed (version-aware compare)" || fail_t "2.0.10 wrongly refused vs 2.0.9 (got: $o)"
+printf '{"data":[{"id":"v2010","attributes":{"versionString":"2.0.10","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}' >"$cv/versions.json"
+o="$(cv_run create-version 2.0.9 13 --yes || true)"
+hasm "$o" '必須大於線上' && [[ ! -s "$cv/writes.log" ]] \
+  && ok "live 2.0.10 -> 2.0.9 refused" || fail_t "2.0.9 not refused vs 2.0.10 (got: $o)"
+# 18j. 既有版本在不可編輯態（WAITING_FOR_REVIEW）→ 不可編輯，無寫入
+printf '{"data":[{"id":"v201","attributes":{"versionString":"2.0.1","platform":"IOS","appStoreState":"WAITING_FOR_REVIEW"}},{"id":"v200","attributes":{"versionString":"2.0.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}' >"$cv/versions.json"
+o="$(cv_run create-version 2.0.1 13 --yes || true)"
+hasm "$o" '不可編輯' && [[ ! -s "$cv/writes.log" ]] \
+  && ok "existing WAITING_FOR_REVIEW version: 不可編輯, no write" || fail_t "WAITING_FOR_REVIEW not refused (got: $o)"
+# 18k. 進行中判定為終結態 deny-list：未知/非終結態（WAITING_FOR_EXPORT_COMPLIANCE）也算進行中；REPLACED_WITH_NEW_VERSION 不算
+printf '{"data":[{"id":"v202","attributes":{"versionString":"2.0.2","platform":"IOS","appStoreState":"PENDING_DEVELOPER_RELEASE"}},{"id":"v200","attributes":{"versionString":"2.0.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}' >"$cv/versions.json"
+o="$(cv_run create-version 2.0.3 13 --yes || true)"
+hasm "$o" '進行中的其他版本' && [[ ! -s "$cv/writes.log" ]] \
+  && ok "PENDING_DEVELOPER_RELEASE counts as in-flight (deny-list of terminal states)" || fail_t "non-terminal state not counted in-flight (got: $o)"
+printf '{"data":[{"id":"v199","attributes":{"versionString":"1.9.9","platform":"IOS","appStoreState":"REPLACED_WITH_NEW_VERSION"}},{"id":"v200","attributes":{"versionString":"2.0.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]}' >"$cv/versions.json"
+o="$(cv_run create-version 2.0.1 13 --yes)"
+hasm "$(cat "$cv/writes.log")" 'POST /v1/appStoreVersions' \
+  && ok "REPLACED_WITH_NEW_VERSION is terminal (not in-flight)" || fail_t "terminal state blocked creation (got: $o)"
+# 18l. 無參數 / 多餘參數 → usage，非 unbound variable
+for args in "build" "create-version" "build 2.0.1 13 x" "create-version 2.0.1 13 x"; do
+  o="$(bash "$ASC" $args 2>&1 || true)"
+  hasm "$o" '用法' && ! hasmi "$o" 'unbound variable' \
+    && ok "'$args' -> usage (no unbound variable)" || fail_t "'$args' bad usage handling (got: $o)"
+done
+# 18m. resolve_version 偏好唯一非終結態版本（2.0.0 READY_FOR_SALE 排第一、2.0.1 PREPARE_FOR_SUBMISSION 第二）
+mkdir -p "$cv/uvx"
+cat >"$cv/uvx/uvx" <<'FAKE'
+#!/usr/bin/env bash
+echo '[{"id":"v200","attributes":{"versionString":"2.0.0","appStoreState":"READY_FOR_SALE"}},{"id":"v201","attributes":{"versionString":"2.0.1","appStoreState":"PREPARE_FOR_SUBMISSION"}}]'
+FAKE
+cat >"$cv/getlog" <<'FAKE'
+#!/usr/bin/env bash
+echo "$1" >>"$CV_DIR/get.log"; echo '{"_httpError":1}'
+FAKE
+chmod +x "$cv/uvx/uvx" "$cv/getlog"; : >"$cv/get.log"
+PATH="$cv/uvx:$PATH" CV_DIR="$cv" ASC_GET_BIN="$cv/getlog" ASC_KEY_DIR="$fake/keys" bash "$ASC" release-plan >/dev/null 2>&1 || true
+hasm "$(cat "$cv/get.log")" '/v1/appStoreVersions/v201' && ! hasm "$(cat "$cv/get.log")" '/v1/appStoreVersions/v200' \
+  && ok "resolve_version prefers non-terminal version over .[0]" || fail_t "resolve_version still picks .[0] (log: $(cat "$cv/get.log"))"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

@@ -153,7 +153,7 @@ resolve_version() {  # 印出 version id（--version-id 優先，否則取最新
   [[ -n "$VERSION_ID" ]] && { echo "$VERSION_ID"; return; }
   # 結尾 || true：codemagic 非零 exit（網路/權限）在 set -e+pipefail 下不得中止賦值，
   # 讓空輸出流到呼叫端的 `|| err "找不到版本"` 友善訊息，而非靜默 exit。
-  asc apps app-store-versions "$APP_ID" --json 2>/dev/null | jq -r '.[0].id // empty' || true
+  asc apps app-store-versions "$APP_ID" --json 2>/dev/null | jq -r '(first(.[] | select(.attributes.appStoreState | IN("READY_FOR_SALE","REPLACED_WITH_NEW_VERSION","REMOVED_FROM_SALE","DEVELOPER_REMOVED_FROM_SALE","PREORDER_READY_FOR_SALE") | not) | .id) // .[0].id) // empty' || true
 }
 resolve_loc() {  # $1=version_id → 印出該 locale 的 localization id
   # 結尾 || true：--version-id 給了無效值時 codemagic 會非零退出，這裡吞掉 → 空輸出 →
@@ -192,7 +192,7 @@ cmd_builds() {
 
 cmd_build() {
   local version="${1:-}" build="${2:-}"
-  [[ -n "$version" && -n "$build" && "$build" =~ ^[0-9]+$ ]] \
+  [[ $# -eq 2 && -n "$version" && -n "$build" && "$build" =~ ^[0-9]+$ ]] \
     || err "用法：asc.sh build <marketing-version> <build-number>（build 必須是數字）"
   require_key
   "${ASC_BUILD_BIN:-$(dirname "$0")/asc_build.py}" "$version" "$build"   # ASC_BUILD_BIN：測試注入縫
@@ -330,7 +330,7 @@ cmd_set() {
 # 冪等：同 versionString+IOS 已存在 → 不重建，只確保 build 關係（已掛同一 build 則 no-op）。
 cmd_create_version() {
   local version="${1:-}" build="${2:-}"
-  [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,2}$ && "$build" =~ ^[0-9]+$ ]] \
+  [[ $# -eq 2 && "$version" =~ ^[0-9]+(\.[0-9]+){1,2}$ && "$build" =~ ^[0-9]+$ ]] \
     || err "用法：asc.sh create-version <version 如 2.0.1> <build 數字> [--yes]"
   require_key
   local bjson bstate bid
@@ -355,7 +355,7 @@ cmd_create_version() {
     eid="$(printf '%s' "$existing" | jq -r '.id')"
     estate="$(printf '%s' "$existing" | jq -r '.attributes.appStoreState // "?"')"
     case "$estate" in
-      PREPARE_FOR_SUBMISSION|DEVELOPER_REJECTED|REJECTED|METADATA_REJECTED|INVALID_BINARY) ;;
+      PREPARE_FOR_SUBMISSION|DEVELOPER_REJECTED|REJECTED|METADATA_REJECTED|INVALID_BINARY|WAITING_FOR_EXPORT_COMPLIANCE) ;;
       *) err "版本 ${version} 已存在但狀態 ${estate} 不可編輯，無法改掛 build" ;;
     esac
     local cur
@@ -371,7 +371,7 @@ cmd_create_version() {
     fi
   else
     local other
-    other="$(printf '%s' "$vers" | jq -r '[(.data // [])[] | select(.attributes.appStoreState != "READY_FOR_SALE" and (.attributes.appStoreState | IN("PREPARE_FOR_SUBMISSION","DEVELOPER_REJECTED","REJECTED","METADATA_REJECTED","WAITING_FOR_REVIEW","IN_REVIEW"))) | "\(.attributes.versionString)(\(.attributes.appStoreState))"] | join(",")')"
+    other="$(printf '%s' "$vers" | jq -r '[(.data // [])[] | select(.attributes.appStoreState | IN("READY_FOR_SALE","REPLACED_WITH_NEW_VERSION","REMOVED_FROM_SALE","DEVELOPER_REMOVED_FROM_SALE","PREORDER_READY_FOR_SALE") | not) | "\(.attributes.versionString)(\(.attributes.appStoreState))"] | join(",")')"
     [[ -z "$other" ]] || err "已有進行中的其他版本 ${other}；ASC 一次只允許一個未上架版本（先處理它）"
     emit_write POST "建立 App Store 版本 ${version} (IOS) 並掛 build ${build}（${bid}）" "（版本不存在；線上 ${live:-無}）" "${version} + build ${bid}" \
       "/v1/appStoreVersions" \
@@ -879,8 +879,8 @@ case "${SUB:-}" in
   status)        cmd_status ;;
   versions)      cmd_versions ;;
   builds)        cmd_builds ;;
-  build)         cmd_build "${ARGS[@]}" ;;
-  create-version) cmd_create_version "${ARGS[@]}" ;;
+  build)         cmd_build ${ARGS[@]+"${ARGS[@]}"} ;;
+  create-version) cmd_create_version ${ARGS[@]+"${ARGS[@]}"} ;;
   metadata)      cmd_metadata ;;
   info)          cmd_info ;;
   review-status) cmd_review_status ;;
