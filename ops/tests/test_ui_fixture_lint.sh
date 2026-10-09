@@ -237,6 +237,23 @@ rc="$(run_lint "$TMP/scan_empty")"
 if [[ "$rc" -eq 2 ]]; then ok "scan dir with zero .swift files exits 2"; else
   fail_t "scanning zero files exits $rc — expected 2; the emptiest possible run must not be the greenest"; dump; fi
 
+# (#2817) awk exits 2 on the first unreadable input and drops every later file; the
+# lint must treat that as a structural failure, not scan a partial set and go green.
+# root ignores mode 000, so the probe is skipped there rather than reported as PASS.
+mkdir -p "$TMP/scan_unreadable"
+printf '%s\n' 'let a = 1' >"$TMP/scan_unreadable/AaaUnreadableUITests.swift"
+printf '%s\n' 'let b = launchApp(extraArgs: ["-seedFixture:bookshelf:withBooksLibrary"])' \
+  >"$TMP/scan_unreadable/ZzzReadableUITests.swift"
+chmod 000 "$TMP/scan_unreadable/AaaUnreadableUITests.swift"
+if [[ -r "$TMP/scan_unreadable/AaaUnreadableUITests.swift" ]]; then
+  echo "  - unreadable-file probe skipped (running as a user that ignores chmod 000)"
+else
+  rc="$(run_lint "$TMP/scan_unreadable")"
+  if [[ "$rc" -eq 2 ]]; then ok "an unreadable .swift file exits 2"; else
+    fail_t "an unreadable .swift file exits $rc — expected 2; a partial scan must not read as green"; dump; fi
+fi
+chmod 644 "$TMP/scan_unreadable/AaaUnreadableUITests.swift"
+
 section "the scheduled sweep is actually runnable"
 # The plist is the other half of IMP-20260806-3ec803: the lint catches id typos in
 # seconds, the sweep is what makes the UI target run at all. A plist whose command
