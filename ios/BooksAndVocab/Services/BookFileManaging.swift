@@ -45,18 +45,13 @@ final class LocalBookFileManager: BookFileManaging {
         // 空檔名會讓 appendingPathComponent 指回目錄本身 → removeItem 會整個目錄刪掉
         guard !fileName.isEmpty else { return }
 
-        let fm = FileManager.default
         var failures: [(url: URL, error: Error)] = []
         for location in fixedLocations ?? Self.defaultLocations() {
-            let url = location.appendingPathComponent(fileName)
-            do {
-                try fm.removeItem(at: url)
-            } catch where Self.isFileAbsent(error) {
-                continue  // 只存在於其中一個位置是常態；已達成「不存在」
-            } catch {
-                AppLog.book.error("book file removal failed (\(url.path, privacy: .public)): \(error.localizedDescription)")
-                failures.append((url, error))
-            }
+            // 只存在於其中一個位置是常態；已達成「不存在」即視為成功。
+            // 已被 iCloud 驅逐的書只剩隱藏的 .<name>.icloud placeholder，也必須一併移除（#2723），
+            // 否則 reconciler 會把它還原成書、下載管理器再把檔案下載回每台裝置。
+            Self.removeIfPresent(location.appendingPathComponent(fileName), label: "book file", failures: &failures)
+            Self.removeIfPresent(location.appendingPathComponent(Self.icloudPlaceholderName(for: fileName)), label: "book placeholder", failures: &failures)
             Self.removeOriginals(forEpub: fileName, in: location, failures: &failures)
         }
         if !failures.isEmpty {
@@ -80,14 +75,26 @@ final class LocalBookFileManager: BookFileManaging {
         let originals = location.appendingPathComponent("Originals", isDirectory: true)
         for ext in ["txt", "md"] {
             let url = originals.appendingPathComponent(originalCopyName(forEpub: fileName, sourceExt: ext))
-            do {
-                try FileManager.default.removeItem(at: url)
-            } catch where isFileAbsent(error) {
-                continue
-            } catch {
-                AppLog.book.error("book original removal failed (\(url.path, privacy: .public)): \(error.localizedDescription)")
-                failures.append((url, error))
-            }
+            removeIfPresent(url, label: "book original", failures: &failures)
+            removeIfPresent(
+                url.deletingLastPathComponent().appendingPathComponent(icloudPlaceholderName(for: url.lastPathComponent)),
+                label: "book original placeholder",
+                failures: &failures
+            )
+        }
+    }
+
+    /// iCloud 驅逐後的 placeholder 名稱：`.<name>.icloud`（與 `Book.resolveFileURL`、reconciler 同規則）。
+    static func icloudPlaceholderName(for fileName: String) -> String { ".\(fileName).icloud" }
+
+    private static func removeIfPresent(_ url: URL, label: String, failures: inout [(url: URL, error: Error)]) {
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch where isFileAbsent(error) {
+            return
+        } catch {
+            AppLog.book.error("\(label, privacy: .public) removal failed (\(url.path, privacy: .public)): \(error.localizedDescription)")
+            failures.append((url, error))
         }
     }
 
