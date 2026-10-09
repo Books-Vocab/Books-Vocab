@@ -37,6 +37,7 @@ prod-parity check (§5.3 b) is intentionally NOT implemented here — see README
 The emitter reuses the store's ``canonical_card`` / ``deck_content_hash`` so guid
 and content-hash logic have a single authority in the backend package.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,7 +55,7 @@ from kg.shared_decks.store import (
     canonical_card,
     deck_content_hash,
 )
-from kg.text_utils import normalize_nfc
+from kg.text_utils import normalize_nfc_lower
 
 _HERE = Path(__file__).resolve().parent
 SPEC_SCHEMA = "kg.official_deck.v1"
@@ -97,6 +98,7 @@ class GitIndexUnavailable(RuntimeError):
 
 # ── spec validation / normalization (camelCase spec → snake_case store) ──
 
+
 def _normalize(spec: dict) -> dict:
     if not isinstance(spec, dict):
         raise SpecError("spec must be a JSON object")
@@ -117,7 +119,9 @@ def _normalize(spec: dict) -> dict:
         raise SpecError("tags must be a list of strings")
     category = _opt_str(spec.get("category"))
     if category is not None and category not in _CATEGORIES:
-        raise SpecError(f"category must be one of {sorted(_CATEGORIES)} or null, got {category!r}")
+        raise SpecError(
+            f"category must be one of {sorted(_CATEGORIES)} or null, got {category!r}"
+        )
     cards = [_normalize_card(c, i) for i, c in enumerate(raw_cards)]
     _assert_copyable(cards)
     # NOTE: source / ownerId / visibility / status are deliberately NOT read —
@@ -136,10 +140,10 @@ def _normalize(spec: dict) -> dict:
 
 
 def _nocase_key(content: str) -> str:
-    """The copier's per-notebook uniqueness key: NFC-normalized content compared
-    COLLATE NOCASE. SQLite NOCASE folds ONLY ASCII A-Z, so fold exactly that —
-    ``str.lower()`` would over-fold non-ASCII and flag pairs NOCASE keeps apart."""
-    return "".join(ch.lower() if "A" <= ch <= "Z" else ch for ch in normalize_nfc(content))
+    """The copier's per-notebook uniqueness key: the same ``normalize_nfc_lower``
+    that ``CardStore.add`` / copy dedup use (full Unicode lower, so ``Ärger`` and
+    ``ärger`` collide). Must stay identical to that function or the gate drifts."""
+    return normalize_nfc_lower(content)
 
 
 def _assert_copyable(cards: list[dict]) -> None:
@@ -164,7 +168,8 @@ def _assert_copyable(cards: list[dict]) -> None:
     if collisions:
         surfaces = "; ".join(
             f"{c['content']!r} (pos={c['pos']!r}, mode={c['mode']!r})"
-            for group in collisions for c in group
+            for group in collisions
+            for c in group
         )
         raise SpecError(
             "cards collide under the copier's case-insensitive uniqueness "
@@ -184,14 +189,20 @@ def _normalize_card(card: dict, index: int) -> dict:
         raise SpecError(f"card[{index}].meaning must be a non-empty string")
     difficulty = card.get("difficulty")
     # bool is an int subclass — reject it explicitly so `true` isn't stored as 1.0.
-    if difficulty is not None and (isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))):
-        raise SpecError(f"card[{index}].difficulty must be a number or null, got {difficulty!r}")
+    if difficulty is not None and (
+        isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))
+    ):
+        raise SpecError(
+            f"card[{index}].difficulty must be a number or null, got {difficulty!r}"
+        )
     return {
         "content": content,
         "pos": _opt_str(card.get("pos")),
         "meaning": meaning,
         "examples": _str_list(card.get("examples"), f"card[{index}].examples"),
-        "collocations": _str_list(card.get("collocations"), f"card[{index}].collocations"),
+        "collocations": _str_list(
+            card.get("collocations"), f"card[{index}].collocations"
+        ),
         "note": _opt_str(card.get("note")),
         "difficulty": difficulty,
         "mode": _opt_str(card.get("mode")) or "recognition",
@@ -232,8 +243,12 @@ def _store_kwargs(deck: dict) -> dict:
 
 # ── emit ────────────────────────────────────────────────────────────────
 
+
 def emit(
-    spec: dict, *, check: bool = False, commit: bool = False,
+    spec: dict,
+    *,
+    check: bool = False,
+    commit: bool = False,
     data_dir: Path | None = None,
 ) -> dict:
     """Emit one official-deck spec. See module docstring for the three modes."""
@@ -245,14 +260,18 @@ def emit(
     content_hash = deck_content_hash(deck["cards"])
     if not commit:
         return {
-            "mode": "dry-run", "committed": False, "deckId": deck["deck_id"],
-            "title": deck["title"], "cardCount": len(distinct),
+            "mode": "dry-run",
+            "committed": False,
+            "deckId": deck["deck_id"],
+            "title": deck["title"],
+            "cardCount": len(distinct),
             "contentHash": content_hash,
             "hint": "add --commit to write (approval-gated, U6)",
         }
 
     if data_dir is None:
         from kg.ops_shared import data_dir as _resolve
+
         data_dir = _resolve()
     data_dir = Path(data_dir)
     # Snapshot the whole data-dir BEFORE any write (§3.5 global-store backup).
@@ -265,18 +284,27 @@ def emit(
         store.close()
     # Audit trail: who injected which official deck, when (traceability of a
     # production write — mirrors EditContext's append_audit for ops_edit).
-    append_audit(data_dir, {
-        "schema": "kg.official_deck_injection.v1",
-        "deckId": deck["deck_id"], "action": result["action"],
-        "version": result["version"], "contentHash": result["contentHash"],
-        "backup": str(backup),
-    })
+    append_audit(
+        data_dir,
+        {
+            "schema": "kg.official_deck_injection.v1",
+            "deckId": deck["deck_id"],
+            "action": result["action"],
+            "version": result["version"],
+            "contentHash": result["contentHash"],
+            "backup": str(backup),
+        },
+    )
     return {
         # ``dataDir`` is surfaced so an operator sees WHERE the write landed —
         # when KG_DATA_DIR is unset this resolves to the live dev data dir, not
         # a throwaway sandbox.
-        "mode": "commit", "committed": True, "dataDir": str(data_dir),
-        "backup": str(backup), "result": result, "verified": verified,
+        "mode": "commit",
+        "committed": True,
+        "dataDir": str(data_dir),
+        "backup": str(backup),
+        "result": result,
+        "verified": verified,
     }
 
 
@@ -293,9 +321,12 @@ def _verify(store: SharedDeckStore, deck_id: str, result: dict) -> dict:
 
 # ── --check: round-trip self-consistency (sandbox PR gate) ──────────────
 
+
 def _check_roundtrip(deck: dict) -> dict:
-    expected = {"meta": _expected_meta(deck),
-                "cards": _sorted_cards(canonical_card(c) for c in deck["cards"])}
+    expected = {
+        "meta": _expected_meta(deck),
+        "cards": _sorted_cards(canonical_card(c) for c in deck["cards"]),
+    }
     with tempfile.TemporaryDirectory() as tmp:
         store = SharedDeckStore(Path(tmp) / "shared_decks.db")
         try:
@@ -319,9 +350,13 @@ def _project_from_store(store: SharedDeckStore, deck_id: str) -> dict:
     cards = _read_all_cards(store, deck_id, row.current_version)
     return {
         "meta": {
-            "deckId": row.id, "title": row.title, "description": row.description,
-            "category": row.category, "languagePair": row.language_pair,
-            "tags": list(row.tags or []), "color": row.color,
+            "deckId": row.id,
+            "title": row.title,
+            "description": row.description,
+            "category": row.category,
+            "languagePair": row.language_pair,
+            "tags": list(row.tags or []),
+            "color": row.color,
             "coverPattern": row.cover_pattern,
         },
         "cards": _sorted_cards(_card_row_canonical(c) for c in cards),
@@ -343,12 +378,20 @@ def _read_all_cards(store: SharedDeckStore, deck_id: str, version: int) -> list:
 
 
 def _card_row_canonical(card) -> dict:
-    return canonical_card({
-        "content": card.content, "pos": card.pos, "meaning": card.meaning,
-        "examples": card.examples, "collocations": card.collocations,
-        "note": card.note, "difficulty": card.difficulty, "mode": card.mode,
-        "root_form": card.root_form, "inflections": card.inflections,
-    })
+    return canonical_card(
+        {
+            "content": card.content,
+            "pos": card.pos,
+            "meaning": card.meaning,
+            "examples": card.examples,
+            "collocations": card.collocations,
+            "note": card.note,
+            "difficulty": card.difficulty,
+            "mode": card.mode,
+            "root_form": card.root_form,
+            "inflections": card.inflections,
+        }
+    )
 
 
 def _sorted_cards(cards) -> list[dict]:
@@ -357,14 +400,19 @@ def _sorted_cards(cards) -> list[dict]:
 
 def _expected_meta(deck: dict) -> dict:
     return {
-        "deckId": deck["deck_id"], "title": deck["title"],
-        "description": deck["description"], "category": deck["category"],
-        "languagePair": deck["language_pair"], "tags": list(deck["tags"]),
-        "color": deck["color"], "coverPattern": deck["cover_pattern"],
+        "deckId": deck["deck_id"],
+        "title": deck["title"],
+        "description": deck["description"],
+        "category": deck["category"],
+        "languagePair": deck["language_pair"],
+        "tags": list(deck["tags"]),
+        "color": deck["color"],
+        "coverPattern": deck["cover_pattern"],
     }
 
 
 # ── discovery + CLI ──────────────────────────────────────────────────────
+
 
 def discover_specs() -> list[str]:
     """Absolute paths of every spec file ON DISK in this directory, sorted.
@@ -394,7 +442,9 @@ def _indexed_spec_names() -> set[str]:
     try:
         proc = subprocess.run(
             ["git", "ls-files", "-z", "--", "."],
-            cwd=str(_HERE), capture_output=True, text=True,
+            cwd=str(_HERE),
+            capture_output=True,
+            text=True,
         )
     except OSError as exc:  # git absent, or _HERE is not a directory
         raise GitIndexUnavailable(f"could not run git in {_HERE}: {exc}") from exc
@@ -404,7 +454,8 @@ def _indexed_spec_names() -> set[str]:
             f"{proc.stderr.strip() or '<no stderr>'}"
         )
     return {
-        name for name in proc.stdout.split("\0")
+        name
+        for name in proc.stdout.split("\0")
         if name.endswith(".json") and "/" not in name
     }
 
@@ -422,8 +473,9 @@ def spec_index_drift() -> dict[str, list[str]]:
     on_disk_names = {Path(p).name for p in on_disk}
     return {
         "untracked": sorted(p for p in on_disk if Path(p).name not in indexed),
-        "missing": sorted(str(_HERE / name) for name in indexed
-                          if name not in on_disk_names),
+        "missing": sorted(
+            str(_HERE / name) for name in indexed if name not in on_disk_names
+        ),
     }
 
 
@@ -500,15 +552,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_emit = sub.add_parser("emit", parents=[parent], help="emit one spec (dry-run default)")
+    p_emit = sub.add_parser(
+        "emit", parents=[parent], help="emit one spec (dry-run default)"
+    )
     p_emit.add_argument("spec", help="path to a kg.official_deck.v1 spec file")
-    p_emit.add_argument("--commit", action="store_true",
-                        help="write to shared_decks.db (approval-gated, U6)")
+    p_emit.add_argument(
+        "--commit",
+        action="store_true",
+        help="write to shared_decks.db (approval-gated, U6)",
+    )
 
-    p_check = sub.add_parser("check", parents=[parent],
-                             help="round-trip self-consistency gate; exit 1 on drift")
-    p_check.add_argument("spec", nargs="?", default=None,
-                         help="one spec (default: all committed specs)")
+    p_check = sub.add_parser(
+        "check",
+        parents=[parent],
+        help="round-trip self-consistency gate; exit 1 on drift",
+    )
+    p_check.add_argument(
+        "spec", nargs="?", default=None, help="one spec (default: all committed specs)"
+    )
     return parser
 
 
@@ -545,7 +606,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "emit":
             env_dir = os.getenv("KG_DATA_DIR")
             res = emit(
-                _load(args.spec), commit=args.commit,
+                _load(args.spec),
+                commit=args.commit,
                 data_dir=Path(env_dir) if env_dir else None,
             )
             _print(res, json_mode=json_mode)
@@ -579,15 +641,26 @@ def main(argv: list[str] | None = None) -> int:
             r["spec"] = str(path)
             results.append(r)
             drift_any = drift_any or r["drift"]
-        _print({"mode": "check", "drift": drift_any, "gitIndex": git_index,
-                "specs": results}, json_mode=json_mode)
+        _print(
+            {
+                "mode": "check",
+                "drift": drift_any,
+                "gitIndex": git_index,
+                "specs": results,
+            },
+            json_mode=json_mode,
+        )
         if not json_mode:
             for path in untracked:
-                print(f"  ✗ on disk but NOT in the git index — this deck will not "
-                      f"ship; `git add` it: {path}")
+                print(
+                    f"  ✗ on disk but NOT in the git index — this deck will not "
+                    f"ship; `git add` it: {path}"
+                )
             for path in missing:
-                print(f"  ✗ in the git index but NOT on disk — it ships unvalidated; "
-                      f"`git rm` it or restore the file: {path}")
+                print(
+                    f"  ✗ in the git index but NOT on disk — it ships unvalidated; "
+                    f"`git rm` it or restore the file: {path}"
+                )
         return 1 if (drift_any or untracked or missing) else 0
     except SpecInputError as exc:
         _print(_input_error_payload(exc), json_mode=json_mode)
@@ -596,11 +669,15 @@ def main(argv: list[str] | None = None) -> int:
         _print({"mode": "error", "error": str(exc)}, json_mode=json_mode)
         return 1
     except GitIndexUnavailable as exc:
-        _print({"mode": "error", "error": f"git index unreadable: {exc}"},
-               json_mode=json_mode)
+        _print(
+            {"mode": "error", "error": f"git index unreadable: {exc}"},
+            json_mode=json_mode,
+        )
         return 1
     except FileNotFoundError as exc:
-        _print({"mode": "error", "error": f"spec not found: {exc}"}, json_mode=json_mode)
+        _print(
+            {"mode": "error", "error": f"spec not found: {exc}"}, json_mode=json_mode
+        )
         return 1
 
 
