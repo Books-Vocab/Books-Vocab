@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterator
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, String, case, cast, func, text, tuple_
+from sqlalchemy import BigInteger, String, case, cast, func, tuple_
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc_lower
@@ -21,11 +21,6 @@ def _utc_instant(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
-
-
-def _parse_stored_timestamp(value: str) -> datetime:
-    """Parse SQLite's ISO timestamp text without discarding its offset."""
-    return _utc_instant(datetime.fromisoformat(value.replace(" ", "T")))
 
 
 def _epoch_microseconds(value: datetime) -> int:
@@ -170,52 +165,35 @@ class CardQueryMixin:
         since: datetime,
         notebook_id: str | None = None,
         exclude_notebook_ids: Collection[str] = (),
+        *,
+        limit: int | None = None,
+        after: tuple[datetime, str] | None = None,
     ) -> list[Card]:
-        """Fetch all cards modified after ``since`` as a UTC-instant comparison.
+        """Fetch cards modified after ``since`` as a UTC-instant comparison.
 
-        SQLite stores these timestamps as text, so comparing the raw column to
-        a datetime would order mixed-offset values lexicographically instead of
-        by their actual instant. Read the raw text to preserve offsets and use
-        Python's microsecond-precise datetime comparison. This retains the
-        exclusive boundary and includes soft-deleted cards.
+        The comparison runs in SQL on the same UTC-microsecond key as
+        :meth:`page_cards` (SQLite stores timestamps as text, so a raw column
+        compare would order mixed offsets lexicographically). Rows come back in
+        ascending ``(updated_at, id)`` order in one query, with an optional
+        ``after`` cursor and ``limit`` so callers can page without
+        materialising the whole modified set. The boundary is exclusive and
+        soft-deleted cards are included.
         """
         with Session(self.engine) as session:
-            conditions: list[str] = []
-            params: dict[str, str] = {}
+            updated_at_key = _stored_timestamp_key(Card.updated_at)
+            statement = select(Card).where(updated_at_key > _epoch_microseconds(since))
             if notebook_id is not None:
-                conditions.append("notebook_id = :notebook_id")
-                params["notebook_id"] = notebook_id
+                statement = statement.where(Card.notebook_id == notebook_id)
             elif exclude_notebook_ids:
-                names = []
-                for i, excluded in enumerate(exclude_notebook_ids):
-                    params[f"ex{i}"] = excluded
-                    names.append(f":ex{i}")
-                conditions.append(f"notebook_id NOT IN ({', '.join(names)})")
-            raw_query = "SELECT id, updated_at FROM card"
-            if conditions:
-                raw_query += " WHERE " + " AND ".join(conditions)
-            rows = session.execute(
-                text(raw_query),
-                params,
-            ).all()
-            since_utc = _utc_instant(since)
-            modified_rows = [
-                (card_id, _parse_stored_timestamp(updated_at))
-                for card_id, updated_at in rows
-                if _parse_stored_timestamp(updated_at) > since_utc
-            ]
-            modified_ids = [
-                card_id
-                for card_id, _updated_at in sorted(
-                    modified_rows,
-                    key=lambda row: (row[1], row[0]),
+                statement = statement.where(Card.notebook_id.not_in(list(exclude_notebook_ids)))
+            if after is not None:
+                statement = statement.where(
+                    tuple_(updated_at_key, Card.id) > tuple_(_epoch_microseconds(after[0]), after[1])
                 )
-            ]
-            if not modified_ids:
-                return []
-            cards = session.exec(select(Card).where(Card.id.in_(modified_ids))).all()
-            cards_by_id = {card.id: card for card in cards}
-            return [cards_by_id[card_id] for card_id in modified_ids]
+            statement = statement.order_by(updated_at_key, Card.id)
+            if limit is not None:
+                statement = statement.limit(limit)
+            return list(session.exec(statement).all())
 
     def count(self, notebook_id: str | None = None) -> int:
         with Session(self.engine) as session:

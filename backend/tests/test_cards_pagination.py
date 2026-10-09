@@ -172,3 +172,34 @@ def test_index_exists(store):
     assert "ix_card_updated_at_id" in names
     # old single-column index preserved
     assert "ix_card_updated_at" in names
+
+
+def test_get_modified_since_is_db_bounded_and_ordered(store):
+    from sqlalchemy import event
+
+    base = datetime(2024, 1, 1, 0, 0, 0)
+    ids = _seed_distinct(store, 6, base)
+    statements: list[str] = []
+
+    @event.listens_for(store.engine, "before_cursor_execute")
+    def _capture(_conn, _cursor, statement, _params, _ctx, _many):
+        statements.append(statement)
+
+    page = store.get_modified_since(base + timedelta(seconds=0), limit=3)
+    event.remove(store.engine, "before_cursor_execute", _capture)
+
+    assert [c.id for c in page] == ids[1:4]
+    assert len(statements) == 1
+    assert " IN (" not in statements[0]
+
+
+def test_get_modified_since_after_cursor_and_filters(store):
+    base = datetime(2024, 1, 1, 0, 0, 0)
+    ids = _seed_distinct(store, 5, base)
+    _add(store, "gone", updated_at=base + timedelta(seconds=10), is_deleted=True)
+    _add(store, "other", updated_at=base + timedelta(seconds=11), notebook_id="nb2")
+
+    page = store.get_modified_since(base, limit=2, after=(base + timedelta(seconds=2), ids[2]))
+    assert [c.id for c in page] == [ids[3], ids[4]]
+    everything = store.get_modified_since(base, exclude_notebook_ids=("nb2",))
+    assert [c.id for c in everything] == [*ids[1:], "gone"]
