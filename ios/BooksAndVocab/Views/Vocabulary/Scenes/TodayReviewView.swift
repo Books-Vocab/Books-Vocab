@@ -272,7 +272,8 @@ struct TodayReviewView: View {
                 // 連結目標只能在來源同一本（`AddLinkCoordinator.isEligibleTarget`）；
                 // 多單字本入口要明講，免得使用者以為能搜所有單字本。
                 notebookScopeName: notebookBadges[request.sourceEntry.notebookId]?.name,
-                onLinked: { state.rebuildCacheForEntry(request.sourceEntry) }
+                // #2408: a link row was added, not a new card; keep measurements (no jump).
+                onLinked: { state.refreshPendingLinksForEntry(request.sourceEntry) }
             )
         }
         .toastSheet(item: $pendingLinkDetail) { request in

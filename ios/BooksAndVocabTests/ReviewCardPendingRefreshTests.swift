@@ -109,4 +109,23 @@ struct ReviewCardPendingRefreshTests {
         cache.refreshLinks(for: entry(), pendingLinks: [pending(.creating)])
         #expect(cache.storage.isEmpty)
     }
+
+    /// #2408: AddLink success used to rebuild the open card (`rebuildCacheForEntry`),
+    /// dropping its measured heights and jumping for a frame. It must take the same
+    /// in-place link refresh as pending-link updates.
+    @Test("AddLink success keeps the open card's measurements (#2408)")
+    func addLinkSuccessKeepsMeasurements() throws {
+        let entry = entry()
+        let state = TodayReviewState(entries: [entry], allEntries: [entry], currentUserID: nil)
+        let before = try #require(state.preparedCardCache[entry.id])
+        let cardKey = before.card.reviewCardKey
+        before.measurementCache.record(80, for: key(.example, card: cardKey), level: .natural)
+
+        // The AddLink success path (TodayReviewView onLinked) must call this, not rebuildCacheForEntry.
+        state.refreshPendingLinksForEntry(entry)
+
+        let after = try #require(state.preparedCardCache[entry.id])
+        #expect(after.measurementCache === before.measurementCache, "success must not rebuild the cache")
+        #expect(after.measurementCache.value(for: key(.example, card: cardKey), level: .natural) == 80)
+    }
 }
