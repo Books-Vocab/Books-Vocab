@@ -353,3 +353,24 @@ def test_asset_upload_accepts_hex_sha256(isolated_api):
         headers=isolated_api.headers,
     )
     assert r.status_code == 200, r.text
+
+
+def test_presigned_put_url_signs_content_length_with_real_client(isolated_api, monkeypatch):
+    """#2525: the real boto client must emit SigV4 so Content-Length is a signed
+    header; with SigV2 query auth a larger body would still be accepted."""
+    from urllib.parse import parse_qs, urlparse
+
+    _set_fake_object_storage_credentials(monkeypatch)
+    _configure_bucket(isolated_api)
+    book_id = _seed_book(isolated_api, client_book_id="cl-real")
+    r = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": "epub", "byte_size": 4096},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 200, r.text
+    url = urlparse(r.json()["upload_url"])
+    query = parse_qs(url.query)
+    assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
+    assert "content-length" in query["X-Amz-SignedHeaders"][0].split(";")
+    assert "kg-library-test" in url.netloc or url.path.startswith("/kg-library-test")

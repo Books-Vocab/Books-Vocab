@@ -127,7 +127,14 @@ def _library_s3_client(settings: KGSettings):
         "s3",
         region_name=settings.library_bucket_region,
         endpoint_url=settings.library_bucket_endpoint_url,
-        config=Config(connect_timeout=5, read_timeout=10, retries={"total_max_attempts": 3, "mode": "standard"}),
+        config=Config(
+            # SigV4 is required: SigV2 query auth does not sign Content-Length, so the
+            # presigned PUT could not pin the declared byte_size (#2525).
+            signature_version="s3v4",
+            connect_timeout=5,
+            read_timeout=10,
+            retries={"total_max_attempts": 3, "mode": "standard"},
+        ),
     )
 
 
@@ -212,6 +219,9 @@ def request_asset_upload(
         byte_size=req.byte_size,
         sha256=req.sha256,
     )
+    # Trade-off: a format switch drops the superseded object now (not after the
+    # new upload is confirmed) so no orphan outlives a never-completed upload;
+    # the row already pointed at the new key, so downloads 409 until bytes land.
     if book.asset_object_key != object_key:
         _delete_asset_object(settings, book.asset_object_key)
     return AssetUploadResponse(
