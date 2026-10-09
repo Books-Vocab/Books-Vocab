@@ -210,6 +210,22 @@ KG_IOS_DISK_CACHE_ROOTS="$root:$build_root" \
   || fail_t "aggregate budget left stale keyed generations"
 unset KG_IOS_DISK_CACHE_ROOTS KG_IOS_DISK_CACHE_BUDGET_GIB KG_IOS_DISK_CACHE_HEADROOM_GIB
 
+# ── 13b. headroom band：cache <= budget 但 > budget-headroom 也要收斂 stale key（#2769）──
+section "headroom-band eviction keeps live key"
+project="$TMPROOT/headroom-project"
+root="$project/.cache/ios-test-derived-data"
+mkdir -p "$root/stale-a/Build" "$root/stale-b/Build" "$root/live/Build"
+printf x > "$root/stale-a/Build/blob"; printf x > "$root/stale-b/Build/blob"; printf x > "$root/live/Build/blob"
+touch -m -t 202001010000.00 "$root/stale-a"; touch -m -t 202001020000.00 "$root/stale-b"
+KG_IOS_DISK_CACHE_ROOTS="$root" \
+  KG_IOS_DISK_CACHE_BUDGET_GIB=1 KG_IOS_DISK_CACHE_HEADROOM_GIB=1 \
+  KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=0 \
+  kg_ios_cache_evict "$root" live >/dev/null 2>&1
+[[ ! -d "$root/stale-a" && ! -d "$root/stale-b" && -d "$root/live" ]] \
+  && ok "headroom band evicts only stale keys" \
+  || fail_t "headroom band did not evict stale keys / removed live key"
+unset KG_IOS_DISK_CACHE_ROOTS KG_IOS_DISK_CACHE_BUDGET_GIB KG_IOS_DISK_CACHE_HEADROOM_GIB
+
 # ── 14. 失敗必須保留 machine-readable evidence，且維持 best-effort exit 0 ──
 section "eviction failure evidence"
 root="$(fresh_root 14)"

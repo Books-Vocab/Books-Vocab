@@ -43,7 +43,7 @@ kg_ios_cache_evict() {
   local dry_run="${KG_IOS_CACHE_EVICT_DRY_RUN:-0}"
   local budget_only="${KG_IOS_CACHE_EVICT_BUDGET_ONLY:-0}"
   local effective_keep="$keep"
-  local budget_kb current_cache_kb cache_project_root budget_pressure=0 working_cache_kb
+  local budget_cfg headroom_kb budget_kb current_cache_kb cache_project_root budget_pressure=0 working_cache_kb
 
   KG_IOS_CACHE_EVICT_ATTEMPTED=0
   KG_IOS_CACHE_EVICTED=0
@@ -59,8 +59,15 @@ kg_ios_cache_evict() {
     cache_project_root="$(dirname "$(dirname "$cache_root")")"
     current_cache_kb="$(kg_ios_disk_budget_cache_kb "$cache_project_root" 2>/dev/null || true)"
     budget_kb="${KG_IOS_DISK_CACHE_BUDGET_KB:-}"
+    budget_cfg="$(kg_ios_disk_budget_config 2>/dev/null || true)"
     if [[ -z "$budget_kb" ]]; then
-      budget_kb="$(kg_ios_disk_budget_config 2>/dev/null | awk '{print $1}' || true)"
+      # Preflight blocks at budget - headroom, not at the raw budget; evict against the
+      # same threshold or a cache in the headroom band is blocked yet never reclaimed (#2769).
+      # An explicit KG_IOS_DISK_CACHE_BUDGET_KB override stays raw.
+      read -r budget_kb headroom_kb _ <<<"$budget_cfg"
+      if [[ "$budget_kb" =~ ^[0-9]+$ && "$headroom_kb" =~ ^[0-9]+$ ]]; then
+        budget_kb=$(( budget_kb > headroom_kb ? budget_kb - headroom_kb : 0 ))
+      fi
     fi
     if [[ "$current_cache_kb" =~ ^[0-9]+$ && "$budget_kb" =~ ^[0-9]+$ ]] && (( current_cache_kb > budget_kb )); then
       budget_pressure=1
