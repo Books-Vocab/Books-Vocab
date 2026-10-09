@@ -238,7 +238,8 @@ def test_apply_is_idempotent(tmp_path):
     user_dir = _seed_user(tmp_path)
     first = migrate_user(user_dir, apply=True)
     second = migrate_user(user_dir, apply=True)
-    assert first.review_events_synthesized == second.review_events_synthesized == 8
+    assert first.review_events_synthesized == 8
+    assert second.review_events_synthesized == 0  # 已種過史的卡不再合成(#2810)
     assert first.graph_events_synthesized == second.graph_events_synthesized == 3
     # 事件總數不因重跑膨脹
     store = GraphEventStore(user_dir / "graph_events.db")
