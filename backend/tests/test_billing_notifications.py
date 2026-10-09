@@ -850,3 +850,57 @@ def test_refund_after_rejected_sync_of_other_users_jws_revokes_owner_not_attacke
     assert result["user_id"] == "P"
     assert users_store["P"]["subscription"]["is_active"] is False
     assert "subscription" not in users_store["Q"]
+
+
+def _parse_iso(value):
+    from datetime import datetime
+
+    return datetime.fromisoformat(value) if isinstance(value, str) else None
+
+
+def _decode_renewal_toggle(subtype, auto_renew_status, expires_ms=None):
+    from kg.billing import decode_notification_payload as real_decode
+
+    transaction_payload = {
+        "productId": "pro_monthly",
+        "transactionId": "txn-1",
+        "originalTransactionId": "orig-1",
+        "environment": "Production",
+    }
+    if expires_ms is not None:
+        transaction_payload["expiresDate"] = expires_ms
+    notification_payload = {
+        "notificationType": "DID_CHANGE_RENEWAL_STATUS",
+        "subtype": subtype,
+        "data": {"signedTransactionInfo": "SIGNED_TXN", "signedRenewalInfo": "SIGNED_RENEWAL"},
+    }
+    req = AppStoreNotificationRequest(
+        notification_type="DID_CHANGE_RENEWAL_STATUS", signed_payload="SIGNED_NOTIFICATION"
+    )
+    snapshot, _ = real_decode(
+        req,
+        bundle_id="com.example.app",
+        allow_unsigned_notifications=False,
+        parse_datetime_fn=_parse_iso,
+        verify_signed_jws=_signed_jws_verifier(
+            notification_payload, transaction_payload, {"autoRenewStatus": auto_renew_status}
+        ),
+    )
+    return snapshot
+
+
+@pytest.mark.parametrize(
+    ("subtype", "auto_renew_status", "expected_will_renew"),
+    [("AUTO_RENEW_DISABLED", 0, False), ("AUTO_RENEW_ENABLED", 1, True)],
+)
+def test_signed_did_change_renewal_status_updates_will_renew_keeps_status(
+    subtype, auto_renew_status, expected_will_renew
+):
+    snapshot = _decode_renewal_toggle(subtype, auto_renew_status)
+    assert snapshot["status"] == "active"
+    assert snapshot["will_renew"] is expected_will_renew
+
+
+def test_signed_did_change_renewal_status_does_not_resurrect_expired_transaction():
+    snapshot = _decode_renewal_toggle("AUTO_RENEW_ENABLED", 1, expires_ms=1_000_000_000_000)
+    assert snapshot["status"] == "expired"
