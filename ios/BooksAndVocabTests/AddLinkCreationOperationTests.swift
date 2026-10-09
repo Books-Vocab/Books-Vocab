@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -31,6 +32,52 @@ struct AddLinkCreationOperationTests {
         #expect(AddLinkCreationCoordinator.localTargetState(
             query: "source", sourceEntry: source, allEntries: [source]
         ) == .source)
+    }
+
+    /// #2727 acceptance: Add Link opened from the archive list. The archived
+    /// source's detail sheet is fed `knowledgeListPredicate()` entries (active,
+    /// all notebooks); the coordinator must scope them to the source's notebook.
+    @Test("archived source: same-notebook active word is a link candidate, other notebooks are not")
+    func archivedSourceSeesOnlySameNotebookActiveWords() throws {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let source = Self.entry("archivedword", cardID: "src", notebook: "nb")
+        source.isArchived = true
+        let sameNotebook = Self.entry("run", cardID: "run", notebook: "nb")
+        let otherNotebook = Self.entry("walk", cardID: "walk", notebook: "other")
+        for value in [source, sameNotebook, otherNotebook] {
+            value.syncStatus = 1
+            context.insert(value)
+        }
+        try context.save()
+
+        let activeEntries = try context.fetch(FetchDescriptor<VocabularyEntry>(
+            predicate: VocabularyEntry.knowledgeListPredicate()
+        ))
+        #expect(!activeEntries.contains { $0.id == source.id })
+
+        // Pre-fix input: WordDetailSheet defaulted to an empty pool.
+        #expect(AddLinkCreationCoordinator.localTargetState(
+            query: "run", sourceEntry: source, allEntries: []
+        ) == .missing)
+
+        #expect(AddLinkCreationCoordinator.localTargetState(
+            query: "run", sourceEntry: source, allEntries: activeEntries
+        ) == .active)
+        #expect(AddLinkCreationCoordinator.localTargetState(
+            query: "walk", sourceEntry: source, allEntries: activeEntries
+        ) == .missing)
+
+        let candidates = AddLinkCoordinator.localCandidates(
+            query: "run", sourceEntry: source, allEntries: activeEntries
+        )
+        #expect(candidates.map(\.id) == [sameNotebook.id])
+        #expect(AddLinkCoordinator.localCandidates(
+            query: "walk", sourceEntry: source, allEntries: activeEntries
+        ).isEmpty)
     }
 
     @Test("request encodes the backend command contract")
