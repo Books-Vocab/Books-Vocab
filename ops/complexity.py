@@ -13,6 +13,11 @@ ceiling in the budget file so a reviewer sees the number and the reason.  The
 ceiling is therefore a decision, not a side effect.  ``ratchet`` only moves it
 down, so deletions are banked and cannot be spent again silently.
 
+A red base must not block a change that adds nothing: an area over its ceiling only fails
+``check`` when this change grew it versus the merge-base (``origin/main``, else ``main``);
+otherwise it is reported as ``inherited``.  ``--strict`` ignores the delta (use it on
+``main`` itself so a red trunk is still caught); ``--base REF`` overrides the base.
+
 Exit code: 0 within budget, 1 over budget, 2 usage or unreadable budget.
 """
 
@@ -60,6 +65,44 @@ def count_lines(repo: Path, prefix: str) -> int:
     return total
 
 
+def merge_base(repo: Path, base: str | None) -> str | None:
+    """Commit to diff against, or None when there is no usable base (absolute mode)."""
+    for ref in [base] if base else ["origin/main", "main"]:
+        found = subprocess.run(
+            ["git", "merge-base", "HEAD", ref],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if found.returncode == 0 and found.stdout.strip():
+            return found.stdout.strip()
+    return None
+
+
+def line_deltas(repo: Path, base: str) -> dict[str, int]:
+    """Counted lines added minus removed per area, working tree versus ``base``."""
+    out = subprocess.run(
+        ["git", "diff", "--numstat", "--no-renames", "-z", base, "--"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    ).stdout
+    deltas = dict.fromkeys(AREAS, 0)
+    for entry in out.split(b"\0"):
+        if not entry:
+            continue
+        added, _, rest = entry.decode().partition("\t")
+        removed, _, name = rest.partition("\t")
+        if not added.isdigit() or not removed.isdigit():  # binary
+            continue
+        if not name.endswith(COUNTED_SUFFIXES):
+            continue
+        for area, prefix in AREAS.items():
+            if name.startswith(prefix):
+                deltas[area] += int(added) - int(removed)
+    return deltas
+
+
 def measure(repo: Path) -> dict[str, int]:
     measured = {name: count_lines(repo, prefix) for name, prefix in AREAS.items()}
     measured["reference"] = count_lines(repo, REFERENCE_AREA)
@@ -80,18 +123,27 @@ def load_budget(path: Path) -> dict[str, Any]:
     return budget
 
 
-def evaluate(measured: dict[str, int], budget: dict[str, Any]) -> list[dict[str, Any]]:
+def evaluate(
+    measured: dict[str, int],
+    budget: dict[str, Any],
+    deltas: dict[str, int] | None = None,
+) -> list[dict[str, Any]]:
+    """``deltas`` (lines this change added per area) lets an already-red area pass
+    unless the change grew it; without it the judgement is absolute."""
     rows = []
     for name in AREAS:
         ceiling = int(budget["ceilings"][name])
         now = measured[name]
+        beyond = now > ceiling
+        grew = deltas is None or deltas.get(name, 0) > 0
         rows.append(
             {
                 "area": name,
                 "lines": now,
                 "ceiling": ceiling,
                 "headroom": ceiling - now,
-                "over": now > ceiling,
+                "over": beyond and grew,
+                "inherited": beyond and not grew,
             }
         )
     return rows
@@ -118,10 +170,15 @@ def ratio(measured: dict[str, int]) -> float | None:
 def render(rows: list[dict[str, Any]], measured: dict[str, int]) -> str:
     lines = []
     for row in rows:
-        mark = "OVER" if row["over"] else "ok  "
+        mark = "OVER" if row["over"] else "base" if row["inherited"] else "ok  "
+        note = (
+            "  inherited: over at base, this change adds none"
+            if row["inherited"]
+            else ""
+        )
         lines.append(
             f"[{mark}] {row['area']:9} {row['lines']:>8,} lines / ceiling {row['ceiling']:>8,}"
-            f"  (headroom {row['headroom']:+,})"
+            f"  (headroom {row['headroom']:+,}){note}"
         )
     value = ratio(measured)
     if value is not None:
@@ -137,6 +194,15 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
     )
     parser.add_argument("command", choices=["check", "ratchet", "show"])
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--base",
+        help="ref to diff against (default: merge-base with origin/main, else main)",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="judge absolute counts; ignore the base delta",
+    )
     args = parser.parse_args(argv)
     root = repo or Path(__file__).resolve().parents[1]
     try:
@@ -146,7 +212,15 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
     except (BudgetError, subprocess.CalledProcessError) as exc:
         print(f"complexity: {exc}", file=sys.stderr)
         return 2
-    rows = evaluate(measured, budget)
+    deltas = None
+    if not args.strict:
+        base = merge_base(root, args.base)
+        if base:
+            try:
+                deltas = line_deltas(root, base)
+            except subprocess.CalledProcessError:
+                deltas = None
+    rows = evaluate(measured, budget, deltas)
 
     if args.command == "ratchet":
         new = ratcheted(measured, budget)

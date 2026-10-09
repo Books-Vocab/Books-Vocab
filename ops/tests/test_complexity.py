@@ -207,3 +207,77 @@ def test_doctor_reports_the_tightest_area_when_within_budget() -> None:
 
 def test_doctor_warns_when_the_budget_cannot_be_read() -> None:
     assert doctor.evaluate_complexity(None, None).level == "warn"
+
+
+# ---- merge-base delta (#2679): a red base must not block a change that adds nothing ----
+
+
+def _commit(repo: Path, message: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t"]
+        + ["commit", "-q", "-m", message],
+        check=True,
+    )
+
+
+def _over_base_repo(tmp_path: Path) -> Path:
+    repo = _git_repo(tmp_path, {"ops/a.py": "1\n" * 30, "ios/a.swift": "1\n"})
+    path = repo / complexity.BUDGET_FILE
+    path.write_text(json.dumps(_budget(ops=10)))
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    _commit(repo, "base")
+    return repo
+
+
+def test_evaluate_is_over_only_when_the_change_grew_the_area() -> None:
+    measured = {**MEASURED, "ops": 1001}
+    grew = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 3})}
+    flat = {r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": 0})}
+    shrank = {
+        r["area"]: r for r in complexity.evaluate(measured, _budget(), {"ops": -2})
+    }
+    assert grew["ops"]["over"] is True
+    assert flat["ops"]["over"] is False and flat["ops"]["inherited"] is True
+    assert shrank["ops"]["over"] is False and shrank["ops"]["inherited"] is True
+
+
+def test_check_passes_when_the_base_is_already_over_and_the_change_adds_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _over_base_repo(tmp_path)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
+    assert "inherited" in capsys.readouterr().out
+
+
+def test_check_fails_when_a_change_grows_an_area_that_is_over(tmp_path: Path) -> None:
+    repo = _over_base_repo(tmp_path)
+    (repo / "ops" / "b.py").write_text("1\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 1
+
+
+def test_check_passes_when_a_change_only_shrinks_an_area_that_is_over(
+    tmp_path: Path,
+) -> None:
+    repo = _over_base_repo(tmp_path)
+    (repo / "ops" / "a.py").write_text("1\n" * 20)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.main(["check", "--base", "HEAD"], repo=repo) == 0
+
+
+def test_strict_ignores_the_delta_so_main_itself_can_still_go_red(
+    tmp_path: Path,
+) -> None:
+    repo = _over_base_repo(tmp_path)
+    assert complexity.main(["check", "--base", "HEAD", "--strict"], repo=repo) == 1
+
+
+def test_delta_ignores_data_files_like_measure_does(tmp_path: Path) -> None:
+    repo = _over_base_repo(tmp_path)
+    (repo / "ops" / "world.json").write_text("1\n" * 500)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    assert complexity.line_deltas(repo, "HEAD") == {
+        "ops": 0,
+        "docs": 0,
+        "workflows": 0,
+    }
