@@ -5,22 +5,22 @@ update_trigger: release-change
 scope:
   - ios/BooksAndVocab/
   - ops/release_changelog.sh
-verified_against: 3d929f414bfb4b61aec283aea70f40db7acf739c
+verified_against: cd9858be43b0f6c021da3967a7190427f0023a19
 -->
 # iOS changelog
 
 最新在上，一版一節。每節：zh-Hant 使用者說明（商店在地化語言）＋ en 短版 → Changes（New／Improved／Fixed，只列使用者看得到的）→ Internal 一行 → Builds 表。zh-Hant／en 區塊同時是 App Store「What's New」來源，各 ≤ 4000 字元，貼進 ASC 前不得含條目編號或內部用語。
 
-維護契約：每個合併進 main 的使用者可見變更，發版 agent 在發版前用 `./ops/release_changelog.sh ios --draft <since-ref>` 產生草稿（`<since-ref>` 必須明確帶：預設起點是最近的 released tag `ios/x.y.z`，而 `ios/2.0.1` 尚未物化〔2.0.1 尚未上架，ASC 2026-10-09 確認〕，預設會錨在 `ios/2.0.0` 而重複列出 2.0.1 的變更。起點取「最近一個實際上傳／送審的 build tag」，現為 `ios/2.0.1+13`（finalize 建立後；之前為 `ios/2.0.1+12`）；待 `./ops/release.sh shipped ios` 物化 `ios/2.0.1` 後，起點改用該 tag，或省略即可）、策展後貼進 `## Unreleased`。`./ops/release.sh release ios <ver>` 必須在**候選 commit 內**把 `## Unreleased` 改名為 `## <ver>` 並補日期與 Builds 表，再重開空的 `## Unreleased`（release.sh 由另一條 lane 擁有，目前尚未自動化這一步，由發版 agent 手動在同一候選 commit 完成）。不列：test／fixture／chore／ci／refactor／docs／ops、被 feature flag 關閉的功能（Release 的 podcast 為 off，見 `KGFeatureFlags.swift`）、同一週期內加了又撤回的功能（淨額為零）。
+維護契約：每個合併進 main 的使用者可見變更，發版 agent 在發版前用 `./ops/release_changelog.sh ios --draft <since-ref>` 產生草稿（`<since-ref>` 必須明確帶：預設起點是最近的 released tag `ios/x.y.z`，而 `ios/2.0.1` 尚未物化〔2.0.1 尚未上架，ASC 2026-10-09 確認〕，預設會錨在 `ios/2.0.0` 而重複列出 2.0.1 的變更。起點取「最近一個實際上傳／送審的 build tag」，現為 `ios/2.0.1+13`（已建立；之前為 `ios/2.0.1+12`）；待 `./ops/release.sh shipped ios` 物化 `ios/2.0.1` 後，起點改用該 tag，或省略即可）、策展後貼進 `## Unreleased`。`./ops/release.sh release ios <ver>` 必須在**候選 commit 內**把 `## Unreleased` 改名為 `## <ver>` 並補日期與 Builds 表，再重開空的 `## Unreleased`（release.sh 由另一條 lane 擁有，目前尚未自動化這一步，由發版 agent 手動在同一候選 commit 完成）。不列：test／fixture／chore／ci／refactor／docs／ops、被 feature flag 關閉的功能（Release 的 podcast 為 off，見 `KGFeatureFlags.swift`）、同一週期內加了又撤回的功能（淨額為零）。
 
 ## Unreleased
-（自 `ios/2.0.1+13`，截至 main `ca86dffa1`；尚無條目）
+（自 `ios/2.0.1+13`，截至 main `08a8b6d82`；尚無條目）
 
 ## 2.0.1 (build 13)
-2026-10-09 同版重送（build 13）。2.0.1 從未上架：ASC 於 2026-10-09 僅有 2.0.0 為 READY_FOR_SALE、沒有 2.0.1 的 App Store 版本記錄，build 7–12 只上傳到 TestFlight。以下為 2.0.0 → build 13 的淨變更（已含 build 12 之後至 main `ca86dffa1` 的全部 iOS 變更）。
+2026-10-09 同版重送（build 13）。2.0.1 從未上架：ASC 於 2026-10-09 僅有 2.0.0 為 READY_FOR_SALE、沒有 2.0.1 的 App Store 版本記錄，build 7–12 只上傳到 TestFlight。以下為 2.0.0 → build 13 的淨變更（已含 build 12 之後至 main `08a8b6d82` 的全部 iOS 變更）。
 
 ### 使用者說明（zh-Hant）
-新增「探索」：瀏覽官方公開牌組並一鍵複製成自己的單字本（離線時會提示）。複習卡片重新設計：版面編輯器（正常／精簡）、閱讀設定與複習設定改為原生表單並附即時預覽，卡面不再透出下一張的字，每本單字本可有獨立複習設定。新增連結（Add Link）全面改版：手動建立單字連結更穩、取消時立即移除待處理項目。閱讀器字級與標註控制統一、可調範圍有界，並新增自適應玻璃主題。匯入 TXT 檔時，支援以舊式編碼儲存的繁體與簡體中文檔案。同步改為逐步進度、不再重傳整份複習紀錄，並修正跨帳號切換、刪除單字本、遠端改名與排序不穩等問題。全面採用 iOS 26 Liquid Glass，最低支援 iOS 26.0。設定可管理 Pro API 金鑰，單字詳情可封存單字，單字本設定在多裝置間同步。CSV 匯出更安全；登入失敗時會顯示離線原因；刪除書籍失敗時會明確提示並保留單字連結。更多介面字串補齊本地化。
+新增「探索」：瀏覽官方公開牌組並一鍵複製成自己的單字本（離線時會提示）。複習卡片重新設計：版面編輯器（正常／精簡）、閱讀設定附即時預覽，卡面不再透出下一張的字，每本單字本可有獨立複習設定。新增連結（Add Link）全面改版：手動建立單字連結更穩、取消時立即移除待處理項目。閱讀器字級與標註控制統一、可調範圍有界，並新增自適應玻璃主題。匯入 TXT 檔時，支援以舊式編碼儲存的繁體與簡體中文檔案。同步改為逐步進度、不再重傳整份複習紀錄，並修正跨帳號切換、刪除單字本、遠端改名與排序不穩等問題。全面採用 iOS 26 Liquid Glass，最低支援 iOS 26.0。設定可管理 Pro API 金鑰，單字詳情可封存單字，單字本設定在多裝置間同步。CSV 匯出更安全；登入失敗時會顯示離線原因；刪除書籍失敗時會明確提示並保留單字連結。更多介面字串補齊本地化。
 
 ### What's New (en)
 Explore lets you browse official public decks and copy one into your own notebook. The review card is redesigned with a layout editor, live previews and per-notebook review settings, and sync now shows step-by-step progress. Add Link is rebuilt: manual links are more reliable and cancelling clears the pending item at once. Reader typography and highlight controls are unified and bounded, with a new adaptive glass theme. TXT import now reads Traditional and Simplified Chinese files saved in legacy encodings, and CSV export is safer. The whole app adopts iOS 26 Liquid Glass (iOS 26.0 minimum). Manage Pro API keys in Settings, archive words from Word Detail, and notebook settings sync across devices. Many sync, notebook and stats fixes land, along with missing localizations.
@@ -61,6 +61,7 @@ Explore lets you browse official public decks and copy one into your own noteboo
 - 圖譜：範圍限定在目前單字本、節點身分穩定、重新點擊會開啟詳情、力導向滑桿可歸零
 - 付費：訂閱商品載入狀態與取消不再誤報失敗；載入中停用管理訂閱按鈕
 - Explore：離線時正確顯示離線說明（先前 `KGError.offline` 與被包裝的 `URLError` 未被判為離線）(#2108)
+- 閱讀器／PDF 重新擷取待刪除的單字時，改為還原原條目而非新增一筆，不再刪掉伺服器上該卡的複習歷史 (#2105, #2212)
 - CSV 匯出防範公式注入；Markdown 底線強調依 CommonMark 規則；解釋重試只重跑解釋
 
 ### Internal
@@ -69,7 +70,7 @@ UI World／fixture／selector 證據鏈、Sentry 可觀測性、injection 與 i1
 ### Builds
 | build | tag | commit | date | state |
 |---|---|---|---|---|
-| 13 | `ios/2.0.1+13`（finalize 時建立） | candidate `5fd183c95`；merged-main source 於 finalize 由 tag 填入 | 2026-10-09 | same-version resubmit candidate；尚未上傳 |
+| 13 | `ios/2.0.1+13` | `08a8b6d82`（merged main，PR #2667，source `846c957ce`） | 2026-10-09 | uploaded，ASC build 774ba6fb VALID；App Store 版本 2.0.1 已建立（PREPARE_FOR_SUBMISSION），尚未送審 |
 | 12 | `ios/2.0.1+12` | `c4103d6ee` | 2026-08-25 | uploaded to TestFlight, never shipped（superseded by 13） |
 | 11 | `ios/2.0.1+11` | `07d0fa51f` | 2026-08-24 | uploaded to TestFlight, never shipped |
 | 10 | `ios/2.0.1+10` | `a3f3e17f5` | 2026-08-17 | uploaded to TestFlight, never shipped（字典卡已撤回） |
