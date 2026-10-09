@@ -176,6 +176,35 @@ struct KnowledgeGraphPresentationTests {
         #expect(KnowledgeGraphNotebookScope.linksRevision(of: [e]) != before)
     }
 
+    @MainActor
+    @Test func graphRequestKey_differsAcrossFilterScopes() {
+        let a = Self.entry(word: "a", cardID: "a", notebookID: "A")
+        let b = Self.entry(word: "b", cardID: "b", notebookID: "B")
+        let c = Self.entry(word: "c", cardID: "c", notebookID: "C")
+        let all = [a, b, c]
+        let key = { (ids: Set<String>) in
+            KnowledgeGraphNotebookScope.requestKey(for: NotebookFilter(selectedIds: ids), entries: all)
+        }
+        #expect(key(["A", "B"]) != key(["A", "C"]))
+        #expect(key(["A", "B"]) != key([]))
+        #expect(key(["A", "B"]) == key(["B", "A"]))
+    }
+
+    @Test func pullGraphLinks_singleNotebook_issuesExactlyOneRequest() async throws {
+        let service = RecordingGraphService(linksByNotebook: ["x": [Self.link(id: "l", from: "a", to: "b")]])
+        let links = try await service.pullGraphLinks(notebookIDs: ["x"])
+        #expect(links.map(\.id) == ["l"])
+        #expect(service.requested == ["x"])
+        #expect(service.defaultPullCount == 0)
+    }
+
+    @MainActor
+    @Test func graphLinksRevision_isOrderIndependent() {
+        let a = Self.entry(word: "a", cardID: "a")
+        let b = Self.entry(word: "b", cardID: "b")
+        #expect(KnowledgeGraphNotebookScope.linksRevision(of: [a, b]) == KnowledgeGraphNotebookScope.linksRevision(of: [b, a]))
+    }
+
     // MARK: - Error branch carries a retry action
 
     @Test func errorState_includesRetryAction() {

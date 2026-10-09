@@ -20,11 +20,26 @@ enum KnowledgeGraphNotebookScope {
     /// Changes whenever any entry's local link state (add / hide / delete)
     /// changes, so the full graph can re-pull like the Stats thumbnail does.
     static func linksRevision(of entries: [VocabularyEntry]) -> Int {
+        // Order-independent (wrapping sum of per-entry hashes): no string
+        // building or sorting on the view-body hot path.
+        var sum = 0
+        for entry in entries {
+            var hasher = Hasher()
+            hasher.combine(entry.id)
+            hasher.combine(entry.graphLinksJSON)
+            sum = sum &+ hasher.finalize()
+        }
         var hasher = Hasher()
         hasher.combine(entries.count)
-        for entry in entries.map({ "\($0.id)|\($0.graphLinksJSON)" }).sorted() {
-            hasher.combine(entry)
-        }
+        hasher.combine(sum)
+        return hasher.finalize()
+    }
+
+    /// Hash of the actual request scope (notebooks pulled), so a filter change
+    /// between multi-notebook sets re-triggers the link pull.
+    static func requestKey(for filter: NotebookFilter, entries: [VocabularyEntry]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(notebookIDs(for: filter, entries: entries))
         return hasher.finalize()
     }
 }
