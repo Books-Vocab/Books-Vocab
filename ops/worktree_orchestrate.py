@@ -2120,6 +2120,40 @@ def _cleanup_pending_retire_evidence(
     )
 
 
+def _already_abandoned(args: argparse.Namespace) -> bool:
+    """Whether the abandon CAS for this exact claim already landed (#2761).
+
+    A ``resolve --remove`` whose physical cleanup blocked after the CAS cannot
+    be rerun through the registry (``abandoned`` is not a legal source), so the
+    rerun skips the CAS and only re-drives cleanup.  The match is exact:
+    generation and stored HEAD equal the guards, and no newer live claim owns
+    the branch or path.
+    """
+
+    if args.status != "abandoned" or not (args.branch or args.path):
+        return False
+    try:
+        state = registry.load_state(registry._state_path(args))
+    except (OSError, ValueError):
+        return False
+    records = [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict)
+        and registry._record_matches(record, branch=args.branch, path=args.path)
+    ]
+    live = {"active", "cleanup_pending", "published"}
+    if any(record.get("status") in live for record in records):
+        return False
+    return any(
+        record.get("status") == "abandoned"
+        and registry._claim_generation(record, "claim_generation")
+        == args.expected_generation
+        and record.get("handed_back_sha") == args.expected_head_sha
+        for record in records
+    )
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     branch = None
     worktree = None
@@ -2162,9 +2196,17 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--expected-generation", str(args.expected_generation)]
     if args.expected_head_sha:
         argv += ["--expected-head-sha", args.expected_head_sha]
-    rc = registry.main(
-        argv, acquire_lock=False, cleanup_pending_evidence=retire_evidence
-    )
+    if args.remove and _already_abandoned(args):
+        print(
+            "resolve: registry already abandoned this exact claim; "
+            "re-driving local cleanup",
+            file=sys.stderr,
+        )
+        rc = EXIT_OK
+    else:
+        rc = registry.main(
+            argv, acquire_lock=False, cleanup_pending_evidence=retire_evidence
+        )
     if rc != EXIT_OK or not args.remove:
         return rc
     return worktree_cleanup.cleanup_resolved_local_assets(

@@ -3525,3 +3525,77 @@ def test_retire_ghosts_dry_run_then_apply_abandons_only_the_ghost(
         scope=scope,
     )
     assert rc == coordinator.registry.EXIT_OK
+
+
+def _rerun_resolve_world(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    record_extra: dict[str, Any],
+) -> tuple[Namespace, list[list[str]], list[list[str]]]:
+    branch = "debug/rerun"
+    expected = "e" * 40
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
+        calls.append(args)
+        if args[:2] == ["show-ref", "--verify"]:
+            return 0, f"{expected} refs/heads/{branch}"
+        if args == ["branch", "--show-current"]:
+            return 0, branch
+        return 0, ""
+
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_git", fake_git)
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False, **_kw: (
+            registry_calls.append(argv) or coordinator.registry.EXIT_CLAIMED
+        ),
+    )
+    state = tmp_path / "state.json"
+    record = {
+        "branch": branch,
+        "path": str(worktree),
+        "status": "abandoned",
+        "claim_generation": 3,
+        "handed_back_sha": expected,
+        **record_extra,
+    }
+    state.write_text(json.dumps({"records": [record]}))
+    args = Namespace(
+        status="abandoned",
+        branch=branch,
+        path=str(worktree),
+        state=str(state),
+        json=True,
+        expected_generation=3,
+        expected_head_sha=expected,
+        remove=True,
+    )
+    return args, calls, registry_calls
+
+
+def test_resolve_remove_rerun_finishes_cleanup_of_an_already_abandoned_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cleanup that blocked after the abandon CAS can be re-driven (#2761)."""
+    args, calls, registry_calls = _rerun_resolve_world(
+        tmp_path, monkeypatch, record_extra={}
+    )
+    assert coordinator.cmd_resolve(args) == coordinator.EXIT_OK
+    assert not registry_calls  # the CAS is not retried
+    assert ["branch", "-D", "--", args.branch] in calls
+
+
+def test_resolve_remove_rerun_ignores_a_mismatched_abandoned_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    args, calls, registry_calls = _rerun_resolve_world(
+        tmp_path, monkeypatch, record_extra={"claim_generation": 2}
+    )
+    assert coordinator.cmd_resolve(args) == coordinator.registry.EXIT_CLAIMED
+    assert ["branch", "-D", "--", args.branch] not in calls
