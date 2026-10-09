@@ -68,11 +68,7 @@ def _active(store: CardStore, notebook_id: str | None = None) -> list[Card]:
 
 
 def _deleted(store: CardStore, notebook_id: str | None = None) -> list[Card]:
-    return [
-        c
-        for c in store.all(include_deleted=True, notebook_id=notebook_id)
-        if c.is_deleted
-    ]
+    return [c for c in store.all(include_deleted=True, notebook_id=notebook_id) if c.is_deleted]
 
 
 class TestThreeWayDuplicate:
@@ -80,11 +76,15 @@ class TestThreeWayDuplicate:
         base = datetime(2024, 1, 1, tzinfo=UTC)
         a = _insert_dup(store, "ephemeral", review_count=1, created_at=base)
         b = _insert_dup(
-            store, "ephemeral", review_count=5,
+            store,
+            "ephemeral",
+            review_count=5,
             created_at=base + timedelta(days=1),
         )
         c = _insert_dup(
-            store, "ephemeral", review_count=2,
+            store,
+            "ephemeral",
+            review_count=2,
             created_at=base + timedelta(days=2),
         )
 
@@ -108,12 +108,16 @@ class TestThreeWayDuplicate:
         first = _insert_dup(store, "lucid", review_count=1, created_at=base)
         # second: higher score -> swaps out `first`, becomes keeper
         second = _insert_dup(
-            store, "lucid", review_count=3,
+            store,
+            "lucid",
+            review_count=3,
             created_at=base + timedelta(days=1),
         )
         # third: highest score -> swaps out `second`, becomes final keeper
         third = _insert_dup(
-            store, "lucid", review_count=9,
+            store,
+            "lucid",
+            review_count=9,
             created_at=base + timedelta(days=2),
         )
 
@@ -141,11 +145,15 @@ class TestThreeWayDuplicate:
         base = datetime(2024, 1, 1, tzinfo=UTC)
         early = _insert_dup(store, "evoke", review_count=4, created_at=base)
         mid = _insert_dup(
-            store, "evoke", review_count=4,
+            store,
+            "evoke",
+            review_count=4,
             created_at=base + timedelta(days=1),
         )
         late = _insert_dup(
-            store, "evoke", review_count=4,
+            store,
+            "evoke",
+            review_count=4,
             created_at=base + timedelta(days=2),
         )
 
@@ -164,7 +172,9 @@ class TestNWayMultiGroup:
         # Group A: 4 copies of "apple"
         a_cards = [
             _insert_dup(
-                store, "apple", review_count=rc,
+                store,
+                "apple",
+                review_count=rc,
                 created_at=base + timedelta(days=i),
             )
             for i, rc in enumerate([2, 7, 1, 4])
@@ -172,7 +182,9 @@ class TestNWayMultiGroup:
         # Group B: 3 copies of "banana"
         b_cards = [
             _insert_dup(
-                store, "banana", review_count=rc,
+                store,
+                "banana",
+                review_count=rc,
                 created_at=base + timedelta(days=10 + i),
             )
             for i, rc in enumerate([0, 0, 8])
@@ -229,7 +241,9 @@ class TestBoundaries:
         base = datetime(2024, 1, 1, tzinfo=UTC)
         keep = _insert_dup(store, "pair", review_count=5, created_at=base)
         drop = _insert_dup(
-            store, "pair", review_count=1,
+            store,
+            "pair",
+            review_count=1,
             created_at=base + timedelta(days=1),
         )
         removed = store.deduplicate()
@@ -243,7 +257,9 @@ class TestBoundaries:
         base = datetime(2024, 1, 1, tzinfo=UTC)
         lower = _insert_dup(store, "word", review_count=1, created_at=base)
         upper = _insert_dup(
-            store, "WORD", review_count=9,
+            store,
+            "WORD",
+            review_count=9,
             created_at=base + timedelta(days=1),
         )
         removed = store.deduplicate()
@@ -273,7 +289,9 @@ class TestDeleteBumpDisjointInvariant:
         base = datetime(2024, 1, 1, tzinfo=UTC)
         for i, rc in enumerate([1, 4, 9]):
             _insert_dup(
-                store, "converge", review_count=rc,
+                store,
+                "converge",
+                review_count=rc,
                 created_at=base + timedelta(days=i),
             )
         deleted_ids, keeper_ids = self._run_and_collect(store)
@@ -307,7 +325,9 @@ class TestDeleteBumpDisjointInvariant:
         }.items():
             for i, rc in enumerate(counts):
                 _insert_dup(
-                    store, word, review_count=rc,
+                    store,
+                    word,
+                    review_count=rc,
                     created_at=base + timedelta(hours=i),
                 )
 
