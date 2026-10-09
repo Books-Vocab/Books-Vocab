@@ -18,6 +18,10 @@ struct ArchivedVocabSheet: View {
         ]
     )
     private var archivedAllEntries: [VocabularyEntry]
+    // 詳情的 Add Link 要在同本單字本找現存的活躍字當連結候選；封存 @Query
+    // 排除了它們，沒有這份 WordDetailSheet 的候選池恆空（#2727）。
+    @Query(filter: VocabularyEntry.knowledgeListPredicate())
+    private var activeEntries: [VocabularyEntry]
     @State private var searchText = ""
     @State private var selectedEntry: VocabularyEntry?
     @State private var errorMessage: String?
@@ -83,7 +87,7 @@ struct ArchivedVocabSheet: View {
                 }
             }
             .toastSheet(item: $selectedEntry) { entry in
-                WordDetailSheet(entry: entry)
+                WordDetailSheet(entry: entry, allEntries: activeEntries)
                     .appSheet(.large)
             }
             .overlay(alignment: .top) {
