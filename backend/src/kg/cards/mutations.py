@@ -11,11 +11,13 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc, normalize_nfc_lower
 from .model import Card
+from .query import _epoch_microseconds, _stored_timestamp_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -401,3 +403,39 @@ class CardMutationMixin:
                     changed += 1
             session.commit()
         return changed
+
+    def batch_update_if_unchanged(self, updates: list[tuple[str, dict, dict]]) -> list[str]:
+        """Compare-and-set variant of :meth:`batch_update` for read-merge-write callers.
+
+        Each item is ``(card_id, kwargs, expected)``; ``expected`` maps column
+        names to the values the caller's merge decision was based on. The write
+        is one ``UPDATE ... WHERE id = ? AND is_deleted = 0 AND <expected>``, so
+        a concurrent writer that changed any guarded column makes it a no-op.
+        Returns the ids that were not written (conflicted, deleted or missing)
+        so the caller can re-read and re-merge instead of clobbering.
+
+        ``updated_at`` (the pull-sync cursor) is always bumped, so callers must
+        pass only effective changes.
+        """
+        if not updates:
+            return []
+        now = datetime.now(UTC)
+        rejected: list[str] = []
+        with Session(self.engine) as session:
+            for card_id, (kw, expected) in {cid: (kw, ex) for cid, kw, ex in updates}.items():
+                conditions = [Card.id == card_id, Card.is_deleted.is_(False)]
+                for column, value in expected.items():
+                    attr = getattr(Card, column)
+                    if value is None:
+                        conditions.append(attr.is_(None))
+                    elif isinstance(value, datetime):
+                        # Compare by UTC instant: stored text may lack microseconds,
+                        # use a T separator or carry an offset.
+                        conditions.append(_stored_timestamp_key(attr) == _epoch_microseconds(value))
+                    else:
+                        conditions.append(attr == value)
+                result = session.exec(sa_update(Card).where(*conditions).values(**kw, updated_at=now))
+                if result.rowcount == 0:
+                    rejected.append(card_id)
+            session.commit()
+        return rejected

@@ -15,6 +15,9 @@ from .vocab_shared import _normalize_word
 _MAX_CLOCK_SKEW = timedelta(minutes=5)
 # Upper bound for a scheduled next review (normal schedules are in the future).
 _MAX_NEXT_REVIEW_HORIZON = timedelta(days=3650)
+# Columns the merge decision reads; the write is compare-and-set on them.
+_CAS_FIELDS = ("last_reviewed_at", "review_count", "lapse_count")
+_MAX_MERGE_ATTEMPTS = 3
 
 
 def _clamp_last_reviewed(value: datetime | None) -> datetime | None:
@@ -63,12 +66,22 @@ def _merge_card_review_state(
         return dict(review_count=card.review_count, lapse_count=card.lapse_count)
 
     # Client is newer — accept all fields.
-    client_next = _clamp_next_review(parse_datetime(entry.next_review_at))
+    parsed_next = client_next = parse_datetime(entry.next_review_at)
+    raw_last = parse_datetime(entry.last_reviewed_at)
+    if client_next is not None and raw_last is not None and raw_last > client_last:
+        # last_reviewed_at was clamped for clock skew; the client derived
+        # next_review_at from the same skewed clock, so shift it back by the
+        # identical offset to keep the interval intact.
+        try:
+            client_next -= raw_last - client_last
+        except OverflowError:  # absurd skew: the schedule is unrecoverable
+            client_next = None
+    client_next = _clamp_next_review(client_next)
     # Observability: a present-but-unparseable next_review_at silently resets
     # this card's schedule to None below. Surface it so bad/stale client payloads
     # are diagnosable. Skip whitespace-only / empty values, which mean "not
     # meaningfully sent" rather than malformed.
-    if client_next is None and str(entry.next_review_at).strip():
+    if parsed_next is None and str(entry.next_review_at).strip():
         logger.warning(
             "push_review_states: card %s has unparseable next_review_at %r; schedule reset to None",
             card.id,
@@ -146,10 +159,10 @@ def push_review_states(
         )
 
     skipped = duplicate_entries
-    pending_updates: list[tuple[str, dict]] = []
     # Pre-fetch all cards with card_id in one batch to avoid N+1
     _card_ids_to_fetch = {e.card_id for e in coalesced_entries if e.card_id}
     _cards_by_id = cards_store.get_batch(_card_ids_to_fetch) if _card_ids_to_fetch else {}
+    work: list[tuple[ReviewStateEntry, datetime, Any]] = []
     for entry in coalesced_entries:
         # Prefer card_id for precise matching; fall back to word matching.
         if entry.card_id:
@@ -166,15 +179,40 @@ def push_review_states(
         if client_last is None:
             skipped += 1
             continue
+        work.extend((entry, client_last, card) for card in cards)
 
-        for card in cards:
+    # The merge decision is based on a snapshot, so the write is compare-and-set
+    # on the fields the decision read; a card changed by a concurrent writer is
+    # re-read and re-merged instead of overwritten.
+    for attempt in range(_MAX_MERGE_ATTEMPTS):
+        if not work:
+            break
+        pending: list[tuple[str, dict, dict]] = []
+        owners: dict[str, list[tuple[ReviewStateEntry, datetime]]] = {}
+        guards: dict[str, dict] = {}
+        for entry, client_last, card in work:
+            guards.setdefault(card.id, {name: getattr(card, name) for name in _CAS_FIELDS})
             update = _merge_card_review_state(entry, card, client_last, logger=logger)
             if update is None:
                 skipped += 1
-            else:
-                pending_updates.append((card.id, update))
-                updated += 1
-
-    if pending_updates:
-        cards_store.batch_update(pending_updates)
+                continue
+            pending.append((card.id, update, guards[card.id]))
+            owners.setdefault(card.id, []).append((entry, client_last))
+        if not pending:
+            break
+        rejected = set(cards_store.batch_update_if_unchanged(pending))
+        updated += len(pending) - sum(1 for item in pending if item[0] in rejected)
+        if not rejected:
+            break
+        fresh = cards_store.get_batch(rejected)
+        work = []
+        for card_id in rejected:
+            card = fresh.get(card_id)
+            if card is None or card.is_deleted:
+                skipped += len(owners[card_id])
+                continue
+            work.extend((entry, client_last, card) for entry, client_last in owners[card_id])
+        if attempt == _MAX_MERGE_ATTEMPTS - 1 and work:
+            logger.warning("push_review_states: %d card update(s) kept conflicting; skipped", len(work))
+            skipped += len(work)
     return {"updated": updated, "skipped": skipped}
