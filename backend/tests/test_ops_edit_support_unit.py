@@ -1,4 +1,5 @@
 """Unit tests for kg.ops_edit_support — pure functions and helpers."""
+
 from __future__ import annotations
 
 import json
@@ -155,6 +156,23 @@ class TestIsVocabFile:
 
     def test_embeddings(self):
         assert support._is_vocab_file("embeddings_default.npy")
+
+    @pytest.mark.parametrize(
+        "name",
+        (
+            "pending_judge_default.json",
+            "pending_judge_default.json.bak",
+            "graph.json",
+            "candidates.json",
+            "blocked.json",
+            "embeddings.npy",
+            "card_ids.json",
+            "embeddings_meta.json",
+            "graph_default.json.lock",
+        ),
+    )
+    def test_pending_judge_and_legacy_names(self, name):
+        assert support._is_vocab_file(name)
 
     def test_not_vocab(self):
         assert not support._is_vocab_file("readme.txt")
@@ -383,10 +401,12 @@ class TestCountGraphLinks:
 
     def test_with_links(self, tmp_path):
         (tmp_path / "graph_default.json").write_text(
-            json.dumps([
-                {"id": "l1", "status": "active"},
-                {"id": "l2", "status": "deleted"},
-            ])
+            json.dumps(
+                [
+                    {"id": "l1", "status": "active"},
+                    {"id": "l2", "status": "deleted"},
+                ]
+            )
         )
         assert support._count_graph_links(tmp_path) == 1
 
@@ -481,9 +501,7 @@ class TestExtractUserBackupMembers:
             tar.add(user_dir, arcname="u1")
 
         with tarfile.open(tar_path, "r:gz") as tar:
-            record, email_index = support._extract_user_backup_members(
-                tar, "u1", tmp_path / "dest"
-            )
+            record, email_index = support._extract_user_backup_members(tar, "u1", tmp_path / "dest")
         assert record is not None
         assert record["email"] == "u1@test.com"
         assert email_index is not None

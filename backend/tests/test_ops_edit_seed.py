@@ -94,6 +94,17 @@ class TestSeedReplace:
         assert r3.returncode == 0, r3.stdout + r3.stderr
         assert len(_card_rows(tmp_path, uid2)) == 2
 
+    def test_replace_wipes_legacy_and_pending_judge_files(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        user_dir = _user_dir(tmp_path, uid)
+        names = ("graph.json", "candidates.json", "blocked.json", "embeddings.npy", "card_ids.json")
+        for name in (*names, "pending_judge_default.json"):
+            (user_dir / name).write_text("stale")
+        r = self._seed(tmp_path, uid, {"cards": [{"content": "fresh", "meaning": "m"}]}, "--replace", "--commit", "--json")
+        assert r.returncode == 0, r.stderr
+        for name in (*names, "pending_judge_default.json"):
+            assert not (user_dir / name).exists(), name
+
     def test_replace_dry_run_does_not_touch_disk(self, tmp_path):
         import hashlib
 

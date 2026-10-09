@@ -61,12 +61,17 @@ def cmd_user_create(args: argparse.Namespace) -> int:
     uf = users_file(dd)
     existing_users = load_users_from(uf, _passthrough_normalize) if uf.exists() else {}
     already = uid in existing_users or user_dir_for(dd, uid).exists()
+    email_index = existing_users.get("_email_index")
+    email_owner = email_index.get(args.email) if args.email and isinstance(email_index, dict) else None
+    email_conflict = email_owner is not None and email_owner != uid
 
     plan = {
         "uid": uid,
         "provider": args.provider,
         "email": args.email,
         "already_exists": already,
+        "email_owner": email_owner,
+        "email_conflict": email_conflict,
         "creates_dir": str(user_dir_for(dd, uid)),
     }
 
@@ -100,6 +105,12 @@ def cmd_user_create(args: argparse.Namespace) -> int:
             record.setdefault("config", {})
             record["provider"] = args.provider
             if args.email:
+                owner = idx.get(args.email)
+                if owner is not None and owner != uid and not args.reassign_email:
+                    raise EditError(
+                        f"email {args.email!r} 已屬於 uid {owner!r};建立會讓該帳號下次登入被併到 {uid!r}。"
+                        "確認要搶走才加 --reassign-email"
+                    )
                 record["email"] = args.email
                 idx[args.email] = uid
             record.setdefault("created_at", now)
@@ -167,6 +178,17 @@ def cmd_user_delete(args: argparse.Namespace) -> int:
                 for key in stale:
                     bucket.pop(key, None)
                 dropped[bucket_name] = stale
+            # 與 app 內刪帳(_tombstone_accounts)一致:撤銷既發 JWT 並永久標記 terminated,
+            # 否則 resolve_current_user 會放行舊 token 並重建 user dir,sign-in 也會清掉水位。
+            revoked = current.get("_revoked_before")
+            if not isinstance(revoked, dict):
+                revoked = {}
+            revoked[uid] = datetime.now(tz=UTC).isoformat()
+            current["_revoked_before"] = revoked
+            terminated = current.get("_terminated")
+            terminated_ids = set(terminated) if isinstance(terminated, list) else set()
+            terminated_ids.add(uid)
+            current["_terminated"] = sorted(terminated_ids)
             return {
                 "removed_record": removed_record is not None,
                 "dropped_index_keys": dropped,
@@ -188,7 +210,8 @@ def cmd_user_delete(args: argparse.Namespace) -> int:
             for key, value in current[bucket_name].items()
             if value == uid
         ]
-        return {"ok": uid not in current and not user_dir_for(dd, uid).exists() and not leftovers}
+        tombstoned = uid in current.get("_revoked_before", {}) and uid in current.get("_terminated", [])
+        return {"ok": uid not in current and not user_dir_for(dd, uid).exists() and not leftovers and tombstoned}
 
     return ctx.run(action="user-delete", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -492,8 +515,12 @@ def cmd_restore(args: argparse.Namespace) -> int:
             shutil.rmtree(ctx.user_dir)
         with tarfile.open(backup_path) as tar:
             record, email_index = _extract_user_backup_members(tar, args.uid, ctx.user_dir.parent)
-        _restore_user_record_snapshot(dd, args.uid, record=record, email_index=email_index)
-        return {"restored_from": str(backup_path), "restored_users_record": record is not None}
+        skipped = _restore_user_record_snapshot(dd, args.uid, record=record, email_index=email_index)
+        return {
+            "restored_from": str(backup_path),
+            "restored_users_record": record is not None,
+            "email_index_skipped": skipped,
+        }
 
     def verify_fn() -> dict[str, Any]:
         # 放寬:早期快照(user-create 後、首次 card 操作前)只含 notebooks.db、無

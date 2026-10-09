@@ -316,3 +316,32 @@ def test_token_issued_before_deletion_same_second_is_rejected(tmp_path, monkeypa
         )
     assert exc_info.value.status_code == 401
     assert "deleted" in str(exc_info.value.detail).lower()
+
+
+def test_operator_deleted_user_old_token_rejected_and_dir_not_recreated(tmp_path, monkeypatch):
+    """#2709: ops-edit user-delete must revoke outstanding JWTs, not just drop the record."""
+    import argparse
+
+    import kg.ops_edit_user_commands as user_cmd
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    settings = make_settings(tmp_path)
+    ns = dict(
+        uid="doomed", commit=True, json=True, provider="google", email="d@x.com",
+        allow_existing=False, reassign_email=False,
+    )
+    user_cmd.cmd_user_create(argparse.Namespace(**ns))
+    token = create_jwt_token(
+        "doomed", "google", jwt_secret=TEST_JWT_SECRET, jwt_algorithm=TEST_ALGORITHM, jwt_expiry_minutes=60
+    )
+    user_cmd.cmd_user_delete(argparse.Namespace(**ns))
+
+    with pytest.raises(HTTPException) as exc:
+        resolve_current_user(
+            token,
+            settings=settings,
+            load_users=_load_users_fn(tmp_path / "users.json"),
+            parse_datetime=real_parse_datetime,
+        )
+    assert exc.value.status_code == 401
+    assert not (tmp_path / "users" / "doomed").exists()
