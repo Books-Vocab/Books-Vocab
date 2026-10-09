@@ -14,6 +14,8 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
+from kg.migrations import resolve_users_root
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,7 @@ def migrate_user(user_dir: Path) -> None:
 
     # 1. Create notebooks.db with default notebook
     from kg.notebook import NotebookStore
+
     with closing(NotebookStore(user_dir / "notebooks.db")) as nb_store:
         nb_store.ensure_default()
     logger.info("  [notebooks.db] default notebook ensured")
@@ -31,6 +34,7 @@ def migrate_user(user_dir: Path) -> None:
     cards_db = user_dir / "cards.db"
     if cards_db.exists():
         from kg.cards import CardStore
+
         # Construction triggers schema migration, then the engine can be released.
         CardStore(cards_db).close()
         logger.info("  [cards.db] notebook_id column ensured")
@@ -57,8 +61,15 @@ def migrate_user(user_dir: Path) -> None:
                 else:
                     logger.warning(
                         "  Skipped %s -> %s: destination .bak already exists, reconcile manually",
-                        bak.name, dst_bak.name,
+                        bak.name,
+                        dst_bak.name,
                     )
+        elif old_path.exists():
+            logger.warning(
+                "  Skipped %s -> %s: destination exists, reconcile manually",
+                old_name,
+                new_name,
+            )
 
 
 def main() -> None:
@@ -67,16 +78,32 @@ def main() -> None:
         logger.error("Data directory %s does not exist", data_dir)
         sys.exit(1)
 
-    user_dirs = [d for d in data_dir.iterdir() if d.is_dir() and (d / "cards.db").exists()]
+    users_root = resolve_users_root(data_dir)
+    user_dirs = []
+    for d in sorted(users_root.iterdir()):
+        if not d.is_dir():
+            continue
+        if (d / "cards.db").exists():
+            user_dirs.append(d)
+        else:
+            logger.warning("Skipping %s: no cards.db", d.name)
     logger.info("Found %d user directories to migrate", len(user_dirs))
+    if not user_dirs:
+        logger.error("No user directories with cards.db under %s", users_root)
+        sys.exit(1)
 
+    failed = 0
     for user_dir in user_dirs:
         logger.info("Migrating %s ...", user_dir.name)
         try:
             migrate_user(user_dir)
         except (OSError, sqlite3.DatabaseError, ValueError) as exc:
+            failed += 1
             logger.error("  FAILED: %s", exc, exc_info=True)
 
+    if failed:
+        logger.error("Migration finished with %d failed user(s).", failed)
+        sys.exit(1)
     logger.info("Migration complete.")
 
 

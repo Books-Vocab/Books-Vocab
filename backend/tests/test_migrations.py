@@ -234,6 +234,43 @@ def test_migrate_notebook_closes_store_when_migration_fails(tmp_path):
     notebook_store.close.assert_called_once_with()
 
 
+def test_migrate_notebook_main_resolves_users_subdir(tmp_path, monkeypatch):
+    """Production layout is data_dir/users/<uid>; main() must migrate those."""
+    from kg.migrations import migrate_notebook as mod
+
+    data_dir = tmp_path / "data"
+    (data_dir / "users").mkdir(parents=True)
+    user_dir = _make_legacy_user_dir(data_dir / "users")
+
+    monkeypatch.setattr("sys.argv", ["migrate_notebook", str(data_dir)])
+    mod.main()
+
+    assert (user_dir / "notebooks.db").exists()
+    assert (user_dir / "graph_default.json").exists()
+
+
+def test_migrate_notebook_main_exits_nonzero_on_user_failure(tmp_path, monkeypatch):
+    from kg.migrations import migrate_notebook as mod
+
+    _make_legacy_user_dir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["migrate_notebook", str(tmp_path)])
+    with patch.object(mod, "migrate_user", side_effect=OSError("boom")):
+        with pytest.raises(SystemExit) as exc:
+            mod.main()
+    assert exc.value.code == 1
+
+
+def test_migrate_notebook_main_warns_on_skipped_dirs(tmp_path, monkeypatch, caplog):
+    from kg.migrations import migrate_notebook as mod
+
+    _make_legacy_user_dir(tmp_path)
+    (tmp_path / "no_cards_user").mkdir()
+    monkeypatch.setattr("sys.argv", ["migrate_notebook", str(tmp_path)])
+    with caplog.at_level("WARNING"):
+        mod.main()
+    assert any("no_cards_user" in r.getMessage() for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # migrate_graph_reasons
 # ---------------------------------------------------------------------------
@@ -268,11 +305,7 @@ def _llm_client_returning(reason: str):
     """Build a mock OpenAI-like client that returns a given reason."""
     client = MagicMock()
     choice = SimpleNamespace(
-        message=SimpleNamespace(
-            content=json.dumps(
-                {"link": "shares_usage", "confidence": 0.9, "reason": reason}
-            )
-        )
+        message=SimpleNamespace(content=json.dumps({"link": "shares_usage", "confidence": 0.9, "reason": reason}))
     )
     client.chat.completions.create.return_value = SimpleNamespace(choices=[choice])
     return client
@@ -354,9 +387,7 @@ def test_migrate_graph_reasons_rollback_on_llm_exception(tmp_path):
     # First call raises, second returns valid CJK
     client = MagicMock()
     good = SimpleNamespace(
-        message=SimpleNamespace(
-            content=json.dumps({"link": "shares_usage", "confidence": 0.8, "reason": "成功翻譯"})
-        )
+        message=SimpleNamespace(content=json.dumps({"link": "shares_usage", "confidence": 0.8, "reason": "成功翻譯"}))
     )
     client.chat.completions.create.side_effect = [
         RuntimeError("LLM timeout"),
@@ -381,9 +412,7 @@ def test_migrate_graph_reasons_not_applicable_keeps_old(tmp_path):
     user_dir, nb_id, _, _ = _make_user_with_graph(tmp_path, link_reason="orig English")
     client = MagicMock()
     choice = SimpleNamespace(
-        message=SimpleNamespace(
-            content=json.dumps({"link": "not_applicable", "confidence": 0.1, "reason": "n/a"})
-        )
+        message=SimpleNamespace(content=json.dumps({"link": "not_applicable", "confidence": 0.1, "reason": "n/a"}))
     )
     client.chat.completions.create.return_value = SimpleNamespace(choices=[choice])
 
@@ -401,9 +430,7 @@ def test_migrate_graph_reasons_empty_reason_keeps_old(tmp_path):
     user_dir, nb_id, _, _ = _make_user_with_graph(tmp_path, link_reason="orig English")
     client = MagicMock()
     choice = SimpleNamespace(
-        message=SimpleNamespace(
-            content=json.dumps({"link": "shares_usage", "confidence": 0.5, "reason": ""})
-        )
+        message=SimpleNamespace(content=json.dumps({"link": "shares_usage", "confidence": 0.5, "reason": ""}))
     )
     client.chat.completions.create.return_value = SimpleNamespace(choices=[choice])
 
@@ -502,3 +529,31 @@ def test_migrate_graph_reasons_no_graph_files_returns_zero(tmp_path):
     updated = migrate_user_graph(user_dir, client, model="fake-model")
     assert updated == 0
     client.chat.completions.create.assert_not_called()
+
+
+def test_migrate_notebook_main_exits_nonzero_when_no_users_found(tmp_path, monkeypatch, caplog):
+    from kg.migrations import migrate_notebook as mod
+
+    monkeypatch.setattr("sys.argv", ["migrate_notebook", str(tmp_path)])
+    with caplog.at_level("INFO"), pytest.raises(SystemExit) as exc:
+        mod.main()
+    assert exc.value.code == 1
+    assert not any("Migration complete" in r.getMessage() for r in caplog.records)
+
+
+def test_migrate_notebook_warns_when_rename_destination_exists(tmp_path, caplog):
+    from kg.migrations.migrate_notebook import migrate_user
+
+    user_dir = _make_legacy_user_dir(tmp_path)
+    (user_dir / "graph_default.json").write_text("{}")
+    with caplog.at_level("WARNING"):
+        migrate_user(user_dir)
+    assert any("graph.json" in r.getMessage() and "exists" in r.getMessage() for r in caplog.records)
+
+
+def test_resolve_users_root(tmp_path):
+    from kg.migrations import resolve_users_root
+
+    assert resolve_users_root(tmp_path) == tmp_path
+    (tmp_path / "users").mkdir()
+    assert resolve_users_root(tmp_path) == tmp_path / "users"
