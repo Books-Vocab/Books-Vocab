@@ -56,19 +56,16 @@ def _commit_present(repo: Path, sha: str) -> bool:
 
 
 def _expunge_commits(repo: Path, *shas: str) -> None:
-    """Make commits absent from the object store, deterministically.
+    """Make unreferenced commits absent from the object store, deterministically.
 
-    `prune` alone does not guarantee removal (mtime granularity, packed or
-    still-referenced objects), so drop any surviving loose object and fail
-    loudly if the precondition still does not hold.
+    `prune` cannot remove packed objects, so unpack-and-repack first (`-a -d`
+    drops unreachable packed objects), then prune any loose leftovers. Callers
+    must have deleted every ref to the commits; fail loudly otherwise.
     """
     _git(repo, "reflog", "expire", "--expire=now", "--all")
+    _git(repo, "repack", "-a", "-d", "-q")
     _git(repo, "prune", "--expire=now")
     for sha in shas:
-        loose = repo / ".git" / "objects" / sha[:2] / sha[2:]
-        if _commit_present(repo, sha) and loose.exists():
-            loose.chmod(0o644)
-            loose.unlink()
         assert not _commit_present(repo, sha), f"could not expunge {sha}"
 
 
@@ -142,18 +139,21 @@ def _remote_only_repo_with_missing_live_base(
     return repo, base_sha, remote_head
 
 
-def test_expunge_commits_removes_commit_that_prune_keeps(tmp_path: Path) -> None:
+def test_expunge_commits_removes_packed_unreferenced_commit(tmp_path: Path) -> None:
     repo, base_sha = _repo(tmp_path)
-    _git(repo, "switch", "-qc", "keep")
-    (repo / "k.txt").write_text("k\n", encoding="utf-8")
+    _git(repo, "switch", "-qc", "gone")
+    (repo / "g.txt").write_text("g\n", encoding="utf-8")
     _git(repo, "add", ".")
-    _git(repo, "commit", "-qm", "kept by branch ref")
-    kept = _git(repo, "rev-parse", "HEAD")
-    assert _commit_present(repo, kept)
+    _git(repo, "commit", "-qm", "packed then orphaned")
+    packed = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "repack", "-d", "-q")
+    _git(repo, "switch", "-q", "main")
+    _git(repo, "branch", "-D", "gone")
+    assert _commit_present(repo, packed)
 
-    _expunge_commits(repo, kept)
+    _expunge_commits(repo, packed)
 
-    assert not _commit_present(repo, kept)
+    assert not _commit_present(repo, packed)
     assert _commit_present(repo, base_sha)
 
 
