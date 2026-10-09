@@ -350,27 +350,25 @@ def _restore_user_record_snapshot(
     target uid 的 record 與對應 email index 條目，避免誤傷其他帳號。
     """
 
-    if record is None and not email_index:
-        return []
-
     skipped: list[str] = []
 
     def mutate(users: dict[str, Any]) -> dict[str, Any]:
         if record is not None:
             users[uid] = record
-            # 還原即撤銷 operator user-delete 蓋的墓碑,否則還原後的帳號 token 永遠 401。
-            revoked = users.get("_revoked_before")
-            if isinstance(revoked, dict):
-                revoked.pop(uid, None)
-                if not revoked:
-                    users.pop("_revoked_before", None)
-            terminated = users.get("_terminated")
-            if isinstance(terminated, list) and uid in terminated:
-                remaining = [t for t in terminated if t != uid]
-                if remaining:
-                    users["_terminated"] = remaining
-                else:
-                    users.pop("_terminated", None)
+        # 還原即撤銷 operator user-delete 蓋的墓碑(無論 snapshot 是否含 record),
+        # 否則還原後的帳號 token 永遠 401。
+        revoked = users.get("_revoked_before")
+        if isinstance(revoked, dict):
+            revoked.pop(uid, None)
+            if not revoked:
+                users.pop("_revoked_before", None)
+        terminated = users.get("_terminated")
+        if isinstance(terminated, list) and uid in terminated:
+            remaining = [t for t in terminated if t != uid]
+            if remaining:
+                users["_terminated"] = remaining
+            else:
+                users.pop("_terminated", None)
         idx = users.setdefault("_email_index", {})
         if not isinstance(idx, dict):
             idx = {}

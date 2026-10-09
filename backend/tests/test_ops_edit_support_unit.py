@@ -517,3 +517,13 @@ class TestPassthroughNormalize:
         result, changed = support._passthrough_normalize(users)
         assert result is users
         assert not changed
+
+
+def test_restore_snapshot_without_record_still_lifts_tombstone(tmp_path):
+    uf = support.users_file(tmp_path)
+    uf.parent.mkdir(parents=True, exist_ok=True)
+    uf.write_text(json.dumps({"_revoked_before": {"u1": 1.0}, "_terminated": ["u1"]}))
+    support._restore_user_record_snapshot(tmp_path, "u1", record=None, email_index=None)
+    saved = json.loads(uf.read_text())
+    assert "u1" not in saved.get("_revoked_before", {})
+    assert "u1" not in saved.get("_terminated", [])
