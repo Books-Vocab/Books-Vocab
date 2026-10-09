@@ -459,6 +459,23 @@ class EmbeddingStore:
         return True
 
     @contextmanager
+    def _rollback_on_failure(self) -> Iterator[None]:
+        """Restore in-memory rows if the mutation or its ``_save`` raises.
+
+        Without this a failed save leaves memory ahead of disk, and because
+        ``_disk_sig`` is unchanged ``_refresh_locked`` never repairs it.
+        Matrices are replaced (never mutated in place), so a reference suffices.
+        """
+        snap = (self._embeddings, list(self._ids), set(self._id_set), dict(self._id_pos), dict(self._dirty_rows))
+        try:
+            yield
+        except BaseException:
+            self._embeddings, ids, id_set, id_pos, dirty = snap
+            self._ids, self._id_set, self._id_pos, self._dirty_rows = ids, id_set, id_pos, dirty
+            self._invalidate_norms()
+            raise
+
+    @contextmanager
     def _write_txn(self) -> Iterator[None]:
         """Read-modify-write transaction: instance lock, then cross-process
         file lock, then refresh so the disk is authoritative at write time."""
@@ -666,17 +683,18 @@ class EmbeddingStore:
                 vecs = vecs[keep]
             new_ids = [items[i][0] for i in keep]
 
-            if self._embeddings is None:
-                self._embeddings = vecs
-            else:
-                self._embeddings = np.vstack([self._embeddings, vecs])
+            with self._rollback_on_failure():
+                if self._embeddings is None:
+                    self._embeddings = vecs
+                else:
+                    self._embeddings = np.vstack([self._embeddings, vecs])
 
-            base = len(self._ids)
-            self._ids.extend(new_ids)
-            self._id_set.update(new_ids)
-            self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
-            self._invalidate_norms()
-            self._save()
+                base = len(self._ids)
+                self._ids.extend(new_ids)
+                self._id_set.update(new_ids)
+                self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
+                self._invalidate_norms()
+                self._save()
 
     def remove(self, card_id: str) -> bool:
         """Evict a single card's vector (delegates to remove_batch).
@@ -706,15 +724,16 @@ class EmbeddingStore:
             if not to_drop:
                 return 0
 
-            keep_mask = np.array([cid not in to_drop for cid in self._ids], dtype=bool)
-            self._embeddings = self._embeddings[keep_mask]
-            self._ids = [cid for cid in self._ids if cid not in to_drop]
-            self._id_set = set(self._ids)
-            self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
-            for cid in to_drop:
-                self._dirty_rows.pop(cid, None)
-            self._invalidate_norms()
-            self._save()
+            with self._rollback_on_failure():
+                keep_mask = np.array([cid not in to_drop for cid in self._ids], dtype=bool)
+                self._embeddings = self._embeddings[keep_mask]
+                self._ids = [cid for cid in self._ids if cid not in to_drop]
+                self._id_set = set(self._ids)
+                self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
+                for cid in to_drop:
+                    self._dirty_rows.pop(cid, None)
+                self._invalidate_norms()
+                self._save()
             return len(to_drop)
 
     def update(self, card_id: str, text: str, *, llm=None) -> None:
