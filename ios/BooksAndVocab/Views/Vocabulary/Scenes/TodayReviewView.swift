@@ -274,7 +274,7 @@ struct TodayReviewView: View {
                 notebookScopeName: notebookBadges[request.sourceEntry.notebookId]?.name,
                 // #2408: 成功只新增一列連結、不是新卡；保留 measurementCache。
                 // link 集合改變時僅 graph-links 段重新量測（見 TodayReviewCardCache.refreshLinks）。
-                onLinked: { state.addLinkDidSucceed(for: request.sourceEntry) }
+                onLinked: { state.refreshPendingLinksForEntry(request.sourceEntry) }
             )
         }
         .toastSheet(item: $pendingLinkDetail) { request in

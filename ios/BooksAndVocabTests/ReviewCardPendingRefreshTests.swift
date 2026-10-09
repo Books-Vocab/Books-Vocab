@@ -110,22 +110,29 @@ struct ReviewCardPendingRefreshTests {
         #expect(cache.storage.isEmpty)
     }
 
-    /// #2408: AddLink success used to rebuild the open card (`rebuildCacheForEntry`),
-    /// dropping its measured heights and jumping for a frame. It must take the same
-    /// in-place link refresh as pending-link updates.
-    @Test("AddLink success keeps the open card's measurements (#2408)")
-    func addLinkSuccessKeepsMeasurements() throws {
+    /// #2408: AddLink success (TodayReviewView `onLinked`) adds a real link row to the
+    /// open card. It must refresh in place, not rebuild: only graph-links re-measures.
+    @Test("AddLink success adds a link, re-measures only graph-links (#2408)")
+    func addLinkSuccessKeepsOtherMeasurements() throws {
         let entry = entry()
         let state = TodayReviewState(entries: [entry], allEntries: [entry], currentUserID: nil)
         let before = try #require(state.preparedCardCache[entry.id])
         let cardKey = before.card.reviewCardKey
+        before.measurementCache.record(120, for: key(.graphLinks, card: cardKey), level: .natural)
         before.measurementCache.record(80, for: key(.example, card: cardKey), level: .natural)
 
-        // The AddLink success path (TodayReviewView onLinked) goes through this entry point.
-        state.addLinkDidSucceed(for: entry)
+        entry.graphLinksByKind = ["shares_usage": [
+            KGCardLinkSummary(
+                id: "l0", cardId: "c0", word: "w0", kind: "shares_usage",
+                label: "x", confidence: 1, reason: "r"
+            )
+        ]]
+        state.refreshPendingLinksForEntry(entry)
 
         let after = try #require(state.preparedCardCache[entry.id])
         #expect(after.measurementCache === before.measurementCache, "success must not rebuild the cache")
+        #expect(after.measurementCache.value(for: key(.graphLinks, card: cardKey), level: .natural) == nil)
         #expect(after.measurementCache.value(for: key(.example, card: cardKey), level: .natural) == 80)
+        #expect(after.linkGroups.flatMap(\.items).map(\.id) == ["l0"])
     }
 }

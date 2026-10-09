@@ -275,13 +275,6 @@ final class TodayReviewState {
         cardCache.refreshLinks(for: entry)
     }
 
-    /// #2408: AddLink success added a link row to this card, not a new card. It takes
-    /// the same in-place refresh as a pending-link update so the open card keeps its
-    /// measurements.
-    func addLinkDidSucceed(for entry: VocabularyEntry) {
-        refreshPendingLinksForEntry(entry)
-    }
-
     func handleDetailTap() {
         guard let current = currentEntry else { return }
         linkedCardStack.append(current)
