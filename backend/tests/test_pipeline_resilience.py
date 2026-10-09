@@ -1157,6 +1157,26 @@ def test_step_enrich_stops_rebilling_cards_the_llm_never_returns(monkeypatch, tm
     assert seen[-1] == 1 and len(seen) == ENRICH_MAX_ATTEMPTS + 1
 
 
+def test_step_enrich_empty_results_success_batch_still_consumes_an_attempt(monkeypatch, tmp_path):
+    """A billed success batch answering with results == [] must still stop re-billing at the cap."""
+    import kg.enrich as enrich_mod
+    from kg.cards import CardStore
+    from kg.pipeline_service.steps import ENRICH_MAX_ATTEMPTS
+
+    seen: list[int] = []
+
+    async def fake_stream(llm, targets, **kwargs):
+        seen.append(len(targets))
+        yield {"status": "running", "card_ids": [t.id for t in targets], "results": []}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    store = CardStore(path=tmp_path / "cards.db")
+    store.add("emptyword", "meaning")
+    for _ in range(ENRICH_MAX_ATTEMPTS + 2):
+        asyncio.run(_run_step_enrich("u_empty", store, _RecLogger()))
+    assert seen == [1] * ENRICH_MAX_ATTEMPTS
+
+
 def test_step_enrich_failed_batch_does_not_consume_an_attempt(monkeypatch, tmp_path):
     """Only cards in a batch that answered (success terminal) lose an attempt; errored batches don't."""
     import kg.enrich as enrich_mod

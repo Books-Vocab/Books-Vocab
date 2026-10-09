@@ -112,7 +112,8 @@ def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
 
 # Server-side cap on LLM enrich attempts per card: a card the model never returns
 # (or returns without pos/note) would otherwise be re-billed on every pipeline run.
-# An attempt is consumed only by cards in a batch that answered (success terminal);
+# An attempt is consumed only by cards in a batch that answered (success terminal,
+# even with empty/malformed results, since it was billed);
 # batches that errored (transient 5xx after retries) and the all-batches-fail path
 # consume none, so an outage never permanently excludes a card. Force bypasses the cap.
 ENRICH_MAX_ATTEMPTS = 3
@@ -174,9 +175,11 @@ async def _step_enrich(
                 logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
                 batch_errors.append(str(msg.get("detail")))
 
+            if msg.get("status") != "error" and msg.get("card_ids"):
+                answered_ids.extend(msg["card_ids"])
+
             if msg.get("results"):
                 got_results = True
-                answered_ids.extend(msg.get("card_ids", ()))
                 result_map, skipped = _index_enrichment_results(msg["results"])
                 if skipped:
                     logger.warning("[%s] Skipped %d malformed enrichment items", uid, skipped)
@@ -206,7 +209,8 @@ async def _step_enrich(
     if batch_errors and not got_results:
         raise RuntimeError(f"Enrich failed for all batches: {batch_errors[0]}")
     # Consume one attempt per card whose batch answered so cards the LLM never resolves
-    # stop being re-billed.
+    # stop being re-billed. Best-effort: if the stream or batch_update raises (and
+    # _run_step retries), billed batches of the failed pass consume no attempt.
     if not force and answered_ids:
         cards.bump_enrich_attempts(answered_ids)
     logger.info("[%s] Enriched %d cards", uid, updated)
