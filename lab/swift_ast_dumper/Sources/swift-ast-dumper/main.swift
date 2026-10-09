@@ -62,16 +62,32 @@ func cap(_ s: String, _ pattern: String) -> String? {
 
 func capD(_ s: String, _ pattern: String) -> Double? { cap(s, pattern).flatMap(Double.init) }
 
+// Swift integer literal text -> Int: strips `_` separators, honours 0x/0b/0o radix prefixes.
+// nil = not representable (overflow) -> caller degrades to `unknown`, never a fabricated 0.
+func parseIntLiteral(_ text: String) -> Int? {
+    let t = text.replacingOccurrences(of: "_", with: "")
+    for (prefix, radix) in [("0x", 16), ("0b", 2), ("0o", 8)] where t.hasPrefix(prefix) {
+        return Int(t.dropFirst(2), radix: radix)
+    }
+    return Int(t)
+}
+
 // ---------------------------------------------------------------------------
 // value resolution (→ contract value objects)
 // ---------------------------------------------------------------------------
 
 func parseValue(_ e: ExprSyntax) -> [String: Any] {
     if let i = e.as(IntegerLiteralExprSyntax.self) {
-        return ["kind": "literal", "value": Int(i.literal.text) ?? 0, "raw": i.trimmedDescription]
+        guard let v = parseIntLiteral(i.literal.text) else {
+            return ["kind": "unknown", "raw": i.trimmedDescription]
+        }
+        return ["kind": "literal", "value": v, "raw": i.trimmedDescription]
     }
     if let f = e.as(FloatLiteralExprSyntax.self) {
-        return ["kind": "literal", "value": Double(f.literal.text) ?? 0, "raw": f.trimmedDescription]
+        guard let v = Double(f.literal.text.replacingOccurrences(of: "_", with: "")), v.isFinite else {
+            return ["kind": "unknown", "raw": f.trimmedDescription]
+        }
+        return ["kind": "literal", "value": v, "raw": f.trimmedDescription]
     }
     if let op = e.as(InfixOperatorExprSyntax.self) {
         let opTxt = op.operator.as(BinaryOperatorExprSyntax.self)?.operator.text
@@ -114,7 +130,12 @@ func parseValue(_ e: ExprSyntax) -> [String: Any] {
 func parseColor(_ e: ExprSyntax) -> (token: String, opacity: Double?) {
     let txt = e.trimmedDescription
     let opacity = capD(txt, "\\.opacity\\(([0-9.]+)\\)")
-    if let name = cap(txt, "palette\\.([A-Za-z0-9]+)") { return (name, opacity) }
+    // A ternary / multi-palette expression has several candidate colors; taking the first
+    // palette.X silently drops the other branch (#2449) -> fall through to the bare-token path.
+    let isTernary = e.is(TernaryExprSyntax.self)
+        || (e.as(SequenceExprSyntax.self)?.elements.contains { $0.is(TernaryExprSyntax.self) } ?? false)
+    let paletteHits = txt.components(separatedBy: "palette.").count - 1
+    if !isTernary, paletteHits <= 1, let name = cap(txt, "palette\\.([A-Za-z0-9]+)") { return (name, opacity) }
     // bare identifier / ternary → caller-injected param color (generator marks it orphan)
     let token = cap(txt, "^([A-Za-z_][A-Za-z0-9_]*)") ?? txt
     return (token, opacity)
@@ -180,6 +201,8 @@ let SCOPED_OUT: Set<String> = [
 // any read in pass 2, so the unchecked annotation is sound.
 nonisolated(unsafe) var extFuncBodies: [String: ExprSyntax] = [:]      // ext View func → body expr
 nonisolated(unsafe) var modifierStructBodies: [String: ExprSyntax] = [:]  // ViewModifier struct → body(content:)
+
+let PADDING_EDGES: Set<String> = ["top", "bottom", "leading", "trailing", "horizontal", "vertical", "all"]
 
 func edgeName(_ e: ExprSyntax) -> String? {
     guard let m = e.as(MemberAccessExprSyntax.self), m.base == nil else { return nil }
@@ -256,10 +279,22 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
             return .mod(["name": "padding", "edge": "all",
                          "value": ["kind": "literal", "value": 16, "raw": "default"], "raw": ".padding()"])
         }
-        if let edge = edgeName(argList[0].expression), argList.count >= 2 {
-            return .mod(["name": "padding", "edge": edge,
-                         "value": parseValue(argList[1].expression), "raw": ".padding"])
+        // Edge-bearing forms: `.padding(.e)`, `.padding(.e, n)`, `.padding([.e1,.e2])`, `.padding([.e1,.e2], n)`.
+        // Edge-less value is the SwiftUI default (16). Anything else with 2+ args is an unknown
+        // shape -> honest unparsed rather than edge=all with a guessed value (#2455).
+        let first = argList[0].expression
+        let valueMod: [String: Any] = argList.count >= 2
+            ? parseValue(argList[1].expression) : ["kind": "literal", "value": 16, "raw": "default"]
+        if let edge = edgeName(first), PADDING_EDGES.contains(edge) {
+            return .mod(["name": "padding", "edge": edge, "value": valueMod, "raw": ".padding"])
         }
+        if let arr = first.as(ArrayExprSyntax.self) {
+            let edges = arr.elements.compactMap { edgeName($0.expression) }
+            guard !edges.isEmpty, edges.count == arr.elements.count,
+                  edges.allSatisfy({ PADDING_EDGES.contains($0) }), argList.count <= 2 else { return .unparsed }
+            return .mod(["name": "padding", "edge": "set", "edges": edges, "value": valueMod, "raw": ".padding"])
+        }
+        if argList.count >= 2 { return .unparsed }
         // single value form: .padding(X) → all
         return .mod(["name": "padding", "edge": "all",
                      "value": parseValue(argList[0].expression), "raw": ".padding"])
