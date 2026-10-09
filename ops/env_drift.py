@@ -8,15 +8,17 @@ dispatch or embedding a second Python program in it.
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import os
 import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import NamedTuple
-
+from unittest import mock
 
 UNSAFE_FLAGS = (
     "APP_STORE_ALLOW_UNSIGNED_SYNC",
@@ -236,6 +238,197 @@ def check_env_text(
     return EnvVerdict(missing, unsafe, undecodable)
 
 
+class RuleResult(NamedTuple):
+    rule: str
+    ok: bool
+    detail: str  # names, lengths and fixed backend messages only, never a secret value
+
+
+BACKEND_SRC = Path(__file__).resolve().parents[1] / "backend" / "src"
+_JWT_KEY = "JWT_SECRET"
+_ROUTING_PREFIX = "LLM_PROVIDER_"
+
+
+def _decoded_env(
+    text: str, environ: Mapping[str, str] | None
+) -> tuple[dict[str, str], dict[str, str]]:
+    """(key -> value Compose hands the container, key -> why it cannot be decoded)."""
+    env = ComposeEnv(text, environ)
+    values: dict[str, str] = {}
+    undecodable: dict[str, str] = {}
+    for key in dict.fromkeys(a.key for a in parse_env_assignments(text)):
+        try:
+            value = env.get(key)
+        except EnvDecodeError as exc:
+            undecodable[key] = str(exc)
+            continue
+        if value is not None:
+            values[key] = value
+    return values, undecodable
+
+
+@contextlib.contextmanager
+def _isolated_backend_import() -> Iterator[None]:
+    """Make `kg` importable without leaving traces in the caller's process.
+
+    No `__pycache__` is written under backend/src, `sys.path` is restored, and all
+    logging is disabled: backend helpers (`kg.settings._env_int` and friends) log
+    `Env var X='<value>'` plus a traceback, which would leak a secret-bearing .env
+    value to stderr through Python's last-resort handler.
+    """
+    saved_path = list(sys.path)
+    saved_bytecode = sys.dont_write_bytecode
+    saved_disable = logging.root.manager.disable
+    sys.dont_write_bytecode = True
+    logging.disable(logging.CRITICAL)
+    if str(BACKEND_SRC) not in sys.path:
+        sys.path.insert(0, str(BACKEND_SRC))
+    try:
+        yield
+    finally:
+        logging.disable(saved_disable)
+        sys.dont_write_bytecode = saved_bytecode
+        sys.path[:] = saved_path
+
+
+def backend_startup_rules(
+    text: str, environ: Mapping[str, str] | None = None
+) -> list[RuleResult]:
+    """Run the backend's own startup validators against a decoded .env body.
+
+    Single source of truth: `kg.settings.load_settings` (JWT_SECRET) and
+    `kg.llm.providers.validate_provider_routing` (routed provider API keys) are
+    called as-is inside an isolated os.environ holding only the values Compose
+    would pass the container.  `$VAR` interpolation resolves from earlier lines
+    of the .env and from `environ`, which defaults to empty: the operator's own
+    shell never feeds the verdict (an undefined name fails closed).  The per-rule
+    JWT lines are derived from the backend's own constants; if they ever disagree
+    with the backend's verdict, an extra failing rule says so (fail closed)
+    instead of trusting either side.  Results never contain a secret value, only
+    names, lengths and fixed messages.
+    """
+    with _isolated_backend_import():
+        return _backend_startup_rules(text, {} if environ is None else environ)
+
+
+def _backend_startup_rules(text: str, environ: Mapping[str, str]) -> list[RuleResult]:
+    try:
+        from kg import settings as backend_settings
+        from kg.llm import providers
+    except Exception as exc:  # noqa: BLE001 - any import failure must fail closed
+        return [
+            RuleResult(
+                "backend-import",
+                False,
+                f"無法載入 backend 驗證器（{type(exc).__name__}）；不放行",
+            )
+        ]
+
+    values, undecodable = _decoded_env(text, environ)
+    results: list[RuleResult] = []
+
+    # --- JWT_SECRET (kg.settings.load_settings) -------------------------------
+    min_len = backend_settings._JWT_SECRET_MIN_LENGTH
+    placeholders = backend_settings._JWT_SECRET_PLACEHOLDERS
+    if _JWT_KEY in undecodable:
+        results.append(
+            RuleResult(
+                "jwt-secret", False, f"{_JWT_KEY} 無法解析：{undecodable[_JWT_KEY]}"
+            )
+        )
+    else:
+        secret = values.get(_JWT_KEY, "")
+        present = bool(secret)
+        placeholder = secret.strip().lower() in placeholders
+        long_enough = len(secret) >= min_len
+        results.append(
+            RuleResult(
+                "jwt-present",
+                present,
+                f"{_JWT_KEY} {'已設定' if present else '未設定或為空'}",
+            )
+        )
+        results.append(
+            RuleResult(
+                "jwt-not-placeholder",
+                not placeholder,
+                f"{_JWT_KEY} {'是' if placeholder else '不是'}已知佔位值",
+            )
+        )
+        results.append(
+            RuleResult(
+                "jwt-min-length",
+                long_enough,
+                f"{_JWT_KEY} 長度 {len(secret)}，backend 要求 >= {min_len}",
+            )
+        )
+        with mock.patch.dict(os.environ, values, clear=True):
+            try:
+                backend_settings.load_settings()
+                backend_ok = True
+            except RuntimeError as exc:
+                # load_settings() checks JWT_SECRET first; only its own errors count here.
+                backend_ok = not str(exc).startswith(_JWT_KEY)
+            except Exception:  # noqa: BLE001 - other settings errors are not JWT rules
+                backend_ok = True
+        mine_ok = present and not placeholder and long_enough
+        if backend_ok != mine_ok:
+            results.append(
+                RuleResult(
+                    "jwt-backend-agreement",
+                    False,
+                    "env-check 的 JWT 判定與 backend load_settings() 不一致（規則漂移）；請更新 ops/env_drift.py",
+                )
+            )
+
+    # --- LLM routing (kg.llm.providers.validate_provider_routing) ---------------
+    key_envs = sorted({p.api_key_env for p in providers.REGISTRY.values()})
+    relevant = [
+        k for k in undecodable if k.startswith(_ROUTING_PREFIX) or k in key_envs
+    ]
+    if relevant:
+        results.append(
+            RuleResult(
+                "llm-routing",
+                False,
+                f"無法解析會影響路由的值：{' '.join(sorted(relevant))}；不放行",
+            )
+        )
+    else:
+        with mock.patch.dict(os.environ, values, clear=True):
+            try:
+                providers.validate_provider_routing()
+                results.append(
+                    RuleResult(
+                        "llm-routing", True, "所有已路由 provider 的 API key 皆非空"
+                    )
+                )
+            except RuntimeError as exc:
+                # Built only from registry names and env var names, never a value.
+                results.append(RuleResult("llm-routing", False, f"RuntimeError: {exc}"))
+            except Exception as exc:  # noqa: BLE001 - never echo exception text
+                # ValueError from provider_for() quotes the routed value verbatim.
+                routed = " ".join(
+                    sorted(k for k in values if k.startswith(_ROUTING_PREFIX))
+                )
+                results.append(
+                    RuleResult(
+                        "llm-routing",
+                        False,
+                        f"{type(exc).__name__}：provider 名稱未知或 embed 路由到不支援 embeddings 的 provider；檢查 {routed or _ROUTING_PREFIX + '*'}",
+                    )
+                )
+    for key in key_envs:
+        if key in undecodable:
+            continue
+        results.append(
+            RuleResult(
+                f"info:{key}", True, f"{key} 長度 {len(values.get(key, '').strip())}"
+            )
+        )
+    return results
+
+
 def env_check_main(required: list[str]) -> int:
     """`env-check KEY...`: .env text on stdin; prints per-key verdicts."""
     text = sys.stdin.read()
@@ -269,7 +462,23 @@ def env_check_main(required: list[str]) -> int:
             f"✗ 無法確認下列 .env 值 Compose 會傳給容器的內容（fail closed）：{' '.join(verdict.undecodable)}，請改成可明確解析的寫法後重試",
             file=sys.stderr,
         )
-    return 1 if verdict.missing or verdict.unsafe or verdict.undecodable else 0
+    rules = backend_startup_rules(text)
+    for result in rules:
+        if result.rule.startswith("info:"):
+            print(f"  · {result.detail}")
+        else:
+            print(f"{'✓' if result.ok else '✗'} [{result.rule}] {result.detail}")
+    failed_rules = [r.rule for r in rules if not r.ok]
+    if failed_rules:
+        print(
+            f"✗ backend 啟動規則未通過：{' '.join(failed_rules)}；以此 .env 部署會讓容器啟動即崩潰（crash-loop）",
+            file=sys.stderr,
+        )
+    return (
+        1
+        if verdict.missing or verdict.unsafe or verdict.undecodable or failed_rules
+        else 0
+    )
 
 
 def _read_local(path: Path) -> dict[str, str]:

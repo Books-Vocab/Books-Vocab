@@ -182,6 +182,10 @@ def test_env_check_marks_are_read_as_missing_vars() -> None:
     finding = rt.evaluate_env("✓ JWT_SECRET\n✗ ADMIN_TOKEN\n")
     assert finding.level == "block"
     assert finding.detail == ["✗ ADMIN_TOKEN"]
+    rule = rt.evaluate_env("✓ JWT_SECRET\n✗ [jwt-min-length] JWT_SECRET 長度 31\n")
+    assert rule.level == "block"
+    assert "backend startup rule" in rule.summary
+    assert "missing var" in rule.summary
     assert rt.evaluate_env(None).level == "warn"
 
 
