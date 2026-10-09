@@ -322,6 +322,28 @@ else
   fail 'commit-range hostile filename was narrowed'
 fi
 
+# A rename out of backend/ changes backend: the source path must be classified
+# too, so rename detection cannot hide it (Issue #2763).
+RREPO="$STUBS/rename-repo"
+mkdir -p "$RREPO/backend/src/kg" "$RREPO/ops"
+(
+  cd "$RREPO"
+  git init -q
+  git config user.email t@example.invalid
+  git config user.name t
+  printf 'import os\nprint(os.getcwd())\nx = 1\ny = 2\n' > backend/src/kg/log_format.py
+  git add -A
+  git commit -q -m base
+  git mv backend/src/kg/log_format.py ops/log_format.py
+  git commit -q -m rename
+)
+rename_plan="$(cd "$RREPO" && "$ROUTER" --base HEAD~1 --head HEAD --format json)"
+if jq -e '.backend == true' >/dev/null <<<"$rename_plan"; then
+  pass 'commit-range rename from backend/ to ops/ selects backend (#2763)'
+else
+  fail "commit-range rename from backend/ to ops/ dropped backend: $rename_plan"
+fi
+
 # A PR's scope is its diff from the merge base. `pull_request.base.sha` is the
 # base branch tip, which moves after the PR forks; a two-point base..head diff
 # would add the reverse of those newer commits (here: iOS and backend sources
