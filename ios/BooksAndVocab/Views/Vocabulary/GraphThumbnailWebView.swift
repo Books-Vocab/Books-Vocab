@@ -93,17 +93,9 @@ extension GraphThumbnailWebView {
         // that reset the d3 simulation. colorHex rounds to 8-bit RGB
         // (#RRGGBB) in ReviewGradient.cssHex, so sub-second ratio drift
         // produces identical strings and visual meaning is preserved.
-        var hasher = Hasher()
-        hasher.combine(colorScheme == .dark)
-        for n in nodes {
-            hasher.combine(n.id)
-            hasher.combine(n.tier)
-            hasher.combine(n.colorHex)
-            hasher.combine(n.degree)
-            hasher.combine(n.badgeSystemImage)
-        }
-        hasher.combine(edges.count)
-        let sig = "\(hasher.finalize())"
+        // Reuses GraphWebView.dataSignature so thumbnail and full graph share one diff
+        // (covers node word and edge id/from/to/kind, not just edge count).
+        let sig = GraphWebView.dataSignature(nodes: nodes, edges: edges) + (colorScheme == .dark ? "D" : "L")
         guard coordinator.lastSignature != sig else { return }
         coordinator.lastSignature = sig
         coordinator.sendInitGraph(buildPayload(nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme), webView: webView)

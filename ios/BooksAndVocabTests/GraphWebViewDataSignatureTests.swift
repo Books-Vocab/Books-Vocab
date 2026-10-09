@@ -112,6 +112,30 @@ struct GraphWebViewDataSignatureTests {
         )
     }
 
+    @Test func wordChange_changesSignature() {
+        let before = [KnowledgeGraphNode(id: "n1", word: "alpha", tier: "gradient", colorHex: "#AABBCC", ratio: 0.5, degree: 2)]
+        let after = [KnowledgeGraphNode(id: "n1", word: "beta", tier: "gradient", colorHex: "#AABBCC", ratio: 0.5, degree: 2)]
+        let edges = [edge("e1", from: "n1", to: "n2")]
+
+        #expect(
+            GraphWebView.dataSignature(nodes: before, edges: edges)
+                != GraphWebView.dataSignature(nodes: after, edges: edges),
+            "node label (word) is rendered — its change must redraw"
+        )
+    }
+
+    @Test func edgeEndpointChange_sameCount_changesSignature() {
+        let nodes = [node(id: "n1", ratio: 0.5)]
+        let before = [edge("e1", from: "n1", to: "n2")]
+        let after = [edge("e1", from: "n1", to: "n3")]
+
+        #expect(
+            GraphWebView.dataSignature(nodes: nodes, edges: before)
+                != GraphWebView.dataSignature(nodes: nodes, edges: after),
+            "edge endpoints changing with equal count must redraw"
+        )
+    }
+
     // MARK: - Identity invariant: identical input is byte-stable
 
     @Test func identicalInput_isStable() {
