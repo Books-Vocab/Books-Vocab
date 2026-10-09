@@ -26,16 +26,19 @@ final class LocalBookFileManager: BookFileManaging {
 
     private let pendingDeletions: PendingBookDeletionStore?
     private let iCloudAvailable: () -> Bool
+    private let iCloudSignedIn: () -> Bool
 
     /// `pendingDeletions` 預設：用預設位置（正式路徑）時為 `.standard`，注入固定位置（測試）時為 nil。
     init(
         locations: [URL]? = nil,
         pendingDeletions: PendingBookDeletionStore? = nil,
-        iCloudAvailable: @escaping () -> Bool = { Book.iCloudBooksDirectory != nil }
+        iCloudAvailable: @escaping () -> Bool = { Book.iCloudBooksDirectory != nil },
+        iCloudSignedIn: @escaping () -> Bool = { FileManager.default.ubiquityIdentityToken != nil }
     ) {
         self.fixedLocations = locations
         self.pendingDeletions = pendingDeletions ?? (locations == nil ? .standard : nil)
         self.iCloudAvailable = iCloudAvailable
+        self.iCloudSignedIn = iCloudSignedIn
     }
 
     static func defaultLocations() -> [URL] {
@@ -55,9 +58,6 @@ final class LocalBookFileManager: BookFileManaging {
         // 空檔名會讓 appendingPathComponent 指回目錄本身 → removeItem 會整個目錄刪掉
         guard !fileName.isEmpty else { return }
 
-        // iCloud 不可用時解析不到 iCloud 目錄，刪不到它的副本：記 tombstone，iCloud 回來時由 reconciler 補刪（#2750）。
-        if !iCloudAvailable() { pendingDeletions?.insert(fileName) }
-
         var failures: [(url: URL, error: Error)] = []
         for location in fixedLocations ?? Self.defaultLocations() {
             // 只存在於其中一個位置是常態；已達成「不存在」即視為成功。
@@ -70,6 +70,11 @@ final class LocalBookFileManager: BookFileManaging {
         if !failures.isEmpty {
             throw BookFileDeletionError(fileName: fileName, failures: failures)
         }
+
+        // iCloud 不可用時解析不到 iCloud 目錄，刪不到它的副本：記 tombstone，iCloud 回來時由 reconciler 補刪（#2750）。
+        // 只在本機刪除全部成功（失敗時書列仍在，不可留下之後會刪掉在庫書的 tombstone）且使用者有登入 iCloud
+        // （沒用 iCloud 的人不累積永遠不被消耗的 tombstone）時記錄。殘餘：iCloud 剛回來但檔案尚未同步時，補刪可能落空。
+        if !iCloudAvailable() && iCloudSignedIn() { pendingDeletions?.insert(fileName) }
     }
 
     /// TXT/MD 匯入時保留的原始檔副本名稱：由 EPUB 檔名（含 UUID，天然唯一）推導，
