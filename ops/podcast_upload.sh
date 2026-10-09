@@ -92,7 +92,9 @@ ok()    { echo "✓ $*"; }
 err()   { echo "✗ $*" >&2; exit 1; }
 # Wrapper so --endpoint-url is injected only when AWS_ENDPOINT_URL is set.
 # Avoids the bash 3.x set -u + empty-array expansion bug on macOS.
-run_aws() { [[ -n "${AWS_ENDPOINT_URL:-}" ]] && aws --endpoint-url "$AWS_ENDPOINT_URL" "$@" || aws "$@"; }
+run_aws() {
+  if [[ -n "${AWS_ENDPOINT_URL:-}" ]]; then aws --endpoint-url "$AWS_ENDPOINT_URL" "$@"; else aws "$@"; fi
+}
 
 # ── Free-tier preview clip ───────────────────────────────────────────────────
 # The free tier streams a *separate* preview asset (see backend podcast_access.py
