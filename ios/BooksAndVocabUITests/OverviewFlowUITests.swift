@@ -236,6 +236,40 @@ final class OverviewFlowUITests: UITestCase {
         executionTimeAllowance = 420
     }
 
+    /// #2736: the heatmap must open scrolled to the latest week. 52 weeks overflow
+    /// every device, so this is not vacuous on the wide CI device; without the
+    /// scroll anchor the strip opens at the oldest week and today is off-screen.
+    @MainActor
+    func testActivityHeatmapOpensOnLatestWeek() throws {
+        let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
+        let app = launchIsolatedApp(
+            extraArgs: expected.localeLaunchArguments,
+            fixtures: [.vocabulary("statsPopulated")],
+            extraEnvironment: ["KG_UI_TEST_HEATMAP_WEEKS": "52"],
+            perfLog: "overview"
+        )
+        let shell = AppPage(app: app)
+        let overview = shell.goToOverview()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+        overview.scrollToReviewCalendarButton()
+        overview.calendar.assertExists(timeout: 10)
+
+        let days = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'calendar.day.'"))
+        let today = app.descendants(matching: .any)
+            .matching(identifier: "calendar.day.\(expected.forecastDayKey)").firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 10), "today's heatmap cell missing")
+        let oldest = days.firstMatch
+        XCTAssertTrue(oldest.exists)
+        let card = overview.calendar.frame
+        XCTAssertTrue(oldest.frame.maxX <= card.minX + 1 || !oldest.isHittable,
+                      "52-week grid did not overflow the card: \(oldest.frame) vs \(card)")
+        XCTAssertTrue(
+            today.isHittable && today.frame.minX >= card.minX && today.frame.maxX <= card.maxX,
+            "heatmap did not open scrolled to the latest week: \(today.frame) outside \(card)"
+        )
+    }
+
     @MainActor
     func testOverviewStatsRenderFromSeededReviewHistory() throws {
         let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
@@ -263,19 +297,6 @@ final class OverviewFlowUITests: UITestCase {
 
         try step("calendar", app: app) {
             overview.calendar.assertExists(timeout: 10)
-            // #2736: the heatmap must open scrolled to the latest week, so
-            // today's cell is on screen without any manual scroll. Only
-            // discriminating where the 20-week grid (~335pt) overflows the
-            // card, i.e. a compact device; on the default Pro Max it fits and
-            // passes vacuously. Run with `--device <iPhone SE 3rd gen UDID>`.
-            let today = app.descendants(matching: .any)
-                .matching(identifier: "calendar.day.\(expected.forecastDayKey)").firstMatch
-            XCTAssertTrue(today.waitForExistence(timeout: 10), "today's heatmap cell missing")
-            let card = overview.calendar.frame
-            XCTAssertTrue(
-                today.isHittable && today.frame.minX >= card.minX && today.frame.maxX <= card.maxX,
-                "heatmap did not open scrolled to the latest week: \(today.frame) outside \(card)"
-            )
         }
 
         try step("forecast-zero", app: app) {
