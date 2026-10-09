@@ -583,19 +583,15 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
     # 2. Partial links persisted from cards 0..3 (one link each, total 4).
     #    The await loop reads futures[0..3] successfully then hits c4 which
     #    raises → exception handler persists what's already in all_links.
-    assert len(graph.persisted_links) == 4, (
-        f"Expected 4 persisted links from cards 0-3 before c4 raised, "
-        f"got {len(graph.persisted_links)}: {graph.persisted_links}"
-    )
-
-    # 3. Cards 4..9 requeued (6 cards) — the failing card itself MUST be
-    #    in the requeue or it would orphan.
-    assert graph.added_pending, "expected unprocessed cards to be requeued"
+    #    Later futures that already finished are salvaged too (#2699), so
+    #    acked is c0..c3 plus any subset of c5..c9, and acked + requeued is a
+    #    disjoint cover of all 10 cards.
+    assert len(graph.persisted_links) >= 4
+    assert set(graph.acked_pending) >= {"c0", "c1", "c2", "c3"}
+    assert "c4" not in graph.acked_pending
     requeued_flat = [cid for batch in graph.added_pending for cid in batch]
-    assert len(requeued_flat) == 6, f"Expected 6 requeued (c4..c9), got {len(requeued_flat)}: {requeued_flat}"
     assert "c4" in requeued_flat, "the failing card must be requeued, not orphaned"
-    # Cards 0..3 had their links persisted, so their claim is acknowledged.
-    assert sorted(graph.acked_pending) == ["c0", "c1", "c2", "c3"]
+    assert sorted(requeued_flat + list(graph.acked_pending)) == sorted(pending_ids)
 
     # 4. batch_touch called for persisted links (incremental-sync wakeup).
     assert cards.batch_touch_calls, "persisted links must trigger batch_touch"
@@ -669,20 +665,15 @@ def test_judge_failure_during_result_consumption_does_not_orphan_card():
         asyncio.run(run())
 
     # ── Invariants ──
-    # Cards 0..3 produced one valid link each.
-    assert len(graph.persisted_links) == 4, (
-        f"Expected 4 links from c0..c3 before c4 raised, got {len(graph.persisted_links)}: {graph.persisted_links}"
-    )
-
-    # c4 raised mid-consumption. It MUST be requeued, not orphaned.
+    # Cards 0..3 produced one valid link each; later completed futures are
+    # salvaged too (#2699).
+    assert len(graph.persisted_links) >= 4
     requeued = [cid for batch in graph.added_pending for cid in batch]
     assert "c4" in requeued, (
         f"c4 raised while its results were being consumed — it must be requeued, not orphaned. requeued={requeued}"
     )
-    # And c5..c9 (never started) requeued too → 6 total.
-    assert set(requeued) == {"c4", "c5", "c6", "c7", "c8", "c9"}, f"Expected c4..c9 requeued, got {sorted(requeued)}"
-    # No card appears twice in the requeue.
     assert len(requeued) == len(set(requeued)), f"a card was requeued more than once: {sorted(requeued)}"
+    assert sorted(requeued + list(graph.acked_pending)) == sorted(f"c{i}" for i in range(10))
 
 
 def test_quota_exhaustion_mid_run_halts_gracefully():
@@ -1136,3 +1127,63 @@ def test_step_enrich_matches_nfc_and_whitespace_variants(monkeypatch):
     cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None)]
     updated = asyncio.run(_run_step_enrich("u_nfc", cards, _RecLogger()))
     assert updated == 1
+
+
+def test_judge_abort_salvages_completed_futures_after_failing_card():
+    """#2699: c1 fails while c2/c3 already finished (billed, judge_log accepted=1).
+
+    The abort path must persist+ack c2/c3 rather than requeue and re-judge them.
+    """
+    import threading
+
+    logger = _FakeLogger()
+    uid = "u_judge_salvage"
+    user = {"id": uid, "dir": Path("/tmp/u_judge_salvage"), "config": {}}
+    pending_ids = [f"c{i}" for i in range(4)]
+    cards = _CardsForJudge(count=4)
+    graph = _GraphRecording(pending=list(pending_ids))
+    embeddings = _EmbeddingsAlreadyHave(pending_ids)
+    others_done = threading.Event()
+    finished: set[str] = set()
+    lock = threading.Lock()
+
+    class _FailC1Judge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+            if target_word == "c1":
+                assert others_done.wait(10)
+                raise OpenAIError("judge LLM down on c1")
+            with lock:
+                finished.add(target_word)
+                if {"c0", "c2", "c3"} <= finished:
+                    others_done.set()
+            return {cid: _make_judgement() if i == 0 else None for i, (cid, _w, _m) in enumerate(candidates)}
+
+    async def run():
+        import kg.judge as judge_mod
+
+        original_judge = judge_mod.Judge
+        judge_mod.Judge = _FailC1Judge
+        try:
+            await _step_embed_and_judge(
+                uid,
+                user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = original_judge
+
+    with pytest.raises(OpenAIError):
+        asyncio.run(run())
+
+    assert sorted(graph.acked_pending) == ["c0", "c2", "c3"]
+    requeued = [cid for batch in graph.added_pending for cid in batch]
+    assert requeued == ["c1"]
+    assert len(graph.persisted_links) == 3
