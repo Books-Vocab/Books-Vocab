@@ -106,6 +106,33 @@ struct BookshelfImportCancellationTests {
     }
 
     @Test
+    func presentImporterIsBlockedWhileBatchIsImporting_thenAllowedAfter() async throws {
+        let container = try makeContainer()
+        let coordinator = BookshelfCoordinator()
+        let service = ControlledImportService()
+        let toast = AppToastCoordinator()
+        let first = URL(fileURLWithPath: "/tmp/one.txt")
+
+        coordinator.handleFileImport(
+            .success([first]),
+            modelContext: container.mainContext,
+            importService: service,
+            toastCoordinator: toast
+        )
+        #expect(await service.waitUntilStarted(first.lastPathComponent))
+
+        // #2749：匯入進行中不可再開選檔器，否則第二批會靜默取消第一批的未處理檔案
+        coordinator.presentImporter()
+        #expect(coordinator.isImporting == false)
+
+        service.complete(first.lastPathComponent, with: .success(makeDraft("one")))
+        await waitForQuiescence(coordinator, service: service)
+
+        coordinator.presentImporter()
+        #expect(coordinator.isImporting == true)
+    }
+
+    @Test
     func supersededImportThatIgnoresCancellation_doesNotPersistOrReportFailure() async throws {
         let container = try makeContainer()
         let context = container.mainContext

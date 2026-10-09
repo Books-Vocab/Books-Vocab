@@ -52,6 +52,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     private var importGeneration = 0
 
     func presentImporter() {
+        // 匯入進行中不再開新批次：新批次會取消舊批次，其未處理的檔案會被靜默放棄（#2749）。
+        guard !isLoading else { return }
         // 新一輪匯入觸發前清掉殘留的 inline error，避免持續顯示已過期的失敗訊息
         clearError()
         isImporting = true

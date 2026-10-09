@@ -152,6 +152,7 @@ struct BookshelfView: View {
                     }
                     .accessibilityLabel(BookshelfCopy.importAccessibilityLabel)
                     .accessibilityIdentifier("bookshelf.importButton")
+                    .disabled(coordinator.isLoading)
                 }
             }
             .fileImporter(
