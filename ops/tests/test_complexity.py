@@ -303,6 +303,63 @@ def test_two_sibling_lanes_each_fitting_the_base_headroom_both_pass(
     assert "WARNING" in capsys.readouterr().err
 
 
+def _rebased_sibling(tmp_path: Path, own_lines: int) -> tuple[Path, str]:
+    """Base headroom 10; lane A (8 lines) is merged to trunk; lane B (``own_lines``) is rebased on it."""
+    repo = _headroom_repo(tmp_path)
+    trunk = _git(repo, "branch", "--show-current")
+    _git(repo, "checkout", "-q", "-b", "lane-a")
+    _add(repo, "ops/a_lane.py", 8)
+    _commit(repo, "lane A")
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "checkout", "-q", "-b", "lane-b")
+    _add(repo, "ops/b_lane.py", own_lines)
+    _commit(repo, "lane B")
+    _git(repo, "checkout", "-q", trunk)
+    _git(repo, "merge", "-q", "--no-ff", "-m", "A", "lane-a")
+    _git(repo, "checkout", "-q", "lane-b")
+    _git(repo, "rebase", "-q", trunk)  # what deliver.py does before the checks
+    return repo, trunk
+
+
+def test_a_sibling_rebased_onto_main_keeps_its_original_fork_allowance(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, trunk = _rebased_sibling(tmp_path, 8)
+    assert complexity.main(["check", "--base", trunk], repo=repo) == 0
+    assert "WARNING" in capsys.readouterr().err  # 46 > 40, but B's own 8 fits its 10
+
+
+def test_a_rebased_sibling_whose_own_delta_exceeds_the_original_headroom_fails(
+    tmp_path: Path,
+) -> None:
+    repo, trunk = _rebased_sibling(tmp_path, 12)
+    assert complexity.main(["check", "--base", trunk], repo=repo) == 1
+
+
+def test_fork_base_env_overrides_the_reflog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, trunk = _rebased_sibling(tmp_path, 8)
+    original = _git(repo, "merge-base", "lane-b", "lane-a^")
+    _git(repo, "checkout", "-q", "--detach")  # no branch -> no reflog fork
+    assert complexity.main(["check", "--base", trunk], repo=repo) == 1
+    monkeypatch.setenv("KG_COMPLEXITY_FORK_BASE", original)
+    assert complexity.main(["check", "--base", trunk], repo=repo) == 0
+
+
+def test_a_missing_object_at_the_base_falls_back_to_absolute_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _headroom_repo(tmp_path)
+
+    def broken(*_a, **_k):
+        raise IndexError("missing")
+
+    monkeypatch.setattr(complexity, "count_lines_at", broken)
+    assert _check(repo) == 0
+    assert "absolute" in capsys.readouterr().err
+
+
 def test_main_itself_over_budget_fails_without_a_base_flag(tmp_path: Path) -> None:
     repo = _headroom_repo(tmp_path, ceiling=10)
     assert complexity.main(["check"], repo=repo) == 1  # HEAD is the base: absolute

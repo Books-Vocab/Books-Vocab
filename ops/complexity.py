@@ -18,7 +18,9 @@ merge-base (``origin/main``, else ``main``), counted by the same ``count_lines``
 The lane passes when delta <= the headroom the area had at the merge-base (ceiling read from the
 budget file *at the base*), or when the lane itself raises the ceiling in the budget file (then the
 new ceiling is judged absolutely).  Two sibling lanes that each fit the base headroom therefore both
-pass; absolute overflow of the checked tree is then only a WARNING that main needs a rebaseline PR.
+pass, also after a rebase onto each other (headroom = the larger of the current merge-base's and the
+lane's original fork point's: ``KG_COMPLEXITY_FORK_BASE``, else the branch's reflog creation commit,
+else the CI merge commit's PR fork); absolute overflow of the checked tree is then only a WARNING that main needs a rebaseline PR.
 On main itself (HEAD is the base) or with ``--absolute``/``--strict`` (CI on push to ``main``, see
 ``ci_args``) the absolute check fails, so a red trunk stays visible.  ``--base REF`` overrides the
 base; with no usable base the absolute judgement applies, loudly.
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -72,8 +75,6 @@ def count_lines(repo: Path, prefix: str) -> int:
 
 def ci_args(env: dict[str, str] | None = None) -> list[str]:
     """Extra ``check`` flags for the CI entry: absolute on push to main, delta-aware on PRs."""
-    import os
-
     event = (os.environ if env is None else env).get("GITHUB_EVENT_NAME")
     return ["--strict"] if event == "push" else []
 
@@ -143,41 +144,60 @@ def _budget_at(repo: Path, rev: str) -> tuple[dict[str, int], dict[str, int]] | 
         ceilings = json.loads(shown.stdout)["ceilings"]
         counts = {n: count_lines_at(repo, rev, p) for n, p in AREAS.items()}
         return counts, {n: int(ceilings[n]) for n in AREAS}
-    except (KeyError, TypeError, ValueError):
-        return None
+    except (KeyError, TypeError, ValueError, IndexError, subprocess.CalledProcessError):
+        return None  # includes cat-file "missing" lines: caller falls back to absolute
 
 
-def fork_point(repo: Path, base: str) -> str | None:
-    """For a CI merge commit (HEAD = main + PR), the PR's own fork point; else None."""
-    parents = subprocess.run(
-        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-    ).stdout.split()[1:]
-    if len(parents) != 2 or parents[0] != base:
-        return None
-    found = subprocess.run(
-        ["git", "merge-base", *parents], cwd=repo, capture_output=True, text=True
-    )
-    return found.stdout.strip() or None if found.returncode == 0 else None
+def fork_points(repo: Path, base: str) -> list[str]:
+    """Where this lane originally forked, besides the current merge-base ``base``.
+
+    A rebase (``ops/deliver.py``) moves the merge-base to main's tip, which would collapse the
+    base headroom to main's remaining room.  The lane's own allowance is the larger of that and
+    the room at its original fork: ``KG_COMPLEXITY_FORK_BASE`` if set, else the branch's creation
+    commit from its reflog.  A CI merge commit (HEAD = main + PR) contributes the PR's fork point."""
+
+    def git(*args: str) -> str:
+        done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+        return done.stdout.strip() if done.returncode == 0 else ""
+
+    found: list[str] = []
+    env = os.environ.get("KG_COMPLEXITY_FORK_BASE")
+    if env:
+        found.append(env)
+    else:
+        branch = git("branch", "--show-current")
+        if branch:
+            entries = git(
+                "reflog", "show", "--format=%H", f"refs/heads/{branch}"
+            ).split()
+            if entries:
+                origin = git("merge-base", entries[-1], base)
+                if origin:
+                    found.append(origin)
+    parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+    if len(parents) == 2 and parents[0] == base:
+        merged = git("merge-base", *parents)
+        if merged:
+            found.append(merged)
+    return [rev for rev in dict.fromkeys(found) if rev != base]
 
 
 def base_snapshot(
-    repo: Path, base: str, fork: str | None = None
+    repo: Path, base: str, forks: list[str] | None = None
 ) -> dict[str, dict[str, int]] | None:
-    """Counts and ceilings at ``base`` plus ``headroom``: what the lane may add.  ``fork`` (a CI
-    merge commit's PR fork point) contributes its own headroom, so a sibling merged first does not
-    consume this lane's allowance.  None when the base has no readable budget."""
+    """Counts and ceilings at ``base`` plus ``headroom``: what the lane may add.  ``forks`` (the lane's
+    original fork point, see ``fork_points``) contribute their own headroom, so a sibling merged
+    first, or a rebase onto it, does not consume this lane's allowance.  None when the base has no readable budget."""
     at_base = _budget_at(repo, base)
     if at_base is None:
         return None
     counts, ceilings = at_base
     headroom = {n: ceilings[n] - counts[n] for n in AREAS}
-    at_fork = _budget_at(repo, fork) if fork else None
-    if at_fork:
-        for n in AREAS:
-            headroom[n] = max(headroom[n], at_fork[1][n] - at_fork[0][n])
+    for fork in forks or []:
+        at_fork = _budget_at(repo, fork)
+        if at_fork:
+            for n in AREAS:
+                headroom[n] = max(headroom[n], at_fork[1][n] - at_fork[0][n])
     return {"counts": counts, "ceilings": ceilings, "headroom": headroom}
 
 
@@ -321,7 +341,7 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
             pass  # on main itself: absolute, so a red trunk stays visible
         else:
             try:
-                snapshot = base_snapshot(root, base, fork_point(root, base))
+                snapshot = base_snapshot(root, base, fork_points(root, base))
             except subprocess.CalledProcessError as exc:
                 print(f"complexity: base read failed ({exc})", file=sys.stderr)
             if snapshot is None:
