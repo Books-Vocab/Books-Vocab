@@ -21,8 +21,8 @@ struct TodayReviewCardCache {
         return nil
     }
 
-    mutating func rebuild(for entry: VocabularyEntry) {
-        let card = CardPresentation(entry: entry)
+    mutating func rebuild(for entry: VocabularyEntry, peers: [String: VocabularyEntry] = [:]) {
+        let card = CardPresentation(entry: entry, peerLookup: peers)
         let linkGroups = card.activeLinkGroups.map { Self.reviewLinkGroup($0.pendingFirst()) }
         let backDocument = card.document.reviewBackSubset()
         storage[entry.id] = .init(
@@ -45,9 +45,13 @@ struct TodayReviewCardCache {
     /// which reads the same projection.
     /// - Parameter pendingLinks: `nil` reads the app-wide `PendingLinkProjection`;
     ///   tests pass an explicit list to stay deterministic.
-    mutating func refreshLinks(for entry: VocabularyEntry, pendingLinks: [KGCardLinkSummary]? = nil) {
+    mutating func refreshLinks(
+        for entry: VocabularyEntry,
+        pendingLinks: [KGCardLinkSummary]? = nil,
+        peers: [String: VocabularyEntry] = [:]
+    ) {
         guard let existing = storage[entry.id] else { return }
-        let card = CardPresentation(entry: entry, pendingLinks: pendingLinks)
+        let card = CardPresentation(entry: entry, pendingLinks: pendingLinks, peerLookup: peers)
         let previousOrder = existing.linkGroups
             .flatMap(\.items)
             .enumerated()
@@ -80,7 +84,8 @@ struct TodayReviewCardCache {
     mutating func prewarm(
         queue: [VocabularyEntry],
         currentIndex: Int,
-        lookaheadLimit: Int
+        lookaheadLimit: Int,
+        peers: [String: VocabularyEntry] = [:]
     ) {
         guard !queue.isEmpty, currentIndex < queue.count else {
             storage.removeAll(keepingCapacity: false)
@@ -96,24 +101,24 @@ struct TodayReviewCardCache {
 
         let missingEntries = visibleEntries.filter { storage[$0.id] == nil }
         guard !missingEntries.isEmpty else { return }
-        storage.merge(Self.build(from: missingEntries)) { current, _ in current }
+        storage.merge(Self.build(from: missingEntries, peers: peers)) { current, _ in current }
     }
 
-    static func build(from entries: [VocabularyEntry]) -> [UUID: PreparedCard] {
+    static func build(from entries: [VocabularyEntry], peers: [String: VocabularyEntry] = [:]) -> [UUID: PreparedCard] {
         var cache: [UUID: PreparedCard] = [:]
         cache.reserveCapacity(entries.count)
         PerfLog.review.mark("prewarm.build", "count=\(entries.count)")
         for entry in entries {
-            cache[entry.id] = buildOne(entry)
+            cache[entry.id] = buildOne(entry, peers: peers)
         }
         return cache
     }
 
     /// Pure single-card builder (no storage write). Shared by `build` (prewarm) and
     /// the non-mutating render-miss fallback in `TodayReviewState.cachedOrBuildCard`.
-    static func buildOne(_ entry: VocabularyEntry) -> PreparedCard {
+    static func buildOne(_ entry: VocabularyEntry, peers: [String: VocabularyEntry] = [:]) -> PreparedCard {
         let (card, _) = PerfLog.review.measure("prewarm.card", "w=\(entry.word)") {
-            CardPresentation(entry: entry)
+            CardPresentation(entry: entry, peerLookup: peers)
         }
         let linkGroups = card.activeLinkGroups.map { Self.reviewLinkGroup($0.shuffled().pendingFirst()) }
         let backDocument = card.document.reviewBackSubset()
