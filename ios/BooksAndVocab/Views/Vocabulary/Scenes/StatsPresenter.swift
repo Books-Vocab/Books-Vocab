@@ -201,11 +201,9 @@ struct StatsPresenter: View {
             return
         }
         do {
-            if let selectedNotebookId {
-                graphLinks = try await kgService.pullGraphLinks(notebookId: selectedNotebookId)
-            } else {
-                graphLinks = try await kgService.pullGraphLinks()
-            }
+            graphLinks = try await kgService.pullGraphLinks(
+                notebookIDs: KnowledgeGraphNotebookScope.notebookIDs(for: filter, entries: filteredEntries)
+            )
             graphLoadError = false
         } catch {
             // Failure is scoped to the graph card only — summary is built from

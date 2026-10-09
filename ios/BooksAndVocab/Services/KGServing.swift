@@ -169,6 +169,28 @@ extension GraphServing {
     func pullGraphLinks(notebookId: String) async throws -> [KGGraphLink] {
         try await pullGraphLinks()
     }
+
+    /// Fans out one request per notebook and merges the results (de-duplicated
+    /// by link id). The backend endpoint is per notebook, so all-/multi-notebook
+    /// graphs must not rely on `pullGraphLinks()` (default notebook only).
+    /// A 403 means the notebook was deleted or is not ours and is skipped; any
+    /// other error propagates so a partial graph is never shown as complete.
+    func pullGraphLinks(notebookIDs: [String]) async throws -> [KGGraphLink] {
+        var seen = Set<String>()
+        var merged: [KGGraphLink] = []
+        for id in notebookIDs {
+            let links: [KGGraphLink]
+            do {
+                links = try await pullGraphLinks(notebookId: id)
+            } catch KGError.httpError(let code, _) where code == 403 {
+                continue
+            }
+            for link in links where seen.insert(link.id).inserted {
+                merged.append(link)
+            }
+        }
+        return merged
+    }
 }
 
 /// 複習同步能力。
