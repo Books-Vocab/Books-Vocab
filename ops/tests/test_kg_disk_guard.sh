@@ -1125,5 +1125,19 @@ grep -q '"simulator_runtime_reclaim_status":"not-supported"' "$state" \
   && ok "shared runtime reclaim is disabled" || bad "shared runtime reclaim contract drifted"
 grep -q '"simulator_runtimes"' "$lane_state" && ok "lane report has shared runtime bucket" || bad "lane report shared runtime bucket missing"
 
+echo "── df probe failure: no critical verdict, no eviction, state untouched (#2815) ──"
+root="$TMP/df-fail"; state="$root/state.json"; dfbin="$root/bin"; dd_global="$root/derived"
+mkdir -p "$dfbin" "$dd_global/BooksAndVocab-old/Build"
+printf '#!/bin/sh\nexit 1\n' > "$dfbin/df"; chmod +x "$dfbin/df"
+printf '{"schema":"kg.disk.guard.v1","free_bytes":99999999999,"verdict":"ok"}\n' > "$state"
+state_before="$(cat "$state")"
+env -u KG_DISK_GUARD_FREE_BYTES PATH="$dfbin:$PATH" KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$dd_global" KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+rc=$?
+[[ "$rc" -ne 0 ]] && ok "df failure exits non-zero" || bad "df failure exited 0"
+[[ "$(cat "$state")" == "$state_before" ]] && ok "df failure leaves state file unchanged" || bad_state "df failure rewrote state" "$state"
+[[ -d "$dd_global/BooksAndVocab-old" ]] && ok "df failure evicts nothing" || bad "df failure evicted DerivedData"
+
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

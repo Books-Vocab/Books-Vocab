@@ -718,7 +718,16 @@ main() {
   CACHE_EVICTION_EVICTED=0
   CACHE_EVICTION_FAILED=0
   CACHE_BUDGET_REPAIRED=0
-  free="$(number "$(free_bytes)")"; prev="$(number "$(previous_free)")"
+  # An unreadable free-space probe must never read as 0 bytes free: that would
+  # publish a false critical verdict and evict DerivedData.  Fail closed (no
+  # verdict, no eviction, state file untouched) and let the next tick retry.
+  free="$(free_bytes)"
+  if [[ ! "$free" =~ ^[0-9]+$ ]]; then
+    logger -t kg-disk-guard 'skipped=free-space-probe-failed' 2>/dev/null || true
+    echo "kg-disk-guard: free-space probe failed; no verdict published, no cleanup performed" >&2
+    return 1
+  fi
+  prev="$(number "$(previous_free)")"
   growth=0; (( prev > free )) && growth=$((prev - free))
   active="$(active_build)"; cache="$(cache_kb)"
   docker_cache="$(docker_cache_kb)"; docker_running="$(docker_active)"
