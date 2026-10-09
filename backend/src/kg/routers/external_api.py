@@ -44,6 +44,7 @@ from ..api_models.graph import GraphLinkResponse, ManualLinkRequest
 from ..api_models.notebook import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
 from ..api_models.review import ReviewStateEntry, ReviewStatePushRequest
 from ..api_models.vocab import ArchiveWordRequest
+from ..app_middleware import _anon_rate_limit_key
 from ..deps import (
     CurrentUser,
     _apply_quota_headers,
@@ -64,7 +65,14 @@ from ..external_api_keys import (
     list_api_keys,
     revoke_api_key,
 )
-from ..external_api_rate_limit import enrich_limiter, read_limiter, write_limiter
+from ..external_api_rate_limit import (
+    auth_failure_limiter,
+    enrich_limiter,
+    read_limiter,
+    user_enrich_limiter,
+    user_write_limiter,
+    write_limiter,
+)
 from ..graph import LinkKind
 from ..notebook import validate_notebook_access
 from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
@@ -169,12 +177,24 @@ def _persisted_operation(operation_id: str, user_id: str) -> dict[str, Any] | No
     return pipeline_log.get_run(operation_id, user_id)
 
 
-def get_external_api_user(
+async def get_external_api_user(
     request: Request,
     api_key: str | None = Header(default=None, alias="X-KG-API-Key"),
 ) -> UserRecord:
-    resolved = authenticate_api_key(api_key, load_users=request.app.state.load_users)
+    # /api/v1 is exempt from the generic IP limiter, so failed key
+    # authentications are throttled here, per client IP (#2803).
+    settings = request.app.state.kg_settings
+    client_host = request.client.host if request.client else None
+    client_key = "ip:" + _anon_rate_limit_key(
+        request.headers.get("x-forwarded-for", ""), client_host, settings.rate_limit_trusted_hops
+    )
+    if await auth_failure_limiter.is_exhausted(client_key):
+        raise HTTPException(status_code=429, detail="Too many invalid external API keys", headers={"Retry-After": "60"})
+    resolved = await run_in_threadpool(authenticate_api_key, api_key, load_users=request.app.state.load_users)
     if resolved is None:
+        decision = await auth_failure_limiter.admit(client_key)
+        if not decision.allowed:
+            raise HTTPException(status_code=429, detail="Too many invalid external API keys", headers=decision.headers)
         raise HTTPException(
             status_code=401,
             detail="Invalid external API key",
@@ -183,7 +203,6 @@ def get_external_api_user(
 
     key_id, user_id, record = resolved
 
-    settings = request.app.state.kg_settings
     user_dir = settings.data_dir / "users" / user_id
     return {
         "id": user_id,
@@ -214,6 +233,17 @@ async def _admit_external(
     headers = decision.headers
     if not decision.allowed:
         raise HTTPException(status_code=429, detail="External API rate limit exceeded", headers=headers)
+    # Writes and enrich also share a per-user budget so minting fresh keys
+    # cannot reset it (#2805).
+    user_limiter = (
+        user_write_limiter if limiter is write_limiter else user_enrich_limiter if limiter is enrich_limiter else None
+    )
+    if user_limiter is not None:
+        user_decision = await user_limiter.admit(f"user:{user['id']}")
+        if not user_decision.allowed:
+            raise HTTPException(
+                status_code=429, detail="External API rate limit exceeded", headers=user_decision.headers
+            )
     for name, value in headers.items():
         response.headers[name] = value
 

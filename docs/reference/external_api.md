@@ -80,7 +80,7 @@ X-KG-API-Key: kg_<key-id>.<secret>
 
 ## Rate limits
 
-每支 API key、每個類別使用 process-local sliding window；external API 的 cards、notebooks、links、enrich、operations 路由不再套用 generic IP limiter，避免同一 NAT 下的不同 key 互相消耗額度。回應包含 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`Retry-After`。預設值：read 120/60s、write 30/60s、enrich 5/300s；手動建立 graph link 也屬於 enrich 類別，因為會呼叫 LLM judge。可用 `KG_EXTERNAL_API_*` 環境值調整；目前部署是 single-worker，未來多 worker 前必須改 shared limiter。
+每支 API key、每個類別使用 process-local sliding window；external API 的 cards、notebooks、links、enrich、operations 路由不再套用 generic IP limiter，避免同一 NAT 下的不同 key 互相消耗額度。回應包含 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`Retry-After`。預設值：read 120/60s、write 30/60s、enrich 5/300s；手動建立 graph link 也屬於 enrich 類別，因為會呼叫 LLM judge。write 與 enrich 另外疊一層 per-user 預算（`KG_EXTERNAL_API_USER_WRITE_*`／`KG_EXTERNAL_API_USER_ENRICH_*`，預設同上），同一使用者建立／撤銷 key 不會重置額度。認證失敗（無效 key）依 client IP 計數，預設 20 次／60s 後回 429（`KG_EXTERNAL_API_AUTH_FAILURE_*`；IP 取自與 generic limiter 相同的 trusted-hops 規則），超額後該 IP 的請求（含有效 key）在窗口內一律 429。可用 `KG_EXTERNAL_API_*` 環境值調整；目前部署是 single-worker，未來多 worker 前必須改 shared limiter。
 
 ## Security headers
 

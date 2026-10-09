@@ -1,4 +1,4 @@
-"""Per-API-key sliding-window limits for the versioned external API."""
+"""Sliding-window limits (per key, per user, per failing IP) for the versioned external API."""
 
 from __future__ import annotations
 
@@ -94,6 +94,17 @@ class ExternalRateLimiter:
             if not events or events[-1] <= cutoff:
                 self._events.pop(key, None)
 
+    async def is_exhausted(self, key: str) -> bool:
+        """True when ``key`` has used its whole window; never records an event."""
+        cutoff = time.monotonic() - self.window_seconds
+        async with self._lock:
+            events = self._events.get(key)
+            if events is None:
+                return False
+            while events and events[0] <= cutoff:
+                events.popleft()
+            return len(events) >= self.limit
+
     def reset(self) -> None:
         self._events.clear()
 
@@ -110,12 +121,31 @@ enrich_limiter = ExternalRateLimiter(
     limit=_positive_env("KG_EXTERNAL_API_ENRICH_RATE_LIMIT", 5),
     window_seconds=_positive_env("KG_EXTERNAL_API_ENRICH_WINDOW_SECONDS", 300, maximum=86_400),
 )
+# Per-user budgets layered over the per-key ones: a user can mint and revoke
+# keys freely, so a per-key bucket alone is reset by every new key (#2805).
+user_write_limiter = ExternalRateLimiter(
+    limit=_positive_env("KG_EXTERNAL_API_USER_WRITE_RATE_LIMIT", 30),
+    window_seconds=_positive_env("KG_EXTERNAL_API_USER_WRITE_WINDOW_SECONDS", 60, maximum=86_400),
+)
+user_enrich_limiter = ExternalRateLimiter(
+    limit=_positive_env("KG_EXTERNAL_API_USER_ENRICH_RATE_LIMIT", 5),
+    window_seconds=_positive_env("KG_EXTERNAL_API_USER_ENRICH_WINDOW_SECONDS", 300, maximum=86_400),
+)
+# Pre-auth: counts failed key authentications per client IP, because /api/v1 is
+# exempt from the generic IP limiter (#2803).
+auth_failure_limiter = ExternalRateLimiter(
+    limit=_positive_env("KG_EXTERNAL_API_AUTH_FAILURE_RATE_LIMIT", 20),
+    window_seconds=_positive_env("KG_EXTERNAL_API_AUTH_FAILURE_WINDOW_SECONDS", 60, maximum=86_400),
+)
 
 
 __all__ = [
     "ExternalRateLimiter",
     "RateLimitDecision",
+    "auth_failure_limiter",
     "enrich_limiter",
     "read_limiter",
+    "user_enrich_limiter",
+    "user_write_limiter",
     "write_limiter",
 ]
