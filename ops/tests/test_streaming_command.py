@@ -768,6 +768,23 @@ def test_terminate_tolerates_permission_error_when_leader_already_exited(
     assert proc.returncode is not None
 
 
+def test_terminate_falls_back_to_child_when_killpg_denied_for_live_leader(
+    monkeypatch,
+) -> None:
+    """EPERM from a live leader must not hang on an untimed wait (#2671)."""
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+
+    def deny(_pid: int, _sig: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(streaming_command.os, "killpg", deny)
+    streaming_command._terminate_process_group(proc, timeout=2.0)
+    assert proc.returncode is not None
+
+
 def test_transient_identity_miss_on_exiting_child_is_retried(
     tmp_path: Path, monkeypatch
 ) -> None:

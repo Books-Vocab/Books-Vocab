@@ -73,6 +73,10 @@ def _child_env(env: dict[str, str] | None) -> dict[str, str]:
     resolved["LC_CTYPE"] = CHILD_LC_CTYPE
     return resolved
 
+# Identity read retry budget: 20 x 10ms = 200ms worst case in the spawn path.
+_IDENTITY_RETRY_ATTEMPTS = 20
+_IDENTITY_RETRY_DELAY_SECONDS = 0.01
+
 
 def _terminate_process_group(
     proc: subprocess.Popen[bytes], timeout: float = 5.0
@@ -80,7 +84,18 @@ def _terminate_process_group(
     """Terminate the isolated child session, escalating to KILL at deadline."""
     try:
         os.killpg(proc.pid, signal.SIGTERM)
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError:
+        proc.wait()
+        return
+    except PermissionError:
+        # EPERM from a zombie leader is harmless; from a live one the group
+        # signal failed, so fall back to the child itself with a bounded wait.
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
         proc.wait()
         return
 
@@ -200,10 +215,10 @@ def run_streamed_command(
     # A child caught mid-exit can fail the OS identity query while poll() still
     # reports it alive (the 2/8 `exit 9` flake of #2671).  Retry briefly; a real
     # identity failure still falls through to the fail-closed branch below.
-    for _ in range(20):
+    for _ in range(_IDENTITY_RETRY_ATTEMPTS):
         if start_identity is not None or proc.poll() is not None:
             break
-        time.sleep(0.01)
+        time.sleep(_IDENTITY_RETRY_DELAY_SECONDS)
         start_identity = process_start_identity(proc.pid)
     # ``start_new_session=True`` makes the child's PGID equal its PID.  The
     # leader may exit between Popen and this read (common for `locale` or

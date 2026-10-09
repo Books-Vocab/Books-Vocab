@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_DIR="$ROOT/ops"
 secret='super-secret-review-token'
 tmp="$(mktemp -d)"
+# Isolate the machine-global task registry so parallel runs and other lanes
+# cannot make the heartbeat wait on a shared lock (#2671).
+export KG_TASK_REGISTRY_PATH="$tmp/task_registry.json"
 trap 'rm -rf "$tmp"' EXIT
 # A bare `set -e` assertion would otherwise exit silently (issue #2671). Report
 # the failing command and every captured stream, with the secret redacted.
@@ -32,7 +35,8 @@ for _ in $(seq 300); do
 done
 if ! grep -qE 'phase=heartbeat .* alive=true' "$tmp/stderr" 2>/dev/null; then
   kill "$capture_pid" 2>/dev/null || true
-  echo "no heartbeat within 30s" >&2
+  echo "no heartbeat within 30s; captured stderr (secret redacted):" >&2
+  sed "s/$secret/[REDACTED]/g" "$tmp/stderr" >&2
   exit 1
 fi
 : >"$tmp/release"
