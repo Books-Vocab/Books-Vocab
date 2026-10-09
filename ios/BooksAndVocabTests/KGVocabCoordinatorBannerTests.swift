@@ -8,8 +8,13 @@ import Testing
 @Suite("KGVocabCoordinator banners")
 struct KGVocabCoordinatorBannerTests {
     private final class StubDeleter: VocabularyDeleting, HealthChecking {
-        func deleteCard(word: String, notebookId: String) async throws {}
+        var batchError: (any Error)?
+        var deleteError: (any Error)?
+        func deleteCard(word: String, notebookId: String) async throws {
+            if let deleteError { throw deleteError }
+        }
         func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse {
+            if let batchError { throw batchError }
             KGBatchDeleteResponse(deleted: words.count, deleted_words: words, not_found: [])
         }
         func healthCheck() async {}
@@ -47,6 +52,29 @@ struct KGVocabCoordinatorBannerTests {
         await coordinator.retryPendingDeletes(pendingDeletes: [], kgService: stub, modelContext: context)
         #expect(coordinator.noticeRevision == 2)
         #expect(coordinator.refreshSuccessMessage == L10n.string("待刪除項目已同步"))
+    }
+
+    /// #2728: per-word fallback 遇 404 = server 已無此字 → 刪除意圖已達成，
+    /// 須本地收斂而非計為失敗（否則永久卡死重試 banner）。
+    @Test func fallbackDelete404IsTreatedAsResolved() async throws {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let entry = VocabularyEntry(word: "ghost", translation: "鬼", context: "c", bookTitle: "b")
+        entry.queueDelete()
+        context.insert(entry)
+        let stub = StubDeleter()
+        stub.batchError = KGError.httpError(statusCode: 500, detail: "boom")
+        stub.deleteError = KGError.httpError(statusCode: 404, detail: "not found")
+        let coordinator = KGVocabCoordinator()
+
+        await coordinator.retryPendingDeletes(pendingDeletes: [entry], kgService: stub, modelContext: context)
+
+        #expect(coordinator.bannerError == nil)
+        #expect(coordinator.refreshSuccessMessage == L10n.string("待刪除項目已同步"))
+        #expect(try context.fetch(FetchDescriptor<VocabularyEntry>()).isEmpty)
     }
 
     @Test func dismissingTheStateDoesNotEmitANotice() {
