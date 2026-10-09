@@ -45,8 +45,7 @@ def mock_db():
     """)
     conn.commit()
     lock = threading.Lock()
-    with patch("kg.quota_service._get_conn", return_value=conn), \
-         patch("kg.quota_service._lock", lock):
+    with patch("kg.quota_service._get_conn", return_value=conn), patch("kg.quota_service._lock", lock):
         yield conn
     conn.close()
 
@@ -61,10 +60,8 @@ def _stable_limits():
 
 def _insert_usage(conn, user_id, call_type, input_tokens, output_tokens=0, created_at=None):
     conn.execute(
-        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at) "
-        "VALUES (?,?,?,?,?)",
-        (user_id, call_type, input_tokens, output_tokens,
-         created_at or datetime.now(UTC).isoformat()),
+        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at) VALUES (?,?,?,?,?)",
+        (user_id, call_type, input_tokens, output_tokens, created_at or datetime.now(UTC).isoformat()),
     )
     conn.commit()
 
@@ -317,9 +314,10 @@ class TestWithQuotaCheckBlock:
         err = exc_info.value
         assert err.status_code == 429
         assert err.headers["X-Quota-Fraction"] == "0.0"
-        assert err.headers["X-Quota-Reset"] == "86400"
-        assert err.reset_seconds == 86400
-        assert err.to_detail() == {"code": "quota_exhausted", "reset_seconds": 86400}
+        # Blocking row was just inserted, so it ages out in ~the full window.
+        assert err.reset_seconds == pytest.approx(86400, abs=5)
+        assert err.headers["X-Quota-Reset"] == str(err.reset_seconds)
+        assert err.to_detail() == {"code": "quota_exhausted", "reset_seconds": err.reset_seconds}
 
 
 # ── X-Quota-Fraction header math ─────────────────────────────────────

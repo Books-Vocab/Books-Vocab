@@ -192,6 +192,32 @@ class TestGetQuotaState:
         assert state["fraction"] == 1.0
         assert state["reset_seconds"] == 86400
 
+    def test_exceeded_reset_is_time_until_blocking_row_ages_out(self, mock_db):
+        """#2808: $0.02 row at 23h55m old + $0.02 row at 2h old exceed $0.03;
+        quota reopens when the oldest row ages out (~5 min), not in 24h."""
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime.now(UTC)
+        old = (now - timedelta(hours=23, minutes=55)).isoformat()
+        recent = (now - timedelta(hours=2)).isoformat()
+        # 200_000 input tokens = $0.02 at $0.10/M
+        _insert_usage(mock_db, "u_roll", "translate", 200_000, 0, old)
+        _insert_usage(mock_db, "u_roll", "translate", 200_000, 0, recent)
+        state = get_quota_state("u_roll", is_pro=False)
+        assert state["fraction"] == 0.0
+        assert state["reset_seconds"] == pytest.approx(300, abs=5)
+        assert check_quota("u_roll", "translate")["reset_seconds"] == pytest.approx(300, abs=5)
+
+    def test_exceeded_reset_skips_rows_that_do_not_unblock(self, mock_db):
+        """Oldest row is tiny; reset waits for the row whose expiry drops usage under the limit."""
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime.now(UTC)
+        _insert_usage(mock_db, "u_skip", "translate", 1_000, 0, (now - timedelta(hours=20)).isoformat())
+        _insert_usage(mock_db, "u_skip", "translate", 400_000, 0, (now - timedelta(hours=10)).isoformat())
+        state = get_quota_state("u_skip", is_pro=False)
+        assert state["reset_seconds"] == pytest.approx(14 * 3600, abs=5)
+
     def test_some_usage_reduces_fraction(self, mock_db):
         from datetime import UTC, datetime
 

@@ -321,6 +321,13 @@ def _row_cost(
     )
 
 
+def _cached_sum_col(conn: sqlite3.Connection) -> str:
+    """Per-row cached_input_tokens, 0 for a legacy table lacking it."""
+    from .ops_shared import column_expr
+
+    return f"COALESCE({column_expr(conn, 'token_usage', 'cached_input_tokens')}, 0)"
+
+
 def _cached_sum(conn: sqlite3.Connection) -> str:
     """``SUM`` expression over cached_input_tokens, 0 for a legacy table lacking it."""
     from .ops_shared import column_expr
@@ -407,10 +414,46 @@ def _quota_view(user_id: str, *, is_pro: bool) -> _QuotaView:
     return _QuotaView(limit, used, fraction)
 
 
+def _reset_seconds(user_id: str, limit: float, used: float) -> int:
+    """Seconds until the rolling window frees quota for ``user_id``.
+
+    Exceeded (``used >= limit``): the expiry of the earliest row whose ageing
+    out brings usage under the limit. Otherwise: expiry of the oldest row (when
+    usage starts recovering). Falls back to the full window with no usage, or
+    when in-flight reservations alone keep the user at the limit.
+    """
+    cutoff_iso = _window_cutoff_iso()
+    candidate_bound, cutoff_iso = _utc_instant_cutoff_bounds(cutoff_iso)
+    with _lock:
+        conn = _get_conn()
+        rows = conn.execute(
+            f"""
+            SELECT created_at, call_type, provider, input_tokens, output_tokens,
+                   {_cached_sum_col(conn)}
+            FROM token_usage
+            WHERE user_id = ? AND {_utc_instant_predicate("created_at")}
+            ORDER BY julianday(created_at)
+            """,
+            (user_id, candidate_bound, cutoff_iso),
+        ).fetchall()
+    now = datetime.now(UTC).timestamp()
+    freed = 0.0
+    for created_at, call_type, provider, t_in, t_out, t_cached in rows:
+        freed += _row_cost(call_type, provider, t_in, t_out, t_cached)
+        if used >= limit and used - freed >= limit:
+            continue
+        created = datetime.fromisoformat(created_at)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        expiry = created.timestamp() + _ROLLING_WINDOW_SECONDS - now
+        return max(0, min(_ROLLING_WINDOW_SECONDS, int(expiry + 0.999)))
+    return _ROLLING_WINDOW_SECONDS
+
+
 def get_quota_state(user_id: str, *, is_pro: bool = False) -> QuotaState:
     """Return {fraction, reset_seconds} where fraction = remaining / limit."""
-    _limit, _used, fraction = _quota_view(user_id, is_pro=is_pro)
-    return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
+    limit, used, fraction = _quota_view(user_id, is_pro=is_pro)
+    return {"fraction": fraction, "reset_seconds": _reset_seconds(user_id, limit, used)}
 
 
 def get_all_quota_usage(*, is_pro_by_user: dict[str, bool] | None = None) -> dict[str, dict]:
@@ -537,5 +580,5 @@ def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -
     return {
         "exceeded": used >= limit,
         "fraction": fraction,
-        "reset_seconds": _ROLLING_WINDOW_SECONDS,
+        "reset_seconds": _reset_seconds(user_id, limit, used),
     }
