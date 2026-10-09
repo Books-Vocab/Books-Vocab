@@ -141,6 +141,7 @@ def _migrate_review_columns(engine: Engine) -> None:
         "review_streak": "INTEGER DEFAULT 0",
         "last_review_feedback": "INTEGER DEFAULT -1",
         "source_shared_card_guid": "TEXT",
+        "enrich_attempts": "INTEGER DEFAULT 0",
     }
     with engine.connect() as conn:
         ensure_columns(conn, "card", review_columns)

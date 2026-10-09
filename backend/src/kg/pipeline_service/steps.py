@@ -110,6 +110,11 @@ def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
     return result_map, skipped
 
 
+# Server-side cap on LLM enrich attempts per card: a card the model never returns
+# (or returns without pos/note) would otherwise be re-billed on every pipeline run.
+ENRICH_MAX_ATTEMPTS = 3
+
+
 async def _step_enrich(
     uid: str,
     user: UserRecord,
@@ -126,7 +131,11 @@ async def _step_enrich(
     if force:
         targets = eligible_cards
     else:
-        targets = [card for card in eligible_cards if not card.pos or not card.note]
+        targets = [
+            card
+            for card in eligible_cards
+            if (not card.pos or not card.note) and getattr(card, "enrich_attempts", 0) < ENRICH_MAX_ATTEMPTS
+        ]
 
     if not targets:
         logger.info("[%s] All cards already enriched", uid)
@@ -191,6 +200,11 @@ async def _step_enrich(
 
     if batch_errors and not got_results:
         raise RuntimeError(f"Enrich failed for all batches: {batch_errors[0]}")
+    # Consume one attempt per billed target so cards the LLM never resolves stop being
+    # re-billed. Tolerant of store doubles that predate the counter.
+    bump = getattr(cards, "bump_enrich_attempts", None)
+    if not force and bump is not None:
+        bump([card.id for card in targets])
     logger.info("[%s] Enriched %d cards", uid, updated)
     return updated
 

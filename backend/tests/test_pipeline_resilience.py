@@ -1129,6 +1129,40 @@ def test_step_enrich_matches_nfc_and_whitespace_variants(monkeypatch):
     assert updated == 1
 
 
+def test_step_enrich_stops_rebilling_cards_the_llm_never_returns(monkeypatch, tmp_path):
+    """A card the LLM never matches must stop being a target after the attempt cap."""
+    import kg.enrich as enrich_mod
+    from kg.cards import CardStore
+    from kg.pipeline_service.steps import ENRICH_MAX_ATTEMPTS
+
+    seen: list[int] = []
+
+    async def fake_stream(llm, targets, **kwargs):
+        seen.append(len(targets))
+        yield {"status": "running", "results": [{"word": "unrelated", "pos": "n.", "note": "n"}]}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    store = CardStore(path=tmp_path / "cards.db")
+    store.add("ghostword", "meaning")
+    for _ in range(ENRICH_MAX_ATTEMPTS + 2):
+        asyncio.run(_run_step_enrich("u_cap", store, _RecLogger()))
+    assert seen == [1] * ENRICH_MAX_ATTEMPTS
+    # force still re-enriches regardless of the counter
+    asyncio.run(_step_enrich_force(store))
+    assert seen[-1] == 1 and len(seen) == ENRICH_MAX_ATTEMPTS + 1
+
+
+async def _step_enrich_force(store) -> int:
+    return await _step_enrich(
+        "u_cap",
+        {"id": "u_cap", "dir": Path("/tmp/u_cap"), "config": {}},
+        card_store_factory=lambda d: store,
+        client_factory=lambda provider: None,
+        logger=_RecLogger(),
+        force=True,
+    )
+
+
 def test_judge_abort_salvages_completed_futures_after_failing_card():
     """#2699: c1 fails while c2/c3 already finished (billed, judge_log accepted=1).
 

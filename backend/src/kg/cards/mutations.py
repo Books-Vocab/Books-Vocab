@@ -371,6 +371,21 @@ class CardMutationMixin:
                 session.refresh(card)
             return card
 
+    def bump_enrich_attempts(self, card_ids: list[str]) -> int:
+        """Increment ``enrich_attempts`` for cards. Deliberately leaves ``updated_at`` alone
+        (server-only bookkeeping must not churn incremental sync)."""
+        if not card_ids:
+            return 0
+        with Session(self.engine) as session:
+            result = session.execute(
+                sa_update(Card)
+                .where(Card.id.in_(set(card_ids)))
+                .values(enrich_attempts=Card.enrich_attempts + 1)
+                .execution_options(synchronize_session=False)
+            )
+            session.commit()
+            return result.rowcount or 0
+
     def batch_update(self, updates: list[tuple[str, dict]]) -> int:
         """Update multiple cards in a single transaction. Returns count of actually changed cards."""
         if not updates:
