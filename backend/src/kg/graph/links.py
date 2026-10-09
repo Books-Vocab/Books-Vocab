@@ -292,7 +292,17 @@ class _LinksMixin:
             self._index_link(link)
             self._touch_links((link.id,))
             snapshot = self._links_to_serializable()
-        existing = self._persist_new_link(link, snapshot)
+        try:
+            existing = self._persist_new_link(link, snapshot)
+        except BaseException:
+            # Do not leave an un-persisted link visible as active in memory;
+            # callers would otherwise treat a failed create as a success.
+            with self._lock:
+                if self._links.get(link.id) is link:
+                    self._unindex_link(link)
+                    del self._links[link.id]
+                self._pending_link_ids.pop(link.id, None)
+            raise
         if existing is not None:
             return existing
         self._emit_graph_event(

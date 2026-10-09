@@ -542,3 +542,43 @@ def test_notebook_deleted_during_card_write_tombstones_created_target():
     assert calls == []
     assert cards.deleted == ["target-1"]  # soft delete (tombstone), not a hard delete
     assert cards.items["target-1"].is_deleted is True
+
+
+def test_link_persist_failure_is_failed_not_warning(tmp_path, monkeypatch):
+    from kg.graph import GraphStore, LinkKind
+
+    source = SimpleNamespace(
+        id="source-card",
+        content="source",
+        meaning="來源",
+        notebook_id="default",
+        is_deleted=False,
+        is_archived=False,
+    )
+    cards = Cards(source)
+    graph = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+
+    def boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(graph, "_flush_links", boom)
+
+    async def translate(**_kwargs):
+        return SimpleNamespace(t="發光的", p="adj.", r="luminous")
+
+    async def enrich(**_kwargs):
+        return None
+
+    def link(**kwargs):
+        return graph.add_link(kwargs["from_id"], kwargs["to_id"], LinkKind.CONTRASTS_WITH, 0.9, "r")
+
+    operation, _ = create_operation(user_id="user-1", notebook_id="default", idempotency_key="tap-5", payload=payload())
+    run(operation["operation_id"], cards, graph, translate_fn=translate, enrich_fn=enrich, link_fn=link)
+
+    result = get_operation("user-1", operation["operation_id"])
+    assert result["status"] == "failed"
+    assert not result.get("link_id")
