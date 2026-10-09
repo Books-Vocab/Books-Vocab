@@ -264,7 +264,10 @@ final class OverviewFlowUITests: UITestCase {
         try step("calendar", app: app) {
             overview.calendar.assertExists(timeout: 10)
             // #2736: the heatmap must open scrolled to the latest week, so
-            // today's cell is on screen without any manual scroll.
+            // today's cell is on screen without any manual scroll. Only
+            // discriminating where the 20-week grid (~335pt) overflows the
+            // card, i.e. a compact device; on the default Pro Max it fits and
+            // passes vacuously. Run with `--device <iPhone SE 3rd gen UDID>`.
             let today = app.descendants(matching: .any)
                 .matching(identifier: "calendar.day.\(expected.forecastDayKey)").firstMatch
             XCTAssertTrue(today.waitForExistence(timeout: 10), "today's heatmap cell missing")
