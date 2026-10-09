@@ -8,12 +8,14 @@ dispatch or embedding a second Python program in it.
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import os
 import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import NamedTuple
 from unittest import mock
@@ -265,6 +267,30 @@ def _decoded_env(
     return values, undecodable
 
 
+@contextlib.contextmanager
+def _isolated_backend_import() -> Iterator[None]:
+    """Make `kg` importable without leaving traces in the caller's process.
+
+    No `__pycache__` is written under backend/src, `sys.path` is restored, and all
+    logging is disabled: backend helpers (`kg.settings._env_int` and friends) log
+    `Env var X='<value>'` plus a traceback, which would leak a secret-bearing .env
+    value to stderr through Python's last-resort handler.
+    """
+    saved_path = list(sys.path)
+    saved_bytecode = sys.dont_write_bytecode
+    saved_disable = logging.root.manager.disable
+    sys.dont_write_bytecode = True
+    logging.disable(logging.CRITICAL)
+    if str(BACKEND_SRC) not in sys.path:
+        sys.path.insert(0, str(BACKEND_SRC))
+    try:
+        yield
+    finally:
+        logging.disable(saved_disable)
+        sys.dont_write_bytecode = saved_bytecode
+        sys.path[:] = saved_path
+
+
 def backend_startup_rules(
     text: str, environ: Mapping[str, str] | None = None
 ) -> list[RuleResult]:
@@ -273,14 +299,20 @@ def backend_startup_rules(
     Single source of truth: `kg.settings.load_settings` (JWT_SECRET) and
     `kg.llm.providers.validate_provider_routing` (routed provider API keys) are
     called as-is inside an isolated os.environ holding only the values Compose
-    would pass the container.  The per-rule JWT lines are derived from the
-    backend's own constants; if they ever disagree with the backend's verdict,
-    an extra failing rule says so (fail closed) instead of trusting either side.
-    Results never contain a secret value, only names and lengths.
+    would pass the container.  `$VAR` interpolation resolves from earlier lines
+    of the .env and from `environ`, which defaults to empty: the operator's own
+    shell never feeds the verdict (an undefined name fails closed).  The per-rule
+    JWT lines are derived from the backend's own constants; if they ever disagree
+    with the backend's verdict, an extra failing rule says so (fail closed)
+    instead of trusting either side.  Results never contain a secret value, only
+    names, lengths and fixed messages.
     """
+    with _isolated_backend_import():
+        return _backend_startup_rules(text, {} if environ is None else environ)
+
+
+def _backend_startup_rules(text: str, environ: Mapping[str, str]) -> list[RuleResult]:
     try:
-        if str(BACKEND_SRC) not in sys.path:
-            sys.path.insert(0, str(BACKEND_SRC))
         from kg import settings as backend_settings
         from kg.llm import providers
     except Exception as exc:  # noqa: BLE001 - any import failure must fail closed
@@ -371,9 +403,20 @@ def backend_startup_rules(
                         "llm-routing", True, "所有已路由 provider 的 API key 皆非空"
                     )
                 )
-            except (RuntimeError, ValueError) as exc:
+            except RuntimeError as exc:
+                # Built only from registry names and env var names, never a value.
+                results.append(RuleResult("llm-routing", False, f"RuntimeError: {exc}"))
+            except Exception as exc:  # noqa: BLE001 - never echo exception text
+                # ValueError from provider_for() quotes the routed value verbatim.
+                routed = " ".join(
+                    sorted(k for k in values if k.startswith(_ROUTING_PREFIX))
+                )
                 results.append(
-                    RuleResult("llm-routing", False, f"{type(exc).__name__}: {exc}")
+                    RuleResult(
+                        "llm-routing",
+                        False,
+                        f"{type(exc).__name__}：provider 名稱未知或 embed 路由到不支援 embeddings 的 provider；檢查 {routed or _ROUTING_PREFIX + '*'}",
+                    )
                 )
     for key in key_envs:
         if key in undecodable:

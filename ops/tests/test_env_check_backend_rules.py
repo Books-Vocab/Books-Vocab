@@ -8,7 +8,9 @@ the backend validators, so any backend rule change that env-check misses fails C
 
 from __future__ import annotations
 
+import io
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -243,3 +245,122 @@ def test_output_never_contains_secret_values() -> None:
     ):
         assert value not in out
     assert "GEMINI_API_KEY 長度 " in out
+
+
+# --- review hardening: secret hygiene, isolation, import side effects ---------------
+
+SENTINEL = "SUPERSECRETSENTINEL"
+
+
+def test_routing_exception_text_never_echoes_the_routed_value() -> None:
+    proc = _check(
+        f"JWT_SECRET={GOOD_SECRET}\nGEMINI_API_KEY=k\nLLM_PROVIDER_TRANSLATE={SENTINEL}\n"
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert _rule_lines(proc)["llm-routing"] == "✗"
+    assert SENTINEL not in proc.stdout + proc.stderr
+
+
+@pytest.mark.parametrize(
+    "var", ["EMBEDDING_DIM", "API_RATE_LIMIT", "PRO_DAILY_LIMIT_USD"]
+)
+def test_backend_logger_output_never_reaches_the_cli_streams(var: str) -> None:
+    # kg.settings._env_int/_env_float/_env_rate_limit log `Env var X='value'` plus a
+    # traceback through Python's last-resort stderr handler.
+    proc = _check(f"JWT_SECRET={GOOD_SECRET}\nGEMINI_API_KEY=k\n{var}={SENTINEL}\n")
+    assert SENTINEL not in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+    assert "Env var" not in proc.stderr
+
+
+def test_log_disabling_is_restored_after_the_run() -> None:
+    import logging
+
+    before = logging.root.manager.disable
+    env_drift.backend_startup_rules(f"JWT_SECRET={GOOD_SECRET}\nGEMINI_API_KEY=k\n", {})
+    assert logging.root.manager.disable == before
+
+
+def test_operator_shell_variables_do_not_feed_interpolation() -> None:
+    proc = subprocess.run(
+        [sys.executable, str(OPS / "env_drift.py"), "env-check"],
+        input="JWT_SECRET=${OPERATOR_JWT}\nGEMINI_API_KEY=k\n",
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": os.environ.get("PATH", ""), "OPERATOR_JWT": GOOD_SECRET},
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert _rule_lines(proc)["jwt-secret"] == "✗"
+    assert GOOD_SECRET not in proc.stdout + proc.stderr
+
+
+def test_default_environ_is_empty_not_the_process_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPERATOR_JWT", GOOD_SECRET)
+    results = env_drift.backend_startup_rules(
+        "JWT_SECRET=${OPERATOR_JWT}\nGEMINI_API_KEY=k\n"
+    )
+    assert any(r.rule == "jwt-secret" and not r.ok for r in results)
+
+
+def test_run_leaves_no_bytecode_and_no_sys_path_residue(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    shutil.copytree(
+        OPS.parent / "backend" / "src" / "kg",
+        src / "kg",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    script = (
+        "import sys, env_drift\n"
+        f"env_drift.BACKEND_SRC = __import__('pathlib').Path({str(src)!r})\n"
+        "before = list(sys.path); flag = sys.dont_write_bytecode\n"
+        f"r = env_drift.backend_startup_rules('JWT_SECRET={GOOD_SECRET}\\nGEMINI_API_KEY=k\\n', {{}})\n"
+        "assert all(x.ok for x in r), r\n"
+        "assert sys.path == before and sys.dont_write_bytecode == flag\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=OPS,
+        env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(OPS)},
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not list(src.rglob("__pycache__"))
+
+
+def test_unimportable_backend_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_src = str(OPS.parent / "backend" / "src")
+    for name in [m for m in sys.modules if m == "kg" or m.startswith("kg.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != real_src])
+    monkeypatch.setattr(env_drift, "BACKEND_SRC", Path("/nonexistent/backend/src"))
+    results = env_drift.backend_startup_rules(f"JWT_SECRET={GOOD_SECRET}\n", {})
+    assert [(r.rule, r.ok) for r in results] == [("backend-import", False)]
+    assert "ModuleNotFoundError" in results[0].detail
+
+
+def test_cli_exits_nonzero_when_backend_is_stricter(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def stricter() -> object:
+        raise RuntimeError("JWT_SECRET has a rule env-check does not know")
+
+    monkeypatch.setattr(backend_settings, "load_settings", stricter)
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(f"JWT_SECRET={GOOD_SECRET}\nGEMINI_API_KEY=k\n")
+    )
+    assert env_drift.env_check_main([]) == 1
+    assert "✗ [jwt-backend-agreement]" in capsys.readouterr().out
+
+
+def test_rule_disagreement_fails_closed_when_backend_is_laxer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backend_settings, "load_settings", lambda: object())
+    results = env_drift.backend_startup_rules(
+        "JWT_SECRET=short\nGEMINI_API_KEY=k\n", {}
+    )
+    assert any(r.rule == "jwt-backend-agreement" and not r.ok for r in results)

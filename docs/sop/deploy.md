@@ -310,6 +310,7 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/Users/chenliangyu/project/kg/backend/certs/A
 `./devops.sh env-check` 現在會同時檢查：
 - 必要 App Store 驗簽 key 是否存在
 - unsigned fallback 開關是否被錯誤打開
+- backend 自己的啟動規則（直接呼叫 `kg.settings.load_settings` 與 `kg.llm.providers.validate_provider_routing`）：`JWT_SECRET` 存在、非佔位值、長度 >= 32，以及所有已路由 LLM provider 的 API key 非空；細節與 gate 範圍見 `docs/runbook/system.md`「部署前 env-check 的 backend 啟動規則」。env-check 不在 `deploy` 內自動執行，部署前請手動跑 `./ops/devops_kg_safe.sh env-check`；`release_train` 會執行並阻擋
 
 `./devops.sh env-drift` 會在 deploy 後檢查本地/遠端 `.env` 是否一致：
 - 一般 key 要求值完全相同

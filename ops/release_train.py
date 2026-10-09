@@ -178,7 +178,10 @@ def evaluate_env(output: str | None) -> Finding:
     ]
     if missing:
         return Finding(
-            "env", "block", f"{len(missing)} required env var(s) missing", missing
+            "env",
+            "block",
+            f"{len(missing)} env-check failure(s) (missing var, unsafe flag or backend startup rule)",
+            missing,
         )
     return Finding("env", "ok", "required production env present")
 
