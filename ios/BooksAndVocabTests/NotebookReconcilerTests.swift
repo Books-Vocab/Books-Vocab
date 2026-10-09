@@ -258,6 +258,37 @@ struct NotebookReconcilerTests {
         #expect(entry.syncAction == .delete, "tombstone 真本下 entry 應 cascade queueDelete")
     }
 
+    /// #2730：caller 傳入的 allEntries 只含已同步且未封存者（knowledgeListPredicate），
+    /// pending / 封存的卡不在其中，cascade 必須以 notebookId 自行查詢而非依賴該陣列。
+    @Test func cascade_includes_pending_and_archived_entries_outside_passed_list() throws {
+        let ctx = try makeContext()
+        let synced = VocabularyEntry(word: "a", translation: "m", context: "c", bookTitle: "B")
+        synced.notebookId = "nb-x"
+        synced.syncStatus = 1
+        let pending = VocabularyEntry(word: "b", translation: "m", context: "c", bookTitle: "B")
+        pending.notebookId = "nb-x"
+        pending.syncStatus = 0
+        let archived = VocabularyEntry(word: "c", translation: "m", context: "c", bookTitle: "B")
+        archived.notebookId = "nb-x"
+        archived.syncStatus = 1
+        archived.isArchived = true
+        let other = VocabularyEntry(word: "d", translation: "m", context: "c", bookTitle: "B")
+        other.notebookId = "nb-y"
+        [synced, pending, archived, other].forEach { ctx.insert($0) }
+        try ctx.save()
+
+        NotebookReconciler.cascadeDeleteEntries(
+            matching: ["nb-x"],
+            allEntries: [synced],
+            modelContext: ctx
+        )
+
+        #expect(synced.syncAction == .delete)
+        #expect(pending.syncAction == .delete, "pending 卡不可被漏掉")
+        #expect(archived.syncAction == .delete, "封存卡不可被漏掉")
+        #expect(other.syncAction != .delete, "他本子的卡不可被刪")
+    }
+
     @Test func reconcile_tombstone_removes_notebook_settings_projection() throws {
         let ctx = try makeContext()
         let notebook = localNB("nb-deleted", syncStatus: 1)
