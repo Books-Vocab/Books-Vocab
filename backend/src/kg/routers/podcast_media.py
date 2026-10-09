@@ -404,6 +404,7 @@ def _serve_audio_from_s3(
     is_s3_not_found_fn: IsS3NotFound,
     iter_s3_body: IterS3Body,
     logger_: LoggerProtocol,
+    fmt_cache: MutableMapping[tuple[str | None, str], str] | None = None,
 ) -> StreamingResponse:
     cfg = settings_fn(request)
     s3 = s3_client_fn(request)
@@ -425,6 +426,8 @@ def _serve_audio_from_s3(
             else 0
         )
         if is_s3_not_found_fn(exc, s3) or http_status == 404:
+            if fmt_cache is not None:
+                fmt_cache.pop((cfg.podcast_bucket, series_id), None)
             raise HTTPException(status_code=404, detail="Audio not found") from None
         if http_status == 416:
             raise HTTPException(status_code=416, detail="Range not satisfiable") from None

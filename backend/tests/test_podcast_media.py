@@ -880,3 +880,47 @@ class TestServeAudioFromS3:
             )
         assert ei.value.status_code == 502
         mock_logger.error.assert_called_once()
+
+
+class TestServeAudioEvictsStaleFormat:
+    """#2683: a 404 on the cached-format object must drop the cached format."""
+
+    def test_404_evicts_series_format_cache(self):
+        class _NoSuchKey(Exception):
+            pass
+
+        fake_s3 = MagicMock()
+        fake_s3.exceptions.NoSuchKey = _NoSuchKey
+        fake_s3.get_object.side_effect = _NoSuchKey()
+        request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    kg_settings=SimpleNamespace(
+                        podcast_bucket="bucket",
+                        podcast_bucket_region="ap-northeast-1",
+                        podcast_bucket_endpoint_url=None,
+                    )
+                )
+            )
+        )
+        cache = {("bucket", "series_x"): "m4a", ("bucket", "other"): "mp3"}
+
+        with pytest.raises(HTTPException) as ei:
+            media_mod._serve_audio_from_s3(
+                request,
+                "series_x",
+                1,
+                range_header=None,
+                stem="audio",
+                settings_fn=media_mod._settings,
+                s3_client_fn=lambda req: fake_s3,
+                audio_filename=lambda req, sid, ep, stem: "audio.m4a",
+                media_type_for=media_mod._media_type_for,
+                is_s3_not_found_fn=lambda exc, s3: True,
+                iter_s3_body=lambda body, chunk_size=65536: media_mod._iter_s3_body(body, chunk_size),
+                logger_=MagicMock(),
+                fmt_cache=cache,
+            )
+        assert ei.value.status_code == 404
+        assert ("bucket", "series_x") not in cache
+        assert ("bucket", "other") in cache
