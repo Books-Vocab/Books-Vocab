@@ -279,7 +279,9 @@ async def enrich_cards_stream(
                 step_name="Enrich stream",
             )
             results = _parse_enrich_response(response.choices[0].message.content)
-            _put_terminal({"type": "success", "results": results, "count": len(batch)})
+            _put_terminal(
+                {"type": "success", "results": results, "count": len(batch), "card_ids": [c.id for c in batch]}
+            )
         except QuotaExceededError as e:
             exhausted.set()
             _put_terminal(
@@ -333,6 +335,7 @@ async def enrich_cards_stream(
                     "total": total_cards,
                     "detail": f"Enriched {completed_cards}/{total_cards} cards...",
                     "results": msg["results"],
+                    "card_ids": msg["card_ids"],
                 }
             elif msg["type"] == "retry":
                 yield {

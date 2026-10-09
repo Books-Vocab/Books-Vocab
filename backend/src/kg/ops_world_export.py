@@ -190,6 +190,7 @@ EXPORT_IGNORED_CARD_COLUMNS: dict[str, str] = {
     "updated_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
     "is_deleted": "查詢過濾條件，非可重放值（軟刪卡不進 payload）",
     "content_nfc_lower": "content 的衍生索引，由寫面自動維護",
+    "enrich_attempts": "server-only enrich 重試計數器，不同步、不屬世界內容面",
 }
 
 

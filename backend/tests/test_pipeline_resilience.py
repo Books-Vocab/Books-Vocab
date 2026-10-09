@@ -89,6 +89,7 @@ class _CardsNeedEnrich:
                 content="evoke",
                 pos=None,
                 note=None,
+                enrich_attempts=0,
                 difficulty=None,
                 is_deleted=False,
                 notebook_id="default",
@@ -988,7 +989,7 @@ class _CardsRecordingUpdates:
         self._fail = fail
 
     def all(self, include_deleted: bool = False, notebook_id: str | None = None):
-        return [SimpleNamespace(id="c1", content="evoke", pos=None, note=None)]
+        return [SimpleNamespace(id="c1", content="evoke", pos=None, note=None, enrich_attempts=0)]
 
     def batch_update(self, updates):
         if self._fail is not None:
@@ -1124,7 +1125,7 @@ def test_step_enrich_matches_nfc_and_whitespace_variants(monkeypatch):
 
     monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
     cards = _CardsRecordingUpdates()
-    cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None)]
+    cards.all = lambda **kw: [SimpleNamespace(id="c1", content="café", pos=None, note=None, enrich_attempts=0)]
     updated = asyncio.run(_run_step_enrich("u_nfc", cards, _RecLogger()))
     assert updated == 1
 
@@ -1139,7 +1140,11 @@ def test_step_enrich_stops_rebilling_cards_the_llm_never_returns(monkeypatch, tm
 
     async def fake_stream(llm, targets, **kwargs):
         seen.append(len(targets))
-        yield {"status": "running", "results": [{"word": "unrelated", "pos": "n.", "note": "n"}]}
+        yield {
+            "status": "running",
+            "card_ids": [t.id for t in targets],
+            "results": [{"word": "unrelated", "pos": "n.", "note": "n"}],
+        }
 
     monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
     store = CardStore(path=tmp_path / "cards.db")
@@ -1150,6 +1155,29 @@ def test_step_enrich_stops_rebilling_cards_the_llm_never_returns(monkeypatch, tm
     # force still re-enriches regardless of the counter
     asyncio.run(_step_enrich_force(store))
     assert seen[-1] == 1 and len(seen) == ENRICH_MAX_ATTEMPTS + 1
+
+
+def test_step_enrich_failed_batch_does_not_consume_an_attempt(monkeypatch, tmp_path):
+    """Only cards in a batch that answered (success terminal) lose an attempt; errored batches don't."""
+    import kg.enrich as enrich_mod
+    from kg.cards import CardStore
+
+    store = CardStore(path=tmp_path / "cards.db")
+    answered = store.add("answered", "meaning")
+    errored = store.add("errored", "meaning")
+
+    async def fake_stream(llm, targets, **kwargs):
+        yield {
+            "status": "running",
+            "card_ids": [answered.id],
+            "results": [{"word": "unrelated", "pos": "n.", "note": "n"}],
+        }
+        yield {"status": "error", "detail": "provider 5xx", "results": []}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", fake_stream)
+    asyncio.run(_run_step_enrich("u_partial", store, _RecLogger()))
+    attempts = {c.id: c.enrich_attempts for c in store.all()}
+    assert attempts == {answered.id: 1, errored.id: 0}
 
 
 async def _step_enrich_force(store) -> int:

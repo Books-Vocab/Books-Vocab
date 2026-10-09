@@ -112,6 +112,9 @@ def _index_enrichment_results(results: Any) -> tuple[dict[str, dict], int]:
 
 # Server-side cap on LLM enrich attempts per card: a card the model never returns
 # (or returns without pos/note) would otherwise be re-billed on every pipeline run.
+# An attempt is consumed only by cards in a batch that answered (success terminal);
+# batches that errored (transient 5xx after retries) and the all-batches-fail path
+# consume none, so an outage never permanently excludes a card. Force bypasses the cap.
 ENRICH_MAX_ATTEMPTS = 3
 
 
@@ -134,7 +137,7 @@ async def _step_enrich(
         targets = [
             card
             for card in eligible_cards
-            if (not card.pos or not card.note) and getattr(card, "enrich_attempts", 0) < ENRICH_MAX_ATTEMPTS
+            if (not card.pos or not card.note) and card.enrich_attempts < ENRICH_MAX_ATTEMPTS
         ]
 
     if not targets:
@@ -158,6 +161,7 @@ async def _step_enrich(
     updated = 0
     batch_errors: list[str] = []
     got_results = False
+    answered_ids: list[str] = []
 
     # aclosing: a consumer-side failure (e.g. SQLite busy in batch_update) must
     # shut the stream's executor down now, not at GC, and before _run_step's
@@ -172,6 +176,7 @@ async def _step_enrich(
 
             if msg.get("results"):
                 got_results = True
+                answered_ids.extend(msg.get("card_ids", ()))
                 result_map, skipped = _index_enrichment_results(msg["results"])
                 if skipped:
                     logger.warning("[%s] Skipped %d malformed enrichment items", uid, skipped)
@@ -200,11 +205,10 @@ async def _step_enrich(
 
     if batch_errors and not got_results:
         raise RuntimeError(f"Enrich failed for all batches: {batch_errors[0]}")
-    # Consume one attempt per billed target so cards the LLM never resolves stop being
-    # re-billed. Tolerant of store doubles that predate the counter.
-    bump = getattr(cards, "bump_enrich_attempts", None)
-    if not force and bump is not None:
-        bump([card.id for card in targets])
+    # Consume one attempt per card whose batch answered so cards the LLM never resolves
+    # stop being re-billed.
+    if not force and answered_ids:
+        cards.bump_enrich_attempts(answered_ids)
     logger.info("[%s] Enriched %d cards", uid, updated)
     return updated
 
