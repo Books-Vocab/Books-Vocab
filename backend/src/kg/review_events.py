@@ -220,6 +220,27 @@ class ReviewEventStore:
         with Session(self.engine) as session:
             return list(session.exec(self._since_statement(since)).all())
 
+    def get_page(self, since: datetime | None, limit: int) -> list[ReviewEvent]:
+        """At most ``limit`` events in ingestion order after ``since`` (None = from start).
+
+        A page never ends inside a run of equal ``ingested_at``: the run is completed,
+        so the timestamp-only cursor (``ingested_at > cursor``) cannot skip the tail of
+        a tie (legacy rows backfilled from ``reviewed_at`` may share an instant).
+        """
+        with Session(self.engine) as session:
+            if since is None:
+                statement = select(ReviewEvent).order_by(ReviewEvent.ingested_at, ReviewEvent.event_id)
+            else:
+                statement = self._since_statement(since)
+            rows = list(session.exec(statement.limit(limit)).all())
+            if len(rows) == limit:
+                last = rows[-1]
+                tail = select(ReviewEvent).where(
+                    ReviewEvent.ingested_at == last.ingested_at, ReviewEvent.event_id > last.event_id
+                )
+                rows.extend(session.exec(tail.order_by(ReviewEvent.event_id)).all())
+            return rows
+
     def close(self) -> None:
         if self.engine is not None:
             self.engine.dispose()
@@ -230,15 +251,20 @@ def push_review_events(entries: list[ReviewEventEntry], *, event_store: Any) -> 
     return event_store.insert_many(entries)
 
 
-def pull_review_events(*, since: str | None, event_store: Any) -> tuple[list[ReviewEventEntry], str | None]:
-    """Return (entries, cursor). ``cursor`` is the max ingestion timestamp of the
+# Max events per pull page. iOS (KGService+ReviewEvents.swift) loops until a page
+# returns fewer than this many entries, so keep the two constants in step.
+REVIEW_EVENTS_PAGE_SIZE = 1000
+
+
+def pull_review_events(
+    *, since: str | None, event_store: Any, page_size: int = REVIEW_EVENTS_PAGE_SIZE
+) -> tuple[list[ReviewEventEntry], str | None]:
+    """Return (entries, cursor), at most ``page_size`` entries (a tie run at the page
+    boundary is completed, so a page may exceed it). ``cursor`` is the max ingestion timestamp of the
     returned batch, to be sent back as ``since`` on the next pull. An empty batch
     leaves the caller's cursor unchanged as the same canonical UTC instant."""
     parsed_since = _parse_iso8601_timestamp(since) if since is not None else None
-    if parsed_since is not None:
-        events = event_store.get_since(parsed_since)
-    else:
-        events = event_store.all()
+    events = event_store.get_page(parsed_since, page_size)
     entries = [_entry_from_event(event) for event in events]
     if events:
         cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events))
