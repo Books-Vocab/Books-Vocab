@@ -461,3 +461,33 @@ def test_self_service_delete_drops_subscription_index_bucket_when_emptied(tmp_pa
 
     saved = json.loads((tmp_path / "users.json").read_text())
     assert "_subscription_index" not in saved
+
+
+# ── #2702: an asset registered during the remote phase is erased too ─────────
+
+
+def _add_library_book(data_dir: Path, uid: str, key: str) -> None:
+    store = LibraryStore(data_dir / "users" / uid / "library.db")
+    try:
+        with Session(store.engine) as session:
+            session.add(LibraryBook(id=f"late-{key}", title="late", asset_storage="object", asset_object_key=key))
+            session.commit()
+    finally:
+        store.close()
+
+
+def test_asset_registered_during_remote_phase_is_deleted_before_tombstone(tmp_path):
+    _seed_library_asset(tmp_path, "canonical", "library/canonical/book/asset.epub")
+    late_key = "library/canonical/other/asset.epub"
+    client = _LockProbingObjectClient(
+        lock_path=tmp_path / "users.json.lock",
+        on_first_delete=lambda: _add_library_book(tmp_path, "canonical", late_key),
+        data_dir=tmp_path,
+    )
+    users_data = {"canonical": {"linked_ids": [], "config": {}}}
+
+    _call_delete(tmp_path, users_data, client, user_id="canonical")
+
+    assert late_key in client.calls
+    assert client.deleted_under_lock == []
+    assert not (tmp_path / "users" / "canonical").exists()

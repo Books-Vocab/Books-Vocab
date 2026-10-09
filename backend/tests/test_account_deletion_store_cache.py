@@ -241,3 +241,41 @@ def test_delete_keeps_removing_and_evicting_linked_ids_when_one_rmtree_fails(tmp
         assert any(event == ("evict", uid) and i > last_rmtree for i, event in enumerate(events)), (
             f"{uid} not evicted after the failed deletion: {events}"
         )
+
+
+# ── #2701: a failed rmtree must not leave a re-attachable directory ───────────
+
+
+def test_failed_rmtree_does_not_strand_data_a_relogin_would_reattach(tmp_path, monkeypatch):
+    error, _ = _delete_linked_pair(tmp_path, monkeypatch, failing_uid="a")
+
+    assert error.status_code == 500
+    # resolve_current_user does users/<uid>.mkdir(exist_ok=True): whatever sits
+    # at that path after the failure is what a same-sub re-login gets.
+    assert not (tmp_path / "users" / "a").exists()
+    assert not (tmp_path / "users" / "a" / "cards.db").exists()
+
+
+def test_next_deletion_sweeps_quarantined_leftovers(tmp_path, monkeypatch):
+    _delete_linked_pair(tmp_path, monkeypatch, failing_uid="a")
+    leftovers = list((tmp_path / ".deleting").rglob("cards.db"))
+    assert leftovers, "failed rmtree should leave the data quarantined, not in users/"
+
+    (tmp_path / "users" / "c").mkdir(parents=True)
+    from unittest.mock import MagicMock
+
+    import kg.user_handlers as handlers
+    from kg.user_store import collect_account_ids_for_deletion
+
+    users = {"c": {"id": "c"}}
+    handlers.delete_user_account_response(
+        {"id": "c"},
+        users_lock_file=tmp_path / "users.json.lock",
+        load_users=lambda: users,
+        save_users=lambda payload: None,
+        collect_account_ids_for_deletion=collect_account_ids_for_deletion,
+        data_dir=tmp_path,
+        logger=MagicMock(),
+    )
+
+    assert not list((tmp_path / ".deleting").rglob("cards.db"))
