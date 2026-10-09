@@ -5,7 +5,9 @@
 #   --draft  印 docs/reference/changelog/<ios|api>.md 格式的 "Unreleased" 區段，供發版 agent 策展後貼入
 #            <since-ref> 覆寫起點（例 ios/2.0.1+12；build tag 不算 released，預設起點是最近 released tag）
 # 來源: first-parent 的 PR 標題 + conventional prefix + 路徑（ios/BooksAndVocab/、backend/src/）。
-#   PR 標題：批次唯讀 gh（一次 gh pr list）取真標題；離線／gh 失敗退回 merge body 首行（常是 PR 最後一個 commit 主旨，可能失真）。
+#   PR 標題：批次唯讀 gh（一次 gh pr list）取標題，對一般／squash PR 比 merge body 首行準；離線／gh 失敗退回 merge body 首行。
+#   注意 lane PR 的 GitHub 標題＝最後一個 commit 主旨（#2411 的真標題就是 test(billing): ...），標題救不了它——
+#   「Needs curation」清單才是真正的安全網。gh 取滿 --limit 時較舊 PR 會退回 merge body，會在 stderr 警告（count seam: KG_PR_TITLES_LIMIT）。
 #   測試 seam：KG_PR_TITLES_FILE=<TSV: 編號<TAB>標題>；設了就只讀它、絕不呼叫 gh（空檔 = 強制離線）。
 # test/fixture/chore/ci/build/style/refactor/docs/ops 一律是 internal，只計數，永遠不算功能；
 # 但被判 internal 卻碰到使用者可見來源路徑者，列在「needs curation」清單，不靜默丟棄。
@@ -55,18 +57,23 @@ fi
 SINCE="${LAST_TAG:-initial}"
 RANGE="${LAST_TAG:+${LAST_TAG}..HEAD}"
 
-# PR 編號 → 真標題。merge body 首行常是該 PR 最後一個 commit 主旨（例 #2411 body 是 test(...) 但實為 entitlement 修復）。
+# PR 編號 → GitHub 標題（一般／squash PR 較準）。merge body 首行是該 PR 最後一個 commit 主旨；lane PR 的標題也是如此，
+# 兩者都可能把真修復標成 test(...)（例 #2411）——這類由 Needs curation 清單兜底，不靠標題。
+TITLES_LIMIT="${KG_PR_TITLES_LIMIT:-1000}"
 TITLES="$(mktemp)"; trap 'rm -f "$TITLES"' EXIT
 if [ -n "$(git log --first-parent --merges --format=%s ${RANGE:+"$RANGE"} | grep -m1 '^Merge pull request #')" ]; then
   if [ "${KG_PR_TITLES_FILE+set}" = set ]; then
     cat "$KG_PR_TITLES_FILE" > "$TITLES"
   elif command -v gh >/dev/null 2>&1 \
-    && gh pr list --state merged --limit 1000 --json number,title --jq '.[] | "\(.number)\t\(.title)"' > "$TITLES" 2>/dev/null; then
+    && gh pr list --state merged --limit "$TITLES_LIMIT" --json number,title --jq '.[] | "\(.number)\t\(.title)"' > "$TITLES" 2>/dev/null; then
     :
   else
     : > "$TITLES"
     echo "⚠ 無法取得 PR 標題（gh 不可用／離線），退回 merge body 首行，分類可能失真" >&2
   fi
+  NTITLES=$(wc -l < "$TITLES" | tr -d ' ')
+  [ "$NTITLES" -lt "$TITLES_LIMIT" ] \
+    || echo "⚠ PR 標題數已達上限（${NTITLES} >= ${TITLES_LIMIT}）：較舊 PR 退回 merge body 首行，分類可能失真；請調高 KG_PR_TITLES_LIMIT" >&2
 fi
 
 # 每筆 first-parent commit → "class<TAB>title"；class ∈ feat|fix|imp|int，只留與本 component 相關者。

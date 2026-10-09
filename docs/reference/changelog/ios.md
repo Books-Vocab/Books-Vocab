@@ -17,10 +17,10 @@ verified_against: 3d929f414bfb4b61aec283aea70f40db7acf739c
 （自 `ios/2.0.1+12`，截至 main `3d929f414`，2026-10-09）
 
 ### 使用者說明（zh-Hant）
-新增連結（Add Link）全面改版：手動建立單字連結更穩、取消時立即移除待處理項目。閱讀器字級與標註控制統一、可調範圍有界。匯入 TXT 支援 GB18030／Big5 並正確處理特殊字元；同步、單字本與統計多處修正，包括跨帳號切換、刪除單字本、遠端改名與排序不穩。CSV 匯出已防範試算表公式注入；登入失敗時會顯示離線原因。更多介面字串補齊本地化。
+新增連結（Add Link）全面改版：手動建立單字連結更穩、取消時立即移除待處理項目。閱讀器字級與標註控制統一、可調範圍有界。匯入 TXT 檔時，支援以舊式編碼儲存的繁體與簡體中文檔案，並正確處理特殊字元；同步、單字本與統計多處修正，包括跨帳號切換、刪除單字本、遠端改名與排序不穩。CSV 匯出更安全；登入失敗時會顯示離線原因。更多介面字串補齊本地化。
 
 ### What's New (en)
-Add Link is rebuilt: manual links are more reliable and cancelling clears the pending item at once. Reader typography and highlight controls are unified and bounded. TXT import handles GB18030/Big5, CSV export is protected from spreadsheet formula injection, and many sync, notebook and stats fixes land, along with missing localizations.
+Add Link is rebuilt: manual links are more reliable and cancelling clears the pending item at once. Reader typography and highlight controls are unified and bounded. TXT import now reads Traditional and Simplified Chinese files saved in legacy encodings, CSV export is safer, and many sync, notebook and stats fixes land, along with missing localizations.
 
 ### Changes
 #### New

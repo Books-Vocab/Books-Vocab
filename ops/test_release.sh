@@ -1147,25 +1147,39 @@ cm_pr() {  # <n> <branch> <file-content> <commit-subject> ：在 branch 上改 b
   git -C "$fx_cm" checkout -q main
   git -C "$fx_cm" merge -q --no-ff -m "Merge pull request #$1 from Books-Vocab/$2" -m "$4" "$2"
 }
-cm_pr 2411 lane-grace x1 "test(billing): grace-period entitlement fixture"
+cm_pr 2411 lane-grace x1 "test(billing): grace-period entitlement fixture"   # lane PR：真 GitHub 標題也是 test(...)，實為 entitlement 修復
 cm_pr 2412 lane-cache x2 "speed up the latest cache lookups"
 cm_pr 2413 lane-zh x3 "新增 發票匯出"
-printf '2411\tfix(billing): bound grace-period entitlement by grace_period_expires_at\n2413\t新增 發票匯出\n' > "$TMP5/cm_titles.tsv"
+cm_pr 2414 lane-cursor x4 "wip: cursor tweak"                               # 一般 PR：body 首行失真，真標題才對
+printf '2411\ttest(billing): grace-period entitlement fixture\n2413\t新增 發票匯出\n2414\tfix(api): reject empty cursor\n' > "$TMP5/cm_titles.tsv"
 cm_off="$(cm_run api --draft 2>&1)"
-echo "$cm_off" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'grace-period entitlement fixture' \
-  && fail_t "offline fallback should keep the (misleading) body title as internal: $cm_off" \
-  || ok "without a real title the test(...) body stays internal"
-echo "$cm_off" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'grace-period entitlement fixture' \
-  && ok "source-touching internal merge is listed under needs-curation" || fail_t "needs-curation list missing it: $cm_off"
+echo "$cm_off" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'reject empty cursor' \
+  && fail_t "no title map, yet the real title appeared: $cm_off" \
+  || ok "without a title map an ordinary PR falls back to its (misleading) merge body"
 cm_on="$(CM_TITLES="$TMP5/cm_titles.tsv" cm_run api --draft 2>&1)"
-echo "$cm_on" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'bound grace-period entitlement.*#2411' \
-  && ok "real PR title (seam) classifies #2411 as Fixed, with the PR number appended" || fail_t "real title ignored: $cm_on"
-echo "$cm_on" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'grace' \
-  && fail_t "classified-correctly merge still listed as needs-curation: $cm_on" || ok "correctly classified merge is not in needs-curation"
+echo "$cm_on" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'reject empty cursor.*#2414' \
+  && ok "real PR title (seam) classifies an ordinary PR as Fixed, with the PR number appended" || fail_t "real title ignored: $cm_on"
+for cm_which in off on; do
+  cm_txt="$cm_off"; [ "$cm_which" = on ] && cm_txt="$cm_on"
+  echo "$cm_txt" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'grace-period entitlement' \
+    && fail_t "lane PR with a test(...) title was classified Fixed ($cm_which): $cm_txt" \
+    || ok "lane PR titled test(...) is not auto-classified as a fix ($cm_which)"
+  echo "$cm_txt" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'grace-period entitlement.*#2411' \
+    && ok "lane PR #2411 lands in Needs curation ($cm_which)" || fail_t "#2411 missing from Needs curation ($cm_which): $cm_txt"
+done
+echo "$cm_on" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'reject empty cursor' \
+  && fail_t "correctly classified merge still listed as needs-curation: $cm_on" || ok "correctly classified merge is not in needs-curation"
 echo "$cm_on" | awk '/^#### Improved/{f=1;next} /^#/{f=0} f' | grep -q 'latest cache' \
   && ok "'latest' does not match the test keyword (word boundary)" || fail_t "'speed up the latest cache' misclassified: $cm_on"
-echo "$cm_on" | awk '/^### Internal/{f=1;next} /^###/{f=0} f' | grep -q '共 0 項' \
-  && ok "no merge counted internal once real titles apply" || fail_t "internal count wrong: $cm_on"
+echo "$cm_on" | awk '/^### Internal/{f=1;next} /^###/{f=0} f' | grep -q '共 1 項' \
+  && ok "only the lane test(...) PR is counted internal" || fail_t "internal count wrong: $cm_on"
+# gh --limit 撞頂：較舊 PR 標題會靜默退回 merge body → 必須警告（用 count seam KG_PR_TITLES_LIMIT）
+cm_warn="$(KG_PR_TITLES_LIMIT=3 KG_PR_TITLES_FILE="$TMP5/cm_titles.tsv" bash "$fx_cm/ops/release_changelog.sh" api --draft 2>&1 >/dev/null)" || true
+echo "$cm_warn" | grep -q '已達上限' \
+  && ok "titles count == limit warns on stderr" || fail_t "no limit warning: $cm_warn"
+cm_warn="$(KG_PR_TITLES_LIMIT=4 KG_PR_TITLES_FILE="$TMP5/cm_titles.tsv" bash "$fx_cm/ops/release_changelog.sh" api --draft 2>&1 >/dev/null)" || true
+echo "$cm_warn" | grep -q '已達上限' \
+  && fail_t "warned below the limit: $cm_warn" || ok "titles count below the limit does not warn"
 echo "$cm_on" | grep -q '新增 發票匯出' \
   && ok "non-ASCII PR title survives the title map and classifier" || fail_t "non-ASCII title lost: $cm_on"
 echo "$cm_on" | awk '/^#### New/{f=1;next} /^#/{f=0} f' | grep -q '新增 發票匯出' \

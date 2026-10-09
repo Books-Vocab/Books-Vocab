@@ -18,10 +18,10 @@ verified_against: 3d929f414bfb4b61aec283aea70f40db7acf739c
 （`origin/prod` `91dc4d4ea` 之後，截至 main `3d929f414`，2026-10-09）
 
 ### 摘要（zh-Hant）
-超出範圍或非有限數值的輸入現在回 400／422，而非 500；新增靜態頁 HEAD、robots.txt、sitemap.xml 與 favicon。共享牌組複製的卡片會被增量同步拉到，封存／刪除單字會讓相連單字同步更新。帳號刪除會清除全域日誌與訂閱索引。寬限期（billing grace period）訂閱的權限改以 Apple 提供的寬限到期時間為界，不再無限期保留。
+超出範圍或非有限數值的輸入現在回 400／422，而非 500；新增靜態頁 HEAD、robots.txt、sitemap.xml 與 favicon。共享牌組複製的卡片會被增量同步拉到，封存／刪除單字會讓相連單字同步更新。帳號刪除會清除全域日誌與訂閱索引。寬限期（billing grace period）訂閱的權限改以 Apple 提供的寬限到期時間為界，不再無限期保留。App Store 交易現在綁定到購買者的帳號，不能被其他帳號認領；存取記錄中的 token／code／state 參數會被遮蔽。
 
 ### Summary (en)
-Out-of-range and non-finite inputs now return 400/422 instead of 500; static pages answer HEAD and robots.txt, sitemap.xml and favicon.ico are served. Copied shared-deck cards reach incremental pulls, archiving or deleting a word refreshes its linked peers, and account deletion also purges global log stores and the subscription index. Billing-grace-period entitlement is now bounded by Apple's grace expiry instead of lasting indefinitely.
+Out-of-range and non-finite inputs now return 400/422 instead of 500; static pages answer HEAD and robots.txt, sitemap.xml and favicon.ico are served. Copied shared-deck cards reach incremental pulls, archiving or deleting a word refreshes its linked peers, and account deletion also purges global log stores and the subscription index. Billing-grace-period entitlement is now bounded by Apple's grace expiry instead of lasting indefinitely. App Store transactions are now bound to the purchasing account and cannot be claimed by another one, and token/code/state values are redacted from access logs.
 
 ### Changes
 #### New
@@ -30,6 +30,7 @@ Out-of-range and non-finite inputs now return 400/422 instead of 500; static pag
 - 卡片回應帶出 reader／review 偏好；翻譯結果快取前先驗證型別；LLM 供應商路由於啟動時驗證
 - 手動連結先經 judge 再解除封鎖，刪除已棄用連結會被拒絕；連結變更的 reconcile 只掃被改的一對
 - 計費：embedding 與 chat prompt-cache 價格校正；已驗證的同步／對帳可通過通知水位
+- 全域單字列表消除 N+1 查詢（#2402，`5bdc6b957`）
 - review-event 增量拉取改走索引（`ingested_at` 一次性遷移為標準 UTC 格式），順序不變 (#2387)
 #### Fixed
 - 輸入：審查事件時間戳超出範圍回 400；非有限驗證輸入回 422；review counter 上限 int32、notebook sort_order 超界回 422；`DeckCopyRequest.notebookName` ≤ 100 字；單字 root_form 與 source 欄位有長度上限
@@ -38,7 +39,11 @@ Out-of-range and non-finite inputs now return 400/422 instead of 500; static pag
 - 單字：混合大小寫字詞不再被 `_clean_content` 破壞；與靜態 PATCH 路徑同名的單字內容編輯可轉發；客戶端 highlight 保留、範例單字依邊界比對
 - 帳號：連結帳號的 email 變更時保留 canonical；自刪帳號會清訂閱索引，且只解析仍存在的擁有者；清除全域日誌；管理員授權的 `expires_at` 須為合法值，避免髒資料變成永久 Pro
 - Podcast：`series_id` 上限 64 字元；找不到音訊格式的請求回 404，不再預設為 m4a；音訊格式快取有上限 (#2396)
+- 安全：`/sync` 與 `/reconcile` 以 `appAccountToken` 把 Apple 交易綁定到帳號，屬於其他帳號的交易回 403，已連結至不同帳號且無法證明身分者回 409（`resolve_claim_owner`）(#2476)；token／code／state 查詢參數在存取記錄與 admin 記錄環形緩衝中遮蔽（`mem_log.py`）(#2489)
 - 安全／可觀測：網站回應現在確實帶 HSTS（TLS 終止於 Cloudflare，原本以 request scheme 判斷而恆不送，改依設定的公開 https 網址）(#2399)；`X-KG-API-Key` 自 Sentry 事件清除；`X-Request-ID` 淨化；5xx 錯誤保留上游狀態
+
+### 部署注意（operator）
+`JWT_SECRET` 下限由 16 提高到 **32 字元**，且拒絕 `changeme`、`secret`、`your-secret-key-change-in-production` 等占位值；production 設定較短或占位的密鑰時，服務**啟動即失敗**。部署前確認 `JWT_SECRET` 長度（可用 `python -c "import secrets; print(secrets.token_urlsafe(48))"` 產生）；既有登入 token 依舊密鑰簽發，更換密鑰會使其失效 (#2506)。
 
 ### Internal
 embedding store 檔案鎖與 SQLite 路徑統一走鎖定的 data root、pytest 每程序獨立 KG_DATA_DIR、pipeline 錯誤隔離、死碼移除與 ruff 格式化。
