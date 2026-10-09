@@ -632,3 +632,71 @@ struct CreateManualLinkRetryTests {
         #expect(transport.attempts == 1)
     }
 }
+
+// MARK: - #2714 backgroundSync must not log out while the keychain token is still loading
+
+@MainActor
+private final class PendingSyncAuthSession: AuthSessionProviding {
+    let isLoggedIn = true
+    let token: String? = nil
+}
+
+@MainActor
+private final class PendingSyncInvalidator: SessionInvalidating {
+    private(set) var logoutReasons: [String] = []
+    func logout(modelContainer: ModelContainer?, reason: String) { logoutReasons.append(reason) }
+    func waitForPendingLocalDataCleanup() async {}
+}
+
+@MainActor
+struct BackgroundSyncPendingTokenTests {
+    private static func makeContainer() -> ModelContainer {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try! ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            PodcastSeries.self, PodcastEpisode.self,
+            configurations: config
+        )
+    }
+
+    private static func makeService() -> (KGService, PendingSyncInvalidator) {
+        let invalidator = PendingSyncInvalidator()
+        let service = KGService(
+            authSession: PendingSyncAuthSession(),
+            sessionInvalidator: invalidator,
+            connectivityGate: FixedConnectivityGate(isConnected: true)
+        )
+        return (service, invalidator)
+    }
+
+    @Test func currentAuthTokenWithPendingTokenThrowsSessionPending() async {
+        let (service, invalidator) = Self.makeService()
+        do {
+            _ = try await service.currentAuthToken()
+            Issue.record("expected sessionPending")
+        } catch is KGSessionPendingError {
+        } catch {
+            Issue.record("unexpected error \(error)")
+        }
+        #expect(invalidator.logoutReasons.isEmpty)
+    }
+
+    @Test func backgroundSyncWithPendingTokenDoesNotLogOut() async {
+        let (service, invalidator) = Self.makeService()
+        _ = await service.backgroundSync(container: Self.makeContainer(), progress: nil)
+        #expect(invalidator.logoutReasons.isEmpty)
+        #expect(service.lastBackgroundSyncError != L10n.string("登入已過期"))
+    }
+
+    @Test func processSyncPhaseTreatsSessionPendingAsSkippedNotUnauthorized() async {
+        let (service, invalidator) = Self.makeService()
+        let outcome = await service.processSyncPhase(
+            results: [.failure(KGSessionPendingError())],
+            labels: ["pull"],
+            container: Self.makeContainer()
+        )
+        #expect(outcome?.cancelled == true)
+        #expect(outcome?.failures.isEmpty == true)
+        #expect(invalidator.logoutReasons.isEmpty)
+    }
+}

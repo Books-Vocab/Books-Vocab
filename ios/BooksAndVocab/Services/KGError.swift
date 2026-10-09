@@ -150,3 +150,11 @@ enum SyncFailurePresentation {
         }
     }
 }
+
+/// isLoggedIn 已設、但 keychain token 尚未載入的空窗（#2714）。
+/// 不是伺服器 401：呼叫端必須跳過這次工作，不可登出或清本地資料。
+/// 刻意不是 `KGError` case —— 它不屬於任何 HTTP／網路分類，也不該被
+/// 既有的 `.unauthorized` 分支（登出）接住。
+struct KGSessionPendingError: Error, LocalizedError, Equatable {
+    var errorDescription: String? { L10n.string("未登入帳號或身份已過期") }
+}

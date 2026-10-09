@@ -290,7 +290,7 @@ final class KGService: KGServing {
             throw KGError.offline
         }
         guard let token = await authSession.token else {
-            throw KGError.unauthorized
+            throw KGSessionPendingError()
         }
         if JWTExpiry.isExpired(token) {
             AppLog.kg.warning("Token expired (pre-check), triggering session invalidation")
