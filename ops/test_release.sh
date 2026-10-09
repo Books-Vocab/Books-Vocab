@@ -2020,9 +2020,9 @@ chmod +x "$TMP7/shim/git"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$KG_TEST_GHLOG"\ncat "$KG_TEST_GH_OUT"\n' > "$TMP7/shim/gh"
 chmod +x "$TMP7/shim/gh"
 # 單一 backend-quality run / 單頁 JSON / 多頁（gh --paginate 會串接多個 JSON 物件）。
-pr_run() {  # $1=status $2=conclusion(或 null) [$3=name]
+pr_run() {  # $1=status $2=conclusion(或 null) [$3=name] [$4=check_suite.id] [$5=run id]
   local c="$2"; [[ "$c" == null ]] || c="\"$c\""
-  printf '{"name":"%s","status":"%s","conclusion":%s}' "${3:-backend-quality}" "$1" "$c"
+  printf '{"id":%s,"name":"%s","status":"%s","conclusion":%s,"check_suite":{"id":%s}}' "${5:-100}" "${3:-backend-quality}" "$1" "$c" "${4:-1}"
 }
 pr_page() {  # $1=total_count，其餘=run JSON
   local n="$1"; shift; local IFS=,
@@ -2127,6 +2127,7 @@ grep -q "$P_DOC.*same-version.*redeploy after rollback" "$P_FX/.cache/release/pr
 # CI 證據：走真實 jq 過濾器（seam 在 raw gh JSON 層）。
 mk_promote_fx ci
 p_ci() {  # $1=label $2=refusal-substring(空=應通過) $3=raw JSON
+  : > "$P_FX/git.log"  # 前一個放行案例的 push 不可污染本案例的「零 push」斷言
   printf '%s' "$3" > "$P_FX/checks.json"; p_run "$P_TGT" --yes
   if [[ -z "$2" ]]; then
     [[ $P_RC -eq 0 && "$(p_prod)" == "$P_TGT" ]] && ok "CI: $1" || fail_t "CI: $1 should pass (rc=$P_RC): $P_OUT"
@@ -2141,14 +2142,19 @@ p_ci "failure refused"                 "$P_NOTGREEN" "$(pr_page 1 "$(pr_run comp
 p_ci "skipped refused"                 "$P_NOTGREEN" "$(pr_page 1 "$(pr_run completed skipped)")"
 p_ci "neutral refused"                 "$P_NOTGREEN" "$(pr_page 1 "$(pr_run completed neutral)")"
 p_ci "in_progress refused"             "$P_NOTGREEN" "$(pr_page 1 "$(pr_run in_progress null)")"
-p_ci "failed rerun after success refused" "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success)" "$(pr_run completed failure)")"
+p_ci "failed rerun after success refused (same suite, newer id fails)" "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success '' 1 100)" "$(pr_run completed failure '' 1 101)")"
+p_ci "failed then green rerun in same suite passes (#2660)" "" "$(pr_page 2 "$(pr_run completed failure '' 1 100)" "$(pr_run completed success '' 1 101)")"
+p_ci "green rerun listed before older failure still passes (order-independent)" "" "$(pr_page 2 "$(pr_run completed success '' 1 101)" "$(pr_run completed failure '' 1 100)")"
+p_ci "failure in a different suite is not hidden by green rerun elsewhere" "$P_NOTGREEN" "$(pr_page 3 "$(pr_run completed failure '' 1 100)" "$(pr_run completed success '' 1 101)" "$(pr_run completed failure '' 2 200)")"
+p_ci "newest attempt in_progress refused even if older one was green" "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success '' 1 100)" "$(pr_run in_progress null '' 1 101)")"
+p_ci "run without id/check_suite refused (cannot tell newest attempt)" "$P_NOTGREEN" '{"total_count":1,"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"success"}]}'
 p_ci "missing backend-quality refused" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success agent-review)")"
 p_ci "empty check_runs refused"        "沒有任何 backend-quality check-run" "$(pr_page 0)"
 p_ci "garbage refused"                 "check-runs 回應無法解析" "not json"
 p_ci "empty output refused"            "check-runs 回應無法解析" ""
 p_ci "truncated page (total_count 3, 1 run) refused" "check-runs 回應不完整" "$(pr_page 3 "$(pr_run completed success)")"
-p_ci "page 2 failure not hidden"       "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success)")$(pr_page 2 "$(pr_run completed failure)")"
-p_ci "all runs green over two pages"   ""            "$(pr_page 2 "$(pr_run completed success)")$(pr_page 2 "$(pr_run completed success)")"
+p_ci "page 2 failure not hidden"       "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success)")$(pr_page 2 "$(pr_run completed failure '' 2 200)")"
+p_ci "all runs green over two pages"   ""            "$(pr_page 2 "$(pr_run completed success)")$(pr_page 2 "$(pr_run completed success '' 2 200)")"
 p_ci "other checks failing are ignored" ""           "$(pr_page 2 "$(pr_run completed success)" "$(pr_run completed failure agent-review)")"
 printf '#!/usr/bin/env bash\necho "boom" >&2; exit 3\n' > "$P_FX/checks.sh"
 p_run "$P_TGT" --yes
@@ -2179,6 +2185,44 @@ printf 'deadbee' > "$P_FX/live_version"
 p_run "$P_TGT" --yes --wait
 [[ $P_RC -eq 1 && "$P_OUT" == *"線上仍是 version=deadbee"* && "$P_OUT" != *"生產已收斂"* ]] \
   && ok "--wait: a wrong deployed SHA is never read as converged" || fail_t "--wait accepted wrong SHA (rc=$P_RC): $P_OUT"
+
+# ── 25. tag api <v> --commit <sha>：補打歷史 tag（#2666） ─────────────────────
+section "Tag api backfill (--commit)"
+t_run() {  # $@=release.sh tag 之後的參數 → P_OUT/P_RC
+  P_RC=0; P_OUT="$(PATH="$TMP7/shim:$PATH" KG_TEST_GITLOG="$P_FX/git.log" bash "$P_FX/ops/release.sh" tag "$@" 2>&1)" || P_RC=$?
+}
+t_remote_tag() { git --git-dir="$P_REMOTE" rev-parse -q --verify "refs/tags/$1" 2>/dev/null; }
+mk_promote_fx tagfill
+git -C "$P_FX" push -q origin "$P_TGT:refs/heads/prod"
+t_run api 1.0.0 --commit "$P_BASE"
+[[ $P_RC -eq 0 && "$P_OUT" == *"$P_BASE"* && -z "$(git -C "$P_FX" tag -l)" ]] && ! p_pushed \
+  && ok "tag api --commit dry-run prints plan, creates no tag, pushes nothing" || fail_t "tag --commit dry-run wrong (rc=$P_RC): $P_OUT"
+t_run api 1.0.1 --commit "$P_BASE" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"版號是 1.0.0"* && -z "$(git -C "$P_FX" tag -l)" ]] \
+  && ok "tag api --commit refuses a commit whose version differs" || fail_t "wrong-version commit accepted (rc=$P_RC): $P_OUT"
+t_run api 1.0.0 --commit deadbeefdeadbeef --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"不是有效的 commit"* ]] \
+  && ok "tag api --commit refuses an unknown commit" || fail_t "unknown commit accepted (rc=$P_RC): $P_OUT"
+t_run ios 2.0.0 --commit "$P_BASE" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"只支援 api"* ]] \
+  && ok "tag --commit is api-only" || fail_t "ios tag --commit accepted (rc=$P_RC): $P_OUT"
+t_run api 1.0.0 --commit "$P_BASE" --yes
+[[ $P_RC -eq 0 && "$(git -C "$P_FX" rev-parse api/1.0.0^{commit})" == "$P_BASE" && "$(t_remote_tag api/1.0.0)" != "" ]] \
+  && ok "tag api --commit --yes tags the exact commit (not HEAD) and pushes the tag" || fail_t "backfill tag failed (rc=$P_RC): $P_OUT"
+[[ "$(git -C "$P_FX" rev-parse HEAD)" == "$P_TGT" && "$(p_prod)" == "$P_TGT" ]] \
+  && ok "tag api --commit leaves HEAD and origin/prod untouched" || fail_t "backfill moved HEAD or prod"
+t_run api 1.0.0 --commit "$P_BASE" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"已存在"* ]] \
+  && ok "tag api --commit refuses an existing tag" || fail_t "existing tag accepted (rc=$P_RC): $P_OUT"
+git -C "$P_FX" tag -d api/1.0.0 >/dev/null
+t_run api 1.0.0 --commit "$P_BASE" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"已存在於 origin"* ]] \
+  && ok "tag api --commit refuses a tag that exists only on origin" || fail_t "remote-only tag accepted (rc=$P_RC): $P_OUT"
+git -C "$P_FX" push -q origin :refs/tags/api/1.0.0
+git -C "$P_FX" push -q --force origin "$P_BASE:refs/heads/prod"
+t_run api 1.0.1 --commit "$P_TGT" --yes
+[[ $P_RC -ne 0 && "$P_OUT" == *"不是 live origin/prod"* && -z "$(git -C "$P_FX" tag -l)" ]] \
+  && ok "tag api --commit refuses a commit that is not an ancestor of origin/prod" || fail_t "non-prod commit accepted (rc=$P_RC): $P_OUT"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
