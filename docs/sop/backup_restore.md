@@ -70,7 +70,7 @@ verified_against: f69f5e53d6b2ac6e3b6f96febb8456a7ed58b477
 >
 > **機器對照（現役 = standby）**：下方 §2.2–2.8 的指令以 Lightsail 範本寫成（`ssh ubuntu@13.193.212.134`、`/home/ubuntu/knowledge_graph_api/`、`/var/log/kg_backup.log`）。**在現役 standby 上等價替換**：
 > - SSH：`ssh chenliangyu@100.118.39.104`（Tailscale，公鑰免密碼）
-> - data 目錄：`~/kg-data/`（**不是** `~/project/kg/backend/data/`——2026-06-16 已移出 worktree；同檔 :15 / :23 為準）。工作區（compose / `.env`）：`~/kg-prod/backend/`（`devops.sh:21` `REMOTE_DIR`；`~/project/kg` 是 dev-only clone，會靜默腐爛，別拿它當生產）
+> - data 目錄：`~/kg-data/`，archive 第一層即 `kg-data/`（`basename(KG_DATA_DIR)`，非 `data/`）（**不是** `~/project/kg/backend/data/`——2026-06-16 已移出 worktree；同檔 :15 / :23 為準）。工作區（compose / `.env`）：`~/kg-prod/backend/`（`devops.sh:21` `REMOTE_DIR`；`~/project/kg` 是 dev-only clone，會靜默腐爛，別拿它當生產）
 > - backup log（查 sha256 對照）：standby `~/Library/Logs/kg_backup.log`
 > - 容器名：`knowledge-graph-api`（OrbStack）；`sudo` 在 macOS 通常不需（檔案 owner = `chenliangyu`，非容器 root drift）
 > - 拉 S3：standby 上若 `kg-backup-agent` 只有 PutObject 遇 `AccessDenied`，改用主力機 admin profile 拉再 scp 到 standby（同 §2.3 備援）。
@@ -129,37 +129,46 @@ ACTUAL=$(sha256sum /tmp/${DATE}.tar.gz | awk '{print $1}')
 
 ### 2.5 停容器、備份「壞掉的」現場、解壓覆蓋
 
+archive 第一層是 `basename(KG_DATA_DIR)`（`ops/kg_backup.sh:62`）：standby 為 `kg-data/`，僅舊 Lightsail 為 `data/`。以下以 standby 為準，`DATA` 為現役 data 目錄；先 `tar tzf` 確認第一層名稱 == `basename "$DATA"` 才解壓。archive 不含 `-wal`/`-shm`，所以必須先把壞掉的現場整個移開，不可直接覆蓋（否則殘留 sidecar 與備份後的檔案會混進還原結果）。
+
 ```bash
-cd /home/ubuntu/knowledge_graph_api
+set -e
+DATE=2026-05-31  # 同 §2.3
+DATA=~/kg-data   # 現役 standby；舊 Lightsail 為 /home/ubuntu/knowledge_graph_api/data
+ARCHIVE="/tmp/${DATE}.tar.gz"
 
-# 停容器,避免 SQLite WAL race
-docker compose stop
+# 停容器,避免 SQLite WAL race(compose 在 ~/kg-prod/backend)
+(cd ~/kg-prod/backend && docker compose stop)
 
-# 把當前 data/ rename 成 data.broken.<ts>(別 rm,留鑑識用)
+# 解壓前驗證 archive 第一層 == basename(DATA)
+ROOT=$(tar tzf "$ARCHIVE" | head -1 | cut -d/ -f1)
+[ "$ROOT" = "$(basename "$DATA")" ] || { echo "root mismatch: $ROOT"; exit 1; }
+
+# 把當前 data rename 成 <DATA>.broken.<ts>(別 rm,留鑑識用);目錄存在但 mv 失敗要中止
 TS=$(date +%Y%m%d-%H%M%S)
-sudo mv data "data.broken.${TS}" 2>/dev/null || true
+[ ! -e "$DATA" ] || mv "$DATA" "$DATA.broken.${TS}"
 
-# 解壓 — tarball 內第一層就是 data/,直接在 ~/knowledge_graph_api/ 解
-tar xzf "/tmp/${DATE}.tar.gz"
-ls -la data/users/ | head
+# 解壓到 DATA 的上層目錄,還原出 $(basename "$DATA")/
+tar xzf "$ARCHIVE" -C "$(dirname "$DATA")"
+ls -la "$DATA/users/" | head
 ```
 
-### 2.6 修正 owner(容器 uid)
+### 2.6 修正 owner
 
-容器內 uid 是 `1000:1000`(host 上 `ubuntu` user 同 uid)。tar 預設保留原 owner,通常就是 ubuntu — 但若 backup 是 root 跑的 cron,owner 可能變 root,要修正:
+standby 上檔案 owner 應為 `chenliangyu`（tar 以當前使用者解壓即是，通常不需處理）。若異常再修正，macOS 不需 `sudo`：
 
 ```bash
-sudo chown -R ubuntu:ubuntu data/
+chown -R "$(id -un)" "$DATA"
 ```
 
 ### 2.7 啟動 + 健康檢查
 
 ```bash
-docker compose up -d
+(cd ~/kg-prod/backend && docker compose up -d)
 sleep 10
 curl -s -o /dev/null -w 'docs=%{http_code}\n' http://127.0.0.1:8000/docs
 curl -s https://wordnexus.lol/docs | head -5
-docker compose logs --tail=30 kg-api
+(cd ~/kg-prod/backend && docker compose logs --tail=30 kg-api)
 ```
 
 預期:`docs=200`、SwaggerUI 可載入、container log 無 startup error、`/api/system/info` 回 200。
@@ -167,10 +176,10 @@ docker compose logs --tail=30 kg-api
 ### 2.8 抽樣驗證資料(SQLite integrity_check)
 
 ```bash
-SAMPLE=$(ls -d data/users/*/ | head -1)
-for db in "$SAMPLE"/*.db; do
+SAMPLE=$(ls -d "$DATA"/users/*/ | head -1)
+for db in "$SAMPLE"*.db; do
   echo "--- $db ---"
-  docker compose exec -T kg-api sqlite3 "/app/${db#./}" "PRAGMA integrity_check;"
+  sqlite3 "$db" "PRAGMA integrity_check;"
 done
 ```
 
