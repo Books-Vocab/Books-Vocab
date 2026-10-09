@@ -320,6 +320,17 @@ def test_nocase_colliding_cards_rejected_as_uncopyable(tmp_path):
     assert not (tmp_path / "shared_decks.db").exists(), "rejected spec must not write"
 
 
+def test_non_ascii_case_variants_rejected_as_uncopyable():
+    """The copier dedups on normalize_nfc_lower (full Unicode lower), so
+    "Ärger"/"ärger" collide on copy even with differing pos/meaning (#2545)."""
+    bad = _spec(cards=[
+        {"content": "Ärger", "pos": "noun", "meaning": "怒氣", "mode": "recognition"},
+        {"content": "ärger", "pos": "verb", "meaning": "惹惱", "mode": "recognition"},
+    ])
+    with pytest.raises(build_official.SpecError, match="(?i)case-insensitive|nocase|collide"):
+        build_official.emit(bad, check=True)
+
+
 def test_distinct_content_homograph_is_copyable(tmp_path):
     """Distinct content strings (no NOCASE collision) copy 1:1 → allowed."""
     ok = _spec(cards=[

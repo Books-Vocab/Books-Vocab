@@ -54,7 +54,7 @@ from kg.shared_decks.store import (
     canonical_card,
     deck_content_hash,
 )
-from kg.text_utils import normalize_nfc
+from kg.text_utils import normalize_nfc_lower
 
 _HERE = Path(__file__).resolve().parent
 SPEC_SCHEMA = "kg.official_deck.v1"
@@ -136,10 +136,10 @@ def _normalize(spec: dict) -> dict:
 
 
 def _nocase_key(content: str) -> str:
-    """The copier's per-notebook uniqueness key: NFC-normalized content compared
-    COLLATE NOCASE. SQLite NOCASE folds ONLY ASCII A-Z, so fold exactly that —
-    ``str.lower()`` would over-fold non-ASCII and flag pairs NOCASE keeps apart."""
-    return "".join(ch.lower() if "A" <= ch <= "Z" else ch for ch in normalize_nfc(content))
+    """The copier's per-notebook uniqueness key: the same ``normalize_nfc_lower``
+    that ``CardStore.add`` / copy dedup use (full Unicode lower, so ``Ärger`` and
+    ``ärger`` collide). Must stay identical to that function or the gate drifts."""
+    return normalize_nfc_lower(content)
 
 
 def _assert_copyable(cards: list[dict]) -> None:
