@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException
@@ -16,6 +17,9 @@ from ..api_models.podcast import (
 from ..deps import CurrentUser
 
 _MAX_EPISODE_NUM = 999
+# Clock-skew tolerance; later instants are clamped to server now so a clock-ahead
+# device cannot freeze last-write-wins progress (#2685).
+_FUTURE_TOLERANCE = timedelta(minutes=5)
 
 
 def _reject_boolean_progress_seconds(value: Any) -> Any:
@@ -54,6 +58,9 @@ def _canonical_updated_at(raw: str) -> str:
     dt = progress_store.parse_instant(raw)
     if dt is None:
         raise HTTPException(status_code=422, detail="updated_at must be ISO8601")
+    now = datetime.now(UTC)
+    if dt > now + _FUTURE_TOLERANCE:
+        dt = now
     return dt.isoformat()
 
 
