@@ -427,18 +427,23 @@ struct SettingsResetLifecycle: Equatable {
         /// Rows not yet confirmed by the server (pending or failed sync).
         /// Reset deletes them for good, so they gate the reset.
         let unsyncedCardCount: Int
+        /// Review events the server has not acknowledged (`pushedAt == nil`);
+        /// reset deletes every ReviewRecord, so these are lost too.
+        let unsyncedReviewCount: Int
         let hasCustomPreferences: Bool
         let isLoggedIn: Bool
 
         init(
             localCardCount: Int,
             unsyncedCardCount: Int = 0,
+            unsyncedReviewCount: Int = 0,
             hasCustomPreferences: Bool,
             isLoggedIn: Bool
         ) {
             self.localCardCount = localCardCount
             self.localCardCountError = nil
             self.unsyncedCardCount = unsyncedCardCount
+            self.unsyncedReviewCount = unsyncedReviewCount
             self.hasCustomPreferences = hasCustomPreferences
             self.isLoggedIn = isLoggedIn
         }
@@ -451,6 +456,7 @@ struct SettingsResetLifecycle: Equatable {
             self.localCardCount = nil
             self.localCardCountError = error
             self.unsyncedCardCount = 0
+            self.unsyncedReviewCount = 0
             self.hasCustomPreferences = hasCustomPreferences
             self.isLoggedIn = isLoggedIn
         }
@@ -464,7 +470,19 @@ struct SettingsResetLifecycle: Equatable {
         }
 
         var requiresUnsyncedAcknowledgement: Bool {
-            isReadable && unsyncedCardCount > 0
+            isReadable && (unsyncedCardCount > 0 || unsyncedReviewCount > 0)
+        }
+
+        /// Card and review parts of the unsynced loss, for dialog and card copy.
+        var unsyncedSummary: String {
+            var parts: [String] = []
+            if unsyncedCardCount > 0 {
+                parts.append(L10n.format("card_count_plural", Int64(unsyncedCardCount)))
+            }
+            if unsyncedReviewCount > 0 {
+                parts.append(L10n.format("%@ 筆複習紀錄", String(unsyncedReviewCount)))
+            }
+            return parts.joined(separator: " / ")
         }
     }
 
@@ -495,7 +513,7 @@ struct SettingsResetLifecycle: Equatable {
             after: before,
             terminalMessage: L10n.format(
                 "尚有 %@ 未同步，已停止重設。請先同步，或確認放棄未同步資料。",
-                L10n.format("card_count_plural", Int64(before.unsyncedCardCount))
+                before.unsyncedSummary
             ),
             canRetry: true
         )

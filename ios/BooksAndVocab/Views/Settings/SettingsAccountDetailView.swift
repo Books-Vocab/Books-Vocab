@@ -256,13 +256,13 @@ struct SettingsAccountDetailView: View {
                 .accessibilityIdentifier("settings.account.resetBoundary.confirm")
                 Button(L10n.string("取消"), role: .cancel) {}
             } message: {
-                if confirmation.requiresUnsyncedAcknowledgement {
-                    Text(L10n.format(
-                        "尚有 %@ 未同步，重設後將永久遺失。",
-                        L10n.format("card_count_plural", Int64(confirmation.unsyncedCardCount))
-                    ))
+                let base = confirmation.requiresUnsyncedAcknowledgement
+                    ? L10n.format("尚有 %@ 未同步，重設後將永久遺失。", confirmation.unsyncedSummary)
+                    : resetDescription(for: .preReset)
+                if confirmation.isLoggedIn {
+                    Text(base + "\n" + L10n.string("已登入時，複習、時鐘、自動連結與翻譯的預設值也會同步到伺服器與你的其他裝置，需要網路連線。"))
                 } else {
-                    Text(resetDescription(for: .preReset))
+                    Text(base)
                 }
             }
         }
@@ -297,9 +297,9 @@ struct SettingsAccountDetailView: View {
                 .accessibilityLabel(cardCountText)
                 .accessibilityValue(snapshot.localCardCountError ?? "")
             }
-            if snapshot.unsyncedCardCount > 0 {
-                AppKeyValueRow(icon: "icloud.slash", label: L10n.string("未同步單字"), style: .settings(appSkin)) {
-                    let unsyncedText = L10n.format("card_count_plural", Int64(snapshot.unsyncedCardCount))
+            if snapshot.requiresUnsyncedAcknowledgement {
+                AppKeyValueRow(icon: "icloud.slash", label: L10n.string("未同步資料"), style: .settings(appSkin)) {
+                    let unsyncedText = snapshot.unsyncedSummary
                     Text(unsyncedText)
                         .font(appSkin.typography.caption)
                         .foregroundStyle(appSkin.palette.destructive)

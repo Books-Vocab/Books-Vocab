@@ -619,7 +619,7 @@ import Testing
 
     @Test @MainActor func p2442SnapshotCountsUnsyncedRowsSeparately() throws {
         let container = try ModelContainer(
-            for: VocabularyEntry.self,
+            for: VocabularyEntry.self, ReviewRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = ModelContext(container)
@@ -634,6 +634,29 @@ import Testing
 
         #expect(snapshot.localCardCount == 1)
         #expect(snapshot.unsyncedCardCount == 2)
+    }
+
+    @Test @MainActor func p2442UnsyncedReviewEventsAloneRequireAcknowledgement() throws {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let entry = VocabularyEntry(word: "synced", translation: "t", context: "c", bookTitle: "b")
+        entry.syncStatus = 1
+        context.insert(entry)
+        let owed = ReviewRecord(word: "synced", entryID: nil, feedback: 1)
+        let acked = ReviewRecord(word: "synced", entryID: nil, feedback: 0)
+        acked.pushedAt = Date()
+        context.insert(owed)
+        context.insert(acked)
+        try context.save()
+
+        let snapshot = LiveSettingsResetStore().readSnapshot(authManager: LoggedInAuthStub(), modelContext: context)
+
+        #expect(snapshot.unsyncedCardCount == 0)
+        #expect(snapshot.unsyncedReviewCount == 1)
+        #expect(snapshot.requiresUnsyncedAcknowledgement == true)
     }
 
     @Test @MainActor func p2442ResetWithUnsyncedRowsIsBlockedUntilAcknowledged() async throws {

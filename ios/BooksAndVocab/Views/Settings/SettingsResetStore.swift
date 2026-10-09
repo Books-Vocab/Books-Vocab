@@ -34,14 +34,20 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
             let localCardCount = try modelContext.fetch(descriptor).count
             // Every row reset deletes that the server has not confirmed:
             // pending (0) or failed (2), including queued deletes/archives.
-            // Cards only: unsynced notebooks (reset deletes them too) are not
-            // counted, as the warning copy and count are card-denominated.
+            // Unsynced notebooks (reset deletes them too) are not counted; the
+            // warning copy is card- and review-denominated.
             let unsyncedCardCount = try modelContext.fetchCount(
                 FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.syncStatus != 1 })
+            )
+            // Reset also deletes every ReviewRecord; events not yet acknowledged
+            // by the server (`pushedAt == nil`) would be lost for good.
+            let unsyncedReviewCount = try modelContext.fetchCount(
+                FetchDescriptor<ReviewRecord>(predicate: #Predicate { $0.pushedAt == nil })
             )
             return .init(
                 localCardCount: localCardCount,
                 unsyncedCardCount: unsyncedCardCount,
+                unsyncedReviewCount: unsyncedReviewCount,
                 hasCustomPreferences: hasCustomPreferences,
                 isLoggedIn: authManager.isLoggedIn
             )

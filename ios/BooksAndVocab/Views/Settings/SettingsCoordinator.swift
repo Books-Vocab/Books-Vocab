@@ -665,7 +665,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 AppLog.kg.error("Settings reset default-config push failed: \(error.localizedDescription)")
                 resetLifecycle = pending.failed(
                     after: lifecycleBefore,
-                    message: L10n.string("無法將預設設定同步到伺服器，本機資料未變動，請重試。")
+                    message: L10n.string("無法將預設設定同步到伺服器，請確認網路連線；本機資料未變動，請重試。")
                 )
                 return
             }
