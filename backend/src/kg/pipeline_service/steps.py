@@ -367,6 +367,8 @@ async def _judge_pending(
         card = cards_cache.get(card_id)
         if not card or card.is_deleted or card.is_archived:
             continue
+        if getattr(card, "notebook_id", notebook_id) != notebook_id:
+            continue  # moved to another notebook (#2532): never link across notebooks
         current_degree = _active_degree(card_id)
         if current_degree >= MAX_DEGREE:
             continue
@@ -429,6 +431,8 @@ async def _judge_pending(
             other = others_cache.get(other_id)
             if not other or other.is_deleted or other.is_archived:
                 continue
+            if getattr(other, "notebook_id", notebook_id) != notebook_id:
+                continue  # stale vector of a card moved out of this notebook (#2532)
             if _active_degree(other_id) >= MAX_DEGREE:
                 continue
             filtered.append((other_id, other.content, other.meaning, score))

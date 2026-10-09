@@ -190,6 +190,22 @@ def cmd_card_set_review(args: argparse.Namespace) -> int:
     return ctx.run(action="card-set-review", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
 
+def _embedding_store(user_dir: Path, notebook_id: str):
+    # evict-only:llm=None 合法(create_embedding_store 設計如此)。function-level
+    # import 與 _graph_store 同理:避免 card 操作無謂拉 numpy 重依賴。
+    from kg.service_factories import create_embedding_store
+
+    return create_embedding_store(user_dir, llm=None, notebook_id=notebook_id)
+
+
+def _evict_embedding(user_dir: Path, notebook_id: str, card_id: str) -> None:
+    """Best-effort 向量逐出;卡狀態已 commit,逐出失敗只記 log(同 API 路徑)。"""
+    try:
+        _embedding_store(user_dir, notebook_id).remove(card_id)
+    except Exception:
+        logger.warning("Failed to evict embedding for card %s in %s", card_id, notebook_id, exc_info=True)
+
+
 def cmd_card_delete(args: argparse.Namespace) -> int:
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
@@ -199,8 +215,19 @@ def cmd_card_delete(args: argparse.Namespace) -> int:
     def apply_fn() -> dict[str, Any]:
         with closing(_card_store(ctx.user_dir)) as store:
             card = _resolve_card_id(store, args.card)
+            from kg.vocab_graph_ops import link_peer_ids, touch_peers
+
+            ctx.mark_destructive()
             ok = store.delete(card.id)
             state["card_id"] = card.id
+            # API 路徑(delete_vocab_word)同款清理:links 去活化(釋放 peer 的
+            # MAX_DEGREE 槽)、candidates/pending_judge/blocked pairs 移除、peer touch、
+            # 向量逐出(否則幽靈向量佔 top-k)。
+            graph = _graph_store(ctx.user_dir, card.notebook_id)
+            peer_ids = link_peer_ids(graph, card.id)
+            graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
+            touch_peers(store, peer_ids, card)
+            _evict_embedding(ctx.user_dir, card.notebook_id, card.id)
             return {"deleted": ok, "card_id": card.id}
 
     def verify_fn() -> dict[str, Any]:
@@ -340,11 +367,18 @@ def cmd_card_move(args: argparse.Namespace) -> int:
                         peers_by_nb.setdefault(gnb, set()).add(peer)
                         graph.hard_delete_link(lk.id, source="ops")
                         purged_links.append(lk.id)
+                    # 舊本的 pending_judge / candidates 也要清,否則下輪 judge 仍會
+                    # 拿這張(已搬走的)卡跟舊本卡配對出跨本 link。
+                    graph.remove_candidates_for(moved_id)
+                    graph.remove_pending_judge_for(moved_id)
             # touch barrier:對端失去 link,須 bump updated_at 讓裝置增量 pull 重讀。
             touched_peers = sum(store.batch_touch(ids, notebook_id=gnb) for gnb, ids in peers_by_nb.items())
+            old_nb = card.notebook_id
             updated = store.update(card.id, notebook_id=target_nb)
             if updated is None:
                 raise EditError(f"move 失敗(卡可能已刪除):{card.id}")
+            # 舊本向量逐出:否則舊本 find_similar 仍回傳此卡(已不在該本)。
+            _evict_embedding(ctx.user_dir, old_nb, card.id)
             state["card_id"] = updated.id
             return {
                 "card": _card_brief(updated),

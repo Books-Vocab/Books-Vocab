@@ -456,6 +456,12 @@ class TestCmdCardMoveDestructiveReporting:
             def hard_delete_link(self, *_a, **_k):
                 return None
 
+            def remove_candidates_for(self, *_a, **_k):
+                return 0
+
+            def remove_pending_judge_for(self, *_a, **_k):
+                return 0
+
         monkeypatch.setattr(cards_cmd, "_graph_store", lambda *_a, **_k: _Graph())
         monkeypatch.setattr(CardStore, "update", lambda *_a, **_k: None)
         capsys.readouterr()
@@ -480,3 +486,92 @@ class TestCmdCardMoveDestructiveReporting:
         assert rc == 1
         assert out["data_mutated"] is False
         assert out["recovery_path"] is None
+
+
+# ── #2532: card-delete / card-move cleanup parity with the API paths ─────
+
+
+class _CleanupGraph:
+    """Records graph cleanup calls; one active link card<->peer."""
+
+    def __init__(self, card_id: str, peer_id: str = "peer") -> None:
+        self.card_id = card_id
+        self.peer_id = peer_id
+        self.calls: list[tuple] = []
+
+    def refresh_if_stale(self):
+        return None
+
+    def get_links_for(self, _cid):
+        from types import SimpleNamespace
+
+        return [SimpleNamespace(id="l1", from_id=self.card_id, to_id=self.peer_id)]
+
+    def cleanup_for_card(self, cid, **kwargs):
+        self.calls.append(("cleanup_for_card", cid, kwargs))
+        return {}
+
+    def hard_delete_link(self, lid, **kwargs):
+        self.calls.append(("hard_delete_link", lid))
+
+    def remove_candidates_for(self, cid):
+        self.calls.append(("remove_candidates_for", cid))
+        return 0
+
+    def remove_pending_judge_for(self, cid):
+        self.calls.append(("remove_pending_judge_for", cid))
+        return 0
+
+
+class _EvictRecorder:
+    def __init__(self, evicted: list[tuple[str, str]], nb: str) -> None:
+        self._evicted = evicted
+        self._nb = nb
+
+    def remove(self, card_id):
+        self._evicted.append((self._nb, card_id))
+        return True
+
+
+class TestCardDeleteMoveCleanup:
+    def _seed(self, tmp_path: Path):
+        _setup_user(tmp_path)
+        store = CardStore(tmp_path / "users" / "u1" / "cards.db")
+        nb_store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
+        try:
+            nb = nb_store.create(name="DestNB")
+            c = store.add(content="apple", meaning="蘋果", notebook_id="default")
+            return c.id, nb.id
+        finally:
+            store.close()
+            nb_store.close()
+
+    def _patch(self, monkeypatch, tmp_path, cid):
+        graphs: dict[str, _CleanupGraph] = {}
+        evicted: list[tuple[str, str]] = []
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(
+            cards_cmd, "_graph_store", lambda _ud, nb="default": graphs.setdefault(nb, _CleanupGraph(cid))
+        )
+        monkeypatch.setattr(cards_cmd, "_embedding_store", lambda _ud, nb: _EvictRecorder(evicted, nb))
+        return graphs, evicted
+
+    def test_delete_cleans_links_pending_and_evicts_vector(self, tmp_path, monkeypatch):
+        cid, _nb = self._seed(tmp_path)
+        graphs, evicted = self._patch(monkeypatch, tmp_path, cid)
+
+        assert cards_cmd.cmd_card_delete(_make_args(card=cid, commit=True)) == 0
+
+        assert ("cleanup_for_card", cid, {"remove_blocked": True, "source": "manual"}) in graphs["default"].calls
+        assert evicted == [("default", cid)]
+
+    def test_move_clears_old_notebook_pending_candidates_and_vector(self, tmp_path, monkeypatch):
+        cid, nbid = self._seed(tmp_path)
+        graphs, evicted = self._patch(monkeypatch, tmp_path, cid)
+
+        assert cards_cmd.cmd_card_move(_make_args(card=cid, to_notebook=nbid, commit=True)) == 0
+
+        old = graphs["default"].calls
+        assert ("remove_pending_judge_for", cid) in old
+        assert ("remove_candidates_for", cid) in old
+        assert evicted == [("default", cid)]

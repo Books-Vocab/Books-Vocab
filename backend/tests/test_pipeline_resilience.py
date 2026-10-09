@@ -831,6 +831,54 @@ def test_judge_quota_rejection_does_not_discard_other_billed_results():
     assert [cid for batch in graph.added_pending for cid in batch] == ["c1"]
 
 
+def test_judge_skips_cards_from_other_notebooks():
+    """#2532: a pending entry / stale vector whose card now lives in another
+    notebook must neither be judged nor offered as a candidate, or a
+    cross-notebook link is created."""
+    logger = _FakeLogger()
+    uid = "u_judge_nb_guard"
+    user = {"id": uid, "dir": Path("/tmp/u_judge_nb_guard"), "config": {}}
+    pending_ids = ["c0", "c1", "c2"]
+    cards = _CardsForJudge(count=3)
+    cards._cards["c1"].notebook_id = "elsewhere"
+    graph = _GraphRecording(pending=list(pending_ids))
+    embeddings = _EmbeddingsAlreadyHave(pending_ids)
+    judged: list[tuple[str, list[str]]] = []
+
+    class _RecordingJudge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+            judged.append((target_word, [cid for cid, _w, _m in candidates]))
+            return {cid: _make_judgement() for cid, _w, _m in candidates}
+
+    async def run():
+        import kg.judge as judge_mod
+
+        original_judge = judge_mod.Judge
+        judge_mod.Judge = _RecordingJudge
+        try:
+            await _step_embed_and_judge(
+                uid,
+                user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = original_judge
+
+    asyncio.run(run())
+
+    assert judged, "in-notebook cards must still be judged"
+    assert all(target != "c1" and "c1" not in cands for target, cands in judged), judged
+    assert all("c1" not in (a, b) for a, b, *_ in graph.persisted_links), graph.persisted_links
+
+
 def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
     """A later pipeline step failing must NOT revert a previously committed
     earlier step.
