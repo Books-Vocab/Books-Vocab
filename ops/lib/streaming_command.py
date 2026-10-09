@@ -80,7 +80,7 @@ def _terminate_process_group(
     """Terminate the isolated child session, escalating to KILL at deadline."""
     try:
         os.killpg(proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         proc.wait()
         return
 
@@ -197,6 +197,14 @@ def run_streamed_command(
         )
         raise
     start_identity = process_start_identity(proc.pid)
+    # A child caught mid-exit can fail the OS identity query while poll() still
+    # reports it alive (the 2/8 `exit 9` flake of #2671).  Retry briefly; a real
+    # identity failure still falls through to the fail-closed branch below.
+    for _ in range(20):
+        if start_identity is not None or proc.poll() is not None:
+            break
+        time.sleep(0.01)
+        start_identity = process_start_identity(proc.pid)
     # ``start_new_session=True`` makes the child's PGID equal its PID.  The
     # leader may exit between Popen and this read (common for `locale` or
     # `exit 124`), in which case an exact-PID OS query is already impossible.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_DIR="$ROOT/ops"
@@ -26,10 +26,15 @@ KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
     bash -c 'for _ in $(seq 3000); do [[ -e "$2" ]] && break; sleep 0.1; done; printf '\''{"status":"pass"}\n'\''' _ \
     "$secret" "$tmp/release" >"$tmp/stdout" 2>"$tmp/stderr" &
 capture_pid=$!
-for _ in $(seq 2900); do
+for _ in $(seq 300); do
   grep -qE 'phase=heartbeat .* alive=true' "$tmp/stderr" 2>/dev/null && break
   sleep 0.1
 done
+if ! grep -qE 'phase=heartbeat .* alive=true' "$tmp/stderr" 2>/dev/null; then
+  kill "$capture_pid" 2>/dev/null || true
+  echo "no heartbeat within 30s" >&2
+  exit 1
+fi
 : >"$tmp/release"
 wait "$capture_pid"
 
@@ -162,8 +167,8 @@ fi
 
 # A provider timeout remains structured, and its runner-enforced rc=124 is
 # preserved without corrupting workflow JSON or silently falling back to a
-# mutation. Keep the budget above task-registry startup so the deadline reaches
-# the live child process rather than expiring before it has a process group.
+# mutation. The 5s budget sits above task-registry startup so the deadline
+# reaches the live child process; the 30s fixture delay only needs to outlast it.
 printf '9\n' >"$fixture/project-settings.rc"
 KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.02 \

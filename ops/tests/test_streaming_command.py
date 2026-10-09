@@ -751,3 +751,44 @@ def test_capture_cli_rejects_bad_durations_without_spinning(flag, bad) -> None:
         streaming_command._capture_cli(
             ["--cwd", str(Path.cwd()), "--label", "x", flag, bad, "--", "true"]
         )
+
+
+def test_terminate_tolerates_permission_error_when_leader_already_exited(
+    monkeypatch,
+) -> None:
+    """macOS raises EPERM from killpg once the group leader is a zombie (#2671)."""
+    proc = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+    proc.wait()
+
+    def deny(_pid: int, _sig: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(streaming_command.os, "killpg", deny)
+    streaming_command._terminate_process_group(proc)
+    assert proc.returncode is not None
+
+
+def test_transient_identity_miss_on_exiting_child_is_retried(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A child mid-exit can fail the identity read while poll() still says alive (#2671)."""
+    real = streaming_command.process_start_identity
+    calls = {"n": 0}
+
+    def flaky(pid: int):
+        calls["n"] += 1
+        return None if calls["n"] <= 2 else real(pid)
+
+    monkeypatch.setattr(streaming_command, "process_start_identity", flaky)
+    progress = io.StringIO()
+    with redirect_stderr(progress):
+        completed = run_streamed_command(
+            [sys.executable, "-c", "import time; time.sleep(0.5)"],
+            cwd=tmp_path,
+            label_key="gate",
+            label="identity-race",
+            progress_prefix="[test]",
+            heartbeat_interval=0.05,
+        )
+    assert completed.returncode == 0
+    assert calls["n"] >= 3
