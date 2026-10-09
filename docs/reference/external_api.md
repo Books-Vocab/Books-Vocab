@@ -64,7 +64,8 @@ X-KG-API-Key: kg_<key-id>.<secret>
 | DELETE | `/api/v1/cards/{card_id}` | soft delete |
 | POST | `/api/v1/cards/{card_id}/review` | 推送一筆 SRS/review state |
 | GET/POST | `/api/v1/links` | 讀取／建立手動 graph link |
-| PATCH/DELETE | `/api/v1/links/{link_id}` | hide、unhide 或刪除 link |
+| PATCH | `/api/v1/links/{link_id}/hide`、`/api/v1/links/{link_id}/unhide` | 隱藏／取消隱藏 link |
+| DELETE | `/api/v1/links/{link_id}` | 刪除 link |
 | POST | `/api/v1/enrich` | 排入 notebook 的 enrich → embed → judge → difficulty pipeline |
 | GET | `/api/v1/operations/{operation_id}` | 查詢一次 enrich operation |
 | GET | `/api/v1/enrich/runs` | 查詢最近 enrich runs |
