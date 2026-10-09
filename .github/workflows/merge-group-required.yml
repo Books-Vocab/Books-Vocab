@@ -82,7 +82,7 @@ jobs:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
           set -euo pipefail
-          ./ops/complexity.py check --base "$BASE_SHA"
+          ./ops/complexity.py check --base "$BASE_SHA" --no-fork-points
 
       - name: Check ops test coverage classification
         run: ./ops/tests/test_ops_ci_coverage.sh

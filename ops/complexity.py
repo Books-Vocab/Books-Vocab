@@ -320,6 +320,12 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
         action="store_true",
         help="judge absolute counts; ignore the base (CI on push to main, doctor)",
     )
+    parser.add_argument(
+        "--no-fork-points",
+        action="store_true",
+        help="charge the lane against the base headroom only (merge group: the head already carries "
+        "the siblings merged ahead of it, so a PR fork allowance would hide their growth)",
+    )
     args = parser.parse_args(argv)
     root = repo or Path(__file__).resolve().parents[1]
     try:
@@ -341,7 +347,9 @@ def main(argv: list[str] | None = None, repo: Path | None = None) -> int:
             pass  # on main itself: absolute, so a red trunk stays visible
         else:
             try:
-                snapshot = base_snapshot(root, base, fork_points(root, base))
+                snapshot = base_snapshot(
+                    root, base, [] if args.no_fork_points else fork_points(root, base)
+                )
             except subprocess.CalledProcessError as exc:
                 print(f"complexity: base read failed ({exc})", file=sys.stderr)
             if snapshot is None:

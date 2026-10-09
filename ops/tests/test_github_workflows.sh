@@ -265,8 +265,8 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   complexity_step="$(merge_group_step_containing './ops/complexity.py check')"
   [[ -n "$complexity_step" ]] \
     || fail "merge-group required gate has no ./ops/complexity.py check step"
-  grep -Eq '^[[:space:]]+\./ops/complexity\.py check --base "\$BASE_SHA"[[:space:]]*$' <<<"$complexity_step" \
-    || fail "merge-group complexity step does not check against the resolved merge-group base (--base \"\$BASE_SHA\")"
+  grep -Eq '^[[:space:]]+\./ops/complexity\.py check --base "\$BASE_SHA" --no-fork-points[[:space:]]*$' <<<"$complexity_step" \
+    || fail "merge-group complexity step does not check against the resolved merge-group base with --no-fork-points (--base \"\$BASE_SHA\")"
   grep -Fq 'BASE_SHA: ${{ steps.base.outputs.sha }}' <<<"$complexity_step" \
     || fail "merge-group complexity BASE_SHA is not the resolved origin/main merge base"
   merge_group_assert_unmasked_step "complexity" "$complexity_step" no
@@ -322,7 +322,8 @@ event = { "github.event.merge_group.base_sha" => group_base, "github.event.merge
 outputs = {}
 Dir.mktmpdir do |tmp|
   steps.each_with_index do |step, index|
-    next unless ["git merge-base", "git diff --check", "ci_scope_router.sh"].any? { |needle| step["run"].to_s.include?(needle) }
+    next if step["run"].to_s.include?("complexity.py check") && !File.exist?(File.join(repo, "ops", "complexity.py"))
+    next unless ["git merge-base", "git diff --check", "ci_scope_router.sh", "complexity.py check"].any? { |needle| step["run"].to_s.include?(needle) }
     out_file = File.join(tmp, "output-#{index}")
     File.write(out_file, "")
     env = { "GITHUB_OUTPUT" => out_file }
@@ -448,6 +449,44 @@ RUBY
       fail "diff base step failed for the wrong reason on head '$unbounded_head': $(cat "$scope_tmp/err")"
     fi
   done
+  # #2869 behavioral proof: sibling A (8 ops lines) is already on origin/main, the group head is
+  # merge(main, B (8 lines)); A+B exceeds the 10-line headroom and the real workflow step must go red.
+  # Dropping --no-fork-points lets B's own fork allowance hide A, so the mutant must pass (the hole).
+  cx_ops="$(wc -l <ops/ci_scope_router.sh)"
+  sfx checkout -q -b cx-base "$s_base"
+  mkdir -p "$scope_repo/ops"
+  cp ops/complexity.py "$scope_repo/ops/complexity.py"
+  cx_ops="$((cx_ops + $(wc -l <ops/complexity.py)))"
+  printf '{"schema":"kg.complexity-budget.v1","slack":{"ops":50,"docs":50,"workflows":50},"ceilings":{"ops":%s,"docs":0,"workflows":0}}\n' "$((cx_ops + 10))" >"$scope_repo/ops/complexity_budget.json"
+  sfx add ops
+  sfx commit -q -m cx-base
+  cx_base="$(sfx rev-parse HEAD)"
+  sfx checkout -q -b cx-pr-b "$cx_base"
+  seq 8 >"$scope_repo/ops/b_lane.sh"
+  sfx add ops
+  sfx commit -q -m cx-pr-b
+  sfx checkout -q -b cx-main "$cx_base"
+  seq 8 >"$scope_repo/ops/a_lane.sh"
+  sfx add ops
+  sfx commit -q -m cx-pr-a
+  cx_main="$(sfx rev-parse HEAD)"
+  sfx checkout -q -b cx-group "$cx_main"
+  sfx merge -q --no-ff cx-pr-b -m "cx group head"
+  cx_head="$(sfx rev-parse HEAD)"
+  sfx update-ref refs/remotes/origin/main "$cx_main"
+  if sim_group "$MERGE_GROUP_REQUIRED" "$cx_main" "$cx_head" >/dev/null; then
+    fail "merge-group complexity step accepts sibling A + B jointly exceeding the ops ceiling"
+  elif ! grep -Fq 'raise the ceiling' "$scope_tmp/err"; then
+    fail "merge-group complexity step failed for the wrong reason: $(cat "$scope_tmp/err")"
+  fi
+  sed 's/ --no-fork-points//' "$MERGE_GROUP_REQUIRED" >"$scope_tmp/mutant-complexity.yml"
+  sim_group "$scope_tmp/mutant-complexity.yml" "$cx_main" "$cx_head" >/dev/null \
+    || fail "mutation check: without --no-fork-points the joint overflow must slip through (the #2869 hole), but it failed: $(cat "$scope_tmp/err")"
+  sfx update-ref refs/remotes/origin/main "$cx_base"
+  cx_solo="$(sfx commit-tree "$(sfx rev-parse cx-pr-b^{tree})" -p "$cx_base" -m solo)"
+  sfx checkout -q --detach "$cx_solo"
+  sim_group "$MERGE_GROUP_REQUIRED" "$cx_base" "$cx_solo" >/dev/null \
+    || fail "positive control: B alone within the headroom must pass the merge-group complexity step: $(cat "$scope_tmp/err")"
   rm -rf "$scope_tmp"
   backend_pytest_step="$(merge_group_step_containing 'uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json')"
   [[ -n "$backend_pytest_step" ]] \
