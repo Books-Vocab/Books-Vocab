@@ -261,7 +261,7 @@ extension ReadiumNavigatorJS {
                 
                 if (dist <= maxHitDistance) {
                     drawDebugBox(rect, true, isDebug);
-                    var vocabWord = vocabSpan.textContent.trim();
+                    var vocabWord = (vocabSpan.getAttribute('data-word') || vocabSpan.textContent).trim();
                     if (vocabWord.length >= 2) {
                         vocabSpan.classList.add('active-word');
                         window.webkit.messageHandlers.wordTap.postMessage(

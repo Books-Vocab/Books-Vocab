@@ -9,6 +9,12 @@ import Foundation
 extension ReadiumNavigatorJS {
     static func buildHighlightScript() -> String {
         """
+        // 字元邊界：JS 的 \\b 只認 ASCII，accented 字（café）會判錯，改用 Unicode lookaround（#2740）
+        window.__vocabWordRegex = function(source, flags) {
+            var cls = '\\\\p{L}\\\\p{M}\\\\p{N}_';
+            return new RegExp('(?<![' + cls + '])(' + source + ')(?![' + cls + '])', flags || 'giu');
+        };
+
         // 標記單一生字（底線）
         window.__markVocabWord = function(word) {
             var lowerWord = word.toLowerCase();
@@ -26,7 +32,7 @@ extension ReadiumNavigatorJS {
                 if (parent.classList.contains('vocab-word')) return;
                 if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') return;
 
-                var regex = new RegExp('\\\\b(' + escaped + ')\\\\b', 'gi');
+                var regex = window.__vocabWordRegex(escaped, 'giu');
                 if (!regex.test(node.textContent)) return;
                 regex.lastIndex = 0;
 
@@ -36,6 +42,7 @@ extension ReadiumNavigatorJS {
                     if (part.toLowerCase() === lowerWord) {
                         var span = document.createElement('span');
                         span.className = 'vocab-word';
+                        span.setAttribute('data-word', part);
                         span.textContent = part;
                         fragment.appendChild(span);
                     } else if (part.length > 0) {
@@ -47,35 +54,67 @@ extension ReadiumNavigatorJS {
                 }
             });
 
-            // 跨節點 fallback：處理連字號詞可能被拆成多個 text node 的情況
+            // 跨節點 fallback：處理連字號詞被行內標籤拆成多個 text node 的情況（#2739）。
+            // 以字元 offset 在「同一區塊」的連續 text node 內找邊界正確的 match，
+            // 逐 node 只包住重疊片段（data-word 記整個詞），不搬動節點、不剝掉行內父層。
             if (word.indexOf('-') === -1) return;
-            if (document.querySelector('.vocab-word') &&
-                Array.from(document.querySelectorAll('.vocab-word')).some(
-                    function(el) { return el.textContent.toLowerCase() === lowerWord; }
-                )) return;
+            var already = Array.from(document.querySelectorAll('.vocab-word')).some(function(el) {
+                return (el.getAttribute('data-word') || el.textContent).toLowerCase() === lowerWord;
+            });
+            if (already) return;
+
+            function blockOf(n) {
+                var el = n.parentElement;
+                while (el) {
+                    var tag = (el.tagName || '').toUpperCase();
+                    if (tag === 'P' || tag === 'LI' || tag === 'BLOCKQUOTE' || tag === 'TD'
+                        || tag === 'DIV' || tag === 'SECTION' || tag === 'BODY'
+                        || /^H[1-6]$/.test(tag)) return el;
+                    el = el.parentElement;
+                }
+                return null;
+            }
 
             var walker2 = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
             var nodes2 = [];
-            while (walker2.nextNode()) nodes2.push(walker2.currentNode);
+            while (walker2.nextNode()) {
+                var tn = walker2.currentNode;
+                var pe = tn.parentElement;
+                if (!pe || pe.classList.contains('vocab-word')) continue;
+                if (pe.tagName === 'SCRIPT' || pe.tagName === 'STYLE') continue;
+                nodes2.push(tn);
+            }
 
             for (var i = 0; i < nodes2.length; i++) {
-                var combined = '';
-                var span = 0;
-                while (span < 10 && i + span < nodes2.length) {
-                    combined += nodes2[i + span].textContent;
-                    span++;
-                    var testRegex = new RegExp(escaped, 'i');
-                    if (testRegex.test(combined)) {
-                        var wrapper = document.createElement('span');
-                        wrapper.className = 'vocab-word';
-                        var firstNode = nodes2[i];
-                        firstNode.parentNode.insertBefore(wrapper, firstNode);
-                        for (var j = 0; j < span; j++) {
-                            wrapper.appendChild(nodes2[i + j]);
-                        }
-                        return;
-                    }
+                var block = blockOf(nodes2[i]);
+                var group = [nodes2[i]];
+                var starts = [0];
+                var combined = nodes2[i].textContent;
+                for (var k = 1; k < 10 && i + k < nodes2.length; k++) {
+                    if (blockOf(nodes2[i + k]) !== block) break;
+                    starts.push(combined.length);
+                    group.push(nodes2[i + k]);
+                    combined += nodes2[i + k].textContent;
                 }
+                var m = window.__vocabWordRegex(escaped, 'giu').exec(combined);
+                if (!m || m.index >= nodes2[i].textContent.length) continue;
+                var mStart = m.index, mEnd = m.index + m[0].length, label = m[0];
+                group.forEach(function(gn, gi) {
+                    var text = gn.textContent;
+                    var s = Math.max(mStart, starts[gi]) - starts[gi];
+                    var e = Math.min(mEnd, starts[gi] + text.length) - starts[gi];
+                    if (e <= s) return;
+                    var frag = document.createDocumentFragment();
+                    if (s > 0) frag.appendChild(document.createTextNode(text.slice(0, s)));
+                    var seg = document.createElement('span');
+                    seg.className = 'vocab-word';
+                    seg.setAttribute('data-word', label);
+                    seg.textContent = text.slice(s, e);
+                    frag.appendChild(seg);
+                    if (e < text.length) frag.appendChild(document.createTextNode(text.slice(e)));
+                    gn.parentNode.replaceChild(frag, gn);
+                });
+                return;
             }
         };
 
@@ -96,7 +135,7 @@ extension ReadiumNavigatorJS {
             var escaped = words.map(function(w) {
                 return w.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
             });
-            var regex = new RegExp('\\\\b(' + escaped.join('|') + ')\\\\b', 'gi');
+            var regex = window.__vocabWordRegex(escaped.join('|'), 'giu');
 
             var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
             var textNodes = [];
@@ -130,6 +169,7 @@ extension ReadiumNavigatorJS {
                         if (lowerSet[part.toLowerCase()]) {
                             var span = document.createElement('span');
                             span.className = 'vocab-word';
+                            span.setAttribute('data-word', part);
                             span.textContent = part;
                             fragment.appendChild(span);
                         } else if (part.length > 0) {
@@ -148,7 +188,7 @@ extension ReadiumNavigatorJS {
                     if (hyphenatedWords.length > 0) {
                         var marked = {};
                         document.querySelectorAll('.vocab-word').forEach(function(el) {
-                            marked[el.textContent.toLowerCase()] = true;
+                            marked[(el.getAttribute('data-word') || el.textContent).toLowerCase()] = true;
                         });
                         hyphenatedWords.forEach(function(hw) {
                             if (marked[hw.toLowerCase()]) return;
@@ -164,7 +204,8 @@ extension ReadiumNavigatorJS {
         window.__removeVocabWord = function(word) {
             var lowerWord = word.toLowerCase();
             document.querySelectorAll('.vocab-word').forEach(function(el) {
-                if (el.textContent.toLowerCase() === lowerWord) {
+                if ((el.getAttribute('data-word') || el.textContent).toLowerCase() === lowerWord) {
+                    el.removeAttribute('data-word');
                     el.classList.remove('vocab-word', 'active-word');
                     if (el.classList.contains('debug-word-box')) return; // 保留 debug 狀態
                     var parent = el.parentNode;

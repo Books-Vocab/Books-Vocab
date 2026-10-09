@@ -138,5 +138,91 @@ struct ReaderJSEvalTests {
             #expect(context.evaluateScript("window.got")?.toString() == word)
         }
     }
+
+    // MARK: - Vocab marking DOM behaviour (#2739, #2740) — JavaScriptCore + minimal fake DOM
+
+    private static let fakeDOM = """
+    var NodeFilter = { SHOW_TEXT: 4 };
+    class N {
+        constructor(type, tag, text) { this.nodeType = type; this.tagName = tag; this._text = text || ''; this.children = []; this.parentNode = null; this.attrs = {}; this.className = ''; }
+        get parentElement() { return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null; }
+        get childNodes() { return this.children; }
+        get classList() { var s = this; return { contains: function(c) { return (' ' + s.className + ' ').indexOf(' ' + c + ' ') >= 0; }, remove: function() { var rm = Array.prototype.slice.call(arguments); s.className = s.className.split(' ').filter(function(x) { return x && rm.indexOf(x) < 0; }).join(' '); } }; }
+        get firstChild() { return this.children[0] || null; }
+        insertBefore(n, ref) { if (n.parentNode) { n.parentNode.removeChild(n); } n.parentNode = this; this.children.splice(this.children.indexOf(ref), 0, n); }
+        removeChild(n) { this.children.splice(this.children.indexOf(n), 1); n.parentNode = null; }
+        normalize() { var out = []; this.children.forEach(function(c) { var l = out[out.length - 1]; if (c.nodeType === 3 && l && l.nodeType === 3) { l._text += c._text; } else { out.push(c); } }); this.children = out; }
+        get textContent() { return this.nodeType === 3 ? this._text : this.children.map(function(c) { return c.textContent; }).join(''); }
+        set textContent(v) { if (this.nodeType === 3) { this._text = v; } else { var t = new N(3, '', v); t.parentNode = this; this.children = [t]; } }
+        setAttribute(k, v) { this.attrs[k] = v; }
+        getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
+        removeAttribute(k) { delete this.attrs[k]; }
+        appendChild(c) { var self = this; (c.nodeType === 11 ? c.children.splice(0) : [c]).forEach(function(x) { if (x.parentNode) { x.parentNode.removeChild(x); } x.parentNode = self; self.children.push(x); }); return c; }
+        replaceChild(n, old) { var self = this; var items = n.nodeType === 11 ? n.children.splice(0) : [n]; items.forEach(function(x) { x.parentNode = self; }); var i = this.children.indexOf(old); this.children.splice.apply(this.children, [i, 1].concat(items)); old.parentNode = null; }
+    }
+    function el(tag, kids) { var e = new N(1, tag); kids.forEach(function(k) { e.appendChild(typeof k === 'string' ? new N(3, '', k) : k); }); return e; }
+    function all(root, out) { root.children.forEach(function(c) { out.push(c); all(c, out); }); return out; }
+    var body = el('BODY', []);
+    var document = {
+        body: body,
+        createTreeWalker: function(root) { var l = all(root, []).filter(function(n) { return n.nodeType === 3; }); var i = -1; var w = { nextNode: function() { i++; w.currentNode = l[i]; return i < l.length; } }; return w; },
+        createDocumentFragment: function() { return new N(11, ''); },
+        createElement: function(t) { return new N(1, t.toUpperCase()); },
+        createTextNode: function(t) { return new N(3, '', t); },
+        querySelectorAll: function() { return all(body, []).filter(function(n) { return n.nodeType === 1 && n.className.indexOf('vocab-word') >= 0; }); },
+        querySelector: function(q) { return document.querySelectorAll(q)[0] || null; }
+    };
+    var window = { webkit: { messageHandlers: { markingProgress: { postMessage: function() {} } } } };
+    var setTimeout = function(f) { f(); };
+    function dump(n) { if (n.nodeType === 3) return '"' + n._text + '"'; var inner = n.children.map(dump).join(','); if (n.className.indexOf('vocab-word') >= 0) return '<w:' + n.attrs['data-word'] + '>' + inner + '</w>'; return n.tagName + '[' + inner + ']'; }
+    """
+
+    private func runVocabScript(_ call: String, body bodyJS: String) -> String {
+        let context = JSContext()!
+        context.evaluateScript(Self.fakeDOM)
+        context.evaluateScript(ReadiumNavigatorJS.buildHighlightScript())
+        context.evaluateScript("body.appendChild(\(bodyJS));")
+        context.evaluateScript(call)
+        #expect(context.exception == nil, "\(context.exception?.toString() ?? "")")
+        return context.evaluateScript("dump(body)")?.toString() ?? "<no result>"
+    }
+
+    /// `\b` is ASCII-only in JS (even with the u flag), so `café.` never matched (#2740).
+    @Test func markVocabWordMatchesAccentedWordBeforePunctuation() {
+        let dump = runVocabScript("window.__markVocabWord('café')", body: "el('P', ['Un café.'])")
+        #expect(dump == #"BODY[P["Un ",<w:café>"café"</w>,"."]]"#)
+    }
+
+    @Test func markVocabWordsMatchesAccentedWordsAndKeepsLetterBoundaries() {
+        let dump = runVocabScript("window.__markVocabWords(['élan', 'café'])",
+                                  body: "el('P', ['un élan, cafés, café'])")
+        #expect(dump == #"BODY[P["un ",<w:élan>"élan"</w>,", cafés, ",<w:café>"café"</w>]]"#)
+    }
+
+    /// Cross-node fallback wraps each overlapping segment in place and keeps the
+    /// inline parent (`<i>`) intact; the word is tagged via data-word (#2739).
+    @Test func crossNodeHyphenatedWordIsWrappedPerSegment() {
+        let dump = runVocabScript("window.__markVocabWord('well-known')",
+                                  body: "el('P', ['a ', el('I', ['well-']), 'known fact'])")
+        #expect(dump == #"BODY[P["a ",I[<w:well-known>"well-"</w>],<w:well-known>"known"</w>," fact"]]"#)
+    }
+
+    /// No match across unrelated nodes / inside a longer word / across blocks.
+    @Test func crossNodeFallbackDoesNotWrapUnrelatedText() {
+        let longer = runVocabScript("window.__markVocabWord('well-known')",
+                                    body: "el('P', ['unwell-', el('I', ['known']), ' x'])")
+        #expect(!longer.contains("<w:"))
+        let blocks = runVocabScript("window.__markVocabWord('well-known')",
+                                    body: "el('DIV', [el('P', ['well-']), el('P', ['known'])])")
+        #expect(!blocks.contains("<w:"))
+    }
+
+    /// Removal and the tap payload both key off data-word, so every segment of a
+    /// split word is removed together.
+    @Test func removeVocabWordUnwrapsEverySegmentByDataWord() {
+        let dump = runVocabScript("window.__markVocabWord('well-known'); window.__removeVocabWord('well-known')",
+                                  body: "el('P', ['a ', el('I', ['well-']), 'known fact'])")
+        #expect(dump == #"BODY[P["a ",I["well-"],"known fact"]]"#)
+    }
 }
 #endif
