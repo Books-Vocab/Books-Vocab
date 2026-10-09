@@ -103,7 +103,10 @@ struct VocabActivityHeatmap: View {
                     }
                 }
             }
-            .defaultScrollAnchor(.trailing)
+            // Roles are explicit: a bare anchor also trailing-aligns content narrower than
+            // the viewport (wide phones). `.sizeChanges` re-anchors when `grid` fills async.
+            .defaultScrollAnchor(.trailing, for: .initialOffset)
+            .defaultScrollAnchor(.trailing, for: .sizeChanges)
 
             // Legend
             HStack(spacing: appSkin.spacing.rowMicroGap) {

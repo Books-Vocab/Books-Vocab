@@ -271,10 +271,10 @@ final class OverviewFlowUITests: UITestCase {
             let today = app.descendants(matching: .any)
                 .matching(identifier: "calendar.day.\(expected.forecastDayKey)").firstMatch
             XCTAssertTrue(today.waitForExistence(timeout: 10), "today's heatmap cell missing")
-            let window = app.windows.firstMatch.frame
+            let card = overview.calendar.frame
             XCTAssertTrue(
-                today.frame.minX >= window.minX && today.frame.maxX <= window.maxX,
-                "heatmap did not open scrolled to the latest week: \(today.frame) outside \(window)"
+                today.isHittable && today.frame.minX >= card.minX && today.frame.maxX <= card.maxX,
+                "heatmap did not open scrolled to the latest week: \(today.frame) outside \(card)"
             )
         }
 
