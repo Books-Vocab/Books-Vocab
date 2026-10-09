@@ -69,6 +69,13 @@ class TestParseDatetime:
         result = parse_datetime(dt)
         assert result.tzinfo == UTC
 
+    @pytest.mark.parametrize(
+        "raw",
+        ["9999-12-31T23:59:59-05:00", "inf", "1e30", "1e18", 1e30, float("inf"), 10**30],
+    )
+    def test_out_of_range_returns_none(self, raw):
+        assert parse_datetime(raw) is None
+
 
 # ===========================================================================
 # normalize_users_payload

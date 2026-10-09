@@ -3,12 +3,32 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .api_models import ReviewStateEntry
 from .user_store import parse_datetime
 from .vocab_shared import _normalize_word
+
+# Client clocks may run slightly ahead; beyond this a timestamp is clamped so a
+# skewed device cannot freeze a card's schedule for every other device.
+_MAX_CLOCK_SKEW = timedelta(minutes=5)
+# Upper bound for a scheduled next review (normal schedules are in the future).
+_MAX_NEXT_REVIEW_HORIZON = timedelta(days=3650)
+
+
+def _clamp_last_reviewed(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    now = datetime.now(UTC)
+    return now if value > now + _MAX_CLOCK_SKEW else value
+
+
+def _clamp_next_review(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    limit = datetime.now(UTC) + _MAX_NEXT_REVIEW_HORIZON
+    return limit if value > limit else value
 
 
 def _merge_card_review_state(
@@ -43,7 +63,7 @@ def _merge_card_review_state(
         return dict(review_count=card.review_count, lapse_count=card.lapse_count)
 
     # Client is newer — accept all fields.
-    client_next = parse_datetime(entry.next_review_at)
+    client_next = _clamp_next_review(parse_datetime(entry.next_review_at))
     # Observability: a present-but-unparseable next_review_at silently resets
     # this card's schedule to None below. Surface it so bad/stale client payloads
     # are diagnosable. Skip whitespace-only / empty values, which mean "not
@@ -109,8 +129,8 @@ def push_review_states(
 
         duplicate_entries += 1
         existing = coalesced_entries[position]
-        entry_last = parse_datetime(entry.last_reviewed_at)
-        existing_last = parse_datetime(existing.last_reviewed_at)
+        entry_last = _clamp_last_reviewed(parse_datetime(entry.last_reviewed_at))
+        existing_last = _clamp_last_reviewed(parse_datetime(existing.last_reviewed_at))
         if entry_last is None:
             continue
         if existing_last is None:
@@ -142,7 +162,7 @@ def push_review_states(
             skipped += 1
             continue
 
-        client_last = parse_datetime(entry.last_reviewed_at)
+        client_last = _clamp_last_reviewed(parse_datetime(entry.last_reviewed_at))
         if client_last is None:
             skipped += 1
             continue

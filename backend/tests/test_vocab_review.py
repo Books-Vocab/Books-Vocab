@@ -113,6 +113,106 @@ def _entry(
 # push_review_states
 # --------------------------------------------------------------------- #
 class TestPushReviewStatesFakes:
+    def test_out_of_range_timestamp_entry_skipped_valid_entries_applied(self):
+        bad = _ReviewCard(id="bad", content="bad")
+        good = _ReviewCard(id="good", content="good")
+        store = _FakeCardsStore([bad, good])
+        entries = [
+            _entry(word="bad", card_id="bad", last_reviewed_at="inf"),
+            _entry(word="bad", card_id="bad", last_reviewed_at="1e30"),
+            _entry(word="good", card_id="good", last_reviewed_at=_iso(datetime.now(UTC)), review_count=3),
+        ]
+
+        result = push_review_states(entries, cards_store=store, logger=logging.getLogger())
+
+        assert result["updated"] == 1
+        assert good.review_count == 3
+        assert bad.review_count == 0
+
+    def test_far_future_last_reviewed_at_is_clamped_to_now(self):
+        for future in ("9999-01-01T00:00:00+00:00", _iso(datetime.now(UTC) + timedelta(days=1))):
+            card = _ReviewCard(id="c1", content="run")
+            store = _FakeCardsStore([card])
+            before = datetime.now(UTC)
+            push_review_states(
+                [_entry(word="run", card_id="c1", last_reviewed_at=future)],
+                cards_store=store,
+                logger=logging.getLogger(),
+            )
+            after = datetime.now(UTC)
+            assert before <= card.last_reviewed_at <= after
+
+    def test_future_clock_skew_does_not_freeze_later_push(self):
+        card = _ReviewCard(id="c1", content="run")
+        store = _FakeCardsStore([card])
+        log = logging.getLogger()
+        push_review_states(
+            [_entry(word="run", card_id="c1", last_reviewed_at="9999-01-01T00:00:00+00:00")],
+            cards_store=store,
+            logger=log,
+        )
+        later = datetime.now(UTC) + timedelta(seconds=1)
+        next_at = later + timedelta(hours=48)
+        result = push_review_states(
+            [
+                _entry(
+                    word="run",
+                    card_id="c1",
+                    last_reviewed_at=_iso(later),
+                    next_review_at=_iso(next_at),
+                    review_interval_hours=48.0,
+                    review_streak=5,
+                    last_review_feedback=-1,
+                )
+            ],
+            cards_store=store,
+            logger=log,
+        )
+        assert result["updated"] == 1
+        assert card.review_interval_hours == 48.0
+        assert card.next_review_at == next_at
+        assert card.review_streak == 5
+        assert card.last_review_feedback == -1
+
+    def test_last_reviewed_at_within_skew_tolerance_unchanged(self):
+        card = _ReviewCard(id="c1", content="run")
+        store = _FakeCardsStore([card])
+        ts = datetime.now(UTC) + timedelta(minutes=2)
+        push_review_states(
+            [_entry(word="run", card_id="c1", last_reviewed_at=_iso(ts))],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+        assert card.last_reviewed_at == ts
+
+    def test_far_future_next_review_at_is_capped(self):
+        card = _ReviewCard(id="c1", content="run")
+        store = _FakeCardsStore([card])
+        push_review_states(
+            [
+                _entry(
+                    word="run",
+                    card_id="c1",
+                    last_reviewed_at=_iso(datetime.now(UTC)),
+                    next_review_at="9999-01-01T00:00:00+00:00",
+                )
+            ],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+        assert card.next_review_at < datetime.now(UTC) + timedelta(days=3660)
+
+    def test_normal_future_next_review_at_unchanged(self):
+        card = _ReviewCard(id="c1", content="run")
+        store = _FakeCardsStore([card])
+        nxt = datetime.now(UTC) + timedelta(days=90)
+        push_review_states(
+            [_entry(word="run", card_id="c1", last_reviewed_at=_iso(datetime.now(UTC)), next_review_at=_iso(nxt))],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+        assert card.next_review_at == nxt
+
     def test_card_id_match_wins_over_word_fallback(self):
         # Two cards share the word "run" — entry's card_id must select c2.
         c1 = _ReviewCard(id="c1", content="run")
