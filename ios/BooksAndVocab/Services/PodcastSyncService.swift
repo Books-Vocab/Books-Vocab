@@ -192,11 +192,14 @@ struct PodcastCatalogReconciler {
     static func reconcile(
         serverSummaries: [PodcastSeriesSummary],
         fetchedDetails: [String: PodcastSeriesDetail],
-        context: ModelContext
+        context: ModelContext,
+        fetch: PodcastLocalFetch = .live
     ) {
         let ids = Set(serverSummaries.map(\.id))
-        let allSeries = (try? context.fetch(FetchDescriptor<PodcastSeries>())) ?? []
-        if !serverSummaries.isEmpty {
+        // A failed local fetch must skip the dependent destructive step, never
+        // read as "empty" (#2795).
+        let allSeries = try? fetch.fetch(FetchDescriptor<PodcastSeries>(), in: context)
+        if !serverSummaries.isEmpty, let allSeries {
             let seriesByRemoteId = Dictionary(
                 allSeries.map { ($0.remoteId, $0) },
                 uniquingKeysWith: { first, _ in first }
@@ -220,7 +223,7 @@ struct PodcastCatalogReconciler {
             let descriptor = FetchDescriptor<PodcastEpisode>(
                 predicate: #Predicate { $0.series?.remoteId == seriesId }
             )
-            let local = (try? context.fetch(descriptor)) ?? []
+            guard let local = try? fetch.fetch(descriptor, in: context) else { continue }
             for episode in local where !serverIds.contains(episode.remoteId) {
                 if let path = episode.localAudioPath {
                     try? FileManager.default.removeItem(atPath: path)
@@ -229,8 +232,10 @@ struct PodcastCatalogReconciler {
             }
         }
 
-        let liveIds = Set(((try? context.fetch(FetchDescriptor<PodcastEpisode>())) ?? []).map(\.remoteId))
-        let progress = (try? context.fetch(FetchDescriptor<PodcastProgress>())) ?? []
+        guard let liveEpisodes = try? fetch.fetch(FetchDescriptor<PodcastEpisode>(), in: context),
+              let progress = try? fetch.fetch(FetchDescriptor<PodcastProgress>(), in: context)
+        else { return }
+        let liveIds = Set(liveEpisodes.map(\.remoteId))
         var grouped: [String: [PodcastProgress]] = [:]
         for row in progress {
             guard liveIds.contains(row.episodeRemoteId) else {
