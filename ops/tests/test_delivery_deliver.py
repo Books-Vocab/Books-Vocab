@@ -93,6 +93,7 @@ class FakeWorld:
         )
         self.review_comments: list[dict[str, Any]] = state.get("review_comments", [])
         self.issue_comments: list[dict[str, Any]] = state.get("issue_comments", [])
+        self.pr_reviews: list[dict[str, Any]] = state.get("pr_reviews", [])
         # Workflow runs by id (None: GitHub answers 404); a run not listed here
         # belongs to the PR whose head was last read, as the real ones do.
         self.actions_runs: dict[int, dict[str, Any] | None] = state.get(
@@ -303,7 +304,7 @@ class FakeWorld:
             if cmd[1] == "api" and "/issues/" in cmd[-1]:
                 return ok(json.dumps([self.issue_comments]))
             if cmd[1] == "api" and cmd[-1].endswith("/reviews?per_page=100"):
-                return ok(json.dumps([[]]))
+                return ok(json.dumps([self.pr_reviews]))
             if cmd[1] == "api" and cmd[-1].endswith("/comments?per_page=100"):
                 return ok(json.dumps([self.review_comments]))
             if cmd[1:3] == ["issue", "view"]:
@@ -875,8 +876,22 @@ def test_a_neutral_review_followed_by_a_review_is_queued() -> None:
     assert result["review"]["accepted_no_review"] is None
 
 
+def _cr_verdict(
+    head: str = HEAD,
+    verdict: str = "APPROVE",
+    association: str = "OWNER",
+    login: str = "maintainer",
+) -> dict[str, Any]:
+    return {
+        "user": {"login": login},
+        "author_association": association,
+        "created_at": "2026-10-09T10:10:00Z",
+        "body": f"CR verdict: {verdict} {head}\nno P0/P1 at the exact head",
+    }
+
+
 def test_an_explicit_reason_queues_without_a_review_and_records_it() -> None:
-    world = FakeWorld(review_runs=[_NEUTRAL])
+    world = FakeWorld(review_runs=[_NEUTRAL], issue_comments=[_cr_verdict()])
     reason = "codex quota exhausted; reviewed by hand"
     code, result = ship(
         world, "--check", "u=good", "--merge", "--accept-no-review", reason
@@ -915,7 +930,9 @@ def _polls(world: FakeWorld) -> int:
 
 
 def test_accept_no_review_takes_a_settled_neutral_at_once_without_polling() -> None:
-    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE])
+    world = FakeWorld(
+        review_runs=[_NEUTRAL_UNAVAILABLE], issue_comments=[_cr_verdict()]
+    )
     reason = "CR verdict: no blockers at the exact head"
     code, result = ship(
         world, "--check", "u=good", "--merge", "--accept-no-review", reason
@@ -1009,7 +1026,8 @@ def test_a_pending_review_is_still_waited_for_before_a_neutral_is_accepted() -> 
         review_runs=[
             [_review("in_progress", job=True)],
             _NEUTRAL_UNAVAILABLE,
-        ]
+        ],
+        issue_comments=[_cr_verdict()],
     )
     code, result = ship(
         world, "--check", "u=good", "--merge", "--accept-no-review", "CR ok"
@@ -1017,6 +1035,39 @@ def test_a_pending_review_is_still_waited_for_before_a_neutral_is_accepted() -> 
     assert code == 0, result
     assert _polls(world) == 2
     assert world.sleeps != []
+
+
+@pytest.mark.parametrize(
+    "comments",
+    [
+        [],
+        [_cr_verdict(head="d" * 40)],
+        [_cr_verdict(verdict="REQUEST_CHANGES")],
+        [_cr_verdict(association="NONE")],
+        [_cr_verdict(login=BOT)],
+    ],
+    ids=["none", "other-head", "rejecting", "untrusted-author", "review-bot"],
+)
+def test_accept_no_review_needs_a_recorded_cr_verdict_on_the_exact_head(
+    comments: list[dict[str, Any]],
+) -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE], issue_comments=comments)
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "looks fine"
+    )
+    assert code == 1, result
+    assert "needs a recorded CR verdict" in result["error"]
+    assert f"CR verdict: APPROVE {HEAD}" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_cr_verdict_in_a_pr_review_body_also_counts() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE], pr_reviews=[_cr_verdict()])
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "CR ok"
+    )
+    assert code == 0, result
+    assert _calls_at(world, _is_queue)
 
 
 def test_accepting_no_review_does_not_override_a_failed_review() -> None:

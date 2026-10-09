@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -619,3 +620,78 @@ def test_main_reports_the_sentry_section(
         report = json.loads(capsys.readouterr().out)
         sentry = [f for f in report["findings"] if f["section"] == "sentry"]
         assert len(sentry) == 1 and sentry[0]["level"] == "warn", argv
+
+
+_REAL_COLLECT_REVIEW_QUOTA = doctor.collect_review_quota
+
+
+@pytest.fixture(autouse=True)
+def _no_live_review_quota(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(doctor, "collect_review_quota", lambda repo, now: None)
+
+
+def test_review_quota_is_ok_and_visible_when_the_bot_never_hit_its_limit() -> None:
+    finding = doctor.evaluate_review_quota({"month": 0, "recent": 0})
+    assert (finding.section, finding.level) == ("review", "ok")
+    assert "0 PR(s)" in finding.summary
+
+
+def test_review_quota_warns_when_the_bot_hit_its_limit_recently() -> None:
+    finding = doctor.evaluate_review_quota({"month": 9, "recent": 2})
+    assert finding.level == "warn"
+    assert "9 PR(s)" in finding.summary and "2 in the last" in finding.summary
+    assert any("review_discipline.md" in line for line in finding.detail)
+
+
+def test_review_quota_old_hits_stay_ok_but_visible() -> None:
+    finding = doctor.evaluate_review_quota({"month": 4, "recent": 0})
+    assert finding.level == "ok" and "4 PR(s)" in finding.summary
+
+
+def test_review_quota_unavailable_reads_as_warn_not_zero() -> None:
+    assert doctor.evaluate_review_quota(None).level == "warn"
+
+
+def test_collect_review_quota_counts_prs_for_both_windows() -> None:
+    seen: list[list[str]] = []
+
+    def run(cmd: list[str], cwd: Path, timeout: int = 60):
+        del cwd, timeout
+        seen.append(cmd)
+        out = "[{}, {}, {}]" if "updated:>=2026-09-09" in " ".join(cmd) else "[{}]"
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+
+    now = datetime(2026, 10, 9, tzinfo=timezone.utc)
+    data = _REAL_COLLECT_REVIEW_QUOTA(OPS.parent, now, run)
+    assert data == {"month": 3, "recent": 1}
+    assert all(cmd[:3] == ["gh", "pr", "list"] for cmd in seen)
+
+
+def test_collect_review_quota_failure_is_none() -> None:
+    def run(cmd: list[str], cwd: Path, timeout: int = 60):
+        del cwd, timeout
+        return subprocess.CompletedProcess(cmd, 1, "", "boom")
+
+    now = datetime(2026, 10, 9, tzinfo=timezone.utc)
+    assert _REAL_COLLECT_REVIEW_QUOTA(OPS.parent, now, run) is None
+
+
+def test_main_reports_the_review_quota_section(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(doctor, "collect_issues", lambda repo: [])
+    monkeypatch.setattr(doctor, "collect_ci", lambda repo: [])
+    monkeypatch.setattr(doctor, "collect_complexity", lambda repo: (None, None))
+    monkeypatch.setattr(doctor, "collect_delivery", lambda repo: None)
+    monkeypatch.setattr(doctor, "collect_prod_info", lambda: None)
+    monkeypatch.setattr(
+        doctor, "collect_release_gap", lambda repo, now, info: (FULL, 1, 1.0)
+    )
+    monkeypatch.setattr(doctor, "collect_sentry_local", lambda repo: None)
+    monkeypatch.setattr(
+        doctor, "collect_review_quota", lambda repo, now: {"month": 5, "recent": 1}
+    )
+    doctor.main(["--json", "--ci"])
+    report = json.loads(capsys.readouterr().out)
+    [review] = [f for f in report["findings"] if f["section"] == "review"]
+    assert review["level"] == "warn" and "5 PR(s)" in review["summary"]

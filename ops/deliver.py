@@ -420,6 +420,28 @@ def quota_reply(items: list[dict[str, Any]], since: str, bots: tuple[str, ...]) 
     return False
 
 
+CR_VERDICT = re.compile(r"(?im)^[ \t]*CR verdict:[ \t]*(approve|approved)\b")
+CR_TRUSTED = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+
+def cr_verdict_recorded(
+    items: list[dict[str, Any]], head: str, bots: tuple[str, ...]
+) -> bool:
+    """A maintainer comment/review on the PR saying `CR verdict: APPROVE <head>`.
+
+    The verdict must name the exact head, come from a repository maintainer and
+    not from the review bot, so `--accept-no-review` cites something on the PR
+    rather than free text.
+    """
+    return any(
+        (item.get("user") or {}).get("login") not in bots
+        and item.get("author_association") in CR_TRUSTED
+        and head in str(item.get("body") or "")
+        and CR_VERDICT.search(str(item.get("body") or "")) is not None
+        for item in items
+    )
+
+
 def review_run_id(run: dict[str, Any]) -> int | None:
     """The Actions workflow run behind one `agent-review` check run, if it names one.
 
@@ -1204,6 +1226,19 @@ class Delivery:
                     "review the exact head and re-run with "
                     "--accept-no-review '<CR verdict>'"
                 )
+            if not cr_verdict_recorded(
+                self.gh_pages(f"repos/{repo}/issues/{number}/comments?per_page=100")
+                + self.gh_pages(f"repos/{repo}/pulls/{number}/reviews?per_page=100"),
+                head,
+                bots,
+            ):
+                raise DeliverError(
+                    f"refusing to queue #{number}: --accept-no-review needs a "
+                    f"recorded CR verdict on the PR, and none names {head}; have "
+                    "CR review the exact head, then a maintainer comments "
+                    f"'CR verdict: APPROVE {head}' on the PR "
+                    "(docs/sop/review_discipline.md) and re-run"
+                )
             self.say(f"accepted #{number} without an exact-head review ({no_review})")
         findings = review_findings(
             self.gh_pages(f"repos/{repo}/pulls/{number}/comments?per_page=100"),
@@ -1700,7 +1735,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="REASON",
         help=(
             f"with --merge: queue although {REVIEW_CHECK} only reached neutral "
-            "(the bot never reviewed the head) by --timeout; the reason is logged"
+            "(the bot never reviewed the head) by --timeout; needs a maintainer "
+            "comment 'CR verdict: APPROVE <head sha>' on the PR; the reason is logged"
         ),
     )
     options.add_argument(
