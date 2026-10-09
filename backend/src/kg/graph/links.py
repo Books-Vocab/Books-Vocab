@@ -455,9 +455,14 @@ class _LinksMixin:
             if lk is None:
                 raise KeyError(link_id)
             conf_before, status_before = lk.confidence, lk.status
+            # Validate everything before the first setattr so a bad input never
+            # leaves the cached link half-mutated (#2690).
             for key, value in attrs.items():
                 if key not in ALLOWED:
                     raise ValueError(f"Cannot update attribute: {key}")
+                if key == "confidence" and not 0.0 <= value <= 1.0:
+                    raise ValueError("confidence must be between 0.0 and 1.0")
+            for key, value in attrs.items():
                 setattr(lk, key, value)
             conf_after, status_after = lk.confidence, lk.status
             reason_after = lk.reason
@@ -544,21 +549,35 @@ class _LinksMixin:
                 raise KeyError(link_id)
             from_id, to_id = lk.from_id, lk.to_id
             kind, conf, status_before = str(lk.kind), lk.confidence, lk.status
-            self._unindex_link(lk)
-            del self._links[link_id]
             pair = self._normalize_pair(from_id, to_id)
+            newly_blocked = pair not in self._blocked_pairs
             self._blocked_pairs.add(pair)
             # Register so a later _flush_blocked merge treats this pair as
             # managed by this instance (a subsequent unblock is honoured).
             self._known_blocked_pairs.add(pair)
-            self._touch_links((link_id,))
             self._touch_blocked((pair,))
-            links_snapshot = self._links_to_serializable()
             blocked_snapshot = self._blocked_to_serializable()
+        # Persist the block first (#2690): if it fails the link is still intact,
+        # so the caller can retry instead of hitting a 404 with no durable block.
+        try:
+            self._flush_blocked(blocked_snapshot)
+        except BaseException:
+            if newly_blocked:
+                with self._lock:
+                    self._blocked_pairs.discard(pair)
+                    self._touch_blocked((pair,))
+            raise
+        with self._lock:
+            lk = self._links.get(link_id)
+            if lk is None:
+                raise KeyError(link_id)
+            self._unindex_link(lk)
+            del self._links[link_id]
+            self._touch_links((link_id,))
+            links_snapshot = self._links_to_serializable()
         self._flush_links_and_reconcile(
             links_snapshot, pair_locks={self._normalize_pair(from_id, to_id)}, pre_reconcile=False
         )
-        self._flush_blocked(blocked_snapshot)
         self._emit_graph_event(
             "link_deleted",
             link_id=link_id,

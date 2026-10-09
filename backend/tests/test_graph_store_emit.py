@@ -91,11 +91,13 @@ def test_duplicate_add_does_not_emit(tmp_path, request):
 
 def test_batch_add_emits_one_per_created(tmp_path, request):
     gs, ev = _store(tmp_path, request)
-    gs.batch_add_links([
-        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
-        ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
-        ("a", "b", LinkKind.SHARES_USAGE, 0.5, "dup"),  # dedup,不 emit
-    ])
+    gs.batch_add_links(
+        [
+            ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+            ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
+            ("a", "b", LinkKind.SHARES_USAGE, 0.5, "dup"),  # dedup,不 emit
+        ]
+    )
     added = ev.query(event_type=GraphEventType.LINK_ADDED)
     assert len(added) == 2
 
@@ -165,10 +167,12 @@ def test_add_link_emits_reason(tmp_path, request):
 
 def test_batch_add_emits_reason_per_link(tmp_path, request):
     gs, ev = _store(tmp_path, request)
-    gs.batch_add_links([
-        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
-        ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
-    ])
+    gs.batch_add_links(
+        [
+            ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+            ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
+        ]
+    )
     reasons = {e.link_id: e.reason for e in ev.query(event_type=GraphEventType.LINK_ADDED)}
     assert set(reasons.values()) == {"r1", "r2"}
 
@@ -245,11 +249,9 @@ class _CountingSnapshotStore(GraphSnapshotStore):
         super().__init__(path)
         self.maybe_save_calls = 0
 
-    def maybe_save_periodic(self, notebook_id, links, *, min_events_since_snapshot=None):  # noqa: ANN001
+    def maybe_save_periodic(self, notebook_id, links, **kwargs):  # noqa: ANN001, ANN003
         self.maybe_save_calls += 1
-        return super().maybe_save_periodic(
-            notebook_id, links, min_events_since_snapshot=min_events_since_snapshot
-        )
+        return super().maybe_save_periodic(notebook_id, links, **kwargs)
 
 
 def test_batch_add_emits_single_transaction(tmp_path, request):
@@ -259,14 +261,18 @@ def test_batch_add_emits_single_transaction(tmp_path, request):
         links_path=tmp_path / "graph_default.json",
         candidates_path=tmp_path / "candidates_default.json",
         blocked_path=tmp_path / "blocked_default.json",
-        event_store=ev, snapshot_store=snap, event_notebook_id="default",
+        event_store=ev,
+        snapshot_store=snap,
+        event_notebook_id="default",
     )
     _register_store_cleanup(request, gs, ev, snap)
-    gs.batch_add_links([
-        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
-        ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
-        ("e", "f", LinkKind.SHARES_USAGE, 0.5, "r3"),
-    ])
+    gs.batch_add_links(
+        [
+            ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+            ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
+            ("e", "f", LinkKind.SHARES_USAGE, 0.5, "r3"),
+        ]
+    )
     assert ev.insert_many_calls == 1  # 不是逐 link 一筆交易
     assert snap.maybe_save_calls == 1
     assert len(ev.query(event_type=GraphEventType.LINK_ADDED)) == 3
@@ -279,13 +285,17 @@ def test_deprecate_emits_single_transaction(tmp_path, request):
         links_path=tmp_path / "graph_default.json",
         candidates_path=tmp_path / "candidates_default.json",
         blocked_path=tmp_path / "blocked_default.json",
-        event_store=ev, snapshot_store=snap, event_notebook_id="default",
+        event_store=ev,
+        snapshot_store=snap,
+        event_notebook_id="default",
     )
     _register_store_cleanup(request, gs, ev, snap)
-    gs.batch_add_links([
-        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
-        ("a", "c", LinkKind.SHARES_USAGE, 0.6, "r2"),
-    ])
+    gs.batch_add_links(
+        [
+            ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+            ("a", "c", LinkKind.SHARES_USAGE, 0.6, "r2"),
+        ]
+    )
     before = ev.insert_many_calls
     snap_before = snap.maybe_save_calls
     gs.deprecate_links_for("a")
@@ -320,6 +330,7 @@ def test_event_store_provider_resolved_per_emit_survives_eviction(tmp_path, requ
 
 def test_raising_provider_does_not_break_mutation(tmp_path):
     """provider 自己拋(開 SQLite 失敗)也不得打斷圖譜寫入。"""
+
     def _boom():
         raise RuntimeError("cannot open event store")
 
@@ -327,7 +338,47 @@ def test_raising_provider_does_not_break_mutation(tmp_path):
         links_path=tmp_path / "graph_default.json",
         candidates_path=tmp_path / "candidates_default.json",
         blocked_path=tmp_path / "blocked_default.json",
-        event_store_provider=_boom, event_notebook_id="default",
+        event_store_provider=_boom,
+        event_notebook_id="default",
     )
     link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")  # 不得拋例外
     assert link.id in {lk.id for lk in gs.all_links()}
+
+
+def test_periodic_snapshot_recaptured_so_interleaved_mutation_is_kept(tmp_path, request, monkeypatch):
+    """#2689: A 捕獲的 snapshot 不得蓋掉 emit 延遲期間 B 新增的 link。"""
+    monkeypatch.setattr(GraphSnapshotStore, "PERIODIC_EVENT_THRESHOLD", 2)
+
+    class _InterleavingStore(GraphEventStore):
+        gs: GraphStore | None = None
+        armed = False
+
+        def insert_many(self, drafts):  # noqa: ANN001
+            if self.armed:
+                self.armed = False
+                self.gs.add_link("c", "d", LinkKind.SHARES_USAGE, 0.7, "B")
+            return super().insert_many(drafts)
+
+    db = tmp_path / "graph_events.db"
+    ev = _InterleavingStore(db)
+    snap = GraphSnapshotStore(db)
+    gs = GraphStore(
+        links_path=tmp_path / "graph_default.json",
+        candidates_path=tmp_path / "candidates_default.json",
+        blocked_path=tmp_path / "blocked_default.json",
+        event_store=ev,
+        snapshot_store=snap,
+        event_notebook_id="default",
+    )
+    _register_store_cleanup(request, gs, ev, snap)
+    ev.gs = gs
+    gs.add_link("x", "y", LinkKind.SHARES_USAGE, 0.8, "seed")  # 建立 baseline snapshot
+    ev.armed = True
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "A")
+    latest = snap.latest("default")
+    assert latest is not None
+    assert {frozenset((lk["from_id"], lk["to_id"])) for lk in latest.links} == {
+        frozenset("xy"),
+        frozenset("ab"),
+        frozenset("cd"),
+    }

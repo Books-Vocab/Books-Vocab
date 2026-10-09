@@ -428,8 +428,13 @@ class GraphSnapshotStore:
         links: list[dict],
         *,
         min_events_since_snapshot: int | None = None,
+        taken_at: datetime | None = None,
     ) -> dict[str, int | bool | str | None]:
         """依 event-count policy 決定是否追加一張真實 snapshot。
+
+        ``taken_at`` 必須是 *捕獲 links 之前* 取的時間戳(#2689):replay 以
+        ``ingested_at > taken_at`` 選事件,若蓋「存檔當下」的時間,捕獲後才 ingest 的
+        事件會被跳過。省略時退回存檔當下(只適合 links 剛捕獲的呼叫端)。
 
         規則:
         - 若該 notebook 尚無任何 snapshot:立刻補一張真實 snapshot
@@ -439,6 +444,7 @@ class GraphSnapshotStore:
         threshold = (
             min_events_since_snapshot if min_events_since_snapshot is not None else self.PERIODIC_EVENT_THRESHOLD
         )
+        stamp = _as_utc(taken_at) if taken_at is not None else None
         with Session(self.engine) as session:
             latest = self._latest_valid(session, notebook_id)
             if latest is None:
@@ -447,7 +453,7 @@ class GraphSnapshotStore:
                     GraphSnapshot(
                         snapshot_id=snapshot_id,
                         notebook_id=notebook_id,
-                        taken_at=_now(),
+                        taken_at=stamp or _now(),
                         link_count=len(links),
                         links_json=json.dumps(links, default=str),
                         is_synthetic=False,
@@ -481,7 +487,7 @@ class GraphSnapshotStore:
                 GraphSnapshot(
                     snapshot_id=snapshot_id,
                     notebook_id=notebook_id,
-                    taken_at=_now(),
+                    taken_at=stamp or _now(),
                     link_count=len(links),
                     links_json=json.dumps(links, default=str),
                     is_synthetic=False,

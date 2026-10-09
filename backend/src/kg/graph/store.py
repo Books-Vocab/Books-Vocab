@@ -237,7 +237,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             if links_snapshot is not None:
                 snap_store = self._resolve_snapshot_store()
                 if snap_store is not None:
-                    snap_store.maybe_save_periodic(self._event_notebook_id, links_snapshot)
+                    # #2689: 呼叫端的 links_snapshot 是 flush/emit 之前捕獲的,期間
+                    # 別的 mutation 可能已寫入;拿它蓋「現在」會讓 replay 漏掉那些
+                    # 事件。改成先取時間戳、再於鎖內重新捕獲,保證
+                    # ``ingested_at <= taken_at`` 的事件都已反映在 snapshot 內。
+                    taken_at = datetime.now(UTC)
+                    with self._lock:
+                        fresh = [lk.model_dump(mode="json") for lk in self._links.values()]
+                    snap_store.maybe_save_periodic(self._event_notebook_id, fresh, taken_at=taken_at)
         except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
             logger.warning(
                 "graph event emit failed (%d drafts, first=%s)",
@@ -442,6 +449,42 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
 
     def deprecate_links_for(self, card_id: str, *, source: str = "auto") -> int:
         """Deprecate all active links involving a card. Returns count of deprecated links."""
+        return len(self._deprecate_links(card_id, source=source))
+
+    def _reactivate_links(self, link_ids: list[str], *, source: str) -> None:
+        """Undo a deprecate: flip exactly these links (still deprecated) back to active."""
+        affected: list[GraphLink] = []
+        with self._lock:
+            for lid in link_ids:
+                lk = self._links.get(lid)
+                if lk is not None and lk.status == "deprecated":
+                    lk.status = "active"
+                    affected.append(lk.model_copy())
+            self._touch_links(lk.id for lk in affected)
+            snapshot = self._links_to_serializable() if affected else None
+        if snapshot is None:
+            return
+        self._flush_links(snapshot)
+        self._emit_graph_events(
+            [
+                self._build_graph_event_draft(
+                    "link_restored",
+                    link_id=lk.id,
+                    from_id=lk.from_id,
+                    to_id=lk.to_id,
+                    kind=str(lk.kind),
+                    source=source,
+                    confidence_before=lk.confidence,
+                    confidence_after=lk.confidence,
+                    status_before="deprecated",
+                    status_after="active",
+                )
+                for lk in affected
+            ],
+            links_snapshot=snapshot,
+        )
+
+    def _deprecate_links(self, card_id: str, *, source: str) -> list[GraphLink]:
         affected: list[GraphLink] = []
         self.refresh_if_stale()
         with self._lock:
@@ -473,7 +516,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 ],
                 links_snapshot=snapshot,
             )
-        return len(affected)
+        return affected
 
     def restore_links_for(self, card_id: str, cards_store, *, source: str = "auto") -> int:
         """Restore deprecated links for a card, only if the other end is alive."""
@@ -515,9 +558,19 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False, source: str = "auto") -> dict:
         """Deprecate links + remove candidates + remove pending_judge (+ blocked pairs if deleting)."""
-        dep_count = self.deprecate_links_for(card_id, source=source)
-        cand_count = self.remove_candidates_for(card_id)
-        pj_count = self.remove_pending_judge_for(card_id)
-        if remove_blocked:
-            self.remove_blocked_pairs_for(card_id)
+        deprecated = self._deprecate_links(card_id, source=source)
+        dep_count = len(deprecated)
+        try:
+            cand_count = self.remove_candidates_for(card_id)
+            pj_count = self.remove_pending_judge_for(card_id)
+            if remove_blocked:
+                self.remove_blocked_pairs_for(card_id)
+        except BaseException:
+            # #2690: callers restore the card on failure; the links we already
+            # deprecated must go back too, or the card returns without its edges.
+            try:
+                self._reactivate_links([lk.id for lk in deprecated], source=source)
+            except Exception:  # noqa: BLE001
+                logger.exception("cleanup_for_card: failed to re-activate links for %s", card_id)
+            raise
         return {"deprecated": dep_count, "candidates_removed": cand_count, "pending_judge_removed": pj_count}
