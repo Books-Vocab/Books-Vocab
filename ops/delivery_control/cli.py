@@ -338,6 +338,12 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("--title", required=True)
     publish.add_argument("--closes", type=int, action="append", metavar="N")
     publish.add_argument("--refs", type=int, action="append", metavar="N")
+    publish.add_argument(
+        "--replaces-pr",
+        type=int,
+        help="open PR that redeliver closes after this publication; "
+        "excluded from the Scope collision check only",
+    )
 
     published_base = commands.add_parser(
         "record-published-base",
@@ -770,6 +776,7 @@ def run_command(
             title=args.title,
             closes=args.closes,
             refs=args.refs,
+            replaced_pr=args.replaces_pr,
             operation_lease=operation_lease,
         )
     if args.command == "record-published-base":

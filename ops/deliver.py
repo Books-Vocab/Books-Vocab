@@ -504,6 +504,9 @@ class Delivery:
         # its Scope, and supersede the replaced PR once this one exists.
         self.before_claim: Callable[[], object] = lambda: None
         self.after_publish: Callable[[dict[str, Any]], object] = lambda _pr: None
+        # the open PR redeliver closes after publishing; publish preflight must
+        # not count it as a Scope collision.
+        self.replaces_pr: int | None = None
 
     def mutate(
         self,
@@ -918,6 +921,11 @@ class Delivery:
                         for number in numbers
                         for item in (flag, str(number))
                     ],
+                    *(
+                        ["--replaces-pr", str(self.replaces_pr)]
+                        if self.replaces_pr is not None
+                        else []
+                    ),
                 ],
                 self.home,
                 "publish",
@@ -1342,6 +1350,7 @@ class Replacement:
         self.old_number = int(pr["number"])
         self.guard(repo)
         self.check_lineage(record)  # before any hook can retire or close anything
+        d.replaces_pr = self.old_number
         d.before_claim = lambda: self.retire(repo)
         d.after_publish = lambda new: self.supersede(repo, new)
         return d.deliver()

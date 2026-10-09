@@ -766,6 +766,12 @@ def test_publish_parser_collects_repeated_closes_and_refs() -> None:
     assert (bare.closes, bare.refs) == (None, None)
 
 
+def test_publish_parser_takes_the_replaced_pr_only_when_given() -> None:
+    base = ["publish", "--lane", "L", "--title", "t"]
+    assert _parser().parse_args(base).replaces_pr is None
+    assert _parser().parse_args([*base, "--replaces-pr", "50"]).replaces_pr == 50
+
+
 def test_publish_without_issue_sources_keeps_the_legacy_body() -> None:
     app, github = _publish_app(external_ids=("DIRECT-CLI",))
 

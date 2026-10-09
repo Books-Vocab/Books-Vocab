@@ -2127,3 +2127,66 @@ def test_republish_keeps_the_existing_pr_issues_over_registry_defaults() -> None
     assert parse_body_issues(github.pull_request.body) == IssueLinks(
         closes=(2029,), refs=(2026,)
     )
+
+
+class _PerPrPaths(FakeGitHub):
+    def __init__(
+        self, receipt: HandbackReceipt, paths: dict[int, tuple[str, ...]]
+    ) -> None:
+        super().__init__(receipt)
+        self._by_number = paths
+
+    def changed_paths(self, number: int) -> tuple[str, ...]:
+        return self._by_number[number]
+
+
+def _collides(
+    receipt: HandbackReceipt,
+    open_prs: dict[int, tuple[str, ...]],
+    replaced_pr: int | None,
+) -> bool:
+    pulls = tuple(
+        replace(_pull_request(receipt), number=number, branch=f"feat/other-{number}")
+        for number in open_prs
+    )
+    preflight = PublishPreflightService(
+        registry=FakeRegistry(_registry(receipt)),
+        git=FakeGit(receipt),
+        github=_PerPrPaths(receipt, open_prs),
+    )
+    return preflight._scope_collision(
+        receipt=receipt,
+        registry=_registry(receipt),
+        pull_requests=pulls,
+        replaced_pr=replaced_pr,
+    )
+
+
+def test_scope_collision_skips_only_the_replaced_pr() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+    old = ("ops/a.py", "ops/b.py")
+    assert _collides(receipt, {50: old}, replaced_pr=50) is False
+    # without the replacement hint the same overlap still collides
+    assert _collides(receipt, {50: old}, replaced_pr=None) is True
+
+
+def test_scope_collision_still_blocks_a_third_pr_during_redeliver() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+    open_prs = {50: ("ops/a.py", "ops/b.py"), 51: ("ops/b.py", "ops/z.py")}
+    assert _collides(receipt, open_prs, replaced_pr=50) is True
+    assert _collides(receipt, {50: open_prs[50], 51: ("ops/z.py",)}, 50) is False
+
+
+def test_publish_service_forwards_replaced_pr_to_preflight() -> None:
+    receipt = _receipt()
+    service, _, _ = _service(receipt, git=FakeGit(receipt, snapshot=_worktree(receipt)))
+    seen: list[int | None] = []
+    real = service.preflight.check
+
+    def spy(r: HandbackReceipt, *, replaced_pr: int | None = None):
+        seen.append(replaced_pr)
+        return real(r, replaced_pr=replaced_pr)
+
+    service.preflight.check = spy  # type: ignore[method-assign]
+    service.publish(receipt=receipt, title="fix: delivery", replaced_pr=50)
+    assert seen == [50]

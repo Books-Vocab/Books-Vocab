@@ -482,6 +482,10 @@ def test_new_lane_runs_every_stage_in_order_and_stops_before_merge() -> None:
     assert result["result"] == "ready-to-merge"
     assert result["pr"] == 77
     assert world.names() == ["adopt", "hand-back", "receipt", "publish"]
+    publish = next(
+        c for c in world.calls if c[0].endswith("delivery.py") and c[3] == "publish"
+    )
+    assert "--replaces-pr" not in publish  # only redeliver excludes a PR
 
 
 def _publish_call(world: FakeWorld) -> list[str]:
@@ -1912,6 +1916,7 @@ def test_redeliver_abandons_the_old_lane_with_the_registrys_generation_and_head(
         if c[0].endswith("delivery.py") and c[3] == "publish"
     )
     assert world.calls.index(close) > publish  # the link exists before the close
+    assert _value(world.calls[publish], "--replaces-pr") == "50"
     assert _call(world, "git", "push") == [
         "git",
         "push",

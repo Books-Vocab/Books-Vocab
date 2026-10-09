@@ -47,7 +47,9 @@ class PublicationResult:
 
 
 class PublishPreflightPort(Protocol):
-    def check(self, receipt: HandbackReceipt) -> PublicationContext: ...
+    def check(
+        self, receipt: HandbackReceipt, *, replaced_pr: int | None = None
+    ) -> PublicationContext: ...
 
 
 def receipt_from_active_claim(
@@ -133,6 +135,7 @@ class PublishService:
         title: str,
         issues: IssueLinks | None = None,
         default_issues: IssueLinks = NO_ISSUES,
+        replaced_pr: int | None = None,
     ) -> PublicationResult:
         if (
             not title
@@ -140,7 +143,7 @@ class PublishService:
             or any(ord(char) < 32 or ord(char) == 127 for char in title)
         ):
             raise PolicyViolation("PR title must be canonical text")
-        context = self.preflight.check(receipt)
+        context = self.preflight.check(receipt, replaced_pr=replaced_pr)
         pull_request = context.pull_request
         remote_sha = context.remote_sha
         pushed = False

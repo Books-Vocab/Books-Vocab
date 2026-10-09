@@ -746,6 +746,7 @@ class DeliveryApplication:
         title: str,
         closes: Sequence[int] | None = None,
         refs: Sequence[int] | None = None,
+        replaced_pr: int | None = None,
         operation_lease: cleanup.OperationLease | None = None,
     ) -> object:
         receipt, record = self._receipt_and_record(lane_id)
@@ -768,6 +769,7 @@ class DeliveryApplication:
             default_issues=IssueLinks.from_external_ids(
                 record.external_ids
             ).merged_with(IssueLinks.from_branch(receipt.branch)),
+            replaced_pr=replaced_pr,
         )
         published_base = self.record_published_base(
             publication.pull_request.number, operation_lease=operation_lease
