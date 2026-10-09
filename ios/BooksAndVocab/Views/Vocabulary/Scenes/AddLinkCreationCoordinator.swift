@@ -666,7 +666,7 @@ final class AddLinkCreationCoordinator {
             step.detail = L10n.string("已略過")
         }
         fail(generation: generation, failure: failure)
-        recomputeFraction(forceTerminal: true)
+        recomputeFraction()
     }
 
     private func fail(generation: Int, failure: AddLinkCreationFailure) {
@@ -688,8 +688,8 @@ final class AddLinkCreationCoordinator {
         let earned = steps.reduce(0.0) { partial, step in
             let completion: Double
             switch step.status {
-            case .done, .skipped, .error: completion = 1
-            case .waiting: completion = 0
+            case .done, .skipped: completion = 1
+            case .waiting, .error: completion = 0
             case .running, .retry:
                 guard step.total > 0 else { return partial + step.weight * 0.15 }
                 completion = max(0.15, min(1, Double(step.current) / Double(step.total)))
