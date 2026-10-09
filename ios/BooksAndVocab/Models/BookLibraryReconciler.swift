@@ -82,12 +82,15 @@ struct BookLibraryReconciler {
             || result.updatedRows > 0 {
             try context.save()
         }
+        // readAll() 是整目錄掃描＋解碼；debugDump 在 release 為空，故連引數求值一併排除。
+        #if DEBUG
         debugDump(
             stage: "end",
             books: existingBooks,
             manifests: manifestStore.readAll(),
             filesByName: filesByName
         )
+        #endif
 
         return result
     }
