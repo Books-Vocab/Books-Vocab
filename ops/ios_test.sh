@@ -1136,7 +1136,18 @@ handle_cache_action() {
       payload="$(print_cache_payload status ok "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready")"
       ;;
     clean)
+      # Deleting the keyed DerivedData races unlocked test-without-building readers
+      # (#2819): serialize behind the build lock, then refuse while a consumer touched
+      # the key recently (every run touches it at start) unless explicitly forced.
+      acquire_build_lock
+      if [[ -d "$derived_root" && "${KG_IOS_CLEAN_CACHE_FORCE:-0}" != "1" ]] \
+        && [[ -n "$(find "$derived_root" -maxdepth 0 -mmin "-${KG_IOS_CLEAN_CACHE_ACTIVE_MINUTES:-30}" 2>/dev/null)" ]]; then
+        release_build_lock
+        echo "[ios_test] refusing --clean-cache: $derived_root was used by an active consumer within the last ${KG_IOS_CLEAN_CACHE_ACTIVE_MINUTES:-30} min; retry later or set KG_IOS_CLEAN_CACHE_FORCE=1" >&2
+        exit 75
+      fi
       rm -rf "$derived_root"
+      release_build_lock
       payload="$(print_cache_payload clean ok "$cache_key" "$derived_root" "" false)"
       ;;
     prepare)
