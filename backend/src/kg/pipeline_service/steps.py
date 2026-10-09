@@ -532,10 +532,40 @@ async def _judge_pending(
         except Exception:
             logger.warning("[%s] Failed to write degree_cap judge_log", uid, exc_info=True)
 
+    def _consume(card_id: str, results: dict) -> None:
+        # NOTE: do NOT stop early on from-cap: we still need to walk
+        # remaining results so over-cap accepted candidates get
+        # logged as degree_cap rejects (audit trail).
+        for other_id, judgement in results.items():
+            if judgement is None:
+                continue
+            if from_link_counts[card_id] >= MAX_DEGREE:
+                _log_degree_cap(card_id, other_id, judgement)
+                continue  # from-side at cap; keep logging surplus
+            # Initialize to-side count on first access
+            if other_id not in to_link_counts:
+                to_link_counts[other_id] = _active_degree(other_id)
+            if to_link_counts[other_id] >= MAX_DEGREE:
+                _log_degree_cap(card_id, other_id, judgement)
+                continue
+            all_links.append(
+                (
+                    card_id,
+                    other_id,
+                    link_kind_enum(judgement.link),
+                    judgement.confidence,
+                    judgement.reason,
+                )
+            )
+            from_link_counts[card_id] += 1
+            to_link_counts[other_id] += 1
+
     consumed: list[str] = []
     quota_error: QuotaExceededError | None = None
+    current_id: str | None = None
     try:
         for card_id, fut in futures:
+            current_id = card_id
             try:
                 results = await fut
             except QuotaExceededError as exc:
@@ -544,39 +574,13 @@ async def _judge_pending(
                 # judge_log rows, so their links must be applied, not orphaned.
                 quota_error = quota_error or exc
                 continue
-            # NOTE: do NOT `break` on from-cap — we still need to walk
-            # remaining results so over-cap accepted candidates get
-            # logged as degree_cap rejects (audit trail).
-            for other_id, judgement in results.items():
-                if judgement is None:
-                    continue
-                if from_link_counts[card_id] >= MAX_DEGREE:
-                    _log_degree_cap(card_id, other_id, judgement)
-                    continue  # from-side at cap; keep logging surplus
-                # Initialize to-side count on first access
-                if other_id not in to_link_counts:
-                    to_link_counts[other_id] = _active_degree(other_id)
-                if to_link_counts[other_id] >= MAX_DEGREE:
-                    _log_degree_cap(card_id, other_id, judgement)
-                    continue
-                all_links.append(
-                    (
-                        card_id,
-                        other_id,
-                        link_kind_enum(judgement.link),
-                        judgement.confidence,
-                        judgement.reason,
-                    )
-                )
-                from_link_counts[card_id] += 1
-                to_link_counts[other_id] += 1
+            _consume(card_id, results)
             # Record ONLY after a card's results are FULLY consumed.
-            # If an exception fires inside the inner loop above (e.g.
-            # `link_kind_enum` rejects an illegal enum value), the card is
-            # not in `consumed`, so it is requeued. Phase 2a's
-            # `graph.has_link` check then skips any links this card already
-            # persisted, so the re-judge neither double-links nor
-            # double-counts.
+            # If an exception fires inside _consume (e.g. `link_kind_enum`
+            # rejects an illegal enum value), the card is not in `consumed`,
+            # so it is requeued. Phase 2a's `graph.has_link` check then skips
+            # any links this card already persisted, so the re-judge neither
+            # double-links nor double-counts.
             consumed.append(card_id)
         if quota_error is not None:
             raise quota_error
@@ -587,6 +591,18 @@ async def _judge_pending(
         # absent. Persist the consumed cards' links and ack exactly those;
         # the caller requeues everything else still claimed (including these
         # cards if their links never reached disk).
+        # #2699: futures that already finished successfully (billed, judge_log
+        # accepted=1 written) must not be dropped and re-judged: salvage them.
+        for cid, fut in futures:
+            if cid in consumed or cid == current_id:
+                continue
+            if not fut.done() or fut.cancelled() or fut.exception() is not None:
+                continue
+            try:
+                _consume(cid, fut.result())
+                consumed.append(cid)
+            except Exception:
+                logger.warning("[%s] Failed to salvage completed judge result for %s", uid, cid, exc_info=True)
         consumed_set = set(consumed)
         remaining = [(cid, fut) for cid, fut in futures if cid not in consumed_set]
         unprocessed_ids = [cid for cid, _ in remaining]
