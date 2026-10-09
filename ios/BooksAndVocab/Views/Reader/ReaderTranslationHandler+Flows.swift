@@ -94,15 +94,13 @@ extension ReaderTranslationHandler {
                 }
                 PerfLog.reader.mark("reader.translation.shown", "source=network")
                 await Task.yield()
-                if let selection = wordSelection {
-                    autoSaveToVocabulary(
-                        selection: selection,
-                        result: result,
-                        context: vocabularyContext
-                    )
-                    await LongPressTip.wordLookedUp.donate()
-                    LongPressTip().invalidate(reason: .actionPerformed)
-                }
+                autoSaveToVocabulary(
+                    selection: selection,
+                    result: result,
+                    context: vocabularyContext
+                )
+                await LongPressTip.wordLookedUp.donate()
+                LongPressTip().invalidate(reason: .actionPerformed)
             },
             onFailure: { [self] error in
                 handleTranslationFailure(error, log: true)
