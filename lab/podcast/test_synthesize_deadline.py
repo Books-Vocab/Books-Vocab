@@ -56,3 +56,26 @@ def test_stuck_batch_fails_within_wallclock(monkeypatch):
     assert elapsed < synthesize.TTS_BATCH_TIMEOUT + 2.5, (
         f"synthesize_batches hung {elapsed:.1f}s — wall-clock cap not enforced"
     )
+
+
+def test_timeout_is_episode_wide_not_per_batch(monkeypatch):
+    """TTS_BATCH_TIMEOUT 是整集 deadline：每個 batch 都 < timeout 但總和超過時仍失敗（#2767）。"""
+    monkeypatch.setattr(synthesize, "TTS_BATCH_TIMEOUT", 2)
+    monkeypatch.setattr(synthesize, "TTS_MAX_CONCURRENT", 1)
+
+    def stub(client, speech_config, prompt, index, total,
+             batch_words, turns_count, cache_path, episode_label):
+        time.sleep(1.2)  # 單 batch < timeout，三個串行 3.6s > 2s
+        return index, object()
+
+    monkeypatch.setattr(synthesize, "_synthesize_one", stub)
+
+    with pytest.raises(RuntimeError, match="batches failed"):
+        synthesize.synthesize_batches(
+            client=None,
+            speech_config=None,
+            system_instructions="sys",
+            batches=[_batch("a"), _batch("b"), _batch("c")],
+            cache_dir=None,
+            episode_label="Test",
+        )
