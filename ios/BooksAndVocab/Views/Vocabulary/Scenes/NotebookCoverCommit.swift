@@ -48,3 +48,12 @@ enum NotebookCoverCommit {
         }
     }
 }
+
+extension NotebookCoverCommit {
+    /// 放棄 staged 新圖：提交失敗（API / 存檔）且 sheet 已 dismiss 時，staged 檔沒有任何
+    /// owner，必須由 coordinator 清掉。`staged == original`（使用者沒換圖）時絕不動檔案。
+    static func discardStagedFile(staged: String?, original: String?) {
+        guard let staged, staged != original else { return }
+        try? FileManager.default.removeItem(atPath: staged)
+    }
+}

@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -83,5 +84,117 @@ struct NotebookCoverCommitTests {
         #expect(FileManager.default.fileExists(atPath: old))
         try? FileManager.default.removeItem(atPath: old)
     }
+
+    // MARK: - coordinator 提交路徑（#2428 create / #2731 failed update）
+
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        let container = try ModelContainer(
+            for: Notebook.self, NotebookSettingsProjection.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        return ModelContext(container)
+    }
+
+    private func remote(id: String = "nb-new", name: String = "N") -> KGNotebook {
+        KGNotebook(
+            id: id, name: name, color: nil, coverPattern: nil,
+            sortOrder: 0, isDefault: false, isDeleted: false,
+            cardCount: 0, updatedAt: nil,
+            sourceSharedDeckId: nil, sourceVersion: nil
+        )
+    }
+
+    /// #2428：建立成功 → 新本子持有 staged 封面路徑，檔案保留。
+    @MainActor
+    @Test func createPersistsStagedCoverOnSuccess() async throws {
+        let ctx = try makeContext()
+        let staged = try writeTempJPEG()
+        let service = NotebookServiceFake(result: .success(remote()))
+
+        await NotebookListCoordinator().createNotebook(
+            name: "N", color: nil, coverPattern: nil, coverImagePath: staged,
+            modelContext: ctx, kgService: service, toastCoordinator: AppToastCoordinator()
+        )
+
+        let saved = try ctx.fetch(FetchDescriptor<Notebook>())
+        #expect(saved.first?.coverImagePath == staged)
+        #expect(FileManager.default.fileExists(atPath: staged))
+        try? FileManager.default.removeItem(atPath: staged)
+    }
+
+    /// #2428：建立 API 失敗 → staged jpg 被清掉（沒有 owner 的孤兒檔）。
+    @MainActor
+    @Test func createFailureRemovesStagedCover() async throws {
+        let ctx = try makeContext()
+        let staged = try writeTempJPEG()
+        let service = NotebookServiceFake(result: .failure(URLError(.notConnectedToInternet)))
+
+        await NotebookListCoordinator().createNotebook(
+            name: "N", color: nil, coverPattern: nil, coverImagePath: staged,
+            modelContext: ctx, kgService: service, toastCoordinator: AppToastCoordinator()
+        )
+
+        #expect(try ctx.fetch(FetchDescriptor<Notebook>()).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: staged))
+    }
+
+    /// #2731：更新 API 失敗 → staged 新圖被清掉，原圖與 model 路徑不動。
+    @MainActor
+    @Test func updateFailureRemovesStagedAndKeepsOriginal() async throws {
+        let ctx = try makeContext()
+        let original = try writeTempJPEG()
+        let staged = try writeTempJPEG()
+        let nb = Notebook(remoteId: "nb-1", name: "Old", color: nil)
+        nb.coverImagePath = original
+        ctx.insert(nb)
+        let service = NotebookServiceFake(result: .failure(URLError(.notConnectedToInternet)))
+
+        await NotebookListCoordinator().updateNotebook(
+            nb, name: "New", color: nil, coverPattern: nil,
+            stagedCoverImagePath: staged, originalCoverImagePath: original,
+            modelContext: ctx, kgService: service, toastCoordinator: AppToastCoordinator()
+        )
+
+        #expect(nb.coverImagePath == original)
+        #expect(FileManager.default.fileExists(atPath: original))
+        #expect(!FileManager.default.fileExists(atPath: staged))
+        try? FileManager.default.removeItem(atPath: original)
+    }
+
+    /// #2731：更新失敗但使用者未換圖（staged == original）→ 絕不刪原圖。
+    @MainActor
+    @Test func updateFailureWithUnchangedCoverKeepsFile() async throws {
+        let ctx = try makeContext()
+        let original = try writeTempJPEG()
+        let nb = Notebook(remoteId: "nb-1", name: "Old", color: nil)
+        nb.coverImagePath = original
+        ctx.insert(nb)
+        let service = NotebookServiceFake(result: .failure(URLError(.notConnectedToInternet)))
+
+        await NotebookListCoordinator().updateNotebook(
+            nb, name: "New", color: nil, coverPattern: nil,
+            stagedCoverImagePath: original, originalCoverImagePath: original,
+            modelContext: ctx, kgService: service, toastCoordinator: AppToastCoordinator()
+        )
+
+        #expect(FileManager.default.fileExists(atPath: original))
+        try? FileManager.default.removeItem(atPath: original)
+    }
+}
+
+/// 只實作 create / update 的窄 NotebookServing fake（其餘不應被呼叫）。
+private final class NotebookServiceFake: NotebookServing {
+    let result: Result<KGNotebook, Error>
+    init(result: Result<KGNotebook, Error>) { self.result = result }
+
+    func fetchNotebooks() async throws -> [KGNotebook] { [] }
+    func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook {
+        try result.get()
+    }
+    func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook {
+        try result.get()
+    }
+    func deleteNotebook(id: String) async throws {}
 }
 #endif

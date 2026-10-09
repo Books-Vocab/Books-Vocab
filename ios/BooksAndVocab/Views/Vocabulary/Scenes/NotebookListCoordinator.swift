@@ -19,8 +19,9 @@ import SwiftData
         name: String,
         color: String?,
         coverPattern: String?,
+        coverImagePath: String?,
         modelContext: ModelContext,
-        kgService: any KGServing,
+        kgService: any NotebookServing,
         toastCoordinator: AppToastCoordinator
     ) async
     func updateNotebook(
@@ -31,7 +32,7 @@ import SwiftData
         stagedCoverImagePath: String?,
         originalCoverImagePath: String?,
         modelContext: ModelContext,
-        kgService: any KGServing,
+        kgService: any NotebookServing,
         toastCoordinator: AppToastCoordinator
     ) async
     func deleteNotebook(
@@ -226,14 +227,16 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         name: String,
         color: String?,
         coverPattern: String?,
+        coverImagePath: String?,
         modelContext: ModelContext,
-        kgService: any KGServing,
+        kgService: any NotebookServing,
         toastCoordinator: AppToastCoordinator
     ) async {
         do {
             let remote = try await kgService.createNotebook(name: name, color: color, coverPattern: coverPattern)
             let nb = Notebook(remoteId: remote.id, name: remote.name, color: remote.color)
             nb.coverPattern = remote.coverPattern
+            nb.coverImagePath = coverImagePath
             nb.syncStatus = 1
             modelContext.insert(nb)
             if let settings = remote.settings {
@@ -245,6 +248,8 @@ final class NotebookListCoordinator: NotebookListCoordinating {
                 toastCoordinator.success("已建立".localized)
             }
         } catch {
+            // API 失敗：staged 封面沒有任何 owner，立即清掉避免孤兒檔（#2428）。
+            NotebookCoverCommit.discardStagedFile(staged: coverImagePath, original: nil)
             toastCoordinator.error("建立失敗".localized)
             AppLog.kg.error("createNotebook failed: \(error.localizedDescription)")
         }
@@ -258,7 +263,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         stagedCoverImagePath: String?,
         originalCoverImagePath: String?,
         modelContext: ModelContext,
-        kgService: any KGServing,
+        kgService: any NotebookServing,
         toastCoordinator: AppToastCoordinator
     ) async {
         do {
@@ -274,10 +279,16 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             if modelContext.safeSaveWithToast(toastCoordinator) {
                 NotebookCoverCommit.removeStaleFile(coverPlan)
                 toastCoordinator.success("已更新".localized)
+            } else {
+                // 存檔失敗：model 退回原封面，staged 新圖無 owner → 清掉（#2731）。
+                notebook.coverImagePath = originalCoverImagePath
+                NotebookCoverCommit.discardStagedFile(staged: stagedCoverImagePath, original: originalCoverImagePath)
             }
         } catch {
-            // API 失敗：不動 coverImagePath、不刪舊圖；staged 新圖由 sheet 取消流程或
-            // 下次編輯處理。server 欄位與本地封面同時維持舊值，無 drift。
+            // API 失敗：不動 coverImagePath、不刪舊圖；sheet 在非同步存檔前已 dismiss，
+            // Cancel 清理不會執行 → staged 新圖在此清掉（#2731）。server 欄位與本地封面
+            // 同時維持舊值，無 drift。
+            NotebookCoverCommit.discardStagedFile(staged: stagedCoverImagePath, original: originalCoverImagePath)
             toastCoordinator.error("更新失敗".localized)
             AppLog.kg.error("updateNotebook failed: \(error.localizedDescription)")
         }
