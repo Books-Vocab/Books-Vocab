@@ -17,9 +17,10 @@ import XCTest
 ///
 /// The deck (`notebook:reviewDeckVaried`) is deliberately height-varied so both
 /// signatures are observable in one run. The on-screen gap is measured directly
-/// as `expandZone.minY − cardFront.maxY`; the DEBUG `gap.geom` PerfLog (per-slot
-/// layout heights, captured from os_log alongside) attributes the inflating slot
-/// and its answer height for a decisive H1-vs-H2 verdict.
+/// as `expandZone.minY − cardFront.maxY`. The DEBUG `gap.geom` PerfLog emits only
+/// per-slot (`kind=slot`) and deck (`kind=deck`) layout heights today; it
+/// attributes the inflating slot but does not measure the answer surface, so
+/// it cannot by itself give a decisive H1-vs-H2 verdict.
 final class TodayReviewGapUITests: UITestCase {
     private static let notebookCardID = "ui-review-notebook"
     private static let deckSize = 8
