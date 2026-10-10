@@ -24,7 +24,12 @@ from . import (
     translate_log,
     vocab_add_link_operation,
 )
-from .account_erasure import ObjectStorageClient, _asset_object_keys, delete_account_assets
+from .account_erasure import (
+    ObjectStorageClient,
+    _asset_object_keys,
+    delete_account_assets,
+    sweep_account_prefixes,
+)
 from .api_models import (
     AutoLinkConfig,
     DeleteAccountResponse,
@@ -446,6 +451,17 @@ def delete_user_account_response(
         erased.update(ids_to_delete)
     else:
         raise HTTPException(status_code=409, detail="Account changed during deletion; please retry")
+
+    # The tombstone is durable and registration is now rejected under the lock
+    # (#2702), but a presigned PUT minted earlier can still land after the
+    # ledger-driven delete. Sweep the whole account prefix, outside the lock.
+    # Best-effort: the client cannot retry (its token is revoked), so a failure
+    # is logged; a PUT completing after this sweep, inside the URL TTL, is
+    # bounded by the bucket lifecycle rule rather than by this request.
+    try:
+        sweep_account_prefixes(ids_to_delete, library_bucket=library_bucket, library_s3_client=library_s3_client)
+    except Exception:
+        logger.exception("Library prefix sweep failed after account tombstone for %s", ids_to_delete)
 
     deleted_dirs: list[str] = []
     failed_uids: list[str] = []
