@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import copy
 import errno
 import hashlib
 import json
@@ -658,49 +659,13 @@ def _reclaim_xctest_device(candidate: dict[str, Any]) -> dict[str, Any]:
     return {"status": "reclaimed", "command": "xcrun simctl delete"}
 
 
-def _path_is_gone(path: Path) -> bool:
-    """Return True only when the path is definitively absent (fail closed)."""
+def _removed_during_scan(entry_path: Path) -> bool:
+    # A vanished device no longer occupies storage; any other OSError fails closed.
     try:
-        os.stat(path, follow_symlinks=False)
-    except (FileNotFoundError, NotADirectoryError):
-        return True
-    except OSError:
-        return False
+        os.stat(entry_path, follow_symlinks=False)
+    except OSError as exc:
+        return isinstance(exc, (FileNotFoundError, NotADirectoryError))
     return False
-
-
-def _removed_during_scan(
-    entry_path: Path, measured: dict[str, Any], metadata_error: str | None
-) -> bool:
-    """A device that vanished is not an incomplete measurement.
-
-    A device whose measurement and metadata both succeeded is kept as-is.
-    Otherwise it is evidence of an incomplete read only while it still exists.
-    """
-    if measured["complete"] and metadata_error is None:
-        return False
-    return _path_is_gone(entry_path)
-
-
-def _physical_observation_mark(observation: dict[str, Any]) -> tuple[Any, ...]:
-    return (
-        len(observation["extents"]),
-        len(observation["errors"]),
-        len(observation["warnings"]),
-        int(observation["fallback_files"]),
-        int(observation["fallback_allocated_bytes"]),
-    )
-
-
-def _rollback_physical_observation(
-    observation: dict[str, Any], mark: tuple[Any, ...]
-) -> None:
-    extents, errors, warnings, fallback_files, fallback_allocated = mark
-    del observation["extents"][extents:]
-    del observation["errors"][errors:]
-    del observation["warnings"][warnings:]
-    observation["fallback_files"] = fallback_files
-    observation["fallback_allocated_bytes"] = fallback_allocated
 
 
 def inspect_xctest_devices(
@@ -798,7 +763,7 @@ def inspect_xctest_devices(
             errors.append(f"unexpected-root-entry:{entry.name}")
             measurement_complete = False
             continue
-        extent_mark = _physical_observation_mark(physical_observation)
+        observation_before = copy.deepcopy(physical_observation)
         measured = measure_tree(
             entry_path,
             deadline=deadline,
@@ -809,11 +774,8 @@ def inspect_xctest_devices(
         metadata, metadata_error = _read_xctest_device_plist(
             entry_path / "device.plist", entry.name
         )
-        if _removed_during_scan(entry_path, measured, metadata_error):
-            # Xcode pruned the device after scandir (mid-walk or before its
-            # plist read). It no longer occupies storage, so drop its evidence
-            # entirely instead of reporting an incomplete measurement.
-            _rollback_physical_observation(physical_observation, extent_mark)
+        if _removed_during_scan(entry_path):
+            physical_observation.update(observation_before)
             continue
         base["device_count"] += 1
         base["logical_bytes"] += int(measured["logical_bytes"])
