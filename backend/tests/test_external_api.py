@@ -1119,3 +1119,56 @@ def test_external_card_meaning_update_survives_embedding_eviction_failure(extern
     edited = external_api.client.patch(f"/api/v1/cards/{card_id}", json={"meaning": "新"}, headers=headers)
     assert edited.status_code == 200, edited.text
     assert edited.json()["meaning"] == "新"
+
+
+def test_external_card_meaning_update_queues_card_for_judging(external_api, monkeypatch):
+    from kg.deps import _graph_store
+    from kg.service_factories import clear_store_cache
+
+    clear_store_cache()
+    try:
+        headers = {"X-KG-API-Key": _create_key(external_api)}
+        created = external_api.client.post(
+            "/api/v1/cards", json={"content": "queued", "meaning": "舊"}, headers=headers
+        )
+        assert created.status_code == 201, created.text
+        card_id = created.json()["card"]["id"]
+        user_dir = external_api.data_dir / "users" / external_api.user_id
+        _graph_store(user_dir, notebook_id="default").pop_pending_judge()
+
+        edited = external_api.client.patch(f"/api/v1/cards/{card_id}", json={"meaning": "新"}, headers=headers)
+        assert edited.status_code == 200, edited.text
+        assert card_id in _graph_store(user_dir, notebook_id="default").pop_pending_judge()
+    finally:
+        clear_store_cache()
+
+
+def test_external_card_unchanged_meaning_update_neither_evicts_nor_queues(external_api, monkeypatch):
+    import numpy as np
+
+    from kg.deps import _embedding_store, _graph_store
+    from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
+    from kg.service_factories import clear_store_cache
+
+    monkeypatch.setattr(
+        EmbeddingStore,
+        "_embed",
+        lambda self, texts, *, llm=None: np.ones((len(texts), EMBEDDING_DIM), dtype=np.float32),
+    )
+    clear_store_cache()
+    try:
+        headers = {"X-KG-API-Key": _create_key(external_api)}
+        created = external_api.client.post("/api/v1/cards", json={"content": "same", "meaning": "同"}, headers=headers)
+        assert created.status_code == 201, created.text
+        card_id = created.json()["card"]["id"]
+        user_dir = external_api.data_dir / "users" / external_api.user_id
+        store = _embedding_store(user_dir, llm=None)
+        store.add(card_id, "same: 同")
+        _graph_store(user_dir, notebook_id="default").pop_pending_judge()
+
+        edited = external_api.client.patch(f"/api/v1/cards/{card_id}", json={"meaning": "同"}, headers=headers)
+        assert edited.status_code == 200, edited.text
+        assert store.has(card_id)
+        assert card_id not in _graph_store(user_dir, notebook_id="default").pop_pending_judge()
+    finally:
+        clear_store_cache()

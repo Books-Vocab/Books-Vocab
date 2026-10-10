@@ -13,6 +13,7 @@ from typing import Any, NamedTuple, Protocol
 from .api_models import CardResponse
 from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
 from .exceptions import BadRequestError, NotFoundError, ValidationError
+from .sentry_init import capture_handled
 from .user_store import parse_datetime
 from .vocab_graph_ops import link_peer_ids, touch_peers
 from .vocab_shared import (
@@ -361,8 +362,9 @@ def update_vocab_word_content(
 ) -> CardResponse:
     """Update editorial content (meaning / note) of a single card.
 
-    A changed meaning evicts the card's vector (``embed_text`` embeds it) so
-    the next pipeline pass re-embeds it instead of ranking on stale text.
+    A changed meaning evicts the card's vector (``embed_text`` embeds it) and
+    queues the card for judging, so the pipeline re-embeds it instead of
+    ranking on stale text. An unchanged meaning touches neither.
 
     `explanation` is a write-through alias for the `note` column; an explicit
     `note` takes precedence when both are supplied. Raises BadRequestError when
@@ -383,7 +385,7 @@ def update_vocab_word_content(
 
     cards_store.update(card.id, **updates)
     if "meaning" in updates and updates["meaning"] != card.meaning:
-        _evict_embedding(embeddings, card.id)
+        reembed_after_meaning_edit(embeddings, graph, card.id)
 
     # Re-read the card + its graph neighbours so the response reflects the
     # committed state (mirrors lookup_vocab_word's neighbour resolution).
@@ -430,16 +432,40 @@ def update_vocab_word_preferences(
     )
 
 
-def _evict_embedding(embeddings: Any, card_id: str) -> None:
-    """Evict a deleted card's vector. Best-effort: the card is already gone,
-    so an embedding-store failure must not fail the request — it only leaves
-    a stale row that the next pipeline run / restart tolerates."""
+def evict_card_embedding(embeddings: Any, card_id: str) -> None:
+    """Drop a card's vector. Best-effort: the card's durable write has already
+    committed, so an embedding-store failure must not fail the request. It is
+    reported through ``capture_handled`` (same path as external_api) and leaves
+    at most a stale row that the next pipeline pass tolerates."""
     if embeddings is None:
         return
     try:
         embeddings.remove(card_id)
-    except Exception:
+    except Exception as exc:
         logger.warning("Failed to evict embedding for card %s", card_id, exc_info=True)
+        capture_handled(exc, context="vocab.embedding_evict")
+
+
+def queue_card_for_judging(graph: Any, card_id: str) -> None:
+    """Hand a card back to the judge queue so the pipeline re-embeds it: the
+    vector was just evicted, and ``EmbeddingStore`` only embeds ids it does not
+    hold. Explicit rather than waiting for a pipeline Phase 1 scan. Best-effort
+    for the same reason as :func:`evict_card_embedding`."""
+    if graph is None:
+        return
+    try:
+        graph.add_pending_judge(card_id)
+    except Exception as exc:
+        logger.warning("Failed to queue card %s for judging", card_id, exc_info=True)
+        capture_handled(exc, context="vocab.judge_requeue")
+
+
+def reembed_after_meaning_edit(embeddings: Any, graph: Any, card_id: str) -> None:
+    """Shared meaning-edit side effects for every content-update path: evict
+    the stale vector, then queue the card. Callers invoke this only when the
+    meaning actually changed (``embed_text`` embeds the meaning)."""
+    evict_card_embedding(embeddings, card_id)
+    queue_card_for_judging(graph, card_id)
 
 
 def delete_vocab_word(
@@ -467,7 +493,7 @@ def delete_vocab_word(
     # Card is committed-deleted past this point — drop its embedding so it
     # stops polluting find_similar. Done after the rollback window so a
     # restored card keeps its vector.
-    _evict_embedding(embeddings, card.id)
+    evict_card_embedding(embeddings, card.id)
     return DeleteWordResponse(deleted=word, id=card.id)
 
 

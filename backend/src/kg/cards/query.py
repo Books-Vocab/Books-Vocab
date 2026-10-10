@@ -15,6 +15,9 @@ from sqlmodel import Session, select
 from ..text_utils import normalize_nfc_lower
 from .model import Card
 
+# Ids per IN clause in get_batch; keeps bound parameters well under SQLite's cap.
+_GET_BATCH_CHUNK = 500
+
 
 def _utc_instant(value: datetime) -> datetime:
     """Interpret naive database timestamps as UTC and normalize aware ones."""
@@ -116,9 +119,17 @@ class CardQueryMixin:
         """
         if not card_ids:
             return {}
+        # SQLite caps bound parameters (SQLITE_MAX_VARIABLE_NUMBER, 32766 on
+        # modern builds); a large neighbour set in one IN clause raises
+        # OperationalError. Chunk so the bind count stays far below the cap.
+        ids = list(card_ids)
+        found: dict[str, Card] = {}
         with Session(self.engine) as session:
-            statement = select(Card).where(Card.id.in_(card_ids))
-            return {card.id: card for card in session.exec(statement).all()}
+            for start in range(0, len(ids), _GET_BATCH_CHUNK):
+                statement = select(Card).where(Card.id.in_(ids[start : start + _GET_BATCH_CHUNK]))
+                for card in session.exec(statement).all():
+                    found[card.id] = card
+        return found
 
     def page_cards(
         self,

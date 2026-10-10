@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from ..api_models import (
@@ -11,6 +10,7 @@ from ..api_models import (
     CardResponse,
     VocabContentUpdateRequest,
 )
+from ..sentry_init import capture_handled
 from ..vocab_crud import (
     archive_vocab_word,
     batch_archive_vocab_words,
@@ -126,9 +126,6 @@ def archive_word_response(
     )
 
 
-logger = logging.getLogger(__name__)
-
-
 def update_word_content_response(
     word: str,
     req: VocabContentUpdateRequest,
@@ -137,8 +134,8 @@ def update_word_content_response(
     card_store_factory: CardStoreFactory,
     graph_store_factory: GraphStoreFactory,
     card_response_builder: CardResponseBuilder,
+    embedding_store_factory: EmbeddingStoreFactory,
     notebook_store_factory: NotebookStoreFactory | None = None,
-    embedding_store_factory: EmbeddingStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
     stores = _resolve_stores(
@@ -152,14 +149,10 @@ def update_word_content_response(
     if req.meaning is not None:
         # Evict-only: llm=None is legal, no embed call or quota involved.
         try:
-            if embedding_store_factory is None:
-                from ..service_factories import create_embedding_store
-
-                embeddings = create_embedding_store(user["dir"], llm=None, notebook_id=notebook_id)
-            else:
-                embeddings = embedding_store_factory(user["dir"], llm=None, notebook_id=notebook_id)
-        except Exception:
-            logger.warning("Embedding store unavailable for content update", exc_info=True)
+            embeddings = embedding_store_factory(user["dir"], llm=None, notebook_id=notebook_id)
+        except Exception as exc:
+            # The edit is still applied; a missing eviction only leaves a stale vector.
+            capture_handled(exc, context="vocab.embedding_evict")
     return update_vocab_word_content(
         word,
         meaning=req.meaning,

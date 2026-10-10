@@ -335,14 +335,48 @@ def test_note_only_edit_keeps_embedding(isolated_api, monkeypatch):
 
 
 def test_meaning_edit_survives_embedding_eviction_failure(isolated_api, monkeypatch):
-    import kg.service_factories as factories
+    import kg.routers.vocab as vocab_router
 
     word = _seed_word(isolated_api)
 
     def boom(*_a, **_k):
         raise OSError("embedding store unavailable")
 
-    monkeypatch.setattr(factories, "create_embedding_store", boom)
+    monkeypatch.setattr(vocab_router, "_embedding_store", boom)
     r = isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": "new"}, headers=isolated_api.headers)
     assert r.status_code == 200, r.text
     assert r.json()["meaning"] == "new"
+
+
+def test_meaning_edit_queues_card_for_judging(isolated_api, monkeypatch):
+    from kg.deps import _graph_store
+    from kg.service_factories import clear_store_cache
+
+    clear_store_cache()
+    try:
+        word = _seed_word(isolated_api)
+        card_id, _store = _seed_embedding(isolated_api, word, monkeypatch)
+        r = isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": "new"}, headers=isolated_api.headers)
+        assert r.status_code == 200, r.text
+        user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+        assert card_id in _graph_store(user_dir, notebook_id="default").pop_pending_judge()
+    finally:
+        clear_store_cache()
+
+
+def test_unchanged_meaning_edit_neither_evicts_nor_queues(isolated_api, monkeypatch):
+    from kg.deps import _graph_store
+    from kg.service_factories import clear_store_cache
+
+    clear_store_cache()
+    try:
+        word = _seed_word(isolated_api)
+        card_id, store = _seed_embedding(isolated_api, word, monkeypatch)
+        current = _stored_card(isolated_api, word).meaning
+        r = isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": current}, headers=isolated_api.headers)
+        assert r.status_code == 200, r.text
+        assert store.has(card_id)
+        user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+        assert card_id not in _graph_store(user_dir, notebook_id="default").pop_pending_judge()
+    finally:
+        clear_store_cache()
