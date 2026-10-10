@@ -12,15 +12,27 @@ struct BookLibraryReconciler {
     let rootDirectory: URL
     let legacyDirectories: [URL]
     let manifestStore: BookManifestStore
+    /// 殘留匯入 temp 的回收範圍。預設只含 `rootDirectory`，避免測試或非正式呼叫端
+    /// 掃描／刪除真實 app 容器；正式路徑須明確傳入 `productionTempSweepDirectories`。
+    let tempSweepDirectories: [URL]
+
+    /// 匯入可能落在 iCloud 或本機書籍目錄，正式 reconcile 需回收兩處的殘留 temp（#2724）。
+    static var productionTempSweepDirectories: [URL] {
+        uniqueDirectories(
+            [Book.booksDirectory, Book.localBooksDirectory, Book.iCloudBooksDirectory].compactMap { $0 }
+        )
+    }
 
     init(
         rootDirectory: URL = Book.booksDirectory,
         legacyDirectories: [URL]? = nil,
-        manifestStore: BookManifestStore? = nil
+        manifestStore: BookManifestStore? = nil,
+        tempSweepDirectories: [URL]? = nil
     ) {
         self.rootDirectory = rootDirectory
         self.legacyDirectories = legacyDirectories ?? Self.defaultLegacyDirectories()
         self.manifestStore = manifestStore ?? BookManifestStore(rootDirectory: rootDirectory)
+        self.tempSweepDirectories = tempSweepDirectories ?? [rootDirectory]
     }
 
     @MainActor
@@ -28,6 +40,9 @@ struct BookLibraryReconciler {
         context: ModelContext,
         allowBareFileRecovery: Bool = false
     ) throws -> BookLibraryReconcileResult {
+        for directory in tempSweepDirectories {
+            Self.sweepStaleImportTemps(in: directory)
+        }
         let filesByName = scanBookFiles()
         let manifests = manifestStore.readAll()
         let manifestsByFileName = Self.manifestsByFileName(manifests)
@@ -305,6 +320,41 @@ struct BookLibraryReconciler {
             )
         }
         #endif
+    }
+
+    /// `copyFileChunked` 的 `.<uuid>.tmp` 只在 Swift catch 路徑清除；被殺/jetsam/crash 會留下半檔（#2724）。
+    /// 清掉超過 `maxAge` 未動的 UUID 命名 temp：進行中的匯入持續寫入（mtime 更新），不會被誤刪。
+    /// 1h 停滯的進行中匯入（例如讀取未下載的 iCloud 來源）會被判定為殘留，該次匯入會失敗但不會留下半檔。
+    /// 盡力而為：任何錯誤都忽略。回傳刪除數量。
+    @discardableResult
+    static func sweepStaleImportTemps(
+        in directory: URL,
+        maxAge: TimeInterval = 3600,
+        now: Date = Date()
+    ) -> Int {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return 0 }
+        var removed = 0
+        for url in contents {
+            let name = url.lastPathComponent
+            guard name.hasPrefix("."), name.hasSuffix(".tmp") else { continue }
+            let stem = String(name.dropFirst().dropLast(".tmp".count))
+            guard UUID(uuidString: stem) != nil,
+                  let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  now.timeIntervalSince(modified) > maxAge
+            else { continue }
+            if (try? fm.removeItem(at: url)) != nil { removed += 1 }
+        }
+        return removed
+    }
+
+    /// 依標準化路徑去重，保留首次出現的原始 URL（保持呼叫端順序）。
+    static func uniqueDirectories(_ directories: [URL]) -> [URL] {
+        var seen = Set<String>()
+        return directories.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     private func scanBookFiles() -> [String: URL] {

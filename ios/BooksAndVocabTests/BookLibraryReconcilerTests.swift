@@ -26,6 +26,99 @@ struct BookLibraryReconcilerTests {
         return root
     }
 
+    @Test func sweepRemovesStaleImportTempButKeepsFreshAndUnrelatedHiddenFiles() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fm = FileManager.default
+        let now = Date()
+        let stale = root.appendingPathComponent(".\(UUID().uuidString).tmp")
+        let fresh = root.appendingPathComponent(".\(UUID().uuidString).tmp")
+        let notUUID = root.appendingPathComponent(".notes.tmp")
+        let book = root.appendingPathComponent("keep.epub")
+        for url in [stale, fresh, notUUID, book] { try Data("x".utf8).write(to: url) }
+        try fm.setAttributes([.modificationDate: now.addingTimeInterval(-7200)], ofItemAtPath: stale.path)
+        try fm.setAttributes([.modificationDate: now.addingTimeInterval(-7200)], ofItemAtPath: notUUID.path)
+
+        let removed = BookLibraryReconciler.sweepStaleImportTemps(in: root, now: now)
+
+        #expect(removed == 1)
+        #expect(!fm.fileExists(atPath: stale.path))
+        #expect(fm.fileExists(atPath: fresh.path))
+        #expect(fm.fileExists(atPath: notUUID.path))
+        #expect(fm.fileExists(atPath: book.path))
+    }
+
+    @Test func reconcileSweepsStaleImportTemp() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stale = root.appendingPathComponent(".\(UUID().uuidString).tmp")
+        try Data("x".utf8).write(to: stale)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-7200)],
+            ofItemAtPath: stale.path
+        )
+
+        _ = try BookLibraryReconciler(rootDirectory: root, legacyDirectories: []).reconcile(context: context)
+
+        #expect(!FileManager.default.fileExists(atPath: stale.path))
+    }
+
+    @Test func reconcileSweepsStaleImportTempsInEveryBooksDirectory() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let iCloudRoot = try makeTempRoot()
+        let localRoot = try makeTempRoot()
+        defer {
+            try? FileManager.default.removeItem(at: iCloudRoot)
+            try? FileManager.default.removeItem(at: localRoot)
+        }
+        let staleICloud = iCloudRoot.appendingPathComponent(".\(UUID().uuidString).tmp")
+        let staleLocal = localRoot.appendingPathComponent(".\(UUID().uuidString).tmp")
+        for url in [staleICloud, staleLocal] {
+            try Data("x".utf8).write(to: url)
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date().addingTimeInterval(-7200)],
+                ofItemAtPath: url.path
+            )
+        }
+
+        _ = try BookLibraryReconciler(
+            rootDirectory: iCloudRoot,
+            legacyDirectories: [],
+            tempSweepDirectories: [iCloudRoot, localRoot]
+        ).reconcile(context: context)
+
+        #expect(!FileManager.default.fileExists(atPath: staleICloud.path))
+        #expect(!FileManager.default.fileExists(atPath: staleLocal.path))
+    }
+
+    @Test func uniqueDirectoriesKeepsFirstOccurrenceByStandardizedPath() {
+        let first = URL(fileURLWithPath: "/tmp/bav-x/Books")
+        let duplicate = URL(fileURLWithPath: "/tmp/bav-x/./Books/")
+        let other = URL(fileURLWithPath: "/tmp/bav-y/Books")
+
+        #expect(BookLibraryReconciler.uniqueDirectories([first, duplicate, other]) == [first, other])
+    }
+
+    @Test func defaultTempSweepScopeIsRootOnlySoTestsNeverTouchRealBooksDirectories() {
+        let root = URL(fileURLWithPath: "/tmp/bav-default-scope/Books")
+
+        let reconciler = BookLibraryReconciler(rootDirectory: root, legacyDirectories: [])
+
+        #expect(reconciler.tempSweepDirectories == [root])
+    }
+
+    @Test func productionTempSweepScopeCoversLocalAndICloudBooksDirectories() {
+        let production = BookLibraryReconciler.productionTempSweepDirectories
+
+        #expect(production.contains(Book.localBooksDirectory))
+        if let iCloud = Book.iCloudBooksDirectory {
+            #expect(production.contains(iCloud))
+        }
+    }
+
     @Test func reconcilerRebuildsMissingRowFromManifestAndFile() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
