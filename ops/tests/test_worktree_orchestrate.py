@@ -143,6 +143,11 @@ def _real_repo_with_lane_branch(tmp_path: Path, branch: str) -> tuple[Path, Path
     repo = tmp_path / "repo"
     _git(tmp_path, "init", "-q", "--bare", str(origin))
     _git(tmp_path, "init", "-q", "-b", "main", str(repo))
+    # Hermetic: never rely on the runner's global identity, signing, or hooks.
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "commit.gpgsign", "false")
+    _git(repo, "config", "core.hooksPath", str(tmp_path / "no-hooks"))
     _commit(repo, "README.md", "base\n", "init")
     _git(repo, "remote", "add", "origin", str(origin))
     _git(repo, "push", "-q", "origin", "main")
