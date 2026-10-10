@@ -397,11 +397,14 @@ def cmd_card_move(args: argparse.Namespace) -> int:
             ctx.mark_destructive()
             with closing(_notebook_store(ctx.user_dir)) as nb_store:
                 all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
+                # #2898:先開啟並讀取「所有」graph(壞 row 會在載入時拋錯),全部通過才進入刪除,
+                # 避免前面的本已硬刪、後面的本才因壞 row 失敗而留下半套狀態。
+                graphs = {gnb: _graph_store(ctx.user_dir, gnb) for gnb in sorted(all_nb_ids)}
+                pending = {gnb: graph.get_links_for(moved_id) for gnb, graph in graphs.items()}
                 purged_links: list[str] = []
                 peers_by_nb: dict[str, set[str]] = {}
-                for gnb in all_nb_ids:
-                    graph = _graph_store(ctx.user_dir, gnb)
-                    for lk in graph.get_links_for(moved_id):
+                for gnb, graph in graphs.items():
+                    for lk in pending[gnb]:
                         peer = lk.to_id if lk.from_id == moved_id else lk.from_id
                         peers_by_nb.setdefault(gnb, set()).add(peer)
                         graph.hard_delete_link(lk.id, source="ops")

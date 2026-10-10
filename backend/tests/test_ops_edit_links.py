@@ -400,6 +400,30 @@ class TestLinkSameNotebook:
         assert rc.returncode != 0
         assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_nb
 
+    @pytest.mark.parametrize("attempt", range(6))
+    def test_card_move_commit_validates_all_graphs_before_any_purge(self, tmp_path, attempt):
+        """#2898:apply_fn 依 set 順序逐本硬刪 link;若後面某本 graph 含壞 row,前面已刪的本不可被先行破壞。
+
+        set 迭代順序為 hash 隨機,故 attempt 重複 6 次以覆蓋「壞本先/後」兩種順序。
+        修正後必須在第一次 hard delete 前先開啟並驗證所有 graph,壞 row 時零刪除。
+        """
+        uid = _mk_user(tmp_path)
+        _mk_notebook(tmp_path, uid, "Dst")
+        bad_nb = _mk_notebook(tmp_path, uid, "Bad")
+        for w in ("ml", "nl"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        ml, nl = _card_by_content(tmp_path, uid, "ml")["id"], _card_by_content(tmp_path, uid, "nl")["id"]
+        good_row = {"id": "ok1", "from_id": ml, "to_id": nl, "kind": "shares_usage", "confidence": 0.7, "reason": "r"}
+        bad_row = {"id": "b1", "from_id": ml, "to_id": nl, "kind": "no_such_kind", "confidence": 0.5, "reason": "r"}
+        (_user_dir(tmp_path, uid) / "graph_default.json").write_text(json.dumps([good_row]))
+        (_user_dir(tmp_path, uid) / f"graph_{bad_nb}.json").write_text(json.dumps([bad_row]))
+        src_nb = _card_by_content(tmp_path, uid, "ml")["notebook_id"]
+
+        rc = _edit(str(tmp_path), "card-move", uid, "ml", "--to-notebook", "Dst", "--commit", "--json")
+        assert rc.returncode != 0
+        assert _card_by_content(tmp_path, uid, "ml")["notebook_id"] == src_nb
+        assert [r["id"] for r in _graph_links(tmp_path, uid, "default")] == ["ok1"]
+
 
 class TestNotebookDeleteCascade:
     def test_rejects_nonempty_without_cascade(self, tmp_path):
