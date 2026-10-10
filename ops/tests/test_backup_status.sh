@@ -5,6 +5,9 @@ set -o pipefail
 
 WORKTREE="$(cd "$(dirname "$0")/../.." && pwd)"
 HELPER="$WORKTREE/ops/backup_status.sh"
+# shellcheck source=../lib/hermetic_ops_test.sh
+source "$WORKTREE/ops/lib/hermetic_ops_test.sh"
+hermetic_ops_test_init "$WORKTREE"
 TMPDIR="$(mktemp -d -t kg_backup_status_XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
 

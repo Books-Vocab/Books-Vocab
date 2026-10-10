@@ -8,14 +8,16 @@
 # THE RULE (deliberately simple, so it cannot be argued around):
 #
 #   R1  A test file that mentions devops.sh or devops_kg_safe.sh on a NON-comment line
-#       must be hermetic on its own, i.e. satisfy ONE of:
+#       must be hermetic on its own, i.e. satisfy ONE of (a) or (c):
 #         (a) call `hermetic_ops_test_init` (ops/lib/hermetic_ops_test.sh) — .sh — or
 #             reference KG_OPS_TEST — .py.  "Relies on the harness" alone is not enough:
 #             ops/test_ops.sh sets the env for the tests it spawns, but a test run
 #             standalone (`./ops/tests/test_x.sh`, how people and agents actually run one)
 #             would not get it.  Self-initialising is idempotent under the harness.
-#         (b) inject a stub seam on a non-comment line: KG_DEVOPS_BASE= (stub base),
-#             KG_SSH_CMD= (stub transport) or KG_BASE= (stub for infra_health).
+#         (b) REMOVED (#2922): a file-level "some KG_DEVOPS_BASE= appears somewhere" is not a
+#             per-call-site proof (stubbed SAFE loop + unstubbed BYPASS loop is the incident
+#             shape).  A test that stubs its own seams still calls `hermetic_ops_test_init`
+#             first; its own later assignments win over the deny stub.
 #         (c) be listed in TEXT_ONLY below: files that only read devops.sh as text
 #             (`bash -n`, grep) and never execute it; the lint re-checks that claim.
 #       Scope: ops/**/test_*.sh, ops/tests/* (sh + py), ops/test_*.py.
@@ -58,8 +60,6 @@ lint_file() {  # <path> [root for relative TEXT_ONLY matching]
     *)
       grep -q 'hermetic_ops_test_init' <<<"$body" && return 0 ;;
   esac
-  # (b) explicit stub seam on a non-comment line.
-  grep -qE 'KG_DEVOPS_BASE=|KG_SSH_CMD=|KG_BASE=' <<<"$body" && return 0
   # (c) text-only allowlist — and the claim is re-verified: no direct execution.
   local rel="${file#"${2:-$ROOT}/"}" t
   for t in "${TEXT_ONLY[@]}"; do
@@ -71,7 +71,7 @@ lint_file() {  # <path> [root for relative TEXT_ONLY matching]
       return 0
     fi
   done
-  echo "mentions devops.sh/devops_kg_safe.sh but is neither hermetic (hermetic_ops_test_init / KG_OPS_TEST), nor stubbed (KG_DEVOPS_BASE=/KG_SSH_CMD=/KG_BASE=), nor TEXT_ONLY"
+  echo "mentions devops.sh/devops_kg_safe.sh but is neither hermetic (hermetic_ops_test_init / KG_OPS_TEST), nor TEXT_ONLY (a stub seam alone is not enough: it is a per-file, not per-call-site, proof)"
   return 1
 }
 
@@ -90,7 +90,7 @@ lint_file "$T/test_comment_only.sh" >/dev/null && ok "scanner ignores comment-on
 lint_file "$T/test_bad.py" >/dev/null && no "scanner missed a violating .py" || ok "scanner flags a .py that invokes devops.sh without KG_OPS_TEST"
 lint_file "$T/test_good.py" >/dev/null && ok "scanner accepts a .py that references KG_OPS_TEST" || no "scanner rejected a compliant .py"
 printf '#!/usr/bin/env bash\nKG_DEVOPS_BASE=/usr/bin/true bash ops/devops_kg_safe.sh status\n' > "$T/test_stubbed.sh"
-lint_file "$T/test_stubbed.sh" >/dev/null && ok "scanner accepts a .sh that injects a stub KG_DEVOPS_BASE" || no "scanner rejected a stub-base .sh"
+lint_file "$T/test_stubbed.sh" >/dev/null && no "scanner accepted a .sh whose only protection is a file-level stub seam (#2922)" || ok "scanner rejects a .sh that only injects a stub KG_DEVOPS_BASE without hermetic init (file-level seam is not per-call-site)"
 mkdir -p "$T/ops/tests"
 printf '#!/usr/bin/env bash\nbash "$ROOT/devops.sh" run ls\n' > "$T/ops/tests/test_liar.sh"
 printf '#!/usr/bin/env bash\nbash -n "$ROOT/devops.sh"\n' > "$T/ops/tests/test_honest.sh"
@@ -150,6 +150,29 @@ if [[ "$vrc" -eq 0 && "$vout" != *FORBIDDEN* && ! -s "$T/denied.log" ]]; then
 else
   no "shim rsync --version was denied or logged (rc=$vrc out=$vout)"
 fi
+# The shim dir twice in PATH under different spellings must not make `--version` exec a shim copy
+# forever (#2922): without a real binary anywhere, the second copy has to deny, not loop.
+alias_dir="$ROOT/.cache/ops-hermetic-shims/../ops-hermetic-shims"
+loop_log="$T/loop.out"
+(
+  PATH="$ROOT/.cache/ops-hermetic-shims:$alias_dir" KG_OPS_TEST_TRIPWIRE_LOG="$T/loop.tripwire" \
+    "$ROOT/.cache/ops-hermetic-shims/rsync" --version >"$loop_log" 2>&1 &
+  lpid=$!
+  ( sleep 5; kill -9 "$lpid" 2>/dev/null ) &
+  kpid=$!
+  wait "$lpid" && lrc=0 || lrc=$?; echo "rc=$lrc" >>"$loop_log"
+  kill "$kpid" 2>/dev/null || true
+) 2>/dev/null
+if grep -q '^rc=97$' "$loop_log" && grep -q FORBIDDEN "$loop_log"; then
+  ok "shim --version with the shim dir duplicated in PATH denies instead of looping"
+else
+  no "shim --version recursion guard failed: $(tr '\n' ' ' <"$loop_log")"
+fi
+# A real binary behind two spellings of the shim dir is still found.
+vout="$(PATH="$ROOT/.cache/ops-hermetic-shims:$alias_dir:/usr/bin:/bin" "$ROOT/.cache/ops-hermetic-shims/rsync" --version 2>&1)" && vrc=0 || vrc=$?
+[[ "$vrc" -eq 0 && "$vout" != *FORBIDDEN* ]] \
+  && ok "shim --version still reaches the real binary past a duplicated shim dir" \
+  || no "shim --version lost the real binary (rc=$vrc out=$vout)"
 rc=0; KG_OPS_TEST_TRIPWIRE_LOG=/dev/null "$KG_SSH_CMD" host 'ls' >/dev/null 2>&1 || rc=$?
 [[ "$rc" -eq 97 ]] && ok "KG_SSH_CMD is a deny stub (exit 97)" || no "KG_SSH_CMD deny stub rc=$rc"
 rc=0; KG_OPS_TEST_TRIPWIRE_LOG=/dev/null "$KG_SCP_CMD" a b >/dev/null 2>&1 || rc=$?

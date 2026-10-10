@@ -110,13 +110,45 @@ confirm() {
 # curl 二進位）一律 exit 97，不連線。測試自備的 stub（任何 `#!` 腳本，或 /usr/bin/true
 # 這類非 transport 二進位）不受影響；KG_OPS_TEST 未設時（營運者正常使用）此函式是 no-op。
 #   $1 label（ssh|scp|rsync|curl）  $2 設定的 transport 命令字串，未設為空字串
+# 分類看的是「實際會被執行的第一個字」：`env [opts] ssh`、`nohup ssh`、`sh -c ssh` 這類
+# wrapper 先剝掉再分類（#2922），否則 `KG_SSH_CMD="env ssh host"` 會繞過 tripwire。
+_devops_tripwire_effective_word() {  # $1 seam string → 印出實際被執行的第一個字
+  local -a w=()
+  local i=0 n t base
+  read -r -a w <<< "$1"
+  n=${#w[@]}
+  while (( i < n )); do
+    t="${w[i]#[\'\"]}"
+    base="${t##*/}"
+    case "$base" in
+      env|nohup|command|exec|time|nice)
+        i=$((i+1))
+        while (( i < n )); do
+          case "${w[i]}" in
+            -u|-C|-P|-S|-n) i=$((i+2)) ;;
+            -*|*=*) i=$((i+1)) ;;
+            *) break ;;
+          esac
+        done ;;
+      sh|bash|zsh|dash|ksh)
+        i=$((i+1))
+        while (( i < n )) && [[ "${w[i]}" != -*c* ]]; do i=$((i+1)); done
+        [[ $i -lt $n ]] || { printf '%s' "$t"; return 0; }   # 沒有 -c：是腳本啟動，不剝
+        i=$((i+1)) ;;
+      *) printf '%s' "$t"; return 0 ;;
+    esac
+  done
+  printf '%s' "${t:-}"
+}
+
+# $1 label（ssh|scp|rsync|curl）  $2 設定的 transport 命令字串，未設為空字串
 devops_ops_test_tripwire() {
   [[ "${KG_OPS_TEST:-}" == "1" ]] || return 0
   local label="$1" seam="${2-}" word resolved magic="" real=0
   if [[ -z "$seam" ]]; then
     real=1
   else
-    word="${seam%% *}"
+    word="$(_devops_tripwire_effective_word "$seam")"
     case "${word##*/}" in
       ssh|scp|sftp|rsync|aws|curl)
         resolved="$(command -v -- "$word" 2>/dev/null || true)"
@@ -129,8 +161,9 @@ devops_ops_test_tripwire() {
   [[ "$real" -eq 1 ]] || return 0
   {
     echo "✗ FORBIDDEN (exit 97): KG_OPS_TEST=1 and the real $label transport was about to run (${SERVER:-?})."
-    echo "  An ops test must never reach production. Give the test a stub: set KG_SSH_CMD / KG_SCP_CMD,"
-    echo "  or put a fake $label earlier in PATH. See docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md"
+    echo "  An ops test must never reach production. Give the test a stub script (starts with #!) and point"
+    echo "  KG_SSH_CMD / KG_SCP_CMD at it. A fake $label on PATH is not enough: with the seam unset this"
+    echo "  tripwire always fires. See docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md"
   } >&2
   if [[ -n "${KG_OPS_TEST_TRIPWIRE_LOG:-}" ]]; then
     printf 'tripwire %s seam=%s\n' "$label" "${seam:-<unset>}" >> "$KG_OPS_TEST_TRIPWIRE_LOG" 2>/dev/null || true
@@ -768,17 +801,24 @@ cmd_user_info() {
   run_remote "ls -lah $REMOTE_DATA_DIR/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
 
   section "單字庫統計"
+  # 路徑以 argv 傳入（printf %q）並由 python expanduser：`~` 不能放進遠端雙引號字串，
+  # 否則 sqlite3.connect 收到字面 `~/…`（#2758）。讀不到 DB 必須 exit 非 0。
+  local db_path
+  db_path="$(printf '%q' "$REMOTE_DATA_DIR/users/$uid/cards.db")"
   run_remote "python3 -c \"
-import sqlite3, sys
+import os, sqlite3, sys
 try:
-    conn = sqlite3.connect('$REMOTE_DATA_DIR/users/$uid/cards.db')
+    db = os.path.expanduser(sys.argv[1])
+    if not os.path.exists(db): raise FileNotFoundError(db)
+    conn = sqlite3.connect(db)
     cur = conn.cursor()
     cur.execute('SELECT COUNT(*), SUM(CASE WHEN is_deleted=0 THEN 1 ELSE 0 END), SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END) FROM card')
     total, active, deleted = cur.fetchone()
     print(f'總卡片: {total}  有效: {active}  已刪除: {deleted}')
 except Exception as e:
     print(f'(無法讀取 SQLite: {e})')
-\""
+    sys.exit(1)
+\" $db_path"
 }
 
 # ── 指令：delete-user <user_id> [--yes] ───────────────────────────────────────

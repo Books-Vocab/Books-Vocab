@@ -4,6 +4,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/hermetic_ops_test.sh
+source "$ROOT/ops/lib/hermetic_ops_test.sh"
+hermetic_ops_test_init "$ROOT"
 pass() { printf '✓ %s\n' "$*"; }
 fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
 

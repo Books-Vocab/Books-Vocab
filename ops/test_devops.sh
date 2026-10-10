@@ -1050,6 +1050,43 @@ users_out=$(KG_DEVOPS_BASE="$USERS_BASE" bash "$SAFE_KG" users extra 2>&1) || us
   || fail_t "users with extra args: rc=$users_rc trace=$([[ -e "$USERS_TRACE" ]] && echo hit || echo none)"
 rm -rf "$USERS_FIX"
 
+# ── 13b. user-info 預設 ~/kg-data（#2758）──────────────────────────────────
+# 舊行為：`~` 被包在遠端 python -c 的雙引號內，sqlite3.connect 收到字面 `~/…`，永遠
+# 開不了 DB 且 except 吞掉錯誤 exit 0。stub 以 bash -c 真的執行遠端字串（HOME=fixture）。
+section "user-info expands ~ in the default data dir (#2758)"
+UI_FIX="$(mktemp -d)"
+mkdir -p "$UI_FIX/kg-data/users/u1"
+python3 -c "
+import sqlite3
+c = sqlite3.connect('$UI_FIX/kg-data/users/u1/cards.db')
+c.execute('CREATE TABLE card (is_deleted INTEGER)')
+c.executemany('INSERT INTO card VALUES (?)', [(0,), (0,), (1,)])
+c.commit()
+"
+UI_ECHO="$UI_FIX/echo_stub.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${@: -1}"\n' > "$UI_ECHO"; chmod +x "$UI_ECHO"
+UI_RUN="$UI_FIX/run_stub.sh"
+printf '#!/usr/bin/env bash\nexec bash -c "${@: -1}"\n' > "$UI_RUN"; chmod +x "$UI_RUN"
+ui_cmd=$(env -u KG_REMOTE_DATA_DIR KG_SSH_CMD="$UI_ECHO" bash "$KG" user-info u1 2>&1) || true
+grep -q "sqlite3.connect('~" <<< "$ui_cmd" \
+  && fail_t "user-info still hands a literal ~ path to sqlite3.connect" \
+  || ok "user-info never hands a literal ~ path to sqlite3.connect"
+grep -q 'sqlite3.connect' <<< "$ui_cmd" \
+  && ok "positive control: the echoed remote command contains the sqlite3 section" \
+  || fail_t "positive control failed: sqlite3 section missing from echoed command"
+ui_rc=0
+ui_out=$(env -u KG_REMOTE_DATA_DIR HOME="$UI_FIX" KG_SSH_CMD="$UI_RUN" bash "$KG" user-info u1 2>&1) || ui_rc=$?
+grep -q '總卡片: 3  有效: 2  已刪除: 1' <<< "$ui_out" \
+  && ok "user-info reads cards.db under the default ~/kg-data" \
+  || fail_t "user-info did not read cards.db: $(tr '\n' ' ' <<< "$ui_out")"
+rm -f "$UI_FIX/kg-data/users/u1/cards.db"
+ui_rc=0
+ui_out=$(env -u KG_REMOTE_DATA_DIR HOME="$UI_FIX" KG_SSH_CMD="$UI_RUN" bash "$KG" user-info u1 2>&1) || ui_rc=$?
+[[ "$ui_rc" != 0 ]] && grep -q '無法讀取 SQLite' <<< "$ui_out" \
+  && ok "user-info exits non-zero when the SQLite DB cannot be read" \
+  || fail_t "user-info swallowed an unreadable DB (rc=$ui_rc)"
+rm -rf "$UI_FIX"
+
 # ── 14. 敏感檔讀取 deny-list（#2134）：run / container-run / migrate-run / container-script ──
 section "sensitive file reads blocked (users.json / .env / ~/.secrets / private keys)"
 # 同一支 stub 兼任 ssh/scp transport（KG_SSH_CMD／KG_SCP_CMD，走真 base devops.sh）與
