@@ -20,7 +20,13 @@ class CheckoutProvenance:
     head_sha: str
     clean: bool
     control_plane_fingerprint: str
+    blocking_paths: tuple[str, ...] = ()
+    untracked_warnings: tuple[str, ...] = ()
 
+
+# Untracked files under these prefixes can change what the control plane runs;
+# any other untracked file (root-level scratch, caches) is only a warning.
+CONTROL_PLANE_UNTRACKED_PREFIXES = ("ops/", ".github/")
 
 CONTROL_PLANE_PATHS = (
     "ops/lib/worktree_scope.py",
@@ -29,7 +35,7 @@ CONTROL_PLANE_PATHS = (
 )
 
 
-def _git(root: Path, *arguments: str) -> str:
+def _git(root: Path, *arguments: str, strip: bool = True) -> str:
     try:
         result = subprocess.run(
             resolve_argv(["git", "-C", str(root), *arguments]),
@@ -44,7 +50,40 @@ def _git(root: Path, *arguments: str) -> str:
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "git failed"
         raise SourceProvenanceError(f"cannot inspect checkout {root}: {detail}")
-    return result.stdout.strip()
+    return result.stdout.strip() if strip else result.stdout
+
+
+def _classify_status(raw: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Split porcelain -z output into blocking paths and untracked warnings."""
+
+    blocking: list[str] = []
+    warnings: list[str] = []
+    fields = raw.split("\0")
+    index = 0
+    while index < len(fields):
+        entry = fields[index]
+        index += 1
+        if len(entry) < 4:
+            continue
+        code, path = entry[:2], entry[3:]
+        if code[0] in "RC":
+            index += 1  # rename/copy source path follows as its own field
+        if code == "??" and not path.startswith(CONTROL_PLANE_UNTRACKED_PREFIXES):
+            warnings.append(path)
+        else:
+            blocking.append(path)
+    return tuple(blocking), tuple(warnings)
+
+
+def _dirty_message(source: CheckoutProvenance) -> str:
+    shown = ", ".join(source.blocking_paths[:5])
+    if len(source.blocking_paths) > 5:
+        shown += f", ... (+{len(source.blocking_paths) - 5} more)"
+    return (
+        f"control-plane source checkout is dirty: {source.root}; "
+        f"offending paths: {shown}; "
+        f"fix: git -C {source.root} status, then commit, restore or remove them"
+    )
 
 
 def inspect_checkout(root: Path) -> CheckoutProvenance:
@@ -57,7 +96,16 @@ def inspect_checkout(root: Path) -> CheckoutProvenance:
             f"checkout root is not canonical: expected {resolved}, found {top_level}"
         )
     head_sha = _git(resolved, "rev-parse", "HEAD")
-    dirty = bool(_git(resolved, "status", "--porcelain", "--untracked-files=all"))
+    blocking, warnings = _classify_status(
+        _git(
+            resolved,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            strip=False,
+        )
+    )
     tracked_paths = _git(resolved, "ls-files", "-z", "--", *CONTROL_PLANE_PATHS)
     entries: list[tuple[str, str]] = []
     for relative in tracked_paths.split("\0"):
@@ -74,8 +122,10 @@ def inspect_checkout(root: Path) -> CheckoutProvenance:
     return CheckoutProvenance(
         root=resolved,
         head_sha=head_sha,
-        clean=not dirty,
+        clean=not blocking,
         control_plane_fingerprint=fingerprint,
+        blocking_paths=blocking,
+        untracked_warnings=warnings,
     )
 
 
@@ -120,7 +170,7 @@ def source_compatibility_problem(
     except SourceProvenanceError as error:
         return str(error)
     if not source.clean:
-        return f"control-plane source checkout is dirty: {source.root}"
+        return _dirty_message(source)
     if source.control_plane_fingerprint != target.control_plane_fingerprint:
         return (
             "control-plane source fingerprint differs from target repo: "

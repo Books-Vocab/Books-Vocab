@@ -128,6 +128,12 @@ cat > "$lane_state" <<'EOF'
     "unregistered_physical_worktrees": [
       "/x/orphan-one",
       "/x/orphan-two"
+    ],
+    "physical_identity_mismatches": [
+      "/x/detached-lane"
+    ],
+    "physical_identity_repairs": [
+      "git -C /x/detached-lane switch debug/lane"
     ]
   }
 }
@@ -145,6 +151,10 @@ grep -q 'blockingReasons=unregistered-physical-worktree' <<<"$lane_output" \
   && ok "diagnostic names blocking reason" || bad "diagnostic reason missing: $lane_output"
 grep -q 'unregisteredWorktrees=/x/orphan-one;/x/orphan-two' <<<"$lane_output" \
   && ok "diagnostic names unregistered worktree paths" || bad "diagnostic paths missing: $lane_output"
+grep -q 'identityMismatchWorktrees=/x/detached-lane' <<<"$lane_output" \
+  && ok "diagnostic names identity-mismatch worktree" || bad "diagnostic identity mismatch missing: $lane_output"
+grep -q 'identityRepairs="git -C /x/detached-lane switch debug/lane"' <<<"$lane_output" \
+  && ok "diagnostic names the exact repair command" || bad "diagnostic repair missing: $lane_output"
 grep -q 'guardReason=lane-usage-report-blocked' <<<"$lane_output" \
   && ok "diagnostic names guard reason" || bad "diagnostic guardReason missing: $lane_output"
 grep -q 'guard --refresh' <<<"$lane_output" \

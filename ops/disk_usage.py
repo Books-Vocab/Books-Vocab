@@ -1501,6 +1501,30 @@ def _agent_lane_lock(
     return lock
 
 
+def _branch_tip(workspace: Path, branch: str) -> str | None:
+    """Return the commit a local branch points at, or None when unreadable."""
+
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(workspace),
+                "rev-parse",
+                "--verify",
+                "-q",
+                f"refs/heads/{branch}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return completed.stdout.strip() or None if completed.returncode == 0 else None
+
+
 def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
     quoted = shlex.quote(str(path))
     unlock = f"git worktree unlock {quoted} && " if lock["state"] != "unlocked" else ""
@@ -2205,15 +2229,35 @@ def build_report(
         and item.get("observed_branch")
         and item.get("observed_branch") != item.get("branch")
     )
-    detached_registered = sorted(
-        str(item["path"])
+    detached_candidates = [
+        item
         for item in physical_lanes
         if item.get("registry_status") in KNOWN_REGISTRY_STATUSES
         and item.get("worktree_state") != "dirty"
         and item.get("observed_branch") is None
         and item.get("branch") not in {"(detached)", "(canonical)"}
         and item.get("physical_state") not in {"missing", "excluded"}
+    ]
+    # A clean lane detached exactly at its branch tip loses nothing: warn,
+    # do not block every unrelated lane.
+    detached_at_tip = sorted(
+        str(item["path"])
+        for item in detached_candidates
+        if _branch_tip(workspace, str(item.get("branch"))) == item.get("head")
     )
+    detached_registered = sorted(
+        str(item["path"])
+        for item in detached_candidates
+        if str(item["path"]) not in detached_at_tip
+    )
+    branch_by_path = {
+        str(item["path"]): str(item.get("branch")) for item in physical_lanes
+    }
+    physical_identity_repairs = [
+        f"git -C {path} switch {branch_by_path[path]}"
+        for path in sorted(set(physical_identity_mismatches + detached_registered))
+        if branch_by_path.get(path)
+    ]
     try:
         per_lane_budget = (
             int(os.environ.get("KG_DISK_GUARD_LANE_BUDGET_GIB", "2")) * GIB
@@ -2579,6 +2623,8 @@ def build_report(
             "physical_identity_mismatches": sorted(
                 set(physical_identity_mismatches + detached_registered)
             ),
+            "physical_identity_repairs": physical_identity_repairs,
+            "detached_at_tip_warnings": detached_at_tip,
             "terminal_physical_residue": sorted(
                 str(item["path"]) for item in terminal_physical_lanes
             ),

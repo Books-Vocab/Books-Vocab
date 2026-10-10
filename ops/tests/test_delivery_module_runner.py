@@ -141,26 +141,56 @@ def test_runner_rejects_control_plane_drift(tmp_path: Path) -> None:
     assert called is False
 
 
-def test_runner_rejects_dirty_source_checkout(tmp_path: Path) -> None:
+def _dirty_runner_result(tmp_path: Path, mutate) -> "object":
     source = tmp_path / "source"
     _git_repo(source, marker="source")
     target = tmp_path / "target"
     subprocess.run(["git", "clone", "-q", str(source), str(target)], check=True)
     executable = source / "command.py"
     executable.touch()
-    (source / "uncommitted.txt").write_text("dirty", encoding="utf-8")
-
+    mutate(source)
     runner = ModuleCommandRunner(
         executable=executable,
         main=lambda _argv: 0,
         source_root=source,
         target_repo=target,
     )
+    return runner.run((str(executable), "list", "--json"))
 
-    result = runner.run((str(executable), "list", "--json"))
+
+def test_runner_rejects_tracked_modification_and_names_path(tmp_path: Path) -> None:
+    def mutate(source: Path) -> None:
+        (source / "marker.txt").write_text("changed", encoding="utf-8")
+
+    tracked = tmp_path / "source"
+    result = _dirty_runner_result(tmp_path, mutate)
 
     assert result.exit_code == 78
     assert "source checkout is dirty" in result.stderr
+    assert "marker.txt" in result.stderr
+    assert f"git -C {tracked}" in result.stderr
+
+
+def test_runner_rejects_untracked_file_under_ops_and_names_path(
+    tmp_path: Path,
+) -> None:
+    def mutate(source: Path) -> None:
+        (source / "ops").mkdir(exist_ok=True)
+        (source / "ops" / "stray.py").write_text("x", encoding="utf-8")
+
+    result = _dirty_runner_result(tmp_path, mutate)
+
+    assert result.exit_code == 78
+    assert "ops/stray.py" in result.stderr
+
+
+def test_runner_allows_untracked_root_scratch_file(tmp_path: Path) -> None:
+    def mutate(source: Path) -> None:
+        (source / "scratchpad_patch.py").write_text("", encoding="utf-8")
+
+    result = _dirty_runner_result(tmp_path, mutate)
+
+    assert result.exit_code == 0, result.stderr
 
 
 def test_runner_allows_exact_clean_source_and_target_checkouts(tmp_path: Path) -> None:
