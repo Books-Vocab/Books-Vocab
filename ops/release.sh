@@ -1446,19 +1446,23 @@ promote_version_at() {  # $1=ref → pyproject 與 api.py 的 backend 版號（�
 # seam：KG_CHECK_RUNS_JSON_CMD <sha> 回傳 raw gh JSON（可為多頁串接），讓測試走真的 jq 過濾器。
 promote_assert_backend_quality() {  # $1=sha
   local sha="$1" out rc=0
+  # 真實 check-run 名稱 = caller job / reusable job（pr-gate.yml 的 backend-quality 呼叫 backend-quality.yml 的 backend-quality），
+  # GitHub 顯示為 "backend-quality / backend-quality"（2026-10-10 唯讀 gh api 於 30b12177f／a215ac4e 實測）；
+  # check_name 查詢為精確比對，必須與之完全一致，否則 server-side 過濾得到 0 筆而 fail-closed。
+  local check="backend-quality / backend-quality"
   if [[ -n "${KG_CHECK_RUNS_JSON_CMD:-}" ]]; then out="$($KG_CHECK_RUNS_JSON_CMD "$sha" 2>&1)" || rc=$?
   else
     command -v gh >/dev/null 2>&1 || err "找不到 gh；無法讀 ${sha} 的 CI 證據，拒絕 promote。"
-    out="$(gh api --paginate "repos/${KG_GH_REPO}/commits/${sha}/check-runs?check_name=backend-quality&filter=all&per_page=100" 2>&1)" || rc=$?
+    out="$(gh api --paginate "repos/${KG_GH_REPO}/commits/${sha}/check-runs?check_name=backend-quality%20%2F%20backend-quality&filter=all&per_page=100" 2>&1)" || rc=$?
   fi
   (( rc == 0 )) || err "讀取 ${sha} 的 check-runs 失敗（exit ${rc}）：${out:-<empty>}；無證據即拒絕。"
   jq -s -e 'length > 0 and all(.[]; type == "object" and (.check_runs | type) == "array")' <<<"$out" >/dev/null 2>&1 \
     || err "${sha} 的 check-runs 回應無法解析（非 JSON 或缺 check_runs）：${out:0:200}；拒絕 promote。"
   jq -s -e '([.[].check_runs[]] | length) == (.[0].total_count // -1)' <<<"$out" >/dev/null 2>&1 \
     || err "${sha} 的 check-runs 回應不完整（total_count 與實收 run 數不符，疑似分頁截斷）；拒絕 promote。"
-  jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")] | length > 0' <<<"$out" >/dev/null 2>&1 \
+  jq -s -e --arg n "$check" '[.[].check_runs[] | select(.name == $n)] | length > 0' <<<"$out" >/dev/null 2>&1 \
     || err "${sha} 沒有任何 backend-quality check-run（CI 沒跑）；拒絕 promote。選有 backend 變更且 CI 綠的 main commit。"
-  jq -s -e '[.[].check_runs[] | select(.name == "backend-quality")]
+  jq -s -e --arg n "$check" '[.[].check_runs[] | select(.name == $n)]
       | all(.[]; (.id | type) == "number" and (.check_suite.id | type) == "number")
         and (group_by(.check_suite.id) | all(.[]; (map(.id) | max) as $m | [.[] | select(.id == $m)] | all(.status == "completed" and .conclusion == "success")))' <<<"$out" >/dev/null 2>&1 \
     || err "${sha} 沒有全綠的 backend-quality check-run（每個 check suite 最新 attempt 都必須 completed/success；失敗、skipped、neutral、進行中、缺 id 皆不算；同 suite 內被 rerun 取代的舊 attempt 不計）；拒絕 promote。"

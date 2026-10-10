@@ -2022,7 +2022,7 @@ chmod +x "$TMP7/shim/gh"
 # 單一 backend-quality run / 單頁 JSON / 多頁（gh --paginate 會串接多個 JSON 物件）。
 pr_run() {  # $1=status $2=conclusion(或 null) [$3=name] [$4=check_suite.id] [$5=run id]
   local c="$2"; [[ "$c" == null ]] || c="\"$c\""
-  printf '{"id":%s,"name":"%s","status":"%s","conclusion":%s,"check_suite":{"id":%s}}' "${5:-100}" "${3:-backend-quality}" "$1" "$c" "${4:-1}"
+  printf '{"id":%s,"name":"%s","status":"%s","conclusion":%s,"check_suite":{"id":%s}}' "${5:-100}" "${3:-backend-quality / backend-quality}" "$1" "$c" "${4:-1}"
 }
 pr_page() {  # $1=total_count，其餘=run JSON
   local n="$1"; shift; local IFS=,
@@ -2147,8 +2147,10 @@ p_ci "failed then green rerun in same suite passes (#2660)" "" "$(pr_page 2 "$(p
 p_ci "green rerun listed before older failure still passes (order-independent)" "" "$(pr_page 2 "$(pr_run completed success '' 1 101)" "$(pr_run completed failure '' 1 100)")"
 p_ci "failure in a different suite is not hidden by green rerun elsewhere" "$P_NOTGREEN" "$(pr_page 3 "$(pr_run completed failure '' 1 100)" "$(pr_run completed success '' 1 101)" "$(pr_run completed failure '' 2 200)")"
 p_ci "newest attempt in_progress refused even if older one was green" "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success '' 1 100)" "$(pr_run in_progress null '' 1 101)")"
-p_ci "run without id/check_suite refused (cannot tell newest attempt)" "$P_NOTGREEN" '{"total_count":1,"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"success"}]}'
+p_ci "run without id/check_suite refused (cannot tell newest attempt)" "$P_NOTGREEN" '{"total_count":1,"check_runs":[{"name":"backend-quality / backend-quality","status":"completed","conclusion":"success"}]}'
 p_ci "missing backend-quality refused" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success agent-review)")"
+p_ci "bare 'backend-quality' name is not the real check-run (refused)" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success backend-quality)")"
+p_ci "sibling 'backend-quality / image-lock' does not count (refused)" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success 'backend-quality / image-lock')")"
 p_ci "empty check_runs refused"        "沒有任何 backend-quality check-run" "$(pr_page 0)"
 p_ci "garbage refused"                 "check-runs 回應無法解析" "not json"
 p_ci "empty output refused"            "check-runs 回應無法解析" ""
@@ -2166,9 +2168,9 @@ mk_promote_fx ghargs
 printf '%s' "$P_OK" > "$P_FX/gh_out.json"; : > "$P_FX/gh.log"
 P_RC=0; P_OUT="$(PATH="$TMP7/shim:$PATH" KG_TEST_GITLOG="$P_FX/git.log" KG_TEST_GHLOG="$P_FX/gh.log" KG_TEST_GH_OUT="$P_FX/gh_out.json" \
   bash "$P_FX/ops/release.sh" promote backend "$P_TGT" 2>&1)" || P_RC=$?
-[[ $P_RC -eq 0 ]] && grep -q -- "--paginate" "$P_FX/gh.log" && grep -q "check_name=backend-quality" "$P_FX/gh.log" \
+[[ $P_RC -eq 0 ]] && grep -q -- "--paginate" "$P_FX/gh.log" && grep -qF "check_name=backend-quality%20%2F%20backend-quality" "$P_FX/gh.log" \
   && grep -q "filter=all" "$P_FX/gh.log" && grep -q "commits/$P_TGT/check-runs" "$P_FX/gh.log" \
-  && ok "gh query is paginated and server-side filtered to backend-quality (filter=all)" \
+  && ok "gh query is paginated and server-side filtered to 'backend-quality / backend-quality' (filter=all)" \
   || fail_t "gh argv wrong (rc=$P_RC): $(cat "$P_FX/gh.log") :: $P_OUT"
 
 # --wait：收斂成功 / 逾時 / 線上版本是別的 SHA。
