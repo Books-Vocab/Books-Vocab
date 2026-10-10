@@ -771,3 +771,44 @@ private final class GatedGraphService: GraphServing {
     func hideLink(linkId: String, notebookId: String) async throws {}
     func unhideLink(linkId: String, notebookId: String) async throws {}
 }
+
+// Issue #2047 (phase C): user-triggered Add Link outcomes surface as one top
+// pill each, keyed so a repeated event replaces instead of stacking.
+@Suite("AddLinkToastEvent")
+@MainActor
+struct AddLinkToastEventTests {
+    @Test func actionFailureIsErrorPillWithStableKey() {
+        let item = AddLinkToastEvent.actionFailed(.existingLinkFailed)
+        #expect(item.style == .error)
+        #expect(item.key == AddLinkToastEvent.actionFailedKey)
+        #expect(item.message == AddLinkActionError.existingLinkFailed.message)
+    }
+
+    @Test func creationFailureIsErrorPillWithStableKey() {
+        let item = AddLinkToastEvent.creationFailed(message: "failed copy")
+        #expect(item.style == .error)
+        #expect(item.key == AddLinkToastEvent.creationFailedKey)
+        #expect(item.message == "failed copy")
+    }
+
+    @Test func creationWarningIsWarningPillWithStableKey() {
+        let item = AddLinkToastEvent.creationWarning(message: "warning copy")
+        #expect(item.style == .warning)
+        #expect(item.key == AddLinkToastEvent.creationWarningKey)
+    }
+
+    @Test func blockedIsWarningPillWithStableKey() {
+        let item = AddLinkToastEvent.blocked(message: "blocked copy")
+        #expect(item.style == .warning)
+        #expect(item.key == AddLinkToastEvent.blockedKey)
+    }
+
+    /// The same event twice collapses into the visible pill (no stacked duplicate).
+    @Test func repeatedActionFailureReplacesInsteadOfStacking() {
+        var queue = AppToastQueue()
+        _ = queue.receive(AddLinkToastEvent.actionFailed(.existingLinkFailed))
+        let outcome = queue.receive(AddLinkToastEvent.actionFailed(.existingLinkFailed))
+        #expect(outcome == .replacedCurrent)
+        #expect(queue.pending.isEmpty)
+    }
+}

@@ -24,7 +24,6 @@ struct ArchivedVocabSheet: View {
     private var activeEntries: [VocabularyEntry]
     @State private var searchText = ""
     @State private var selectedEntry: VocabularyEntry?
-    @State private var errorMessage: String?
 
     var body: some View {
         let archivedEntries = self.archivedEntries
@@ -90,15 +89,6 @@ struct ArchivedVocabSheet: View {
                 WordDetailSheet(entry: entry, allEntries: activeEntries)
                     .appSheet(.large)
             }
-            .overlay(alignment: .top) {
-                if let errorMessage {
-                    AppBanner(
-                        message: errorMessage,
-                        systemImage: "exclamationmark.triangle",
-                        onDismiss: { self.errorMessage = nil }
-                    )
-                }
-            }
         }
         .enableInjection()
     }
@@ -129,7 +119,8 @@ struct ArchivedVocabSheet: View {
             } catch {
                 AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")
                 await MainActor.run {
-                    errorMessage = L10n.format("解除封存失敗：%@", error.localizedDescription)
+                    // Fixed short copy: a system error description can exceed the pill's single line; the detail is in AppLog above.
+                    toastCoordinator.error(L10n.string("解除封存失敗"))
                 }
             }
         }

@@ -123,6 +123,39 @@ final class AddLinkSheetUXUITests: UITestCase {
         captureStep("add-link-return-exact", app: app)
     }
 
+    // MARK: - #2047 pill + panel
+
+    /// A failed link is an outcome the user just caused: the panel keeps the retry
+    /// action, one error pill announces it, and a retry that fails again replaces
+    /// that pill rather than stacking a second one.
+    @MainActor
+    func testFailedLinkPostsOneErrorPillAndKeepsRetryPanel() throws {
+        guard let app = openAddLinkSheet(perfLog: "add-link-failed-pill") else { return }
+        XCTAssertTrue(app.textFields["addLink.searchField"].waitUntilValue(hasKeyboardFocus: true, timeout: 5))
+        app.typeText("epiphany")
+        XCTAssertTrue(marker("addLink.row.returnHint", in: app).waitUntilExists(timeout: 5))
+        app.typeText("\n")
+        XCTAssertTrue(
+            marker("addLink.error.reason", in: app).waitUntilExists(timeout: 10),
+            "Return on the exact word fails against the unreachable server"
+        )
+
+        let pill = app.descendants(matching: .any).matching(identifier: "app.toast").firstMatch
+        XCTAssertTrue(pill.waitUntilExists(timeout: 5), "a user-triggered link failure must post a pill")
+        XCTAssertEqual(pill.value as? String, "error", "the failure pill uses the error style")
+
+        let retry = marker("addLink.error.retry", in: app)
+        XCTAssertTrue(retry.waitUntilExists(timeout: 5), "the failure panel keeps the retry action")
+        retry.tapWhenReady()
+        XCTAssertTrue(marker("addLink.error.reason", in: app).waitUntilExists(timeout: 10))
+        XCTAssertLessThanOrEqual(
+            app.descendants(matching: .any).matching(identifier: "app.toast").count,
+            1,
+            "a repeated failure replaces the pill, never stacks"
+        )
+        captureStep("add-link-failed-pill", app: app)
+    }
+
     // MARK: - Helpers
 
     /// Launches the linked-cards world, opens `serendipity`'s detail and its
