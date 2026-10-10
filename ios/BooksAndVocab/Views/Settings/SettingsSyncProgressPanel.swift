@@ -117,20 +117,7 @@ private struct SettingsSyncStepRow: View {
         .accessibilityValue(Text(accessibilityValue))
     }
 
-    private var accessibilityValue: String {
-        let state: String
-        switch step.status {
-        case .waiting:  state = L10n.string("等待中")
-        case .running, .retry: state = L10n.string("進行中")
-        case .done:     state = L10n.string("已完成")
-        case .skipped:  state = L10n.string("已略過")
-        case .error:    state = L10n.string("失敗")
-        }
-        if step.status == .running && step.total > 0 {
-            return "\(state)，\(step.current)/\(step.total)"
-        }
-        return step.detail.isEmpty ? state : "\(state)，\(step.detail)"
-    }
+    private var accessibilityValue: String { step.accessibilityValue() }
 }
 
 #if DEBUG
