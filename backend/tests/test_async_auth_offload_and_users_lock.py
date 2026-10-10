@@ -476,3 +476,14 @@ def test_library_s3_client_has_bounded_network_timeouts(tmp_path):
     assert config.connect_timeout <= 5
     assert config.read_timeout <= 10
     assert config.retries["total_max_attempts"] <= 3
+
+
+def test_library_s3_client_uses_default_addressing_for_custom_endpoint(tmp_path):
+    settings = KGSettings(
+        data_dir=tmp_path,
+        jwt_secret=TEST_JWT_SECRET,
+        library_bucket="library-test",
+        library_bucket_endpoint_url="http://localhost:9000",
+    )
+    s3_config = _library_s3_client(settings).meta.config.s3 or {}
+    assert s3_config.get("addressing_style") != "virtual"

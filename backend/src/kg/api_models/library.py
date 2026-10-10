@@ -67,7 +67,7 @@ class AssetUploadRequest(BaseModel):
 
     format: LibraryFormat
     byte_size: int = Field(ge=0)
-    sha256: str | None = Field(default=None, max_length=64)
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
     local_only: bool = False
 
 

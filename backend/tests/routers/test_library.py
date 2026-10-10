@@ -225,6 +225,26 @@ class TestCreateBook:
         assert len(rows) == 1
         assert rows[0].client_book_id == "concurrent-book"
 
+    def test_reused_client_book_id_after_delete_returns_live_book(self, isolated_api):
+        c, h = isolated_api.client, isolated_api.headers
+        old = _create_book(c, h, "Old", client_book_id="reused-id")
+        pos_body = {"locator": "loc", "progression": 0.5, "updated_at": "2026-06-13T10:00:00Z"}
+        assert c.put(f"/api/library/books/{old['id']}/position", json=pos_body, headers=h).status_code == 200
+        assert c.delete(f"/api/library/books/{old['id']}", headers=h).status_code == 200
+
+        new = _create_book(c, h, "New", client_book_id="reused-id")
+        assert new["is_deleted"] is False
+        assert new["id"] != old["id"]
+        assert new["title"] == "New"
+        assert new["locator"] is None
+        assert new["progression"] is None
+        assert c.patch(f"/api/library/books/{new['id']}", json={"title": "Renamed"}, headers=h).status_code == 200
+        pos_body2 = {"locator": "loc2", "progression": 0.1, "updated_at": "2026-06-14T10:00:00Z"}
+        assert c.put(f"/api/library/books/{new['id']}/position", json=pos_body2, headers=h).status_code == 200
+
+        again = _create_book(c, h, "Again", client_book_id="reused-id")
+        assert again["id"] == new["id"]
+
     def test_client_book_id_is_scoped_per_user(self, isolated_api):
         first_store = LibraryStore(isolated_api.data_dir / "users" / isolated_api.user_id / "library.db")
         second_store = LibraryStore(isolated_api.data_dir / "users" / "other-user" / "library.db")
