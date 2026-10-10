@@ -128,6 +128,8 @@ async def _step_enrich(
     logger: logging.Logger,
     force: bool = False,
     notebook_id: str = "default",
+    embedding_store_factory: EmbeddingStoreFactory | None = None,
+    graph_store_factory: GraphStoreFactory | None = None,
 ) -> int:
     logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
@@ -163,6 +165,7 @@ async def _step_enrich(
     batch_errors: list[str] = []
     got_results = False
     answered_ids: list[str] = []
+    meaning_changed_ids: list[str] = []
 
     # aclosing: a consumer-side failure (e.g. SQLite busy in batch_update) must
     # shut the stream's executor down now, not at GC, and before _run_step's
@@ -201,10 +204,23 @@ async def _step_enrich(
                         kwargs["collocations"] = enrichment["collocations"]
                     if enrichment.get("meaning_fix"):
                         kwargs["meaning"] = enrichment["meaning_fix"]
+                        if kwargs["meaning"] != card.meaning:
+                            meaning_changed_ids.append(card.id)
                     if kwargs:
                         batch_updates.append((card.id, kwargs))
                 if batch_updates:
                     updated += cards.batch_update(batch_updates)
+                if meaning_changed_ids:
+                    from ..deps import _embedding_store, _graph_store
+                    from ..vocab_crud import reembed_after_meaning_edit
+
+                    make_embeddings = embedding_store_factory or _embedding_store
+                    make_graph = graph_store_factory or _graph_store
+                    embeddings = make_embeddings(user["dir"], llm=None, notebook_id=notebook_id)
+                    graph = make_graph(user["dir"], notebook_id=notebook_id)
+                    for changed_id in meaning_changed_ids:
+                        reembed_after_meaning_edit(embeddings, graph, changed_id)
+                    meaning_changed_ids.clear()
 
     if batch_errors and not got_results:
         raise RuntimeError(f"Enrich failed for all batches: {batch_errors[0]}")

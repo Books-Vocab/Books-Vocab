@@ -79,7 +79,7 @@ from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
 from ..sentry_init import capture_handled
 from ..service_factories import create_client
 from ..types import UserRecord
-from ..vocab_crud import reembed_after_meaning_edit
+from ..vocab_crud import evict_card_embedding, reembed_after_meaning_edit
 from ..vocab_graph_ops import link_peer_ids, touch_peers
 from ..vocab_handlers import (
     archive_word_response,
@@ -674,19 +674,16 @@ def _delete_external_card(user: UserRecord, card_id: str, notebook_id: str) -> E
             logger.warning("[%s] Failed to restore card %s after graph error", user["id"], card.id, exc_info=True)
         raise
     touch_peers(cards, peer_ids, card)
+    embeddings = None
     try:
-        _embedding_store(user["dir"], llm=None, notebook_id=notebook_id).remove(card.id)
+        embeddings = _embedding_store(user["dir"], llm=None, notebook_id=notebook_id)
     except Exception as exc:
-        # Card/graph deletion is already durable. A stale embedding is
-        # recoverable on the next pipeline pass, so it must not turn a
-        # successful delete into a retry-prone 5xx.
-        logger.warning(
-            "[%s] Failed to evict embedding for deleted card %s",
-            user["id"],
-            card.id,
-            exc_info=True,
-        )
+        # Card/graph deletion is already durable; a store that cannot open must
+        # not turn a successful delete into a retry-prone 5xx. The shared helper
+        # below is best-effort for the remove itself.
+        logger.warning("[%s] Failed to open embedding store for deleted card %s", user["id"], card.id, exc_info=True)
         capture_handled(exc, context="external_api.embedding_evict")
+    evict_card_embedding(embeddings, card.id)
     return ExternalCardDeleteResponse(cardId=card.id, deleted=True)
 
 
