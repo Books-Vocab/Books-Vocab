@@ -768,17 +768,24 @@ cmd_user_info() {
   run_remote "ls -lah $REMOTE_DATA_DIR/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
 
   section "單字庫統計"
+  # 路徑以 argv 傳入（printf %q）並由 python expanduser：`~` 不能放進遠端雙引號字串，
+  # 否則 sqlite3.connect 收到字面 `~/…`（#2758）。讀不到 DB 必須 exit 非 0。
+  local db_path
+  db_path="$(printf '%q' "$REMOTE_DATA_DIR/users/$uid/cards.db")"
   run_remote "python3 -c \"
-import sqlite3, sys
+import os, sqlite3, sys
 try:
-    conn = sqlite3.connect('$REMOTE_DATA_DIR/users/$uid/cards.db')
+    db = os.path.expanduser(sys.argv[1])
+    if not os.path.exists(db): raise FileNotFoundError(db)
+    conn = sqlite3.connect(db)
     cur = conn.cursor()
     cur.execute('SELECT COUNT(*), SUM(CASE WHEN is_deleted=0 THEN 1 ELSE 0 END), SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END) FROM card')
     total, active, deleted = cur.fetchone()
     print(f'總卡片: {total}  有效: {active}  已刪除: {deleted}')
 except Exception as e:
     print(f'(無法讀取 SQLite: {e})')
-\""
+    sys.exit(1)
+\" $db_path"
 }
 
 # ── 指令：delete-user <user_id> [--yes] ───────────────────────────────────────
