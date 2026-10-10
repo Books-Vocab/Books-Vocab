@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -135,10 +136,51 @@ def parse_jsonl(lines: list[str]) -> ParsedRun:
         else:
             parsed.errors.append(f"line {lineno}: unknown record type {kind!r}")
     if flip_indices != list(range(len(flip_indices))):
-        parsed.errors.append(
-            "flip indices must be a contiguous sequence starting at 0"
-        )
+        parsed.errors.append("flip indices must be a contiguous sequence starting at 0")
     return parsed
+
+
+# DEBUG-only `gap.geom` PerfLog（TodayReviewPresenter / TodayReviewSwipeDeck，#2026）。
+# 文字格式與 Swift 端 mark 字串逐字對齊；w 可含空白，且可能含 " h=… reveal=…" 片段，
+# 故 w 必須 greedy：右界是「最後一段完整 h/reveal/dismiss/off/idx 尾巴」，非第一個 " h=".
+GAP_GEOM_RE = re.compile(
+    r"gap\.geom\s+slot=(?P<slot>-?\d+)\s+role=(?P<role>\S+)\s+kind=(?P<kind>\S+)"
+    r"\s+w=(?P<word>.*)\s+h=(?P<height>-?\d+(?:\.\d+)?)"
+    r"\s+reveal=(?P<reveal>-?\d+)\s+dismiss=(?P<dismiss>[01])"
+    r"\s+off=(?P<offset>-?\d+)\s+idx=(?P<progress>.*?)\s*$"
+)
+
+
+def parse_gap_geom(lines: list[str]) -> tuple[list[dict], list[str]]:
+    """抽出 gap.geom 逐 slot 高度記錄；無關行忽略，含 gap.geom 但格式不符 = 錯誤。
+
+    回傳 (records, errors)。record 欄位型別已正規化（int／float／bool），
+    供離線比對 H1（非 active slot 撐高 ZStack）。目前 probe 腳本尚未接入此 parser。
+    """
+    records: list[dict] = []
+    errors: list[str] = []
+    for lineno, raw in enumerate(lines, start=1):
+        if "gap.geom" not in raw:
+            continue
+        match = GAP_GEOM_RE.search(raw)
+        if match is None:
+            errors.append(f"line {lineno}: malformed gap.geom record")
+            continue
+        fields = match.groupdict()
+        records.append(
+            {
+                "slot": int(fields["slot"]),
+                "role": fields["role"],
+                "kind": fields["kind"],
+                "word": fields["word"],
+                "height": float(fields["height"]),
+                "reveal": int(fields["reveal"]),
+                "dismiss": fields["dismiss"] == "1",
+                "offset": int(fields["offset"]),
+                "progress": fields["progress"],
+            }
+        )
+    return records, errors
 
 
 def evaluate(parsed: ParsedRun, thresholds: dict, min_flips: int) -> dict:
@@ -179,7 +221,9 @@ def evaluate(parsed: ParsedRun, thresholds: dict, min_flips: int) -> dict:
         reasons.append(f"invalid: n={n} < min_flips={min_flips}")
         return verdict
     if len(parsed.flips) != n:
-        reasons.append(f"invalid: flip records ({len(parsed.flips)}) != summary n ({n})")
+        reasons.append(
+            f"invalid: flip records ({len(parsed.flips)}) != summary n ({n})"
+        )
         return verdict
 
     # ---- pre-registered performance gates ----

@@ -2318,3 +2318,19 @@ def test_validate_rejects_review_clock_history_day_mismatch(tmp_path: Path):
 
     with pytest.raises(UIWorldManifestError, match=r"reviewClock.*reviewHistory"):
         validate_fixture_dataset_file(path)
+
+
+def test_review_height_varied_fixture_has_short_tall_and_long_word_card_classes() -> None:
+    fixture = json.loads(
+        (ROOT / "ops" / "fixtures" / "ui_worlds" / "review_height_varied.json").read_text(encoding="utf-8")
+    )
+    entries = fixture["reviewDeck"]["probe"]["entries"]
+    short = [e for e in entries if e["word"].startswith("variedshort")]
+    tall = [e for e in entries if e["word"].startswith("variedtall")]
+    long_word = [e for e in entries if len(e["word"]) > 40]
+
+    assert len(entries) == len(short) + len(tall) + len(long_word) == 40
+    assert short and tall and long_word
+    assert max(len(e["reviewExamples"][0]) for e in short) < 40
+    assert min(len(e["reviewExamples"][0]) for e in tall) > 200
+    assert min(len(e["word"]) for e in long_word) > 40
