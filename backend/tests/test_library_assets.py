@@ -557,9 +557,9 @@ def _store(api):
     return LibraryStore(api.data_dir / "users" / api.user_id / "library.db")
 
 
-def test_reclaim_skips_and_clears_stale_row_for_live_key(isolated_api):
+def test_claim_skips_and_clears_stale_row_for_live_key(isolated_api):
     """A ledger row left behind for a key a live book references (e.g. written from
-    a stale snapshot) must be dropped without deleting the object."""
+    a stale snapshot) must be dropped without being claimed for deletion."""
     from sqlmodel import Session
 
     from kg.library.store import LibraryPendingObjectDelete
@@ -574,42 +574,85 @@ def test_reclaim_skips_and_clears_stale_row_for_live_key(isolated_api):
             session.commit()
         assert store.pending_object_keys() == [key]
 
-        deleted: list[str] = []
-        assert store.reclaim_pending_object(key, deleted.append) is False
-
-        assert deleted == []
+        assert store.claim_pending_objects(5) == []
         assert store.pending_object_keys() == []
     finally:
         store.close()
 
 
-def test_set_asset_blocks_until_in_flight_reclaim_commits(isolated_api):
-    import threading
+def _superseded_key(store, book_id: str, key: str) -> None:
+    store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
+    store.set_asset(book_id, storage="local", object_key=None, byte_size=1, sha256=None)
+
+
+def test_claimed_key_is_leased_and_cannot_be_readopted_until_finished(isolated_api):
+    """While a delete is in flight outside the DB lock, the key is leased: a second
+    claimer skips it and a re-adoption is refused, so the delete cannot remove
+    freshly uploaded bytes."""
+    from kg.exceptions import ConflictError
 
     book_id = _seed_book(isolated_api, client_book_id="race-2")
     store = _store(isolated_api)
     try:
         key = "library/u/race-2/asset.epub"
-        store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
-        store.set_asset(book_id, storage="local", object_key=None, byte_size=1, sha256=None)
-        assert store.pending_object_keys() == [key]
+        _superseded_key(store, book_id, key)
 
-        readopt = threading.Thread(
-            target=lambda: store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
-        )
-        observed: dict[str, bool] = {}
+        assert store.claim_pending_objects(5) == [key]
+        assert store.claim_pending_objects(5) == []
+        with pytest.raises(ConflictError):
+            store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
 
-        def delete(_key: str) -> None:
-            readopt.start()
-            readopt.join(timeout=0.5)
-            observed["blocked"] = readopt.is_alive()
-
-        assert store.reclaim_pending_object(key, delete) is True
-        readopt.join(timeout=10)
-
-        assert observed["blocked"], "set_asset ran while reclaim held the write lock"
-        assert not readopt.is_alive()
+        store.finish_pending_object(key, deleted=True)
         assert store.pending_object_keys() == []
+        store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
+        assert store.get(book_id).asset_object_key == key
+    finally:
+        store.close()
+
+
+def test_failed_delete_releases_claim_and_counts_attempt(isolated_api):
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    book_id = _seed_book(isolated_api, client_book_id="fail-1")
+    store = _store(isolated_api)
+    try:
+        key = "library/u/fail-1/asset.epub"
+        _superseded_key(store, book_id, key)
+
+        assert store.claim_pending_objects(5) == [key]
+        store.finish_pending_object(key, deleted=False)
+
+        assert store.pending_object_keys() == [key]
+        assert store.claim_pending_objects(5) == [key]
+        with Session(store.engine) as session:
+            row = session.get(LibraryPendingObjectDelete, key)
+            assert row.attempts == 1
+            assert row.last_attempt_at is not None
+    finally:
+        store.close()
+
+
+def test_permanently_failing_keys_do_not_starve_untried_keys(isolated_api):
+    """Five always-failing keys must not block a sixth: failures rotate to the back."""
+    store = _store(isolated_api)
+    try:
+        keys = []
+        for i in range(6):
+            book_id = _seed_book(isolated_api, client_book_id=f"starve-{i}")
+            key = f"library/u/starve-{i}/asset.epub"
+            _superseded_key(store, book_id, key)
+            keys.append(key)
+        untried = sorted(keys)[-1]
+
+        first = store.claim_pending_objects(5)
+        assert untried not in first
+        for key in first:
+            store.finish_pending_object(key, deleted=False)
+
+        second = store.claim_pending_objects(5)
+        assert second[0] == untried
     finally:
         store.close()
 

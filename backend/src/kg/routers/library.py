@@ -28,8 +28,6 @@ from ..users_lock import users_file_lock
 _ASSET_URL_TTL = 3600
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(tags=["library"])
 
 
@@ -161,29 +159,48 @@ def _reclaim_pending_objects(store, settings: KGSettings) -> None:
     """Best-effort delete of objects the library no longer references.
 
     Runs after the DB commit; nothing here (including client creation) fails the
-    request. At most ``_RECLAIM_BATCH`` keys are tried per call; failed keys stay
-    in the pending ledger and are retried on a later call. Each key is re-checked
-    against live references under the store's write lock before deletion.
+    request. The store claims at most ``_RECLAIM_BATCH`` keys under its write
+    lock; the S3 deletes run outside that lock, and each outcome is recorded
+    afterwards. Failed keys stay in the ledger and rotate to the back of the queue.
     """
     if not settings.library_bucket:
         return
     try:
-        keys = store.pending_object_keys()[:_RECLAIM_BATCH]
-        if not keys:
-            return
-        client = _library_s3_client(settings, fast=True)
+        keys = store.claim_pending_objects(_RECLAIM_BATCH)
     except Exception:
         logger.warning("library object reclaim skipped", exc_info=True)
         return
-
-    def _delete(key: str) -> None:
-        client.delete_object(Bucket=settings.library_bucket, Key=key)
+    if not keys:
+        return
+    try:
+        client = _library_s3_client(settings, fast=True)
+    except Exception:
+        logger.warning("library object reclaim skipped", exc_info=True)
+        for key in keys:
+            _finish_reclaim(store, key, deleted=False)
+        return
 
     for key in keys:
+        deleted = False
         try:
-            store.reclaim_pending_object(key, _delete)
+            try:
+                client.delete_object(Bucket=settings.library_bucket, Key=key)
+            except Exception as exc:
+                # Already gone is the desired end state, same as account erasure.
+                if not _object_missing(exc):
+                    raise
+            deleted = True
         except Exception:
             logger.warning("library object delete failed; will retry (key=%s)", key, exc_info=True)
+        _finish_reclaim(store, key, deleted=deleted)
+
+
+def _finish_reclaim(store, key: str, *, deleted: bool) -> None:
+    try:
+        store.finish_pending_object(key, deleted=deleted)
+    except Exception:
+        # The claim lease expires on its own, so the key is retried later.
+        logger.warning("library object reclaim bookkeeping failed (key=%s)", key, exc_info=True)
 
 
 def _object_missing(exc: Exception) -> bool:

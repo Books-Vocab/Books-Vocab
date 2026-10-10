@@ -187,7 +187,8 @@ class _RecordingS3:
 
 def _bucket_api(api, monkeypatch, s3):
     _swap_settings(KGSettings(data_dir=api.data_dir, jwt_secret=TEST_JWT_SECRET, library_bucket="kg-library-test"))
-    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: s3)
+    # The request path passes fast=True; the fake client ignores it.
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings, *, fast=False: s3)
 
 
 def _request_upload(api, book_id, fmt="epub", **extra):
@@ -235,6 +236,23 @@ def test_delete_book_succeeds_when_object_delete_fails(isolated_api, monkeypatch
     assert isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers).status_code == 200
     store = library_router._library_store(isolated_api.data_dir / "users" / isolated_api.user_id)
     assert store.get(book_id).asset_object_key == key
+
+
+class _AlreadyGone(Exception):
+    response = {"Error": {"Code": "NoSuchKey"}}
+
+
+def test_delete_book_clears_ledger_when_object_is_already_gone(isolated_api, monkeypatch):
+    """An object already missing is the desired end state (same as account erasure):
+    the ledger entry must be cleared, not left to be retried forever."""
+    s3 = _RecordingS3(delete_error=_AlreadyGone())
+    _bucket_api(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api)
+    _request_upload(isolated_api, book_id)
+
+    assert isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers).status_code == 200
+    store = library_router._library_store(isolated_api.data_dir / "users" / isolated_api.user_id)
+    assert store.pending_object_keys() == []
 
 
 def test_reupload_with_new_format_deletes_prior_object(isolated_api, monkeypatch):

@@ -10,8 +10,7 @@ trip SQLModel's metadata registry with ``InvalidRequestError``.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import update
@@ -24,8 +23,15 @@ from ..api_models.library import (
     BookPositionRequest,
     BookUpdateRequest,
 )
+from ..exceptions import ConflictError
 from ..sqlite_utils import make_sqlite_engine
 from ..vocab_shared import _dt_to_iso
+
+# A claimed key is held for this long while its S3 delete runs outside the DB
+# write lock. It must outlive the worst case of one reclaim batch (fast client:
+# 2s connect + 2s read per key, batch of 5), so a slow delete cannot outlive its
+# lease and race a re-adoption of the same key.
+RECLAIM_LEASE = timedelta(seconds=120)
 
 
 def _parse_utc_instant(value: str) -> datetime:
@@ -65,14 +71,19 @@ class LibraryPendingObjectDelete(SQLModel, table=True):
     """Object key no longer referenced by a book row (tombstoned or superseded).
 
     Recorded in the same transaction that drops the reference. The request path
-    then deletes the object best-effort and clears the entry on success; keys
-    whose delete failed stay here to be retried on the next library write and
-    to be reclaimed by account erasure.
+    claims a batch under the write lock, deletes outside it, then records the
+    result: success clears the entry, failure stamps ``last_attempt_at`` so the
+    key rotates to the back of the queue. Keys whose delete failed stay here to
+    be retried on a later library write and to be reclaimed by account erasure.
     """
 
     object_key: str = SQLField(primary_key=True)
     book_id: str = SQLField(index=True)
     recorded_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    # Lease while an in-flight delete owns the key; None when unclaimed.
+    claimed_until: datetime | None = SQLField(default=None)
+    attempts: int = SQLField(default=0)
+    last_attempt_at: datetime | None = SQLField(default=None)
 
 
 class LibraryStore:
@@ -254,45 +265,63 @@ class LibraryStore:
                 ).all()
             )
 
-    def reclaim_pending_object(self, object_key: str, delete: Callable[[str], None]) -> bool:
-        """Delete ``object_key`` via ``delete`` unless a live book references it.
+    def claim_pending_objects(self, limit: int) -> list[str]:
+        """Claim up to ``limit`` ledger keys for deletion, under one write lock.
 
-        Keys are deterministic per (user, book, format), so a key recorded as
-        superseded can be re-adopted (epub -> local -> epub). The re-check and the
-        delete therefore run inside one write transaction: the first statement
-        takes SQLite's write lock, so a concurrent ``set_asset`` waits until the
-        entry is resolved. Returns True if the object was deleted; False if the
-        entry was absent or stale (a live reference exists, so it is only dropped
-        from the ledger). If ``delete`` raises, nothing changes and the entry
-        stays pending.
-
-        Accepted gap: a presigned PUT that lands after this delete (client slow
-        to upload) leaves an object no row references and no ledger entry tracks.
-        Closing it needs a bucket lifecycle rule, which is production config and
-        out of scope here.
+        Keys a live book references are stale and dropped without a claim. Each
+        claimed key gets a ``RECLAIM_LEASE``; the caller deletes them outside the
+        DB lock and then reports each result via :meth:`finish_pending_object`.
+        Keys are rotated by ``last_attempt_at`` (never-tried first, then oldest
+        failure), so a permanently failing key cannot starve the rest.
         """
+        now = datetime.now(UTC)
         with Session(self.engine) as session:
-            pending = session.get(LibraryPendingObjectDelete, object_key)
-            if pending is None:
-                return False
-            # Touching the row acquires the write lock before the re-check.
-            pending.recorded_at = datetime.now(UTC)
-            session.add(pending)
-            session.flush()
-            live = session.exec(
-                select(LibraryBook.id).where(
-                    LibraryBook.asset_storage == "object",
-                    LibraryBook.asset_object_key == object_key,
-                    LibraryBook.is_deleted == False,  # noqa: E712
-                )
-            ).first()
-            deleted = False
-            if live is None:
-                delete(object_key)
-                deleted = True
-            session.delete(pending)
+            _begin_write(session)
+            rows = sorted(
+                session.exec(select(LibraryPendingObjectDelete)).all(),
+                key=_claim_order,
+            )
+            claimed: list[str] = []
+            for row in rows:
+                if len(claimed) == limit:
+                    break
+                if row.claimed_until is not None and _utc(row.claimed_until) > now:
+                    continue
+                live = session.exec(
+                    select(LibraryBook.id).where(
+                        LibraryBook.asset_storage == "object",
+                        LibraryBook.asset_object_key == row.object_key,
+                        LibraryBook.is_deleted == False,  # noqa: E712
+                    )
+                ).first()
+                if live is not None:
+                    session.delete(row)
+                    continue
+                row.claimed_until = now + RECLAIM_LEASE
+                session.add(row)
+                claimed.append(row.object_key)
             session.commit()
-            return deleted
+            return claimed
+
+    def finish_pending_object(self, object_key: str, *, deleted: bool) -> None:
+        """Record the outcome of a delete for a key returned by ``claim_pending_objects``.
+
+        ``deleted=True`` clears the entry. ``False`` releases the claim and counts
+        the attempt, so the key stays pending and moves to the back of the queue.
+        """
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            _begin_write(session)
+            row = session.get(LibraryPendingObjectDelete, object_key)
+            if row is not None:
+                if deleted:
+                    session.delete(row)
+                else:
+                    row.claimed_until = None
+                    row.attempts += 1
+                    row.last_attempt_at = now
+                    session.add(row)
+            session.commit()
 
     def set_asset(
         self,
@@ -323,7 +352,7 @@ class LibraryStore:
             if previous_key and previous_key != object_key:
                 _record_pending_delete(session, book.id, previous_key)
             if object_key:
-                _forget_pending_delete(session, object_key)
+                _adopt_object_key(session, object_key)
             book.asset_storage = storage
             book.asset_object_key = object_key
             book.asset_byte_size = byte_size
@@ -333,6 +362,11 @@ class LibraryStore:
             session.commit()
             session.refresh(book)
             return book
+
+
+def _begin_write(session: Session) -> None:
+    """Start a write transaction now, so SQLite's write lock is taken before any read."""
+    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def _lock_book(session: Session, book_id: str) -> None:
@@ -345,10 +379,30 @@ def _record_pending_delete(session: Session, book_id: str, object_key: str) -> N
         session.add(LibraryPendingObjectDelete(object_key=object_key, book_id=book_id))
 
 
-def _forget_pending_delete(session: Session, object_key: str) -> None:
+def _adopt_object_key(session: Session, object_key: str) -> None:
+    """Drop the ledger entry for a key a row is about to reference.
+
+    A key whose delete is in flight cannot be adopted: the delete may land after
+    the new bytes do, so the caller must retry once the reclaim finishes.
+    """
     pending = session.get(LibraryPendingObjectDelete, object_key)
-    if pending is not None:
-        session.delete(pending)
+    if pending is None:
+        return
+    if pending.claimed_until is not None and _utc(pending.claimed_until) > datetime.now(UTC):
+        raise ConflictError("Library object is being reclaimed; retry the request")
+    session.delete(pending)
+
+
+def _utc(value: datetime) -> datetime:
+    """SQLite returns naive datetimes; ledger timestamps are always UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def _claim_order(row: LibraryPendingObjectDelete) -> tuple[bool, datetime, str]:
+    """Never-tried keys first, then oldest failed attempt, then key for stability."""
+    if row.last_attempt_at is None:
+        return (False, datetime.min.replace(tzinfo=UTC), row.object_key)
+    return (True, _utc(row.last_attempt_at), row.object_key)
 
 
 __all__ = ["LibraryBook", "LibraryPendingObjectDelete", "LibraryStore"]
