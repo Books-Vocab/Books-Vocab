@@ -51,7 +51,14 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     // captures its generation; a stale write is dropped on gen mismatch.
     private var importGeneration = 0
 
+    // Files of the current batch that have not started yet. A superseding batch
+    // inherits them (ahead of its own files) so queued files are imported instead
+    // of being silently dropped with the cancelled loop.
+    private var unstartedImportURLs: [URL] = []
+
     func presentImporter() {
+        // 匯入進行中不開啟選檔：否則新批次會取消進行中的批次（見 performBatchImport）。
+        guard !isLoading else { return }
         // 新一輪匯入觸發前清掉殘留的 inline error，避免持續顯示已過期的失敗訊息
         clearError()
         isImporting = true
@@ -200,11 +207,16 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     }
 
     private func performBatchImport(
-        urls: [URL],
+        urls requested: [URL],
         modelContext: ModelContext,
         importService: any BookshelfImporting,
         toastCoordinator: AppToastCoordinator
     ) {
+        // Files the superseded batch never started come first, so they are imported
+        // rather than dropped. The in-flight file is still discarded by its loop.
+        let urls = unstartedImportURLs + requested
+        unstartedImportURLs = []
+
         // Cancel any prior in-flight batch so two loops can't race on shared
         // loading state.
         importTask?.cancel()
@@ -234,6 +246,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 // Stop promptly if the import was cancelled (new batch / teardown)
                 // instead of running every remaining file and mutating dead state.
                 guard self.isCurrentImport(generation) else { return }
+                self.unstartedImportURLs = Array(urls.dropFirst(index + 1))
                 if total > 1 {
                     loadingMessage = L10n.format("正在匯入 %@ / %@...", String(index + 1), String(total))
                 }
@@ -298,6 +311,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     // Cancellation is a control-flow result, not an import failure.
                     // A superseded/cancelled task leaves final state to its successor.
                     guard generation == self.importGeneration, !Task.isCancelled else { return }
+                    unstartedImportURLs = []
                     isLoading = false
                     loadingMessage = ""
                     loadingProgress = nil
@@ -315,6 +329,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             // cancelled (e.g. the superseding batch) rather than overwriting it.
             guard self.isCurrentImport(generation) else { return }
 
+            unstartedImportURLs = []
             isLoading = false
             loadingMessage = ""
             loadingProgress = nil

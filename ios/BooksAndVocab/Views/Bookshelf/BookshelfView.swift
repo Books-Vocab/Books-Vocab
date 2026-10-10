@@ -150,6 +150,7 @@ struct BookshelfView: View {
                     Button(action: coordinator.presentImporter) {
                         AppToolbarGlyph(systemImage: "plus")
                     }
+                    .disabled(coordinator.isLoading)
                     .accessibilityLabel(BookshelfCopy.importAccessibilityLabel)
                     .accessibilityIdentifier("bookshelf.importButton")
                 }
