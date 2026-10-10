@@ -7,6 +7,9 @@ SAFE="$ROOT/ops/devops_kg_safe.sh"
 REGISTRY="$ROOT/ops/lib/devops_command_registry.sh"
 COMMANDS="$ROOT/ops/lib/devops_commands.sh"
 ENV_DRIFT="$ROOT/ops/env_drift.py"
+# P0 2026-10-09: self-hermetic — safe to run standalone, not only via ops/test_ops.sh.
+# shellcheck source=../lib/hermetic_ops_test.sh
+source "$ROOT/ops/lib/hermetic_ops_test.sh"; hermetic_ops_test_init "$ROOT"
 
 pass() { printf '✓ %s\n' "$*"; }
 fail() { printf '✗ %s\n' "$*" >&2; exit 1; }

@@ -13,6 +13,9 @@ set -euo pipefail
 DEVOPS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DEVOPS_SCRIPT_DIR/ops/lib/devops_command_registry.sh"
 source "$DEVOPS_SCRIPT_DIR/ops/lib/devops_commands.sh"
+# 與 ops/devops_kg_safe.sh 共用同一個破壞性命令 predicate：safe wrapper 不是唯一防線
+# （直接呼叫 base `devops.sh run ...` 也會被擋）。
+source "$DEVOPS_SCRIPT_DIR/ops/lib/devops_run_guard.sh"
 devops_command_registry_validate || {
   echo "✗ devops command registry is inconsistent" >&2
   exit 70
@@ -99,7 +102,43 @@ confirm() {
   [[ "$ans" == "yes" ]] || { echo "已取消。"; exit 0; }
 }
 
-run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式）
+# ── 測試隔離 tripwire（P0 2026-10-09）──────────────────────────────────────────
+# ops 測試曾在沒有 stub transport 的情況下跑到真 devops.sh，經 ssh 刪掉 felix 上的
+# 正式資料目錄（docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md）。
+# ops/test_ops.sh 與 ops/test_devops.sh 一律 export KG_OPS_TEST=1；一旦它為 1，任何
+# 「真的」遠端 transport（KG_SSH_CMD／KG_SCP_CMD 未設，或指到真的 ssh／scp／rsync／
+# curl 二進位）一律 exit 97，不連線。測試自備的 stub（任何 `#!` 腳本，或 /usr/bin/true
+# 這類非 transport 二進位）不受影響；KG_OPS_TEST 未設時（營運者正常使用）此函式是 no-op。
+#   $1 label（ssh|scp|rsync|curl）  $2 設定的 transport 命令字串，未設為空字串
+devops_ops_test_tripwire() {
+  [[ "${KG_OPS_TEST:-}" == "1" ]] || return 0
+  local label="$1" seam="${2-}" word resolved magic="" real=0
+  if [[ -z "$seam" ]]; then
+    real=1
+  else
+    word="${seam%% *}"
+    case "${word##*/}" in
+      ssh|scp|sftp|rsync|aws|curl)
+        resolved="$(command -v -- "$word" 2>/dev/null || true)"
+        if [[ -n "$resolved" && -f "$resolved" ]]; then
+          magic="$(head -c 2 "$resolved" 2>/dev/null || true)"
+        fi
+        [[ "$magic" == '#!' ]] || real=1 ;;
+    esac
+  fi
+  [[ "$real" -eq 1 ]] || return 0
+  {
+    echo "✗ FORBIDDEN (exit 97): KG_OPS_TEST=1 and the real $label transport was about to run (${SERVER:-?})."
+    echo "  An ops test must never reach production. Give the test a stub: set KG_SSH_CMD / KG_SCP_CMD,"
+    echo "  or put a fake $label earlier in PATH. See docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md"
+  } >&2
+  if [[ -n "${KG_OPS_TEST_TRIPWIRE_LOG:-}" ]]; then
+    printf 'tripwire %s seam=%s\n' "$label" "${seam:-<unset>}" >> "$KG_OPS_TEST_TRIPWIRE_LOG" 2>/dev/null || true
+  fi
+  exit 97
+}
+
+run_remote() { devops_ops_test_tripwire ssh "${KG_SSH_CMD:-}"; "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式）
 
 make_remote_tmp_path() {
   local stem="$1"
@@ -111,6 +150,7 @@ copy_local_to_container() {
   local src="$1"
   local remote_tmp="$2"
   [[ -f "$src" ]] || err "檔案不存在: $src"
+  devops_ops_test_tripwire scp "${KG_SCP_CMD:-}"
   "${SCP_CMD[@]}" "$src" "$SERVER:$remote_tmp"
   run_remote "docker cp $remote_tmp $CONTAINER:$remote_tmp"
 }
@@ -138,6 +178,7 @@ verify_post_deploy() {
     info "KG_SKIP_SMOKE=1，跳過部署後 smoke verify"
     return 0
   fi
+  devops_ops_test_tripwire curl "$curl_bin"
 
   section "部署後 smoke verify"
 
@@ -580,6 +621,7 @@ cmd_backup() {
   #（見 ~/butler/docs/kg-backend-deployment.md §4.5 / §7 G5）。本指令是 oscar 端
   # 的「臨時冷快照」：把 standby ~/kg-data **拉**回本地 backups/ 並做完整性驗證，
   # 不對 prod 寫入、不取代排程備份。
+  devops_ops_test_tripwire rsync "rsync"
   local date_str; date_str=$(date +%Y%m%d_%H%M)
   local dest="$BACKUP_DIR/data_$date_str"
   mkdir -p "$BACKUP_DIR"
@@ -760,6 +802,7 @@ cmd_push_env() {
   local src="${1:-$LOCAL_DIR/.env}"
   [[ ! -f "$src" ]] && err "本地 .env 不存在：$src"
   info "推送 $src → 遠端 $REMOTE_DIR/.env"
+  devops_ops_test_tripwire scp "${KG_SCP_CMD:-}"
   "${SCP_CMD[@]}" "$src" "$SERVER:$REMOTE_DIR/.env"
   ok "已推送 .env"
 }
@@ -774,6 +817,9 @@ cmd_setup() {
 # ── 指令：run <cmd...> ────────────────────────────────────────────────────────
 cmd_run() {
   [[ -z "${1:-}" ]] && err "用法: $0 run \"<remote command>\""
+  # base 自己也擋毀滅性命令（與 ops/devops_kg_safe.sh 同一個 predicate），
+  # 直接 `devops.sh run ...` 不再繞過 safe wrapper 的 guard。
+  devops_run_guard_enforce run "$*"
   run_remote "$*"
 }
 
@@ -781,6 +827,7 @@ cmd_run() {
 # 在 Docker container 內執行指令（自動包 docker exec）
 cmd_container_run() {
   [[ -z "${1:-}" ]] && err "用法: $0 container-run \"<cmd>\""
+  devops_run_guard_enforce container-run "$*"
   run_remote "docker inspect -f '{{.State.Running}}' $CONTAINER 2>/dev/null" \
     | grep -q true || err "容器 $CONTAINER 未在運行"
   info "在容器 $CONTAINER 內執行指令"
@@ -791,6 +838,8 @@ cmd_container_run() {
 # backup + 在 container 內執行遷移指令 + 自動重啟（清 in-memory cache）
 cmd_migrate_run() {
   [[ -z "${1:-}" ]] && err "用法: $0 migrate-run \"<cmd>\""
+  # guard 必須在 cmd_backup（rsync 連 prod）之前：被擋的命令不得有任何副作用。
+  devops_run_guard_enforce migrate-run "$*"
   cmd_backup
   cmd_container_run "$@"
   info "遷移完成，重啟容器以清除 in-memory cache"
@@ -901,6 +950,7 @@ HELP
 # 注意：此指令為互動式，agent 應使用 ./devops.sh run "<cmd>" 代替
 cmd_ssh() {
   info "開啟互動式 SSH 連線（agent 請改用 'run' 指令）"
+  devops_ops_test_tripwire ssh ""
   ssh "${SSH_OPTS[@]}" "$SERVER"
 }
 

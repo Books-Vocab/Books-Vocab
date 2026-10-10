@@ -13,6 +13,9 @@ set -o pipefail
 
 WORKTREE="$(cd "$(dirname "$0")/../.." && pwd)"
 WRAP="$WORKTREE/ops/devops_kg_safe.sh"
+# P0 2026-10-09: self-hermetic — safe to run standalone, not only via ops/test_ops.sh.
+# shellcheck source=../lib/hermetic_ops_test.sh
+source "$WORKTREE/ops/lib/hermetic_ops_test.sh"; hermetic_ops_test_init "$WORKTREE"
 TMPDIR="$(mktemp -d -t kg_ls_guard_XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
