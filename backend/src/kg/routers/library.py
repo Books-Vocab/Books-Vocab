@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
+from ..account_erasure import ensure_account_not_erased
 from ..api_models.library import (
     AssetUploadRequest,
     AssetUploadResponse,
@@ -19,6 +22,7 @@ from ..deps import CurrentUser, _library_store, _notebook_store
 from ..exceptions import BadRequestError, ConflictError, NotFoundError
 from ..notebook import validate_notebook_access
 from ..settings import KGSettings
+from ..users_lock import users_file_lock
 
 # Presigned URL TTL (seconds) for asset upload/download targets.
 _ASSET_URL_TTL = 3600
@@ -167,6 +171,20 @@ def _delete_asset_object(settings: KGSettings, object_key: str | None) -> None:
         logger.warning("library asset object cleanup failed", exc_info=True)
 
 
+@contextmanager
+def _registration_allowed(request: Request, settings: KGSettings, user_id: str) -> Iterator[None]:
+    """Serialise asset registration with account erasure (#2702).
+
+    Erasure re-scans the key ledger and commits its tombstone inside one
+    users-lock hold. Registering under the same lock means a key is either
+    visible to that scan or written after the tombstone, where it is rejected.
+    Only the local write runs under the lock; S3 calls stay outside it.
+    """
+    with users_file_lock(settings.users_lock_file):
+        ensure_account_not_erased(request.app.state.load_users(), user_id)
+        yield
+
+
 @router.post(
     "/api/library/books/{book_id}/asset-upload",
     response_model=AssetUploadResponse,
@@ -198,13 +216,14 @@ def request_asset_upload(
 
     local_only = req.local_only or not settings.library_bucket
     if local_only:
-        store.set_asset(
-            book_id,
-            storage="local",
-            object_key=None,
-            byte_size=req.byte_size,
-            sha256=req.sha256,
-        )
+        with _registration_allowed(request, settings, user["id"]):
+            store.set_asset(
+                book_id,
+                storage="local",
+                object_key=None,
+                byte_size=req.byte_size,
+                sha256=req.sha256,
+            )
         _delete_asset_object(settings, book.asset_object_key)
         return AssetUploadResponse(book_id=book_id, storage="local")
 
@@ -215,13 +234,14 @@ def request_asset_upload(
         Params={"Bucket": settings.library_bucket, "Key": object_key, "ContentLength": req.byte_size},
         ExpiresIn=_ASSET_URL_TTL,
     )
-    store.set_asset(
-        book_id,
-        storage="object",
-        object_key=object_key,
-        byte_size=req.byte_size,
-        sha256=req.sha256,
-    )
+    with _registration_allowed(request, settings, user["id"]):
+        store.set_asset(
+            book_id,
+            storage="object",
+            object_key=object_key,
+            byte_size=req.byte_size,
+            sha256=req.sha256,
+        )
     # Trade-off: a format switch drops the superseded object now (not after the
     # new upload is confirmed) so no orphan outlives a never-completed upload;
     # the row already pointed at the new key, so downloads 409 until bytes land.

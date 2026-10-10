@@ -12,10 +12,13 @@ from fastapi import HTTPException
 from filelock import FileLock, Timeout
 from sqlmodel import Session
 
+import kg.routers.library as library_router
+from conftest import TEST_JWT_SECRET, _swap_settings
 from kg import podcast_progress
-from kg.account_erasure import delete_account_assets
+from kg.account_erasure import _asset_object_keys, delete_account_assets
 from kg.library.store import LibraryBook, LibraryStore
-from kg.user_handlers import delete_user_account_response
+from kg.settings import KGSettings
+from kg.user_handlers import _tombstone_accounts, delete_user_account_response
 from kg.user_store import collect_account_ids_for_deletion
 
 
@@ -491,3 +494,123 @@ def test_asset_registered_during_remote_phase_is_deleted_before_tombstone(tmp_pa
     assert late_key in client.calls
     assert client.deleted_under_lock == []
     assert not (tmp_path / "users" / "canonical").exists()
+
+
+# ── #2702 residual: registration after the final scan, PUT after the tombstone ──
+
+
+class _BucketFake:
+    """In-memory bucket: paged listing, batch delete, presigned-URL hook."""
+
+    def __init__(self, *, keys: set[str] | None = None, page_size: int = 2, users_file: Path | None = None):
+        self.keys: set[str] = set(keys or ())
+        self.page_size = page_size
+        self.users_file = users_file
+        self.on_presign = None
+        self.tombstoned_when_swept: list[bool] = []
+
+    def generate_presigned_url(self, operation, *, Params, ExpiresIn):  # noqa: N803
+        if self.on_presign is not None:
+            hook, self.on_presign = self.on_presign, None
+            hook()
+        return "https://storage.test/presigned"
+
+    def delete_object(self, *, Bucket: str, Key: str):  # noqa: N803
+        self.keys.discard(Key)
+        return {}
+
+    def list_objects_v2(self, *, Bucket: str, Prefix: str, ContinuationToken: str | None = None):  # noqa: N803
+        # Like S3, the continuation token is key-based, so deleting listed
+        # pages between calls does not shift the remaining ones.
+        matching = sorted(
+            k for k in self.keys if k.startswith(Prefix) and (not ContinuationToken or k > ContinuationToken)
+        )
+        page = matching[: self.page_size]
+        more = len(matching) > self.page_size
+        response = {"Contents": [{"Key": k} for k in page], "IsTruncated": more}
+        if more:
+            response["NextContinuationToken"] = page[-1]
+        return response
+
+    def delete_objects(self, *, Bucket: str, Delete: dict):  # noqa: N803
+        if self.users_file is not None:
+            saved = json.loads(self.users_file.read_text())
+            self.tombstoned_when_swept.append("canonical" in saved.get("_terminated", []))
+        for item in Delete["Objects"]:
+            self.keys.discard(item["Key"])
+        return {}
+
+
+def test_late_put_after_tombstone_is_removed_by_prefix_sweep(tmp_path):
+    """The PUT behind a presigned URL can land after the ledger-driven delete;
+    it is not in any key ledger, so only a prefix sweep can remove it."""
+    _seed_library_asset(tmp_path, "canonical", "library/canonical/book/asset.epub")
+    bucket = _BucketFake(
+        keys={
+            "library/canonical/book/asset.epub",
+            "library/canonical/stray-1/asset.epub",
+            "library/canonical/stray-2/asset.pdf",
+            "library/canonical/stray-3/asset.bin",
+            "library/canonical2/book/asset.epub",
+        },
+        users_file=tmp_path / "users.json",
+    )
+
+    _call_delete(tmp_path, {"canonical": {"linked_ids": [], "config": {}}}, bucket, user_id="canonical")
+
+    assert bucket.keys == {"library/canonical2/book/asset.epub"}
+    assert bucket.tombstoned_when_swept and all(bucket.tombstoned_when_swept)
+
+
+def test_prefix_sweep_covers_every_linked_identity(tmp_path):
+    bucket = _BucketFake(
+        keys={"library/canonical/x/asset.epub", "library/linked1/y/asset.epub", "library/keeper/z/asset.epub"}
+    )
+
+    _call_delete(tmp_path, _linked_users(), bucket)
+
+    assert bucket.keys == {"library/keeper/z/asset.epub"}
+
+
+def test_prefix_sweep_failure_does_not_fail_a_tombstoned_erasure(tmp_path):
+    class _ListingDown(_BucketFake):
+        def list_objects_v2(self, **kwargs):
+            raise RuntimeError("listing unavailable")
+
+    bucket = _ListingDown(keys={"library/canonical/x/asset.epub"})
+
+    response = _call_delete(tmp_path, {"canonical": {"linked_ids": [], "config": {}}}, bucket, user_id="canonical")
+
+    saved = json.loads((tmp_path / "users.json").read_text())
+    assert "canonical" in saved["_terminated"]
+    assert response.deleted_user_id == "canonical"
+
+
+def test_asset_upload_after_tombstone_is_rejected_and_not_recorded(isolated_api, monkeypatch):
+    """#2702: a request authenticated before the tombstone must not register an
+    asset once erasure has committed (the final key scan is already behind it)."""
+    _swap_settings(KGSettings(data_dir=isolated_api.data_dir, jwt_secret=TEST_JWT_SECRET, library_bucket="b"))
+    bucket = _BucketFake()
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: bucket)
+    created = isolated_api.client.post(
+        "/api/library/books",
+        json={"client_book_id": "erasure-race", "title": "Book", "format": "epub"},
+        headers=isolated_api.headers,
+    )
+    assert created.status_code == 201, created.text
+    book_id = created.json()["id"]
+
+    def erase_account_now():
+        users = json.loads(isolated_api.users_file.read_text())
+        _tombstone_accounts(users, [isolated_api.user_id], purge_external_api_keys=None)
+        isolated_api.users_file.write_text(json.dumps(users))
+
+    bucket.on_presign = erase_account_now
+    response = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": "epub", "byte_size": 10},
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 401, response.text
+    assert _asset_object_keys(isolated_api.data_dir, [isolated_api.user_id]) == ()

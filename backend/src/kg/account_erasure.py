@@ -1,15 +1,19 @@
 """External asset cleanup performed before destructive account erasure."""
+
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from .library.store import LibraryBook
 from .sqlite_utils import make_sqlite_engine
+
+# S3 DeleteObjects accepts at most 1000 keys per request.
+_DELETE_BATCH = 1000
 
 
 class ObjectStorageClient(Protocol):
@@ -29,9 +33,7 @@ def _asset_object_keys(data_dir: Path, user_ids: Iterable[str]) -> tuple[str, ..
             with Session(engine) as session:
                 books = session.exec(select(LibraryBook)).all()
                 keys.extend(
-                    book.asset_object_key
-                    for book in books
-                    if book.asset_storage == "object" and book.asset_object_key
+                    book.asset_object_key for book in books if book.asset_storage == "object" and book.asset_object_key
                 )
         finally:
             engine.dispose()
@@ -84,4 +86,73 @@ def delete_account_assets(
     return keys
 
 
-__all__ = ["ObjectStorageClient", "delete_account_assets"]
+def library_prefix(user_id: str) -> str:
+    """Key prefix under which every object of ``user_id`` lives (see ``_asset_object_key``)."""
+    return f"library/{user_id}/"
+
+
+def ensure_account_not_erased(users: Mapping[str, Any], user_id: str) -> None:
+    """Raise 401 when ``user_id`` was permanently erased (#2702).
+
+    Call under the users lock: erasure scans the key ledger and commits its
+    tombstone inside one lock hold, so a write that passes this check under the
+    lock is either seen by that scan or (after the tombstone) rejected here.
+    """
+    terminated = users.get("_terminated")
+    if isinstance(terminated, list) and user_id in terminated:
+        raise HTTPException(
+            status_code=401,
+            detail="Account was deleted. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def sweep_account_prefixes(
+    user_ids: Iterable[str],
+    *,
+    library_bucket: str | None,
+    library_s3_client: Any,
+) -> int:
+    """Delete every object under ``library/<uid>/`` for each id; return the count.
+
+    The ledger-driven delete cannot see a PUT that lands after it (a presigned
+    URL stays valid for up to its TTL), so this runs once more after the
+    tombstone. Not retryable by the client (its token is revoked by then), so
+    callers treat a failure as best-effort and log it.
+    """
+    if not library_bucket or library_s3_client is None:
+        return 0
+    removed = 0
+    for uid in dict.fromkeys(user_ids):
+        prefix = library_prefix(uid)
+        token: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {"Bucket": library_bucket, "Prefix": prefix}
+            if token:
+                kwargs["ContinuationToken"] = token
+            page = library_s3_client.list_objects_v2(**kwargs)
+            keys = [item["Key"] for item in page.get("Contents") or []]
+            for start in range(0, len(keys), _DELETE_BATCH):
+                batch = keys[start : start + _DELETE_BATCH]
+                result = library_s3_client.delete_objects(
+                    Bucket=library_bucket,
+                    Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+                )
+                errors = result.get("Errors") if isinstance(result, dict) else None
+                if errors:
+                    raise RuntimeError(f"failed to delete {len(errors)} object(s) under {prefix}")
+                removed += len(batch)
+            next_token = page.get("NextContinuationToken")
+            if page.get("IsTruncated") is not True or not isinstance(next_token, str):
+                break
+            token = next_token
+    return removed
+
+
+__all__ = [
+    "ObjectStorageClient",
+    "delete_account_assets",
+    "ensure_account_not_erased",
+    "library_prefix",
+    "sweep_account_prefixes",
+]
