@@ -546,3 +546,196 @@ class TestEnrichCardsStream:
         assert arms_after_wait == arms_at_close, (
             f"_try_put re-armed {arms_after_wait - arms_at_close} times after the stream closed"
         )
+
+
+class _MeaningCards:
+    def __init__(self, cards):
+        self._cards = cards
+        self.updates: list[list[tuple[str, dict]]] = []
+
+    def all(self, include_deleted=False, notebook_id=None):
+        return list(self._cards)
+
+    def batch_update(self, updates):
+        self.updates.append(list(updates))
+        return len(updates)
+
+    def bump_enrich_attempts(self, _ids):
+        return None
+
+
+class _RecordingEmbeddings:
+    def __init__(self):
+        self.removed: list[str] = []
+
+    def remove(self, card_id):
+        self.removed.append(card_id)
+
+
+class _RecordingGraph:
+    def __init__(self, fail=False):
+        self.queued: list[str] = []
+        self._fail = fail
+
+    def add_pending_judge(self, card_id):
+        if self._fail:
+            raise RuntimeError("judge queue down")
+        self.queued.append(card_id)
+
+
+def _patch_enrich_llm(monkeypatch, stream):
+    import kg.deps_quota as deps_quota
+    import kg.enrich as enrich_mod
+    import kg.llm.providers as providers
+    import kg.tracked_llm as tracked_llm
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", stream)
+    monkeypatch.setattr(providers, "provider_for", lambda _task: SimpleNamespace(chat_model="m"))
+    monkeypatch.setattr(tracked_llm, "TrackedLLM", lambda *_a, **_k: None)
+    monkeypatch.setattr(deps_quota, "_is_pro", lambda _user: False)
+
+
+def _enrich_step(cards, embeddings, graph):
+    import logging
+
+    from kg.pipeline_service.steps import _step_enrich
+
+    user = {"id": "u_meaning", "dir": "/tmp/u_meaning", "config": {}}
+    return asyncio.run(
+        _step_enrich(
+            "u_meaning",
+            user,
+            card_store_factory=lambda _d: cards,
+            client_factory=lambda _provider: None,
+            logger=logging.getLogger("test_enrich_meaning"),
+            embedding_store_factory=lambda _d, **_k: embeddings,
+            graph_store_factory=lambda _d, **_k: graph,
+        )
+    )
+
+
+def _meaning_card(meaning="旧意思"):
+    return SimpleNamespace(
+        id="c1", content="evoke", pos=None, note=None, meaning=meaning, enrich_attempts=0, notebook_id="default"
+    )
+
+
+def test_pipeline_meaning_fix_evicts_vector_and_requeues_judging(monkeypatch):
+    async def stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [{"word": "evoke", "meaning_fix": "新意思"}]}
+
+    _patch_enrich_llm(monkeypatch, stream)
+    cards = _MeaningCards([_meaning_card()])
+    embeddings, graph = _RecordingEmbeddings(), _RecordingGraph()
+
+    _enrich_step(cards, embeddings, graph)
+
+    assert cards.updates == [[("c1", {"meaning": "新意思"})]]
+    assert embeddings.removed == ["c1"]
+    assert graph.queued == ["c1"]
+
+
+def test_pipeline_unchanged_meaning_fix_neither_evicts_nor_queues(monkeypatch):
+    async def stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [{"word": "evoke", "meaning_fix": "旧意思"}]}
+
+    _patch_enrich_llm(monkeypatch, stream)
+    embeddings, graph = _RecordingEmbeddings(), _RecordingGraph()
+
+    _enrich_step(_MeaningCards([_meaning_card()]), embeddings, graph)
+
+    assert embeddings.removed == []
+    assert graph.queued == []
+
+
+def test_pipeline_judge_queue_failure_does_not_fail_enrich_step(monkeypatch):
+    async def stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [{"word": "evoke", "meaning_fix": "新意思"}]}
+
+    _patch_enrich_llm(monkeypatch, stream)
+    cards = _MeaningCards([_meaning_card()])
+    embeddings = _RecordingEmbeddings()
+
+    updated = _enrich_step(cards, embeddings, _RecordingGraph(fail=True))
+
+    assert updated == 1
+    assert embeddings.removed == ["c1"]
+
+
+def _two_meaning_fix_stream(monkeypatch):
+    async def stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [{"word": "evoke", "meaning_fix": "新意思"}]}
+        yield {"status": "running", "results": [{"word": "luminous", "meaning_fix": "新光"}]}
+
+    _patch_enrich_llm(monkeypatch, stream)
+
+
+def _two_cards():
+    return _MeaningCards(
+        [
+            _meaning_card(),
+            SimpleNamespace(
+                id="c2",
+                content="luminous",
+                pos=None,
+                note=None,
+                meaning="旧光",
+                enrich_attempts=0,
+                notebook_id="default",
+            ),
+        ]
+    )
+
+
+def test_pipeline_embedding_store_failure_skips_reembed_and_keeps_batches(monkeypatch):
+    _two_meaning_fix_stream(monkeypatch)
+    cards = _two_cards()
+
+    import logging
+
+    from kg.pipeline_service.steps import _step_enrich
+
+    user = {"id": "u_meaning", "dir": "/tmp/u_meaning", "config": {}}
+    updated = asyncio.run(
+        _step_enrich(
+            "u_meaning",
+            user,
+            card_store_factory=lambda _d: cards,
+            client_factory=lambda _provider: None,
+            logger=logging.getLogger("test_enrich_meaning"),
+            embedding_store_factory=_raising_store,
+            graph_store_factory=lambda _d, **_k: _RecordingGraph(),
+        )
+    )
+
+    assert updated == 2
+    assert cards.updates == [[("c1", {"meaning": "新意思"})], [("c2", {"meaning": "新光"})]]
+
+
+def test_pipeline_graph_store_failure_skips_reembed_and_keeps_batches(monkeypatch):
+    _two_meaning_fix_stream(monkeypatch)
+    cards = _two_cards()
+
+    import logging
+
+    from kg.pipeline_service.steps import _step_enrich
+
+    user = {"id": "u_meaning", "dir": "/tmp/u_meaning", "config": {}}
+    updated = asyncio.run(
+        _step_enrich(
+            "u_meaning",
+            user,
+            card_store_factory=lambda _d: cards,
+            client_factory=lambda _provider: None,
+            logger=logging.getLogger("test_enrich_meaning"),
+            embedding_store_factory=lambda _d, **_k: _RecordingEmbeddings(),
+            graph_store_factory=_raising_store,
+        )
+    )
+
+    assert updated == 2
+    assert cards.updates == [[("c1", {"meaning": "新意思"})], [("c2", {"meaning": "新光"})]]
+
+
+def _raising_store(*_args, **_kwargs):
+    raise RuntimeError("store unavailable")

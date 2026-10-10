@@ -488,6 +488,8 @@ async def _default_enrich(
     logger: logging.Logger,
     progress: Callable[[dict[str, Any]], None] | None = None,
     sense_context: str = "",
+    graph: Any = None,
+    open_embeddings: Callable[[], Any] | None = None,
 ) -> None:
     from .deps_quota import _is_pro
     from .enrich import enrich_cards_stream
@@ -535,10 +537,20 @@ async def _default_enrich(
             updates["note"] = result["note"]
         if result.get("collocations"):
             updates["collocations"] = result["collocations"]
+        meaning_changed = False
         if result.get("meaning_fix"):
             updates["meaning"] = result["meaning_fix"]
+            meaning_changed = updates["meaning"] != card.meaning
         if updates:
             cards.batch_update([(card.id, updates)])
+            if meaning_changed and open_embeddings is not None:
+                from .vocab_crud import reembed_meaning_edits_best_effort
+
+                reembed_meaning_edits_best_effort(
+                    [card.id],
+                    open_embeddings=open_embeddings,
+                    open_graph=lambda: graph,
+                )
 
 
 def _default_link(
@@ -632,6 +644,7 @@ async def run_add_link_operation(
     enrich_fn: Callable[..., Awaitable[None]] | None = None,
     link_fn: Callable[..., Any] | None = None,
     notebook_store_factory: Callable | None = None,
+    embedding_store_factory: Callable | None = None,
 ) -> None:
     """Run one operation with at-least-once, read-after-write reconciliation."""
     record = _get_by_id(operation_id)
@@ -746,6 +759,9 @@ async def run_add_link_operation(
 
                     try:
                         if enrich_fn is None:
+                            make_embeddings = embedding_store_factory
+                            if make_embeddings is None:
+                                from .deps import _embedding_store as make_embeddings
                             await _default_enrich(
                                 card=target,
                                 cards=cards,
@@ -754,6 +770,10 @@ async def run_add_link_operation(
                                 logger=logger,
                                 progress=report_enrichment,
                                 sense_context=payload.get("context", ""),
+                                graph=graph,
+                                open_embeddings=lambda: make_embeddings(
+                                    user["dir"], llm=None, notebook_id=record["notebook_id"]
+                                ),
                             )
                         else:
                             await enrich_fn(

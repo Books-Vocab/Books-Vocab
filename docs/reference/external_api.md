@@ -30,7 +30,7 @@ X-KG-API-Key: kg_<key-id>.<secret>
 
 建立與使用都即時檢查 Pro entitlement。Pro 到期後既有 key 也不能使用；`DELETE /api/v1/api-keys/{key_id}` 仍允許用 JWT 撤銷 key。
 
-`GET /api/v1/api-keys` 只列出目前使用者的 keys，包含已撤銷項目以保留 `revokedAt` 狀態；結果依 `createdAt` 對應的 UTC instant 由新到舊排序。`createdAt` 的 ISO 8601 offset 會先正規化後再比較；若多筆 key 對應同一 instant，則以 `keyId` descending 作 deterministic tie-break。回應仍保留 `label`、`keyId`、`createdAt`、`revokedAt`，不回傳 secret 或 `apiKey`。
+`GET /api/v1/api-keys` 只列出目前使用者的 keys：所有 active key 必定列出，已撤銷項目以保留 `revokedAt` 狀態，總筆數上限為 50（`MAX_KEY_RECORDS_PER_USER`，超出時依 `revokedAt` 保留最近撤銷的紀錄）；建立新 key 時會先清理該使用者 `revokedAt` 超過 30 天的紀錄（`REVOKED_KEY_RETENTION`），並在達上限時依同一 `revokedAt` 順序淘汰最舊的撤銷紀錄，使 `users.json` 的 key 紀錄不會無上限成長。結果依 `createdAt` 對應的 UTC instant 由新到舊排序。`createdAt` 的 ISO 8601 offset 會先正規化後再比較；若多筆 key 對應同一 instant，則以 `keyId` descending 作 deterministic tie-break。回應仍保留 `label`、`keyId`、`createdAt`、`revokedAt`，不回傳 secret 或 `apiKey`。
 
 ## Reader queue and upload
 

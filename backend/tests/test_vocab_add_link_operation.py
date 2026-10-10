@@ -595,3 +595,119 @@ def test_find_operation_replays_by_key_and_rejects_changed_payload():
     assert find_operation(user_id="user-2", idempotency_key="tap-1", payload=payload()) is None
     with pytest.raises(IdempotencyConflict):
         find_operation(user_id="user-1", idempotency_key="tap-1", payload=payload("different"))
+
+
+class _AddLinkMeaningCards:
+    def __init__(self):
+        self.updates: list[list[tuple[str, dict]]] = []
+
+    def batch_update(self, updates):
+        self.updates.append(list(updates))
+        return len(updates)
+
+
+class _AddLinkEmbeddings:
+    def __init__(self):
+        self.removed: list[str] = []
+
+    def remove(self, card_id):
+        self.removed.append(card_id)
+
+
+class _AddLinkGraph:
+    def __init__(self):
+        self.queued: list[str] = []
+
+    def add_pending_judge(self, card_id):
+        self.queued.append(card_id)
+
+
+def _run_default_enrich(monkeypatch, *, meaning_fix, embeddings=None, graph, open_embeddings=None, note=None):
+    import logging
+    from types import SimpleNamespace
+
+    import kg.deps_quota as deps_quota
+    import kg.enrich as enrich_mod
+    import kg.llm.providers as providers
+    import kg.tracked_llm as tracked_llm
+    from kg.vocab_add_link_operation import _default_enrich
+
+    result = {"word": "luminous", "meaning_fix": meaning_fix}
+    if note is not None:
+        result["note"] = note
+
+    async def stream(llm, targets, **kwargs):
+        yield {"status": "running", "results": [result]}
+
+    monkeypatch.setattr(enrich_mod, "enrich_cards_stream", stream)
+    monkeypatch.setattr(providers, "provider_for", lambda _task: SimpleNamespace(chat_model="m"))
+    monkeypatch.setattr(tracked_llm, "TrackedLLM", lambda *_a, **_k: None)
+    monkeypatch.setattr(deps_quota, "_is_pro", lambda _user: False)
+
+    card = SimpleNamespace(id="t1", content="luminous", pos=None, note=None, meaning="旧")
+    cards = _AddLinkMeaningCards()
+    asyncio.run(
+        _default_enrich(
+            card=card,
+            cards=cards,
+            user={"id": "user-1", "dir": "/tmp/user-1"},
+            client_factory=lambda _provider: None,
+            logger=logging.getLogger("test_add_link_meaning"),
+            open_embeddings=open_embeddings or (lambda: embeddings),
+            graph=graph,
+        )
+    )
+    return cards
+
+
+def test_add_link_meaning_fix_evicts_vector_and_requeues_judging(monkeypatch):
+    embeddings, graph = _AddLinkEmbeddings(), _AddLinkGraph()
+
+    cards = _run_default_enrich(monkeypatch, meaning_fix="新", embeddings=embeddings, graph=graph)
+
+    assert cards.updates == [[("t1", {"meaning": "新"})]]
+    assert embeddings.removed == ["t1"]
+    assert graph.queued == ["t1"]
+
+
+def test_add_link_unchanged_meaning_fix_neither_evicts_nor_queues(monkeypatch):
+    embeddings, graph = _AddLinkEmbeddings(), _AddLinkGraph()
+
+    _run_default_enrich(monkeypatch, meaning_fix="旧", embeddings=embeddings, graph=graph)
+
+    assert embeddings.removed == []
+    assert graph.queued == []
+
+
+def _broken_embedding_factory():
+    raise RuntimeError("embedding store unavailable")
+
+
+def test_add_link_unchanged_meaning_never_opens_embedding_store(monkeypatch):
+    opened = []
+
+    def open_embeddings():
+        opened.append(True)
+        return _broken_embedding_factory()
+
+    cards = _run_default_enrich(
+        monkeypatch, meaning_fix="旧", graph=_AddLinkGraph(), open_embeddings=open_embeddings, note="新注解"
+    )
+
+    assert opened == []
+    assert cards.updates == [[("t1", {"note": "新注解", "meaning": "旧"})]]
+
+
+def test_add_link_embedding_store_failure_keeps_other_enrich_fields(monkeypatch):
+    graph = _AddLinkGraph()
+
+    cards = _run_default_enrich(
+        monkeypatch,
+        meaning_fix="新",
+        graph=graph,
+        open_embeddings=_broken_embedding_factory,
+        note="新注解",
+    )
+
+    assert cards.updates == [[("t1", {"meaning": "新", "note": "新注解"})]]
+    assert graph.queued == []
