@@ -63,9 +63,14 @@ def test_deleted_book_asset_is_not_downloadable(isolated_api, monkeypatch):
         )
     )
 
+    deleted_keys: list[str] = []
+
     class FakeS3Client:
         def generate_presigned_url(self, operation, *, Params, ExpiresIn):
             return "https://storage.test/presigned"
+
+        def delete_object(self, *, Bucket, Key):
+            deleted_keys.append(Key)
 
     monkeypatch.setattr(library_router, "_library_s3_client", lambda settings, *, fast=False: FakeS3Client())
 
@@ -80,6 +85,10 @@ def test_deleted_book_asset_is_not_downloadable(isolated_api, monkeypatch):
 
     deleted = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
     assert deleted.status_code == 200, deleted.text
+    # #2959 item 3: reclaim calls the factory with fast=True on the request path;
+    # a factory without that kwarg TypeErrors inside the best-effort block and the
+    # object is silently never deleted, so assert the delete actually happened.
+    assert deleted_keys == [uploaded.json()["object_key"]]
 
     response = isolated_api.client.get(
         f"/api/library/books/{book_id}/asset",
