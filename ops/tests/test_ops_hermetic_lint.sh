@@ -150,6 +150,29 @@ if [[ "$vrc" -eq 0 && "$vout" != *FORBIDDEN* && ! -s "$T/denied.log" ]]; then
 else
   no "shim rsync --version was denied or logged (rc=$vrc out=$vout)"
 fi
+# The shim dir twice in PATH under different spellings must not make `--version` exec a shim copy
+# forever (#2922): without a real binary anywhere, the second copy has to deny, not loop.
+alias_dir="$ROOT/.cache/ops-hermetic-shims/../ops-hermetic-shims"
+loop_log="$T/loop.out"
+(
+  PATH="$ROOT/.cache/ops-hermetic-shims:$alias_dir" KG_OPS_TEST_TRIPWIRE_LOG="$T/loop.tripwire" \
+    "$ROOT/.cache/ops-hermetic-shims/rsync" --version >"$loop_log" 2>&1 &
+  lpid=$!
+  ( sleep 5; kill -9 "$lpid" 2>/dev/null ) &
+  kpid=$!
+  wait "$lpid" && lrc=0 || lrc=$?; echo "rc=$lrc" >>"$loop_log"
+  kill "$kpid" 2>/dev/null || true
+) 2>/dev/null
+if grep -q '^rc=97$' "$loop_log" && grep -q FORBIDDEN "$loop_log"; then
+  ok "shim --version with the shim dir duplicated in PATH denies instead of looping"
+else
+  no "shim --version recursion guard failed: $(tr '\n' ' ' <"$loop_log")"
+fi
+# A real binary behind two spellings of the shim dir is still found.
+vout="$(PATH="$ROOT/.cache/ops-hermetic-shims:$alias_dir:/usr/bin:/bin" "$ROOT/.cache/ops-hermetic-shims/rsync" --version 2>&1)" && vrc=0 || vrc=$?
+[[ "$vrc" -eq 0 && "$vout" != *FORBIDDEN* ]] \
+  && ok "shim --version still reaches the real binary past a duplicated shim dir" \
+  || no "shim --version lost the real binary (rc=$vrc out=$vout)"
 rc=0; KG_OPS_TEST_TRIPWIRE_LOG=/dev/null "$KG_SSH_CMD" host 'ls' >/dev/null 2>&1 || rc=$?
 [[ "$rc" -eq 97 ]] && ok "KG_SSH_CMD is a deny stub (exit 97)" || no "KG_SSH_CMD deny stub rc=$rc"
 rc=0; KG_OPS_TEST_TRIPWIRE_LOG=/dev/null "$KG_SCP_CMD" a b >/dev/null 2>&1 || rc=$?

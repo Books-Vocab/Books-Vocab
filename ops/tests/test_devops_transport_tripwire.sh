@@ -81,6 +81,31 @@ expect_tripwire "run with KG_SSH_CMD unset" 'tripwire ssh seam=<unset>'
 # 2. ssh seam names the real ssh binary.
 run_devops KG_OPS_TEST=1 "KG_SSH_CMD=$T/fakereal/ssh -T -o BatchMode=yes" -- run "echo hi"
 expect_tripwire "KG_SSH_CMD names a real ssh binary" "tripwire ssh seam=$T/fakereal/ssh"
+# 2b. wrappers must not hide the real binary from the classifier (#2922): env / sh -c / bash -c.
+run_devops KG_OPS_TEST=1 "KG_SSH_CMD=env $T/fakereal/ssh -T host" -- run "echo hi"
+expect_tripwire "KG_SSH_CMD=env <real ssh>" "tripwire ssh seam=env $T/fakereal/ssh"
+run_devops KG_OPS_TEST=1 "KG_SSH_CMD=/usr/bin/env -u FOO BAR=1 $T/fakereal/ssh host" -- run "echo hi"
+expect_tripwire "KG_SSH_CMD=/usr/bin/env -u FOO BAR=1 <real ssh>" "tripwire ssh seam=/usr/bin/env"
+run_devops KG_OPS_TEST=1 "KG_SSH_CMD=sh -c $T/fakereal/ssh" -- run "echo hi"
+expect_tripwire "KG_SSH_CMD=sh -c <real ssh>" "tripwire ssh seam=sh -c"
+run_devops KG_OPS_TEST=1 "KG_SSH_CMD=bash -lc $T/fakereal/ssh" -- run "echo hi"
+expect_tripwire "KG_SSH_CMD=bash -lc <real ssh>" "tripwire ssh seam=bash -lc"
+run_devops KG_OPS_TEST=1 "KG_SSH_CMD=env nohup $T/fakereal/ssh host" -- run "echo hi"
+expect_tripwire "KG_SSH_CMD=env nohup <real ssh>" "tripwire ssh seam=env nohup"
+run_devops KG_OPS_TEST=1 "KG_SSH_CMD=env FOO=1 $T/scriptbin/ssh stubhost" -- run "echo hi"
+if [[ "$run_rc" -eq 0 ]] && grep -qx 'stubhost echo hi' "$STUB_TRACE"; then
+  ok "env-wrapped script stub is still allowed (positive control for the unwrapping)"
+else
+  no "env-wrapped script stub refused (rc=$run_rc out=$run_out)"
+fi
+# 2c. the refusal text must not advise a fix that cannot work: with the seam unset the tripwire
+# always fires, so "put a fake ssh earlier in PATH" is wrong advice.
+run_devops KG_OPS_TEST=1 -u KG_SSH_CMD -- run "echo hi"
+if grep -q 'KG_SSH_CMD' <<<"$run_out" && ! grep -qi 'earlier in PATH' <<<"$run_out"; then
+  ok "refusal message points at the seam and does not advise a PATH-only fake"
+else
+  no "refusal message advises something that does not work: $(tr '\n' ' ' <<<"$run_out")"
+fi
 # 3. the tripwire is reached through the other remote surfaces too.
 run_devops KG_OPS_TEST=1 -u KG_SSH_CMD -- container-run "ls"
 expect_refused_in_subshell "container-run" 'tripwire ssh'
