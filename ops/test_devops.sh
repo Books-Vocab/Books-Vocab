@@ -5,6 +5,35 @@ set -euo pipefail
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 KG="$WORKSPACE/devops.sh"
 
+# ── Hermetic by construction (P0 2026-10-09) ────────────────────────────────
+# This file once ran a "must be blocked" negative control against the *real*
+# base devops.sh; the guard had a hole, the command was forwarded over ssh to
+# production felix and deleted the live data dir.  Two independent seals now:
+#   1. harness: KG_OPS_TEST=1 + PATH shim (ssh/scp/sftp/rsync/aws → exit 97) +
+#      deny-stub transport seams.  Standalone runs get it from here; under
+#      ops/test_ops.sh it is already set (init is idempotent).
+#   2. base: KG_DEVOPS_BASE defaults to a *recording* stub.  Every wrapper
+#      invocation below that does not name its own base ends here, so "blocked"
+#      is provable as "never reached base" (see expect_blocked_before_base).
+# Tests that need the real devops.sh logic pass KG_DEVOPS_BASE="$KG" explicitly
+# together with a fake KG_SSH_CMD transport.
+# shellcheck source=lib/hermetic_ops_test.sh
+source "$WORKSPACE/ops/lib/hermetic_ops_test.sh"
+hermetic_ops_test_init "$WORKSPACE"
+HERMETIC_TMP="$(mktemp -d)"
+trap 'rm -rf "$HERMETIC_TMP"' EXIT
+BASE_TRACE="$HERMETIC_TMP/base.trace"
+export KG_BASE_TRACE="$BASE_TRACE"
+cat > "$HERMETIC_TMP/recording_base.sh" <<'RECORDER'
+#!/usr/bin/env bash
+# Stub base: append argv to the trace file, never execute anything.
+printf '%s\n' "$*" >> "$KG_BASE_TRACE"
+exit 0
+RECORDER
+chmod +x "$HERMETIC_TMP/recording_base.sh"
+export KG_DEVOPS_BASE="$HERMETIC_TMP/recording_base.sh"
+: > "$BASE_TRACE"
+
 pass=0; fail=0
 
 ok()      { echo "  ✓ $*"; pass=$((pass+1)); }
@@ -196,39 +225,58 @@ fi
 rm -rf "$_bk_sandbox"
 
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
-section "Blocklist (dangerous commands blocked)"
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "docker system prune -af" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "KG safe wrapper blocks docker system prune" || fail_t "KG safe wrapper did NOT block docker system prune"
+section "Blocklist (dangerous commands blocked — and provably never reach base)"
+SAFE_WRAPPER="$WORKSPACE/ops/devops_kg_safe.sh"
 
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" setup 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "KG safe wrapper blocks setup" || fail_t "KG safe wrapper did NOT block setup"
+# 「被擋」的唯一定義 = wrapper 非零退出 + 輸出含 `✗ blocked` + **base 的 trace 完全沒有條目**。
+# 只 grep "blocked" 是舊寫法：它在 guard 漏放時會把命令轉給真 base（2026-10-09 事故，
+# 見 docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md）。這裡 base 一律是上方
+# 的 recording stub，所以「漏放」只會讓 trace 非空而變紅，不會碰到任何主機。
+# `✗ blocked` 而非裸 "blocked"：safe_usage 的說明文字也含 "blocked by default"，
+# 打錯子命令會印 usage，裸 grep 會把它誤判成「被擋」。
+expect_blocked_before_base() {  # <label> <wrapper args...>
+  local label="$1" out rc=0
+  shift
+  : > "$BASE_TRACE"
+  out=$(bash "$SAFE_WRAPPER" "$@" 2>&1) || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q '✗ blocked' <<<"$out" && [[ ! -s "$BASE_TRACE" ]]; then
+    ok "blocks (never reached base): $label"
+  else
+    fail_t "NOT BLOCKED BEFORE BASE: $label (rc=$rc base_trace=$(tr '\n' '|' < "$BASE_TRACE"))"
+  fi
+}
+# 正控：放行的命令必須**真的抵達 base**（trace 出現該命令）。否則「沒被擋」可能只是
+# wrapper 在更前面就死了，而不是 guard 判斷它安全。
+expect_reaches_base() {  # <label> <needle> <wrapper args...>
+  local label="$1" needle="$2" out rc=0
+  shift 2
+  : > "$BASE_TRACE"
+  out=$(bash "$SAFE_WRAPPER" "$@" 2>&1) || rc=$?
+  if [[ "$rc" -eq 0 ]] && ! grep -q '✗ blocked' <<<"$out" && grep -qF -- "$needle" "$BASE_TRACE"; then
+    ok "allows and forwards to base: $label"
+  else
+    fail_t "FALSE POSITIVE or not forwarded: $label (rc=$rc out=$(tr '\n' ' ' <<<"$out"))"
+  fi
+}
+
+expect_blocked_before_base "docker system prune" run "docker system prune -af"
+expect_blocked_before_base "setup (blocked subcommand)" setup
 
 # Flag/case variants that the original literal-byte regex let slip through.
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "docker compose down -v" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "blocks 'compose down -v'" || fail_t "did NOT block 'compose down -v'"
-
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "docker compose down --volumes" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "blocks 'down --volumes' long form" || fail_t "did NOT block 'down --volumes'"
-
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "rm -fr /home/ubuntu" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "blocks 'rm -fr' swapped flags" || fail_t "did NOT block 'rm -fr /home/ubuntu'"
-
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "rm -r -f /" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "blocks 'rm -r -f /' split flags" || fail_t "did NOT block 'rm -r -f /'"
-
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "rm --recursive --force ~" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "blocks 'rm --recursive --force ~' long form" || fail_t "did NOT block long-form rm"
-
-output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "RM -RF /home/ubuntu" 2>&1 || true)
-echo "$output" | grep -q "blocked" && ok "blocks upper-case 'RM -RF'" || fail_t "did NOT block upper-case rm"
+expect_blocked_before_base "'compose down -v'" run "docker compose down -v"
+expect_blocked_before_base "'down --volumes' long form" run "docker compose down --volumes"
+expect_blocked_before_base "'rm -fr' swapped flags" run "rm -fr /home/ubuntu"
+expect_blocked_before_base "'rm -r -f /' split flags" run "rm -r -f /"
+expect_blocked_before_base "'rm --recursive --force ~' long form" run "rm --recursive --force ~"
+expect_blocked_before_base "upper-case 'RM -RF'" run "RM -RF /home/ubuntu"
 
 # Adversarial bypass variants (negative controls — must stay BLOCKED so a future
-# regex regression can't silently reopen them).
+# regex regression can't silently reopen them).  Format: command@label.
 declare -a BYPASS=(
   'rm -rf "/home/ubuntu"@quoted path'
   "rm -rf '/'@quoted root"
   'rm -rf /home/ubuntu;@trailing semicolon'
-  'rm -rf /Users/chenliangyu/kg-data@macOS home path'
+  'rm -rf /Users/chenliangyu/kg-data@macOS home path (the 2026-10-09 incident command)'
   'rm -rf /Users/x@macOS user home'
   'rm -rf /*@root glob wipe'
   'rm -rf /.@root dot wipe'
@@ -245,15 +293,102 @@ declare -a BYPASS=(
   'docker volume rm knowledge-graph-api_data@docker volume rm'
   'docker volume prune -f@docker volume prune'
   'docker compose -f x.yml down -v@compose -f down -v'
+  # ── 2026-10-09 gaps: protected NAMES, not path spellings ───────────────────
+  'find /Users/chenliangyu/kg-data -delete@gap: find -delete on kg-data (absolute)'
+  'rm -rf ~chenliangyu/kg-data@gap: ~user form'
+  'rm -rf /Users/chenliangyu/kg-prod/backend@gap: prod code root, absolute'
+  'rm -rf ~/kg-data@~ form'
+  'rm -rf $HOME/kg-data@$HOME form'
+  'rm -rf "/Users//chenliangyu//kg-data"@quoted double slashes'
+  'RM -RF ~/KG-DATA@upper-case name'
+  'rm -rf ~/kg-d*@glob matching kg-data'
+  'rm -rf ~/k?-data@glob ? matching kg-data'
+  'rm -rf ~/*@glob matching every home entry'
+  'rm -rf /Users/chenliangyu/*@glob under absolute home'
+  'rm -rf ~/{kg-data,x}@brace expansion'
+  'rm -rf ../kg-data@relative parent'
+  'rm -rf kg-prod@relative name'
+  'cd ~ && rm -rf kg-data@relative after cd ~'
+  'cd ~/kg-data && rm -rf users@relative after cd into kg-data'
+  'cd ~/kg-data && rm -rf *@glob after cd into kg-data'
+  'cd /Users/chenliangyu/kg-prod; rm -rf backend@relative after cd (semicolon)'
+  'rm -rf *@cwd glob wipe (cwd = home)'
+  'rm -rf .@cwd dot wipe (cwd = home)'
+  'rm -rf $DATA_DIR@unresolvable variable target'
+  'rm ~/kg-data/users.json@non-recursive rm of a kg-data file'
+  'rmdir ~/kg-data/users@rmdir'
+  'unlink ~/kg-data/users.json@unlink'
+  'mv ~/kg-data ~/kg-data.old@mv away (source)'
+  'mv /tmp/x /Users/chenliangyu/kg-prod@mv onto (destination)'
+  'find ~/kg-data -exec rm {} +@find -exec rm'
+  'find /Users/chenliangyu/kg-prod -type f -delete@find -delete on kg-prod'
+  'ls ~/kg-data | xargs rm -rf@pipe into xargs rm'
+  'truncate -s0 ~/kg-data/users.json@truncate on kg-data'
+  'shred -u ~/kg-data/users.json@shred'
+  'echo x > ~/kg-data/users.json@redirect into kg-data'
+  'echo x >> kg-data/log@append redirect into relative kg-data'
+  'echo x | tee -a ~/kg-data/log@tee into kg-data'
+  'dd if=/dev/zero of=~/kg-data/x@dd of= on kg-data'
+  'rsync -a --delete /tmp/empty/ ~/kg-data/@rsync --delete'
+  'rsync -a /tmp/x/ /Users/chenliangyu/kg-data/@rsync overwrite into kg-data'
+  'cp /dev/null ~/kg-data/users.json@cp overwrite'
+  'tar xzf /tmp/b.tgz -C ~/kg-data@tar extract into kg-data'
+  'chmod -R 000 ~/kg-data@chmod -R'
+  'chown -R nobody ~/kg-prod@chown -R'
+  'cd ~/kg-prod && git clean -xfd@git clean in kg-prod'
+  'python3 -c import shutil; shutil.rmtree("/Users/chenliangyu/kg-data")@python rmtree'
+  'docker exec knowledge-graph-api rm -rf data@docker exec relative data (cwd /app)'
+  'docker exec -w /app knowledge-graph-api rm -rf data@docker exec -w /app'
+  'rm -rf ${HOME:?}/kg-data@parameter-expansion HOME form'
+  'rm -rf /Users/chenliangyu/kg-da[t]a@bracket glob matching kg-data'
+  'rm -rf ~/$SUBDIR@variable inside a home path'
+  'sed -i s/a/b/ ~/kg-data/users.json@sed -i on kg-data'
+  'sqlite3 ~/kg-data/u/x.db delete from card@sqlite3 write on kg-data'
+  'ln -sf /dev/null ~/kg-data/users.json@ln -sf over a kg-data file'
+  'find ~ -name kg-data -prune -o -delete@find ~ -delete'
+)
+# container-run executes inside the container: cwd is /app (WORKDIR), so
+# relative paths are the app tree and /app/data is the production volume.
+declare -a BYPASS_CONTAINER=(
+  'rm -rf /app@gap: /app itself'
+  'cd /app && rm -rf data@gap: relative after cd /app'
+  'rm -rf /app/data@/app/data'
+  'rm -rf /app/data/users@under /app/data'
+  'rm -rf /app/*@glob under /app'
+  'rm -rf /ap?@glob matching /app'
+  'rm -rf data@relative data (cwd /app)'
+  'rm -rf ./data@relative ./data'
+  'rm -rf data/*@relative data glob'
+  'rm -rf .@cwd dot wipe (cwd /app)'
+  'rm -rf *@cwd glob wipe (cwd /app)'
+  'find . -delete@find -delete in cwd /app'
+  'find /app -delete@find -delete /app'
+  'find /app/data -exec rm {} +@find -exec rm /app/data'
+  'mv /app/data /tmp/data@mv /app/data away'
+  'mv data data.old@mv relative data'
+  'cd /app/data && rm -rf *@glob after cd /app/data'
+  'cd data && rm -rf users@relative after cd data'
+  'sh -c cd /app; rm -rf data@sh -c with cd'
+  'truncate -s0 /app/data/users.json@truncate'
+  'echo x > /app/data/users.json@redirect'
+  'python3 -c import shutil; shutil.rmtree("/app/data")@python rmtree'
+  'python3 -c import os; os.remove("/app/data/users.json")@python os.remove'
 )
 for entry in "${BYPASS[@]}"; do
   cmd="${entry%%@*}"; label="${entry##*@}"
-  output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "$cmd" 2>&1 || true)
-  echo "$output" | grep -q "blocked" && ok "blocks bypass: $label" || fail_t "BYPASS NOT BLOCKED: $label ($cmd)"
+  expect_blocked_before_base "bypass: $label" run "$cmd"
 done
+for entry in "${BYPASS_CONTAINER[@]}"; do
+  cmd="${entry%%@*}"; label="${entry##*@}"
+  expect_blocked_before_base "container-run bypass: $label" container-run "$cmd"
+done
+# migrate-run forwards an arbitrary container command too (plus a backup first):
+# the guard must fire before either happens.
+expect_blocked_before_base "migrate-run: rm -rf /app/data" migrate-run "rm -rf /app/data"
+expect_blocked_before_base "migrate-run: cd /app && rm -rf data" migrate-run "cd /app && rm -rf data"
 
-# False-positive controls — legitimate commands must pass the guard. Stub BASE
-# with /usr/bin/true so the wrapper does not invoke the real remote.
+# False-positive controls — legitimate commands must pass the guard AND reach
+# the (stub) base, so the silence of the checks above is not a broken wrapper.
 declare -a SAFE=(
   'rm -rf ./build@relative build dir'
   'rm -rf /tmp/foo@tmp path'
@@ -264,12 +399,124 @@ declare -a SAFE=(
   'ls -la /home/ubuntu@listing prod dir'
   'tar czf x.tgz /home/ubuntu@backup read of prod dir'
   'grep -r foo /home/ubuntu@recursive grep read'
+  # ── reads of the protected names stay legal ──
+  'ls -la ~/kg-data@ls kg-data'
+  'du -sh ~/kg-data@du kg-data'
+  'du -sm $HOME/kg-data@du with $HOME'
+  'tar czf /tmp/kg-data.tgz ~/kg-data@tar create from kg-data'
+  'tar czf /tmp/kg-prod.tgz -C ~ kg-prod@tar create from kg-prod'
+  'sqlite3 ~/kg-data/users/u/x.db select count(*) from card@sqlite3 read'
+  'find ~/kg-data -name *.db@find without -delete'
+  'grep -r foo ~/kg-data@recursive grep on kg-data'
+  'cat ~/kg-prod/backend/VERSION@cat kg-prod file'
+  'cd ~/kg-prod/backend && git log -1 --oneline@git read in kg-prod'
+  'cd ~/kg-prod/backend && ../ops/backup_status.sh@backup_status helper'
+  'git -C ~/kg-prod rev-parse HEAD@git -C read'
+  'cat ~/kg-data/x > /tmp/out@redirect target outside'
+  'tail -40 ~/Library/Logs/kg_reconcile.err.log@log tail'
+  'docker logs knowledge-graph-api --since 10m@docker logs window'
+  # ── destructive verbs on unprotected paths ──
+  'rm -rf /tmp/kg-data-copy@name is only a prefix of the protected one'
+  'rm -rf /tmp/*@glob under /tmp'
+  'cd /tmp/work && rm -rf *@cwd wipe after cd into a scratch dir'
+  'rm -f /tmp/x.log@single file'
+  'mv /tmp/a /tmp/b@mv outside'
+  'sed -n 1,3p ~/kg-data/notes.txt@sed without -i on kg-data'
+  'cd /tmp && rm -rf work@cd to a scratch dir, then rm'
+  'cd ~/kg-prod/backend && git pull --ff-only@deploy-style git pull in kg-prod'
+  'rmdir /tmp/kg-deploy.lock@deploy lock dir'
 )
 for entry in "${SAFE[@]}"; do
   cmd="${entry%%@*}"; label="${entry##*@}"
-  output=$(KG_DEVOPS_BASE=/usr/bin/true bash "$WORKSPACE/ops/devops_kg_safe.sh" run "$cmd" 2>&1 || true)
-  echo "$output" | grep -q "blocked" && fail_t "FALSE POSITIVE blocked safe cmd: $label ($cmd)" || ok "allows safe: $label"
+  expect_reaches_base "$label" "$cmd" run "$cmd"
 done
+declare -a SAFE_CONTAINER=(
+  'ls /app/data/users@listing /app/data'
+  'du -sh /app/data@du /app/data'
+  'cat /app/data/notes.txt@cat a data file'
+  'python3 /app/migrate.py@migration script'
+  'rm -f /tmp/x.json@rm outside the app tree'
+  'rm -f cache.tmp@single relative file in /app'
+  'sqlite3 /app/data/users/u/x.db select count(*) from card@sqlite3 read'
+  'tar czf /tmp/data.tgz /app/data@tar create from /app/data'
+  'cd /tmp; rm -rf data@relative data after cd out of /app'
+)
+for entry in "${SAFE_CONTAINER[@]}"; do
+  cmd="${entry%%@*}"; label="${entry##*@}"
+  expect_reaches_base "container-run: $label" "$cmd" container-run "$cmd"
+done
+
+
+# ── 5b. base devops.sh enforces the same guard ──────────────────────────────
+# The wrapper is no longer the only line of defense: `devops.sh run …` called directly
+# (or a wrapper pointed at another base) hits the same predicate
+# (ops/lib/devops_run_guard.sh).  Transport is a recording fake ssh; KG_SERVER is .invalid.
+section "base devops.sh enforces the same guard"
+BASEFIX="$HERMETIC_TMP/basefix"; mkdir -p "$BASEFIX"
+BASE_SSH_TRACE="$BASEFIX/ssh.trace"
+cat > "$BASEFIX/ssh_stub.sh" <<STUBEOF
+#!/usr/bin/env bash
+printf '%s\n' "\${@: -1}" >> "$BASE_SSH_TRACE"
+[[ "\${@: -1}" == *"docker inspect"* ]] && echo true
+exit 0
+STUBEOF
+chmod +x "$BASEFIX/ssh_stub.sh"
+grep -q 'ops/lib/devops_run_guard.sh' "$KG" && grep -q 'ops/lib/devops_run_guard.sh' "$WORKSPACE/ops/devops_kg_safe.sh" \
+  && ok "wrapper and base source the same guard lib" \
+  || fail_t "wrapper and base do not share ops/lib/devops_run_guard.sh"
+expect_base_blocked() {  # <label> <sub> <cmd>
+  local label="$1" sub="$2" cmd="$3" out rc=0
+  : > "$BASE_SSH_TRACE"
+  out=$(KG_SSH_CMD="$BASEFIX/ssh_stub.sh" KG_SERVER=kg-test@invalid.invalid bash "$KG" "$sub" "$cmd" 2>&1) || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q '✗ blocked' <<<"$out" && [[ ! -s "$BASE_SSH_TRACE" ]]; then
+    ok "base devops.sh blocks (no transport call): $label"
+  else
+    fail_t "BASE DID NOT BLOCK: $label (rc=$rc ssh_trace=$(tr '\n' '|' < "$BASE_SSH_TRACE") out=$(tr '\n' ' ' <<<"$out"))"
+  fi
+}
+expect_base_blocked "the 2026-10-09 incident command" run 'rm -rf /Users/chenliangyu/kg-data'
+expect_base_blocked "find -delete on kg-data" run 'find /Users/chenliangyu/kg-data -delete'
+expect_base_blocked "~user form" run 'rm -rf ~chenliangyu/kg-data'
+expect_base_blocked "kg-prod code root" run 'rm -rf /Users/chenliangyu/kg-prod/backend'
+expect_base_blocked "relative after cd into kg-data" run 'cd ~/kg-data && rm -rf users'
+expect_base_blocked "docker system prune" run 'docker system prune -af'
+expect_base_blocked "container-run rm -rf /app" container-run 'rm -rf /app'
+expect_base_blocked "container-run relative after cd /app" container-run 'cd /app && rm -rf data'
+expect_base_blocked "migrate-run (guard fires before cmd_backup)" migrate-run 'rm -rf /app/data'
+# 正控：唯讀命令照常抵達 transport，上面的「沒有 transport 呼叫」才有意義。
+: > "$BASE_SSH_TRACE"
+out=$(KG_SSH_CMD="$BASEFIX/ssh_stub.sh" KG_SERVER=kg-test@invalid.invalid bash "$KG" run 'ls -la ~/kg-data' 2>&1) || true
+grep -qx 'ls -la ~/kg-data' "$BASE_SSH_TRACE" \
+  && ok "base devops.sh forwards a read of kg-data to the transport (positive control)" \
+  || fail_t "base devops.sh did not forward a harmless read (trace=$(cat "$BASE_SSH_TRACE"))"
+: > "$BASE_SSH_TRACE"
+out=$(KG_SSH_CMD="$BASEFIX/ssh_stub.sh" KG_SERVER=kg-test@invalid.invalid bash "$KG" container-run 'ls /app/data/users' 2>&1) || true
+grep -qx 'docker exec knowledge-graph-api ls /app/data/users' "$BASE_SSH_TRACE" \
+  && ok "base devops.sh forwards a container read of /app/data (positive control)" \
+  || fail_t "base devops.sh did not forward a harmless container read (trace=$(cat "$BASE_SSH_TRACE"))"
+
+# 正控（誤殺防護）：infra_health 真實送出的三個 bundle（health／memory／caddy）會經 `$BASE run`
+# 走到 base 的 guard。它們引用 kg-data／kg-prod（`du -sm`、`git -C`、`sed -n`），但沒有破壞性動詞，
+# 必須照常通過——否則 guard 一上線 `devops_kg_safe.sh health` 就壞。stub base 以真 predicate 判定。
+BUNDLE_LOG="$HERMETIC_TMP/bundles.log"; : > "$BUNDLE_LOG"
+cat > "$BASEFIX/bundle_base.sh" <<'STUBEOF'
+#!/usr/bin/env bash
+source "$GUARD_LIB"
+if devops_run_is_blocked "$1" "$2"; then echo "BLOCKED $1" >> "$BUNDLE_LOG"; else echo "ALLOWED $1" >> "$BUNDLE_LOG"; fi
+exit 0
+STUBEOF
+chmod +x "$BASEFIX/bundle_base.sh"
+for bundle_mode in "--json" "--memory-usage --json" "--caddy-status --json"; do
+  # shellcheck disable=SC2086  # word-splitting of the mode flags is intended
+  GUARD_LIB="$WORKSPACE/ops/lib/devops_run_guard.sh" BUNDLE_LOG="$BUNDLE_LOG" KG_BASE="$BASEFIX/bundle_base.sh" \
+    KG_HEALTH_HTTP_CODE=200 KG_HEALTH_CERT_ENDDATE="Dec  1 00:00:00 2030 GMT" \
+    bash "$WORKSPACE/ops/infra_health.sh" $bundle_mode >/dev/null 2>&1 || true
+done
+if [[ "$(grep -c '^ALLOWED run$' "$BUNDLE_LOG")" -ge 3 ]] && ! grep -q '^BLOCKED' "$BUNDLE_LOG"; then
+  ok "the real infra_health health/memory/caddy bundles pass the base guard (3 probes)"
+else
+  fail_t "infra_health bundles vs the base guard: $(tr '\n' ' ' < "$BUNDLE_LOG")"
+fi
 
 # ── 6. Preflight 檔案驗證（靜態） ─────────────────────────────────────────
 section "Preflight file validation (static)"
@@ -770,7 +1017,7 @@ users_leaks() {
   grep -Eq 'alice@example\.com|subscription|linked_ids|_email_index|_revoked_before|_terminated|TOKEN-SECRET|RCPT-SECRET|api_key|apple_alias|gone_user' <<< "$1"
 }
 users_rc=0
-users_out=$(KG_SSH_CMD="$USERS_STUB" KG_REMOTE_DATA_DIR="$USERS_FIX/data" bash "$SAFE_KG" users 2>&1) || users_rc=$?
+users_out=$(KG_DEVOPS_BASE="$KG" KG_SSH_CMD="$USERS_STUB" KG_REMOTE_DATA_DIR="$USERS_FIX/data" bash "$SAFE_KG" users 2>&1) || users_rc=$?
 [[ "$users_rc" == 0 ]] && ok "users exits 0 against fixture" || fail_t "users exits $users_rc against fixture"
 grep -Eq '^users: 2$' <<< "$users_out" \
   && ok "users prints the real-user count (aliases and metadata excluded)" \
@@ -784,7 +1031,7 @@ users_leaks "$users_out" \
   || ok "users output carries no email/subscription/linked_ids/_email_index/tokens/alias records"
 # 預設值是 `~/kg-data`：printf %q 在 bash 3.2 保留 `~`、在 bash 5 轉成 `\~`，兩條路都
 # 必須落到同一個 home（HOME 指向 fixture，證明展開真的發生而不是讀到字面 `~` 目錄）。
-users_out=$(HOME="$USERS_FIX" KG_SSH_CMD="$USERS_STUB" KG_REMOTE_DATA_DIR='~/data' bash "$SAFE_KG" users 2>&1) || true
+users_out=$(HOME="$USERS_FIX" KG_DEVOPS_BASE="$KG" KG_SSH_CMD="$USERS_STUB" KG_REMOTE_DATA_DIR='~/data' bash "$SAFE_KG" users 2>&1) || true
 grep -Eq '^users: 2$' <<< "$users_out" \
   && ok "users expands a ~-relative data dir (default shape ~/kg-data)" \
   || fail_t "users did not expand ~ in KG_REMOTE_DATA_DIR"
@@ -825,7 +1072,7 @@ printf 'print(open("/app/data/Users.JSON").read())\n' > "$SENS_FIX/dump_users.py
 # sens_call <transport|base> <sub> [args...] → sens_rc／sens_out；每次呼叫前清掉 trace。
 sens_call() {
   local mode="$1"; shift
-  local -a seam=(KG_SSH_CMD="$SENS_STUB" KG_SCP_CMD="$SENS_STUB")
+  local -a seam=(KG_DEVOPS_BASE="$KG" KG_SSH_CMD="$SENS_STUB" KG_SCP_CMD="$SENS_STUB")
   [[ "$mode" == base ]] && seam=(KG_DEVOPS_BASE="$SENS_STUB")
   rm -f "$SENS_TRACE"
   sens_rc=0

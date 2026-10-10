@@ -12,6 +12,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# P0 2026-10-09 (docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md):
+# every ops test runs hermetic.  KG_OPS_TEST=1, a PATH shim whose
+# ssh/scp/sftp/rsync/aws exit 97, and deny-stub transport seams are set here, before
+# any group starts, so a test that forgets its own stub fails loudly instead of
+# reaching production.  A test that needs a fake installs its own stub earlier in PATH.
+# shellcheck source=lib/hermetic_ops_test.sh
+source "$ROOT/ops/lib/hermetic_ops_test.sh"
+hermetic_ops_test_init "$ROOT"
+: > "$KG_OPS_TEST_TRIPWIRE_LOG"
+
 UV_BIN="${UV_BIN:-}"
 if [[ -z "$UV_BIN" ]]; then
   if [[ -x "$HOME/.local/bin/uv" ]]; then
@@ -135,6 +145,9 @@ run_one() {
     devops)
       ./ops/test_devops.sh &&
       ./ops/tests/test_devops_command_contract.sh &&
+      # P0 2026-10-09：ops 測試不得觸及 production（transport tripwire + hermetic lint）。
+      ./ops/tests/test_devops_transport_tripwire.sh &&
+      ./ops/tests/test_ops_hermetic_lint.sh &&
       ./ops/tests/test_devops_backup_cleanup.sh &&
       ./ops/tests/test_backup_status.sh &&
       # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
@@ -508,6 +521,17 @@ for name in "${selected[@]}"; do
     failed_names+=("$name")
   fi
 done
+
+# A shim denial or a devops.sh tripwire anywhere in the run is a failure even if the test
+# that triggered it swallowed the exit status (`|| true`, `$(...)`, `2>/dev/null`): it means
+# some test tried to reach the network / production.  Never PASS over that.
+if [[ -s "$KG_OPS_TEST_TRIPWIRE_LOG" ]]; then
+  echo "" >&2
+  echo "✗ hermetic harness: a test attempted real network/production access:" >&2
+  sed 's/^/    /' "$KG_OPS_TEST_TRIPWIRE_LOG" >&2
+  failed=$((failed + 1))
+  failed_names+=("hermetic-tripwire")
+fi
 
 echo ""
 echo "════════ summary ════════"
