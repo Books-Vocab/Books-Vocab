@@ -167,15 +167,15 @@ def _reclaim_pending_objects(store, settings: KGSettings) -> None:
         return
     try:
         claims = store.claim_pending_objects(_RECLAIM_BATCH)
-    except Exception:
-        logger.warning("library object reclaim skipped", exc_info=True)
+    except Exception as exc:
+        _log_reclaim_failure("library object reclaim skipped", exc)
         return
     if not claims:
         return
     try:
         client = _library_s3_client(settings, fast=True)
-    except Exception:
-        logger.warning("library object reclaim skipped", exc_info=True)
+    except Exception as exc:
+        _log_reclaim_failure("library object reclaim skipped", exc)
         for claim in claims:
             _settle_reclaim(store.release_pending_object, claim)
         return
@@ -183,8 +183,8 @@ def _reclaim_pending_objects(store, settings: KGSettings) -> None:
     for index, claim in enumerate(claims):
         try:
             _delete_reclaimed(client, settings.library_bucket, claim.object_key)
-        except Exception:
-            logger.warning("library object delete failed; will retry", exc_info=True)
+        except Exception as exc:
+            _log_reclaim_failure("library object delete failed; will retry", exc)
             _settle_reclaim(store.finish_pending_object, claim, deleted=False)
             # One failed call means the object store is unreachable or refusing;
             # the rest would only add timeouts to this request. Give them back
@@ -207,9 +207,15 @@ def _delete_reclaimed(client, bucket: str, key: str) -> None:
 def _settle_reclaim(action, claim, **outcome) -> None:
     try:
         action(claim, **outcome)
-    except Exception:
+    except Exception as exc:
         # The claim lease expires on its own, so the key is retried later.
-        logger.warning("library object reclaim bookkeeping failed", exc_info=True)
+        _log_reclaim_failure("library object reclaim bookkeeping failed", exc)
+
+
+def _log_reclaim_failure(message: str, exc: BaseException) -> None:
+    # Type name only, no traceback: botocore and SQLAlchemy messages embed the
+    # request URL or statement, and the object key carries the user and book ids.
+    logger.warning("%s (%s)", message, type(exc).__name__)
 
 
 def _object_missing(exc: Exception) -> bool:

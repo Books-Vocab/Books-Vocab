@@ -345,10 +345,11 @@ def _pending_keys(api) -> list[str]:
 
 
 class _FailingS3(_RecordingS3):
-    """Fake S3 client whose delete always fails."""
+    """Fake S3 client whose delete always fails, with a botocore-style message that
+    embeds the request URL (and so the object key) like a real endpoint error."""
 
     def delete_object(self, *, Bucket, Key):
-        raise RuntimeError("s3 unavailable")
+        raise RuntimeError(f"Could not connect to the endpoint URL: https://{Bucket}.s3.example/{Key}")
 
 
 class _MissingObjectS3(_RecordingS3):
@@ -404,10 +405,9 @@ def test_soft_delete_survives_delete_failure_and_keeps_key_pending(isolated_api,
         resp = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
 
     assert resp.status_code == 200, resp.text
-    messages = [rec.getMessage() for rec in caplog.records]
-    assert any("library object delete failed" in m for m in messages)
-    # The key embeds the user and book ids, so it must not reach the logs.
-    assert not any(key in m for m in messages)
+    assert "library object delete failed" in caplog.text
+    # The key embeds the user and book ids; neither the message nor any traceback may carry it.
+    assert key not in caplog.text
     assert _pending_keys(isolated_api) == [key]
 
 
@@ -552,6 +552,15 @@ def test_client_creation_failure_does_not_fail_request(isolated_api, monkeypatch
 
     assert resp.status_code == 200, resp.text
     assert _pending_keys(isolated_api) == [key]
+    # Released, not failed: no attempt counted, and the key is claimable again.
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    store = library_router._library_store(isolated_api.data_dir / "users" / isolated_api.user_id)
+    with Session(store.engine) as session:
+        assert session.get(LibraryPendingObjectDelete, key).attempts == 0
+    assert [c.object_key for c in store.claim_pending_objects(5)] == [key]
 
 
 def _store(api):
