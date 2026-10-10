@@ -13,7 +13,9 @@ enum AppOrphanBookRecovery {
     @MainActor
     static func run(container: ModelContainer, allowBareFileRecovery: Bool = false) {
         do {
-            let result = try BookLibraryReconciler().reconcile(
+            let result = try BookLibraryReconciler(
+                tempSweepDirectories: BookLibraryReconciler.productionTempSweepDirectories
+            ).reconcile(
                 context: ModelContext(container),
                 allowBareFileRecovery: allowBareFileRecovery
             )
