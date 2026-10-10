@@ -15,7 +15,7 @@ struct KGVocabCoordinatorBannerTests {
         }
         func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse {
             if let batchError { throw batchError }
-            KGBatchDeleteResponse(deleted: words.count, deleted_words: words, not_found: [])
+            return KGBatchDeleteResponse(deleted: words.count, deleted_words: words, not_found: [])
         }
         func healthCheck() async {}
     }
