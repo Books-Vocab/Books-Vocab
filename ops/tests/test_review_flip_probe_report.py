@@ -289,7 +289,7 @@ class TestParseGapGeom:
                 "kind": "slot",
                 "word": "gapshort0",
                 "height": 94.0,
-                "reveal": "0",
+                "reveal": 0,
                 "dismiss": False,
                 "offset": 0,
                 "progress": "3 / 12",
@@ -320,3 +320,11 @@ class TestParseGapGeom:
         assert len(records) == 1
         assert len(errors) == 1
         assert "line 2" in errors[0]
+
+    def test_non_integer_reveal_is_an_error_not_a_crash(self):
+        bad_reveal = GAP_GEOM_FRONT.replace("reveal=0", "reveal=settled")
+        records, errors = parse_gap_geom([bad_reveal])
+
+        assert records == []
+        assert len(errors) == 1
+        assert "malformed gap.geom record" in errors[0]

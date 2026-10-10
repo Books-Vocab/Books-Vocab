@@ -147,7 +147,7 @@ def parse_jsonl(lines: list[str]) -> ParsedRun:
 GAP_GEOM_RE = re.compile(
     r"gap\.geom\s+slot=(?P<slot>-?\d+)\s+role=(?P<role>\S+)\s+kind=(?P<kind>\S+)"
     r"\s+w=(?P<word>.*?)\s+h=(?P<height>-?\d+(?:\.\d+)?)"
-    r"\s+reveal=(?P<reveal>\S+)\s+dismiss=(?P<dismiss>[01])"
+    r"\s+reveal=(?P<reveal>-?\d+)\s+dismiss=(?P<dismiss>[01])"
     r"\s+off=(?P<offset>-?\d+)\s+idx=(?P<progress>.*?)\s*$"
 )
 
@@ -156,7 +156,7 @@ def parse_gap_geom(lines: list[str]) -> tuple[list[dict], list[str]]:
     """抽出 gap.geom 逐 slot 高度記錄；無關行忽略，含 gap.geom 但格式不符 = 錯誤。
 
     回傳 (records, errors)。record 欄位型別已正規化（int／float／bool），
-    供離線比對 H1（非 active slot 撐高 ZStack）與 H2（answer 未收合）。
+    供離線比對 H1（非 active slot 撐高 ZStack）。目前 probe 腳本尚未接入此 parser。
     """
     records: list[dict] = []
     errors: list[str] = []
@@ -175,7 +175,7 @@ def parse_gap_geom(lines: list[str]) -> tuple[list[dict], list[str]]:
                 "kind": fields["kind"],
                 "word": fields["word"],
                 "height": float(fields["height"]),
-                "reveal": fields["reveal"],
+                "reveal": int(fields["reveal"]),
                 "dismiss": fields["dismiss"] == "1",
                 "offset": int(fields["offset"]),
                 "progress": fields["progress"],
