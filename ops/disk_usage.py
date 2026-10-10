@@ -753,7 +753,6 @@ def inspect_xctest_devices(
             errors.append(f"unexpected-root-entry:{entry.name}")
             measurement_complete = False
             continue
-        base["device_count"] += 1
         measured = measure_tree(
             entry_path,
             deadline=deadline,
@@ -761,6 +760,12 @@ def inspect_xctest_devices(
                 physical_observation if _supports_physical_extents() else None
             ),
         )
+        if measured.get("error") == MISSING_PATH_ERROR:
+            # The device was removed after scandir (e.g. Xcode pruned it
+            # mid-scan): it no longer occupies storage, so it is not evidence
+            # of an incomplete measurement.
+            continue
+        base["device_count"] += 1
         base["logical_bytes"] += int(measured["logical_bytes"])
         base["allocated_bytes"] += int(measured["allocated_bytes"])
         base["files"] += int(measured["files"])

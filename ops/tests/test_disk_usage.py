@@ -1791,6 +1791,33 @@ def test_xctest_devices_propagates_non_timeout_tree_failure(
     assert f"{udid}:permission-denied" in observed["measurement_errors"]
 
 
+def test_xctest_devices_device_removed_mid_scan_is_skipped_not_incomplete(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import shutil
+
+    xctest_root = tmp_path / "XCTestDevices"
+    vanished = "11111111-1111-4111-8111-111111111111"
+    kept = "22222222-2222-4222-8222-222222222222"
+    _write_xctest_device(xctest_root, vanished)
+    _write_xctest_device(xctest_root, kept)
+    real_measure_tree = disk_usage.measure_tree
+
+    def vanish_after_scandir(path: Path, **kwargs: object) -> dict[str, object]:
+        if path.name == vanished:
+            shutil.rmtree(path)
+        return real_measure_tree(path, **kwargs)
+
+    monkeypatch.setattr(disk_usage, "measure_tree", vanish_after_scandir)
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root)
+
+    assert observed["measurement_complete"] is True
+    assert observed["status"] == "measured"
+    assert observed["measurement_errors"] == []
+    assert [device["udid"] for device in observed["devices"]] == [kept]
+
+
 def test_xctest_devices_budget_uses_unique_physical_extents(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
