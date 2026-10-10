@@ -785,3 +785,97 @@ class TestHealthResponse:
         )
 
         assert resp.lastModified is None
+
+
+# ===========================================================================
+# #2280 / #2542: bounded + finite + not-in-the-far-future config inputs
+# ===========================================================================
+import time  # noqa: E402
+
+from pydantic import ValidationError  # noqa: E402
+
+_CUSTOM_FIELDS = (
+    "custom_initial_interval_hours",
+    "custom_remembered_multiplier",
+    "custom_forgot_multiplier",
+    "custom_minimum_interval_hours",
+    "custom_maximum_interval_hours",
+)
+
+
+class TestUserConfigRequestBounds:
+    @pytest.mark.parametrize("field", _CUSTOM_FIELDS)
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_review_mode_custom_rejects_non_finite(self, field, bad):
+        with pytest.raises(ValidationError):
+            UserConfigRequest.model_validate({"review_mode": {field: bad, "updated_at": 1.0}})
+
+    @pytest.mark.parametrize("bad", ["", "a b", "x" * 65, "nb/1"])
+    def test_active_notebook_id_rejects_bad_format(self, bad):
+        with pytest.raises(ValidationError):
+            UserConfigRequest.model_validate({"vocab_ui": {"active_notebook_id": bad}})
+
+    @pytest.mark.parametrize("good", ["default", "nb-42", "a" * 64, "Ab_9"])
+    def test_active_notebook_id_accepts_valid(self, good):
+        req = UserConfigRequest.model_validate({"vocab_ui": {"active_notebook_id": good}})
+        assert req.vocab_ui.active_notebook_id == good
+
+    @pytest.mark.parametrize("bad", ["x" * 65, "not-a-date", "2026-13-45"])
+    def test_paused_at_rejects_bad_value(self, bad):
+        with pytest.raises(ValidationError):
+            UserConfigRequest.model_validate({"review_clock": {"is_paused": True, "paused_at": bad}})
+
+    def test_paused_at_accepts_iso_and_null(self):
+        ok = UserConfigRequest.model_validate(
+            {"review_clock": {"is_paused": True, "paused_at": "2026-06-06T10:00:00Z"}}
+        )
+        assert ok.review_clock.paused_at == "2026-06-06T10:00:00Z"
+        none = UserConfigRequest.model_validate({"review_clock": {"is_paused": True, "paused_at": None}})
+        assert none.review_clock.paused_at is None
+
+    @pytest.mark.parametrize(
+        "group",
+        [
+            {"translation": {"source_lang": "en", "target_lang": "ja"}},
+            {"review_clock": {"is_paused": False}},
+            {"review_mode": {"mode": "relaxed"}},
+            {"vocab_ui": {"active_notebook_id": "default"}},
+            {"auto_link": {"enabled": True}},
+        ],
+    )
+    def test_updated_at_far_future_rejected_but_skew_allowance_ok(self, group):
+        ((name, body),) = group.items()
+        with pytest.raises(ValidationError):
+            UserConfigRequest.model_validate({name: {**body, "updated_at": time.time() + 3 * 86400}})
+        ok = UserConfigRequest.model_validate({name: {**body, "updated_at": time.time() + 3600}})
+        assert getattr(ok, name).updated_at is not None
+
+
+class TestLegacyNonFiniteConfigResponse:
+    def test_non_finite_legacy_custom_values_fall_back_to_defaults(self):
+        config = {
+            "review_mode": {
+                "mode": "custom",
+                "custom_initial_interval_hours": float("nan"),
+                "custom_remembered_multiplier": float("inf"),
+                "custom_forgot_multiplier": 0.5,
+                "custom_minimum_interval_hours": float("-inf"),
+                "custom_maximum_interval_hours": "garbage",
+                "updated_at": 5.0,
+            }
+        }
+        rm = _build_user_config_response(config).review_mode
+        assert rm.custom_initial_interval_hours == 12
+        assert rm.custom_remembered_multiplier == 1.9
+        assert rm.custom_forgot_multiplier == 0.5
+        assert rm.custom_minimum_interval_hours == 6
+        assert rm.custom_maximum_interval_hours == 1440
+
+    def test_legacy_oversized_strings_do_not_break_response(self):
+        config = {
+            "review_clock": {"is_paused": True, "paused_at": "x" * 5000},
+            "vocab_ui": {"active_notebook_id": "y" * 5000},
+        }
+        resp = _build_user_config_response(config)
+        assert resp.review_clock.paused_at is None
+        assert resp.vocab_ui.active_notebook_id == "default"

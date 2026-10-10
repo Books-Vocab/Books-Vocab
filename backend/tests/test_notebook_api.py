@@ -927,3 +927,33 @@ def test_delete_idempotent(isolated_api):
     assert r2.status_code == 200, r2.text
     assert r2.json()["deleted"] == nb_id
     assert r2.json()["cardsDeleted"] == 0
+
+
+def test_patch_notebook_settings_rejects_far_future_updated_at_then_accepts_current(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Skew"}, headers=h).json()["id"]
+    url = f"/api/notebooks/{nb_id}/settings"
+
+    rejected = client.patch(
+        url,
+        json={"reviewPolicy": {"value": _review_policy(), "updatedAt": 4e9}},
+        headers=h,
+    )
+    assert rejected.status_code == 422, rejected.text
+
+    now = time.time()
+    accepted = client.patch(
+        url,
+        json={"reviewPolicy": {"value": _review_policy(), "updatedAt": now}},
+        headers=h,
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["settings"]["reviewPolicy"]["updatedAt"] == now
+
+    within = client.patch(
+        url,
+        json={"cardLayout": {"value": _card_layout(), "updatedAt": now + 3600}},
+        headers=h,
+    )
+    assert within.status_code == 200, within.text

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import Final, Literal
 
 from pydantic import BaseModel, Field, FiniteFloat, field_validator, model_validator
@@ -17,6 +18,16 @@ _REVIEW_POLICY_NUMERIC_FIELDS = (
     "customMinimumIntervalHours",
     "customMaximumIntervalHours",
 )
+
+
+MAX_FUTURE_SKEW_SECONDS: Final = 24 * 3600  # LWW updatedAt 允許的時鐘偏移上限
+
+
+def reject_far_future_timestamp(value: float | None) -> float | None:
+    """LWW 時戳不得超過 server now + 24h,否則單一偏移裝置會永久釘住該紀錄。"""
+    if value is not None and value > time.time() + MAX_FUTURE_SKEW_SECONDS:
+        raise PydanticCustomError("timestamp_too_far_future", "updatedAt is too far in the future")
+    return value
 
 
 def _is_non_finite_timestamp(value) -> bool:
@@ -82,6 +93,11 @@ class NotebookSettingsPatchGroup[ValueT](BaseModel):
         if value == _NON_FINITE_TIMESTAMP_MARKER or _is_non_finite_timestamp(value):
             raise PydanticCustomError("finite_number", "Input should be a finite number")
         return value
+
+    @field_validator("updatedAt")
+    @classmethod
+    def reject_far_future_updated_at(cls, value: float) -> float:
+        return reject_far_future_timestamp(value)
 
 
 class NotebookSettingsResponse(BaseModel):
@@ -173,5 +189,5 @@ class VocabUIConfig(BaseModel):
     `Book.resolvedNotebookId` fallback 與 chrome 預設本。
     """
 
-    active_notebook_id: str = "default"
+    active_notebook_id: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]{1,64}$")
     updated_at: float | None = None  # LWW timestamp, epoch 秒

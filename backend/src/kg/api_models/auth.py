@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from kg.api_models.graph import AutoLinkConfig
-from kg.api_models.notebook import VocabUIConfig
+from kg.api_models.notebook import VocabUIConfig, reject_far_future_timestamp
 from kg.api_models.review import ReviewClockConfig, ReviewModeConfig
 from kg.api_models.translate import TranslationLanguageConfig
 
@@ -76,6 +76,13 @@ class UserConfigRequest(BaseModel):
     def reject_non_finite_updated_at(cls, value):
         if isinstance(value, dict) and value.get("updated_at") == _NON_FINITE_UPDATED_AT_MARKER:
             raise PydanticCustomError("finite_number", "Input should be a finite number")
+        return value
+
+    @field_validator(*_USER_CONFIG_GROUPS)
+    @classmethod
+    def reject_far_future_updated_at(cls, value):
+        if value is not None:
+            reject_far_future_timestamp(value.updated_at)
         return value
 
 
