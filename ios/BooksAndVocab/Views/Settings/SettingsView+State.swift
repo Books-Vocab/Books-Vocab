@@ -191,9 +191,12 @@ extension SettingsView {
             dismissSyncStatus: coordinator.dismissSyncStatus,
             toggleAutoSync: { autoSyncSettingsStore.setEnabled($0) },
             exportVocabularyCSV: {
-                if let url = VocabularyExporter.exportAsCSV(entries: allEntries) {
+                switch VocabularyExporter.export(entries: allEntries, format: .csv) {
+                case .success(let url):
                     exportURL = url
-                } else {
+                case .failure(.empty):
+                    toastCoordinator.error(NotebookListCopy.exportEmpty)
+                case .failure(.writeFailed):
                     toastCoordinator.error("匯出失敗".localized)
                 }
             },

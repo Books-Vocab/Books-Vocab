@@ -8,6 +8,17 @@
 
 import Foundation
 
+enum VocabularyExportFormat: CaseIterable {
+    case csv, json, anki
+}
+
+enum VocabularyExportError: Error, Equatable {
+    /// 沒有可匯出的單字：不產生零列檔案。
+    case empty
+    /// 暫存檔寫入失敗。
+    case writeFailed
+}
+
 enum VocabularyExporter {
 
     // MARK: - Public API
@@ -71,9 +82,20 @@ enum VocabularyExporter {
         return saveToTemp(content: tsv, filename: "vocabulary_anki.tsv")
     }
 
-    /// 匯出前的守門判斷：空單字本不產生零列檔案（UI 據此顯示錯誤 toast 而非分享空檔）。
-    static func hasExportableEntries(_ entries: [VocabularyEntry]) -> Bool {
-        !entries.isEmpty
+    /// 唯一的 UI 匯出入口。空清單在此短路（不產生零列檔案），呼叫端只負責把結果映射為 UI。
+    static func export(
+        entries: [VocabularyEntry],
+        format: VocabularyExportFormat
+    ) -> Result<URL, VocabularyExportError> {
+        guard !entries.isEmpty else { return .failure(.empty) }
+        let url: URL?
+        switch format {
+        case .csv: url = exportAsCSV(entries: entries)
+        case .json: url = exportAsJSON(entries: entries)
+        case .anki: url = exportAsAnki(entries: entries)
+        }
+        guard let url else { return .failure(.writeFailed) }
+        return .success(url)
     }
 
     // MARK: - Internal Helpers

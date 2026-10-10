@@ -521,22 +521,18 @@ struct NotebookListContent: View {
 
     private func exportNotebook(_ notebook: Notebook, format: NotebookExportFormat) {
         let entries = allEntries.filter { $0.notebookId == notebook.remoteId }
-        guard VocabularyExporter.hasExportableEntries(entries) else {
-            toastCoordinator.error(L10n.string("單字本沒有可匯出的單字"))
-            return
-        }
-        let url: URL?
+        let exporterFormat: VocabularyExportFormat
         switch format {
-        case .csv:
-            url = VocabularyExporter.exportAsCSV(entries: entries)
-        case .json:
-            url = VocabularyExporter.exportAsJSON(entries: entries)
-        case .anki:
-            url = VocabularyExporter.exportAsAnki(entries: entries)
+        case .csv: exporterFormat = .csv
+        case .json: exporterFormat = .json
+        case .anki: exporterFormat = .anki
         }
-        if let url {
+        switch VocabularyExporter.export(entries: entries, format: exporterFormat) {
+        case .success(let url):
             coordinator.exportURL = url
-        } else {
+        case .failure(.empty):
+            toastCoordinator.error(NotebookListCopy.exportEmpty)
+        case .failure(.writeFailed):
             toastCoordinator.error(NotebookListCopy.exportFailure)
         }
     }

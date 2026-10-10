@@ -145,11 +145,20 @@ struct VocabularyExporterPOSTests {
         #expect(!tsv.contains("x<y"))
     }
 
-    @Test func test_has_exportable_entries_false_for_empty_notebook() {
-        #expect(!VocabularyExporter.hasExportableEntries([]))
+    @Test func test_export_empty_notebook_returns_empty_error_for_every_format() {
+        // 守門在 exporter 內：刪掉 guard 會變成 .success，此測試即紅。
+        for format in VocabularyExportFormat.allCases {
+            #expect(VocabularyExporter.export(entries: [], format: format) == .failure(.empty))
+        }
     }
 
-    @Test func test_has_exportable_entries_true_for_non_empty_notebook() {
-        #expect(VocabularyExporter.hasExportableEntries([makeEntry()]))
+    @Test func test_export_non_empty_notebook_writes_file_for_every_format() throws {
+        for format in VocabularyExportFormat.allCases {
+            let url = try VocabularyExporter.export(entries: [makeEntry()], format: format).get()
+            defer { try? FileManager.default.removeItem(at: url) }
+            #expect(FileManager.default.fileExists(atPath: url.path))
+            let text = try String(contentsOf: url, encoding: .utf8)
+            #expect(text.contains("invoke"))
+        }
     }
 }
