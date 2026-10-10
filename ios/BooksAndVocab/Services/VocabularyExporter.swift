@@ -71,6 +71,11 @@ enum VocabularyExporter {
         return saveToTemp(content: tsv, filename: "vocabulary_anki.tsv")
     }
 
+    /// 匯出前的守門判斷：空單字本不產生零列檔案（UI 據此顯示錯誤 toast 而非分享空檔）。
+    static func hasExportableEntries(_ entries: [VocabularyEntry]) -> Bool {
+        !entries.isEmpty
+    }
+
     // MARK: - Internal Helpers
 
     private static func saveToTemp(content: String, filename: String) -> URL? {

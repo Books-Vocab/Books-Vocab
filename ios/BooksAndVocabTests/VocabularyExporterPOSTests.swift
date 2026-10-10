@@ -130,6 +130,8 @@ struct VocabularyExporterPOSTests {
             word: "a<b",
             translation: "x & y > z",
             context: "a<b & c>",
+            explanation: "x<y & z",
+            partOfSpeech: "a<b",
             bookTitle: "B"
         )
         let tsv = try read(VocabularyExporter.exportAsAnki(entries: [entry]))
@@ -137,5 +139,17 @@ struct VocabularyExporterPOSTests {
         #expect(tsv.contains("a&lt;b<br><small>"))
         #expect(tsv.contains("x &amp; y &gt; z"))
         #expect(!tsv.contains("a<b & c>"))
+        // POS and explanation are HTML fields too: escaped, never raw.
+        #expect(tsv.contains("(a&lt;b) x &amp; y &gt; z<br>x&lt;y &amp; z"))
+        #expect(!tsv.contains("(a<b)"))
+        #expect(!tsv.contains("x<y"))
+    }
+
+    @Test func test_has_exportable_entries_false_for_empty_notebook() {
+        #expect(!VocabularyExporter.hasExportableEntries([]))
+    }
+
+    @Test func test_has_exportable_entries_true_for_non_empty_notebook() {
+        #expect(VocabularyExporter.hasExportableEntries([makeEntry()]))
     }
 }
