@@ -147,6 +147,70 @@ struct BookshelfImportCancellationTests {
     }
 
     @Test
+    func supersededBatch_importsItsUnstartedFilesInTheSupersedingBatch() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let coordinator = BookshelfCoordinator()
+        let service = ControlledImportService()
+        let toast = AppToastCoordinator()
+        let batch = ["a", "b", "c"].map { URL(fileURLWithPath: "/tmp/\($0).txt") }
+        let newer = URL(fileURLWithPath: "/tmp/d.txt")
+
+        coordinator.handleFileImport(
+            .success(batch),
+            modelContext: context,
+            importService: service,
+            toastCoordinator: toast
+        )
+        #expect(await service.waitUntilStarted("a.txt"))
+
+        // Superseded mid-file: "a" is in flight and discarded; "b" and "c" never started.
+        coordinator.handleFileImport(
+            .success([newer]),
+            modelContext: context,
+            importService: service,
+            toastCoordinator: toast
+        )
+        #expect(await service.waitUntilStarted("b.txt"))
+        service.complete("b.txt", with: .success(makeDraft("b")))
+        #expect(await service.waitUntilStarted("c.txt"))
+        service.complete("c.txt", with: .success(makeDraft("c")))
+        #expect(await service.waitUntilStarted("d.txt"))
+        service.complete("d.txt", with: .success(makeDraft("d")))
+        service.complete("a.txt", with: .success(makeDraft("a")))
+        await waitForQuiescence(coordinator, service: service)
+
+        let titles = try context.fetch(FetchDescriptor<Book>()).map(\.title).sorted()
+        #expect(titles == ["b", "c", "d"])
+        #expect(coordinator.errorMessage == nil)
+        #expect(coordinator.isLoading == false)
+    }
+
+    @Test
+    func presentImporter_isIgnoredWhileBatchIsInFlight() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let coordinator = BookshelfCoordinator()
+        let service = ControlledImportService()
+        let toast = AppToastCoordinator()
+        let url = URL(fileURLWithPath: "/tmp/busy.txt")
+
+        coordinator.handleFileImport(
+            .success([url]),
+            modelContext: context,
+            importService: service,
+            toastCoordinator: toast
+        )
+        #expect(await service.waitUntilStarted(url.lastPathComponent))
+
+        coordinator.presentImporter()
+        #expect(coordinator.isImporting == false)
+
+        service.complete(url.lastPathComponent, with: .success(makeDraft("busy")))
+        await waitForQuiescence(coordinator, service: service)
+    }
+
+    @Test
     func cancellationError_isSilentAndDoesNotBecomeImportFailure() async throws {
         let container = try makeContainer()
         let context = container.mainContext
