@@ -82,9 +82,26 @@ def resolve_remove_target(
     rc, _ = git(["check-ref-format", "--branch", branch], root)
     if rc != 0:
         return None, worktree, f"invalid local branch name: {branch}"
+    if worktree is None:
+        worktree = _worktree_for_branch(branch, root=root, git=git)
     if worktree == root:
         return None, worktree, "canonical repository worktree cannot be removed"
     return branch, worktree, None
+
+
+def _worktree_for_branch(branch: str, *, root: Path, git: Git) -> Path | None:
+    """Return the linked worktree that has `branch` checked out, if any."""
+
+    rc, output = git(["worktree", "list", "--porcelain"], root)
+    if rc != 0:
+        return None
+    worktree: Path | None = None
+    for line in output.splitlines():
+        if line.startswith("worktree "):
+            worktree = Path(line[len("worktree ") :])
+        elif line == f"branch refs/heads/{branch}":
+            return worktree
+    return None
 
 
 def preflight_resolve_remove(
