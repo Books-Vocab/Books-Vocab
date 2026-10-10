@@ -10,6 +10,7 @@ trip SQLModel's metadata registry with ``InvalidRequestError``.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -60,13 +61,31 @@ class LibraryBook(SQLModel, table=True):
     asset_sha256: str | None = SQLField(default=None)
 
 
+class LibraryPendingObjectDelete(SQLModel, table=True):
+    """Object key no longer referenced by a book row (tombstoned or superseded).
+
+    Recorded in the same transaction that drops the reference. The request path
+    then deletes the object best-effort and clears the entry on success; keys
+    whose delete failed stay here to be retried on the next library write and
+    to be reclaimed by account erasure.
+    """
+
+    object_key: str = SQLField(primary_key=True)
+    book_id: str = SQLField(index=True)
+    recorded_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
 class LibraryStore:
     """SQLite-based library storage."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self.engine = make_sqlite_engine(path)
-        LibraryBook.metadata.create_all(self.engine, tables=[LibraryBook.__table__], checkfirst=True)
+        LibraryBook.metadata.create_all(
+            self.engine,
+            tables=[LibraryBook.__table__, LibraryPendingObjectDelete.__table__],
+            checkfirst=True,
+        )
 
     def close(self) -> None:
         """Dispose the SQLAlchemy engine and release connections.
@@ -212,6 +231,7 @@ class LibraryStore:
         still returns it), or ``None`` if the id is unknown.
         """
         with Session(self.engine) as session:
+            _lock_book(session, book_id)
             book = session.get(LibraryBook, book_id)
             if book is None:
                 return None
@@ -219,9 +239,60 @@ class LibraryStore:
                 book.is_deleted = True
                 book.updated_at = datetime.now(UTC)
                 session.add(book)
-                session.commit()
-                session.refresh(book)
+                if book.asset_storage == "object" and book.asset_object_key:
+                    _record_pending_delete(session, book.id, book.asset_object_key)
+            session.commit()
+            session.refresh(book)
             return book
+
+    def pending_object_keys(self) -> list[str]:
+        """Object keys recorded for reclamation, in key order."""
+        with Session(self.engine) as session:
+            return list(
+                session.exec(
+                    select(LibraryPendingObjectDelete.object_key).order_by(LibraryPendingObjectDelete.object_key)
+                ).all()
+            )
+
+    def reclaim_pending_object(self, object_key: str, delete: Callable[[str], None]) -> bool:
+        """Delete ``object_key`` via ``delete`` unless a live book references it.
+
+        Keys are deterministic per (user, book, format), so a key recorded as
+        superseded can be re-adopted (epub -> local -> epub). The re-check and the
+        delete therefore run inside one write transaction: the first statement
+        takes SQLite's write lock, so a concurrent ``set_asset`` waits until the
+        entry is resolved. Returns True if the object was deleted; False if the
+        entry was absent or stale (a live reference exists, so it is only dropped
+        from the ledger). If ``delete`` raises, nothing changes and the entry
+        stays pending.
+
+        Accepted gap: a presigned PUT that lands after this delete (client slow
+        to upload) leaves an object no row references and no ledger entry tracks.
+        Closing it needs a bucket lifecycle rule, which is production config and
+        out of scope here.
+        """
+        with Session(self.engine) as session:
+            pending = session.get(LibraryPendingObjectDelete, object_key)
+            if pending is None:
+                return False
+            # Touching the row acquires the write lock before the re-check.
+            pending.recorded_at = datetime.now(UTC)
+            session.add(pending)
+            session.flush()
+            live = session.exec(
+                select(LibraryBook.id).where(
+                    LibraryBook.asset_storage == "object",
+                    LibraryBook.asset_object_key == object_key,
+                    LibraryBook.is_deleted == False,  # noqa: E712
+                )
+            ).first()
+            deleted = False
+            if live is None:
+                delete(object_key)
+                deleted = True
+            session.delete(pending)
+            session.commit()
+            return deleted
 
     def set_asset(
         self,
@@ -234,12 +305,25 @@ class LibraryStore:
     ) -> LibraryBook | None:
         """Record where a book's raw asset lives (local-only or object key).
 
+        A previous object key that the row stops referencing is recorded in the
+        pending-delete ledger in the same transaction; a key the row starts
+        referencing is removed from it.
+
         Returns the updated book, or ``None`` if the id is unknown.
         """
         with Session(self.engine) as session:
+            # Take the write lock before reading the previous key: two racing
+            # changes (A->B, A->C) must serialize, otherwise both read A and B
+            # is never recorded for reclamation.
+            _lock_book(session, book_id)
             book = session.get(LibraryBook, book_id)
             if book is None:
                 return None
+            previous_key = book.asset_object_key if book.asset_storage == "object" else None
+            if previous_key and previous_key != object_key:
+                _record_pending_delete(session, book.id, previous_key)
+            if object_key:
+                _forget_pending_delete(session, object_key)
             book.asset_storage = storage
             book.asset_object_key = object_key
             book.asset_byte_size = byte_size
@@ -251,4 +335,20 @@ class LibraryStore:
             return book
 
 
-__all__ = ["LibraryBook", "LibraryStore"]
+def _lock_book(session: Session, book_id: str) -> None:
+    """No-op write that acquires SQLite's write lock before a read-modify-write."""
+    session.exec(update(LibraryBook).where(LibraryBook.id == book_id).values(id=book_id))
+
+
+def _record_pending_delete(session: Session, book_id: str, object_key: str) -> None:
+    if session.get(LibraryPendingObjectDelete, object_key) is None:
+        session.add(LibraryPendingObjectDelete(object_key=object_key, book_id=book_id))
+
+
+def _forget_pending_delete(session: Session, object_key: str) -> None:
+    pending = session.get(LibraryPendingObjectDelete, object_key)
+    if pending is not None:
+        session.delete(pending)
+
+
+__all__ = ["LibraryBook", "LibraryPendingObjectDelete", "LibraryStore"]

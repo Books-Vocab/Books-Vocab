@@ -28,6 +28,8 @@ from ..users_lock import users_file_lock
 _ASSET_URL_TTL = 3600
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["library"])
 
 
@@ -101,13 +103,13 @@ def delete_book(book_id: str, user: CurrentUser, request: Request):
     """Soft-delete a library book (set ``is_deleted``).
 
     Idempotent: a second delete of an already-deleted book still returns 200.
-    Unknown ids raise 404.
+    Unknown ids raise 404. The stored asset object is deleted best-effort after
+    the tombstone commits; a failed delete is logged and retried later.
     """
     store = _library_store(user["dir"])
-    result = store.soft_delete(book_id)
-    if result is None:
+    if store.soft_delete(book_id) is None:
         raise NotFoundError("Book", book_id)
-    _delete_asset_object(_settings(request), result.asset_object_key)
+    _reclaim_pending_objects(store, _settings(request))
     return DeleteBookResponse(deleted=book_id)
 
 
@@ -120,29 +122,68 @@ def _settings(request: Request) -> KGSettings:
     return request.app.state.kg_settings
 
 
-def _library_s3_client(settings: KGSettings):
+def _library_s3_client(settings: KGSettings, *, fast: bool = False):
     import boto3
     from botocore.config import Config
 
     # botocore defaults (60s connect + 60s read, legacy retries) let one slow
     # object store stall a request for minutes; account deletion issues one
-    # delete per book.
+    # delete per book. ``fast`` is for best-effort work on the request path:
+    # short timeouts and no retries (failures stay in the ledger anyway).
+    # SigV4 is required: SigV2 query auth does not sign Content-Length, so the
+    # presigned PUT could not pin the declared byte_size (#2525). Regional
+    # virtual-hosted addressing avoids the global host's 307 for non-us-east-1
+    # buckets; custom endpoints (MinIO, localstack) keep botocore's default.
+    common = {
+        "signature_version": "s3v4",
+        "s3": {"addressing_style": "virtual"} if settings.library_bucket_endpoint_url is None else None,
+    }
+    if fast:
+        config = Config(connect_timeout=2, read_timeout=2, retries={"total_max_attempts": 1}, **common)
+    else:
+        config = Config(
+            connect_timeout=5, read_timeout=10, retries={"total_max_attempts": 3, "mode": "standard"}, **common
+        )
     return boto3.client(
         "s3",
         region_name=settings.library_bucket_region,
         endpoint_url=settings.library_bucket_endpoint_url,
-        config=Config(
-            # SigV4 is required: SigV2 query auth does not sign Content-Length, so the
-            # presigned PUT could not pin the declared byte_size (#2525).
-            signature_version="s3v4",
-            # Regional virtual-hosted URL: the global host 307-redirects non-us-east-1 buckets.
-            # Custom endpoints (MinIO, localstack) keep botocore's default addressing.
-            s3={"addressing_style": "virtual"} if settings.library_bucket_endpoint_url is None else None,
-            connect_timeout=5,
-            read_timeout=10,
-            retries={"total_max_attempts": 3, "mode": "standard"},
-        ),
+        config=config,
     )
+
+
+# Upper bound of ledger keys attempted per request, so an object-store outage
+# costs a request at most N short timeouts instead of the whole backlog.
+_RECLAIM_BATCH = 5
+
+
+def _reclaim_pending_objects(store, settings: KGSettings) -> None:
+    """Best-effort delete of objects the library no longer references.
+
+    Runs after the DB commit; nothing here (including client creation) fails the
+    request. At most ``_RECLAIM_BATCH`` keys are tried per call; failed keys stay
+    in the pending ledger and are retried on a later call. Each key is re-checked
+    against live references under the store's write lock before deletion.
+    """
+    if not settings.library_bucket:
+        return
+    try:
+        keys = store.pending_object_keys()[:_RECLAIM_BATCH]
+        if not keys:
+            return
+        client = _library_s3_client(settings, fast=True)
+    except Exception:
+        logger.warning("library object reclaim skipped", exc_info=True)
+        return
+
+    def _delete(key: str) -> None:
+        client.delete_object(Bucket=settings.library_bucket, Key=key)
+
+    for key in keys:
+        try:
+            store.reclaim_pending_object(key, _delete)
+        except Exception:
+            logger.warning("library object delete failed; will retry (key=%s)", key, exc_info=True)
 
 
 def _object_missing(exc: Exception) -> bool:
@@ -155,20 +196,6 @@ def _object_missing(exc: Exception) -> bool:
 def _asset_object_key(user_id: str, book_id: str, fmt: str) -> str:
     safe_fmt = "".join(c for c in fmt.lower() if c.isalnum()) or "bin"
     return f"library/{user_id}/{book_id}/asset.{safe_fmt}"
-
-
-def _delete_asset_object(settings: KGSettings, object_key: str | None) -> None:
-    """Best-effort removal of a superseded or tombstoned asset object.
-
-    The key stays recorded on the book row for deleted books, so account
-    erasure remains the retry path when this fails.
-    """
-    if not object_key or not settings.library_bucket:
-        return
-    try:
-        _library_s3_client(settings).delete_object(Bucket=settings.library_bucket, Key=object_key)
-    except Exception:
-        logger.warning("library asset object cleanup failed", exc_info=True)
 
 
 @contextmanager
@@ -201,6 +228,10 @@ def request_asset_upload(
     client declares ``local_only``, the asset stays client-side and no upload
     URL is minted. Otherwise a presigned PUT URL is returned and the resulting
     object key is recorded on the book row for later download.
+
+    A previous object key that this call stops referencing (format change or
+    local-only) is deleted best-effort after the row is updated; a failed delete
+    is logged and retried later.
     """
     settings = _settings(request)
     store = _library_store(user["dir"])
@@ -224,7 +255,7 @@ def request_asset_upload(
                 byte_size=req.byte_size,
                 sha256=req.sha256,
             )
-        _delete_asset_object(settings, book.asset_object_key)
+        _reclaim_pending_objects(store, settings)
         return AssetUploadResponse(book_id=book_id, storage="local")
 
     object_key = _asset_object_key(user["id"], book_id, req.format)
@@ -242,11 +273,7 @@ def request_asset_upload(
             byte_size=req.byte_size,
             sha256=req.sha256,
         )
-    # Trade-off: a format switch drops the superseded object now (not after the
-    # new upload is confirmed) so no orphan outlives a never-completed upload;
-    # the row already pointed at the new key, so downloads 409 until bytes land.
-    if book.asset_object_key != object_key:
-        _delete_asset_object(settings, book.asset_object_key)
+    _reclaim_pending_objects(store, settings)
     return AssetUploadResponse(
         book_id=book_id,
         storage="object",
