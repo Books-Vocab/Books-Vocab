@@ -102,6 +102,28 @@ struct LocalBookFileManagerDeletionTests {
         #expect(exists(a.appendingPathComponent("uuid2_notes.epub")))
     }
 
+    // MARK: - iCloud 已驅逐的 placeholder（#2723）
+
+    @Test func deletingEvictedBookRemovesItsIcloudPlaceholdersAndReconcilerDoesNotResurrect() throws {
+        let root = try makeRoot()
+        defer { cleanUp(root) }
+        let a = try makeDir("a", in: root)
+        let originals = try makeDir("Originals", in: a)
+        let placeholder = a.appendingPathComponent(".book-Z.epub.icloud")
+        let txtPlaceholder = originals.appendingPathComponent(".book-Z.txt.icloud")
+        let mdPlaceholder = originals.appendingPathComponent(".book-Z.md.icloud")
+        for url in [placeholder, txtPlaceholder, mdPlaceholder] {
+            try Data("x".utf8).write(to: url)
+        }
+        #expect(BookLibraryReconciler.normalizedBookFileName(from: placeholder) == "book-Z.epub")
+
+        try LocalBookFileManager(locations: [a]).deleteBookFile(named: "book-Z.epub")
+
+        #expect(!exists(placeholder))
+        #expect(!exists(txtPlaceholder))
+        #expect(!exists(mdPlaceholder))
+    }
+
     @Test func emptyFileNameNeverTouchesTheDirectoryItself() throws {
         let root = try makeRoot()
         defer { cleanUp(root) }
