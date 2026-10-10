@@ -87,7 +87,12 @@ def _lines(*records):
 class TestParseJsonl:
     def test_parses_header_flips_summary(self):
         parsed = parse_jsonl(
-            _lines(_header(), _flip(0, 17.0), _flip(1, 58.2, stalls=1), _summary(2, 58.2, 1))
+            _lines(
+                _header(),
+                _flip(0, 17.0),
+                _flip(1, 58.2, stalls=1),
+                _summary(2, 58.2, 1),
+            )
         )
         assert parsed.header["build_config"] == "debug"
         assert len(parsed.flips) == 2
@@ -107,7 +112,13 @@ class TestParseJsonl:
 class TestEvaluate:
     def test_clean_run_passes(self):
         parsed = parse_jsonl(
-            _lines(_header(), _flip(0, 17.0), _flip(1, 20.0), _flip(2, 16.0), _summary(3, 20.0, 0))
+            _lines(
+                _header(),
+                _flip(0, 17.0),
+                _flip(1, 20.0),
+                _flip(2, 16.0),
+                _summary(3, 20.0, 0),
+            )
         )
         verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=3)
         assert verdict["result"] == "pass"
@@ -161,7 +172,12 @@ class TestEvaluate:
     def test_residual_hitch_magnitude_fails_both_gates(self):
         # 歷史殘餘 hitch 量級（58-72ms / stalls=1）必須 fail —— rig 的存在理由。
         parsed = parse_jsonl(
-            _lines(_header(), _flip(0, 58.2, stalls=1), _flip(1, 71.8, stalls=1), _summary(2, 71.8, 2))
+            _lines(
+                _header(),
+                _flip(0, 58.2, stalls=1),
+                _flip(1, 71.8, stalls=1),
+                _summary(2, 71.8, 2),
+            )
         )
         verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=2)
         assert verdict["result"] == "fail"
@@ -170,7 +186,9 @@ class TestEvaluate:
         assert "stalls_total" in joined
 
     def test_aborted_run_is_invalid_not_fail(self):
-        parsed = parse_jsonl(_lines(_header(), _flip(0, 17.0), _summary(1, 17.0, 0, aborted=True)))
+        parsed = parse_jsonl(
+            _lines(_header(), _flip(0, 17.0), _summary(1, 17.0, 0, aborted=True))
+        )
         verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=1)
         assert verdict["result"] == "invalid"
 
@@ -228,7 +246,14 @@ class TestCli:
         )
 
         result = subprocess.run(
-            [sys.executable, str(script), "--jsonl", str(malformed), "--min-flips", "2"],
+            [
+                sys.executable,
+                str(script),
+                "--jsonl",
+                str(malformed),
+                "--min-flips",
+                "2",
+            ],
             capture_output=True,
             text=True,
         )
@@ -256,7 +281,8 @@ class TestCli:
 
         bad = tmp_path / "bad.jsonl"
         bad.write_text(
-            "\n".join(_lines(_header(), _flip(0, 58.2, stalls=1), _summary(1, 58.2, 1))) + "\n"
+            "\n".join(_lines(_header(), _flip(0, 58.2, stalls=1), _summary(1, 58.2, 1)))
+            + "\n"
         )
         result = subprocess.run(
             [sys.executable, str(script), "--jsonl", str(bad), "--min-flips", "1"],
