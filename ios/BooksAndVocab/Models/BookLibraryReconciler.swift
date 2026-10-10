@@ -12,22 +12,12 @@ struct BookLibraryReconciler {
     let rootDirectory: URL
     let legacyDirectories: [URL]
     let manifestStore: BookManifestStore
-    let pendingDeletions: PendingBookDeletionStore
-    let isICloudAvailable: () -> Bool
 
     init(
         rootDirectory: URL = Book.booksDirectory,
         legacyDirectories: [URL]? = nil,
-        manifestStore: BookManifestStore? = nil,
-        pendingDeletions: PendingBookDeletionStore = .standard,
-        isICloudAvailable: (() -> Bool)? = nil
+        manifestStore: BookManifestStore? = nil
     ) {
-        self.pendingDeletions = pendingDeletions
-        // 預設以「此 reconciler 實際使用的 root 就是 iCloud 目錄」判定：root 在 init 固定為本機目錄時，
-        // iCloud 之後才可用也不算可用（否則只刪本機副本卻清掉 tombstone，iCloud 副本殘留），下次啟動 root 解析到 iCloud 才補刪。
-        self.isICloudAvailable = isICloudAvailable ?? {
-            Book.iCloudBooksDirectory?.standardizedFileURL == rootDirectory.standardizedFileURL
-        }
         self.rootDirectory = rootDirectory
         self.legacyDirectories = legacyDirectories ?? Self.defaultLegacyDirectories()
         self.manifestStore = manifestStore ?? BookManifestStore(rootDirectory: rootDirectory)
@@ -38,11 +28,6 @@ struct BookLibraryReconciler {
         context: ModelContext,
         allowBareFileRecovery: Bool = false
     ) throws -> BookLibraryReconcileResult {
-        // 本機與 legacy 目錄也可能留有 iCloud 關閉時匯入被殺的 .tmp（#2724）。
-        for dir in Set([rootDirectory, Book.localBooksDirectory] + legacyDirectories) {
-            Self.sweepStaleImportTemps(in: dir)
-        }
-        completePendingDeletions()
         let filesByName = scanBookFiles()
         let manifests = manifestStore.readAll()
         let manifestsByFileName = Self.manifestsByFileName(manifests)
@@ -108,28 +93,6 @@ struct BookLibraryReconciler {
         #endif
 
         return result
-    }
-
-    /// 完成「iCloud 不可用時刪除」遺留的 tombstone（#2750）：iCloud 可用後才刪得到它的檔案與 manifest，
-    /// 必須在掃描前做，否則下面的恢復流程會把書救回來。iCloud 仍不可用時原樣保留。
-    /// 任一位置刪除失敗則保留 tombstone，下次 reconcile 重試。
-    private func completePendingDeletions() {
-        let pending = pendingDeletions.fileNames
-        guard !pending.isEmpty, isICloudAvailable() else { return }
-        let remover = LocalBookFileManager(locations: [rootDirectory] + legacyDirectories)
-        let manifests = manifestStore.readAll()
-        for fileName in pending {
-            do {
-                try remover.deleteBookFile(named: fileName)
-            } catch {
-                AppLog.book.warning("pending book deletion failed, will retry (\(fileName, privacy: .public)): \(error.localizedDescription)")
-                continue
-            }
-            for manifest in manifests where manifest.fileName == fileName {
-                manifestStore.delete(bookId: manifest.bookId)
-            }
-            pendingDeletions.remove(fileName)
-        }
     }
 
     @MainActor
@@ -342,34 +305,6 @@ struct BookLibraryReconciler {
             )
         }
         #endif
-    }
-
-    /// `copyFileChunked` 的 `.<uuid>.tmp` 只在 Swift catch 路徑清除；被殺/jetsam/crash 會留下半檔（#2724）。
-    /// 清掉超過 `maxAge` 未動的 UUID 命名 temp：進行中的匯入持續寫入（mtime 更新），不會被誤刪。
-    /// 盡力而為：任何錯誤都忽略。回傳刪除數量。
-    @discardableResult
-    static func sweepStaleImportTemps(
-        in directory: URL,
-        maxAge: TimeInterval = 3600,
-        now: Date = Date()
-    ) -> Int {
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey]
-        ) else { return 0 }
-        var removed = 0
-        for url in contents {
-            let name = url.lastPathComponent
-            guard name.hasPrefix("."), name.hasSuffix(".tmp") else { continue }
-            let stem = String(name.dropFirst().dropLast(".tmp".count))
-            guard UUID(uuidString: stem) != nil,
-                  let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                  now.timeIntervalSince(modified) > maxAge
-            else { continue }
-            if (try? fm.removeItem(at: url)) != nil { removed += 1 }
-        }
-        return removed
     }
 
     private func scanBookFiles() -> [String: URL] {
