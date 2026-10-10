@@ -404,7 +404,10 @@ def test_soft_delete_survives_delete_failure_and_keeps_key_pending(isolated_api,
         resp = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
 
     assert resp.status_code == 200, resp.text
-    assert any(key in rec.getMessage() for rec in caplog.records)
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any("library object delete failed" in m for m in messages)
+    # The key embeds the user and book ids, so it must not reach the logs.
+    assert not any(key in m for m in messages)
     assert _pending_keys(isolated_api) == [key]
 
 
@@ -597,12 +600,13 @@ def test_claimed_key_is_leased_and_cannot_be_readopted_until_finished(isolated_a
         key = "library/u/race-2/asset.epub"
         _superseded_key(store, book_id, key)
 
-        assert store.claim_pending_objects(5) == [key]
+        claims = store.claim_pending_objects(5)
+        assert [c.object_key for c in claims] == [key]
         assert store.claim_pending_objects(5) == []
         with pytest.raises(ConflictError):
             store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
 
-        store.finish_pending_object(key, deleted=True)
+        store.finish_pending_object(claims[0], deleted=True)
         assert store.pending_object_keys() == []
         store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
         assert store.get(book_id).asset_object_key == key
@@ -621,11 +625,11 @@ def test_failed_delete_releases_claim_and_counts_attempt(isolated_api):
         key = "library/u/fail-1/asset.epub"
         _superseded_key(store, book_id, key)
 
-        assert store.claim_pending_objects(5) == [key]
-        store.finish_pending_object(key, deleted=False)
+        (claim,) = store.claim_pending_objects(5)
+        store.finish_pending_object(claim, deleted=False)
 
         assert store.pending_object_keys() == [key]
-        assert store.claim_pending_objects(5) == [key]
+        assert [c.object_key for c in store.claim_pending_objects(5)] == [key]
         with Session(store.engine) as session:
             row = session.get(LibraryPendingObjectDelete, key)
             assert row.attempts == 1
@@ -647,12 +651,108 @@ def test_permanently_failing_keys_do_not_starve_untried_keys(isolated_api):
         untried = sorted(keys)[-1]
 
         first = store.claim_pending_objects(5)
-        assert untried not in first
-        for key in first:
-            store.finish_pending_object(key, deleted=False)
+        assert untried not in [c.object_key for c in first]
+        for claim in first:
+            store.finish_pending_object(claim, deleted=False)
 
         second = store.claim_pending_objects(5)
-        assert second[0] == untried
+        assert second[0].object_key == untried
+    finally:
+        store.close()
+
+
+def test_stale_claim_cannot_touch_a_newer_lease(isolated_api):
+    """A claimer whose lease expired must not clear or delete under a newer claim."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    book_id = _seed_book(isolated_api, client_book_id="stale-1")
+    store = _store(isolated_api)
+    try:
+        key = "library/u/stale-1/asset.epub"
+        _superseded_key(store, book_id, key)
+        (stale,) = store.claim_pending_objects(5)
+
+        with Session(store.engine) as session:
+            row = session.get(LibraryPendingObjectDelete, key)
+            row.claimed_until = datetime.now(UTC) - timedelta(seconds=1)
+            session.add(row)
+            session.commit()
+        (fresh,) = store.claim_pending_objects(5)
+        assert fresh.object_key == key and fresh.token != stale.token
+
+        store.finish_pending_object(stale, deleted=True)
+        store.finish_pending_object(stale, deleted=False)
+        store.release_pending_object(stale)
+
+        assert store.pending_object_keys() == [key]
+        assert store.claim_pending_objects(5) == []
+    finally:
+        store.close()
+
+
+def test_expired_lease_can_be_readopted(isolated_api):
+    """A claim whose holder died must not block re-adoption forever."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    book_id = _seed_book(isolated_api, client_book_id="expired-1")
+    store = _store(isolated_api)
+    try:
+        key = "library/u/expired-1/asset.epub"
+        _superseded_key(store, book_id, key)
+        store.claim_pending_objects(5)
+        with Session(store.engine) as session:
+            row = session.get(LibraryPendingObjectDelete, key)
+            row.claimed_until = datetime.now(UTC) - timedelta(seconds=1)
+            session.add(row)
+            session.commit()
+
+        store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
+        assert store.get(book_id).asset_object_key == key
+        assert store.pending_object_keys() == []
+    finally:
+        store.close()
+
+
+def test_release_returns_claim_without_counting_an_attempt(isolated_api):
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    book_id = _seed_book(isolated_api, client_book_id="release-1")
+    store = _store(isolated_api)
+    try:
+        key = "library/u/release-1/asset.epub"
+        _superseded_key(store, book_id, key)
+        (claim,) = store.claim_pending_objects(5)
+        store.release_pending_object(claim)
+
+        assert [c.object_key for c in store.claim_pending_objects(5)] == [key]
+        with Session(store.engine) as session:
+            assert session.get(LibraryPendingObjectDelete, key).attempts == 0
+    finally:
+        store.close()
+
+
+def test_set_asset_refuses_a_tombstoned_book(isolated_api):
+    book_id = _seed_book(isolated_api, client_book_id="tomb-1")
+    store = _store(isolated_api)
+    try:
+        store.soft_delete(book_id)
+        assert (
+            store.set_asset(
+                book_id, storage="object", object_key="library/u/tomb-1/asset.epub", byte_size=1, sha256=None
+            )
+            is None
+        )
+        assert store.pending_object_keys() == []
     finally:
         store.close()
 

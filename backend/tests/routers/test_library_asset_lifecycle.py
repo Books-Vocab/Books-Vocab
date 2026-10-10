@@ -255,6 +255,35 @@ def test_delete_book_clears_ledger_when_object_is_already_gone(isolated_api, mon
     assert store.pending_object_keys() == []
 
 
+def test_reclaim_stops_at_first_failure_and_releases_the_rest(isolated_api, monkeypatch):
+    """Outage cap: one failed delete ends the batch. The untried keys are released
+    without counting an attempt, so they stay first in line for the next request."""
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    settings = KGSettings(data_dir=isolated_api.data_dir, jwt_secret=TEST_JWT_SECRET, library_bucket="kg-library-test")
+    store = library_router._library_store(isolated_api.data_dir / "users" / isolated_api.user_id)
+    keys = sorted(f"library/{isolated_api.user_id}/outage-{i}/asset.epub" for i in range(3))
+    with Session(store.engine) as session:
+        for key in keys:
+            session.add(LibraryPendingObjectDelete(object_key=key, book_id="outage"))
+        session.commit()
+
+    calls: list[str] = []
+
+    class _Unreachable:
+        def delete_object(self, *, Bucket, Key):
+            calls.append(Key)
+            raise RuntimeError("connect timeout")
+
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings, *, fast=False: _Unreachable())
+    library_router._reclaim_pending_objects(store, settings)
+
+    assert calls == [keys[0]]
+    assert [c.object_key for c in store.claim_pending_objects(5)] == [keys[1], keys[2], keys[0]]
+
+
 def test_reupload_with_new_format_deletes_prior_object(isolated_api, monkeypatch):
     """#2528: replacing the asset must not orphan the previous object key."""
     s3 = _RecordingS3()

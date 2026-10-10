@@ -166,41 +166,50 @@ def _reclaim_pending_objects(store, settings: KGSettings) -> None:
     if not settings.library_bucket:
         return
     try:
-        keys = store.claim_pending_objects(_RECLAIM_BATCH)
+        claims = store.claim_pending_objects(_RECLAIM_BATCH)
     except Exception:
         logger.warning("library object reclaim skipped", exc_info=True)
         return
-    if not keys:
+    if not claims:
         return
     try:
         client = _library_s3_client(settings, fast=True)
     except Exception:
         logger.warning("library object reclaim skipped", exc_info=True)
-        for key in keys:
-            _finish_reclaim(store, key, deleted=False)
+        for claim in claims:
+            _settle_reclaim(store.release_pending_object, claim)
         return
 
-    for key in keys:
-        deleted = False
+    for index, claim in enumerate(claims):
         try:
-            try:
-                client.delete_object(Bucket=settings.library_bucket, Key=key)
-            except Exception as exc:
-                # Already gone is the desired end state, same as account erasure.
-                if not _object_missing(exc):
-                    raise
-            deleted = True
+            _delete_reclaimed(client, settings.library_bucket, claim.object_key)
         except Exception:
-            logger.warning("library object delete failed; will retry (key=%s)", key, exc_info=True)
-        _finish_reclaim(store, key, deleted=deleted)
+            logger.warning("library object delete failed; will retry", exc_info=True)
+            _settle_reclaim(store.finish_pending_object, claim, deleted=False)
+            # One failed call means the object store is unreachable or refusing;
+            # the rest would only add timeouts to this request. Give them back
+            # without counting an attempt.
+            for pending in claims[index + 1 :]:
+                _settle_reclaim(store.release_pending_object, pending)
+            return
+        _settle_reclaim(store.finish_pending_object, claim, deleted=True)
 
 
-def _finish_reclaim(store, key: str, *, deleted: bool) -> None:
+def _delete_reclaimed(client, bucket: str, key: str) -> None:
     try:
-        store.finish_pending_object(key, deleted=deleted)
+        client.delete_object(Bucket=bucket, Key=key)
+    except Exception as exc:
+        # Already gone is the desired end state, same as account erasure.
+        if not _object_missing(exc):
+            raise
+
+
+def _settle_reclaim(action, claim, **outcome) -> None:
+    try:
+        action(claim, **outcome)
     except Exception:
         # The claim lease expires on its own, so the key is retried later.
-        logger.warning("library object reclaim bookkeeping failed (key=%s)", key, exc_info=True)
+        logger.warning("library object reclaim bookkeeping failed", exc_info=True)
 
 
 def _object_missing(exc: Exception) -> bool:
@@ -265,13 +274,15 @@ def request_asset_upload(
     local_only = req.local_only or not settings.library_bucket
     if local_only:
         with _registration_allowed(request, settings, user["id"]):
-            store.set_asset(
+            updated = store.set_asset(
                 book_id,
                 storage="local",
                 object_key=None,
                 byte_size=req.byte_size,
                 sha256=req.sha256,
             )
+        if updated is None:
+            raise NotFoundError("Book", book_id)
         _reclaim_pending_objects(store, settings)
         return AssetUploadResponse(book_id=book_id, storage="local")
 
@@ -283,13 +294,15 @@ def request_asset_upload(
         ExpiresIn=_ASSET_URL_TTL,
     )
     with _registration_allowed(request, settings, user["id"]):
-        store.set_asset(
+        updated = store.set_asset(
             book_id,
             storage="object",
             object_key=object_key,
             byte_size=req.byte_size,
             sha256=req.sha256,
         )
+    if updated is None:
+        raise NotFoundError("Book", book_id)
     _reclaim_pending_objects(store, settings)
     return AssetUploadResponse(
         book_id=book_id,

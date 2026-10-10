@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import NamedTuple
 
 from sqlalchemy import update
 from sqlmodel import Field as SQLField
@@ -32,6 +33,13 @@ from ..vocab_shared import _dt_to_iso
 # 2s connect + 2s read per key, batch of 5), so a slow delete cannot outlive its
 # lease and race a re-adoption of the same key.
 RECLAIM_LEASE = timedelta(seconds=120)
+
+
+class PendingClaim(NamedTuple):
+    """A ledger key claimed for deletion, plus the token proving the claim."""
+
+    object_key: str
+    token: str
 
 
 def _parse_utc_instant(value: str) -> datetime:
@@ -80,8 +88,11 @@ class LibraryPendingObjectDelete(SQLModel, table=True):
     object_key: str = SQLField(primary_key=True)
     book_id: str = SQLField(index=True)
     recorded_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
-    # Lease while an in-flight delete owns the key; None when unclaimed.
+    # Lease while an in-flight delete owns the key; None when unclaimed. The token
+    # identifies the claimer, so a stale claimer whose lease expired cannot clear
+    # a newer claimer's lease when it reports back.
     claimed_until: datetime | None = SQLField(default=None)
+    claim_token: str | None = SQLField(default=None)
     attempts: int = SQLField(default=0)
     last_attempt_at: datetime | None = SQLField(default=None)
 
@@ -265,14 +276,15 @@ class LibraryStore:
                 ).all()
             )
 
-    def claim_pending_objects(self, limit: int) -> list[str]:
+    def claim_pending_objects(self, limit: int) -> list[PendingClaim]:
         """Claim up to ``limit`` ledger keys for deletion, under one write lock.
 
         Keys a live book references are stale and dropped without a claim. Each
-        claimed key gets a ``RECLAIM_LEASE``; the caller deletes them outside the
-        DB lock and then reports each result via :meth:`finish_pending_object`.
-        Keys are rotated by ``last_attempt_at`` (never-tried first, then oldest
-        failure), so a permanently failing key cannot starve the rest.
+        claimed key gets a ``RECLAIM_LEASE`` and a fresh token; the caller deletes
+        outside the DB lock and then reports each result with the same claim via
+        :meth:`finish_pending_object` or :meth:`release_pending_object`. Keys are
+        rotated by ``last_attempt_at`` (never-tried first, then oldest failure), so
+        a permanently failing key cannot starve the rest.
         """
         now = datetime.now(UTC)
         with Session(self.engine) as session:
@@ -281,7 +293,7 @@ class LibraryStore:
                 session.exec(select(LibraryPendingObjectDelete)).all(),
                 key=_claim_order,
             )
-            claimed: list[str] = []
+            claimed: list[PendingClaim] = []
             for row in rows:
                 if len(claimed) == limit:
                     break
@@ -298,29 +310,42 @@ class LibraryStore:
                     session.delete(row)
                     continue
                 row.claimed_until = now + RECLAIM_LEASE
+                row.claim_token = uuid.uuid4().hex
                 session.add(row)
-                claimed.append(row.object_key)
+                claimed.append(PendingClaim(row.object_key, row.claim_token))
             session.commit()
             return claimed
 
-    def finish_pending_object(self, object_key: str, *, deleted: bool) -> None:
-        """Record the outcome of a delete for a key returned by ``claim_pending_objects``.
+    def finish_pending_object(self, claim: PendingClaim, *, deleted: bool) -> None:
+        """Record the outcome of a delete attempt made under ``claim``.
 
         ``deleted=True`` clears the entry. ``False`` releases the claim and counts
         the attempt, so the key stays pending and moves to the back of the queue.
+        A claim whose token no longer matches (lease expired and re-claimed or
+        adopted) is a no-op: it must not touch a newer claimer's state.
         """
         now = datetime.now(UTC)
         with Session(self.engine) as session:
             _begin_write(session)
-            row = session.get(LibraryPendingObjectDelete, object_key)
+            row = _owned_claim(session, claim)
             if row is not None:
                 if deleted:
                     session.delete(row)
                 else:
-                    row.claimed_until = None
                     row.attempts += 1
                     row.last_attempt_at = now
+                    _clear_claim(row)
                     session.add(row)
+            session.commit()
+
+    def release_pending_object(self, claim: PendingClaim) -> None:
+        """Give back a claim without an attempt (nothing was sent to the store)."""
+        with Session(self.engine) as session:
+            _begin_write(session)
+            row = _owned_claim(session, claim)
+            if row is not None:
+                _clear_claim(row)
+                session.add(row)
             session.commit()
 
     def set_asset(
@@ -338,7 +363,7 @@ class LibraryStore:
         pending-delete ledger in the same transaction; a key the row starts
         referencing is removed from it.
 
-        Returns the updated book, or ``None`` if the id is unknown.
+        Returns the updated book, or ``None`` if the id is unknown or deleted.
         """
         with Session(self.engine) as session:
             # Take the write lock before reading the previous key: two racing
@@ -346,7 +371,8 @@ class LibraryStore:
             # is never recorded for reclamation.
             _lock_book(session, book_id)
             book = session.get(LibraryBook, book_id)
-            if book is None:
+            # A tombstone takes no new asset: its key would never be reclaimed.
+            if book is None or book.is_deleted:
                 return None
             previous_key = book.asset_object_key if book.asset_storage == "object" else None
             if previous_key and previous_key != object_key:
@@ -391,6 +417,18 @@ def _adopt_object_key(session: Session, object_key: str) -> None:
     if pending.claimed_until is not None and _utc(pending.claimed_until) > datetime.now(UTC):
         raise ConflictError("Library object is being reclaimed; retry the request")
     session.delete(pending)
+
+
+def _owned_claim(session: Session, claim: PendingClaim) -> LibraryPendingObjectDelete | None:
+    row = session.get(LibraryPendingObjectDelete, claim.object_key)
+    if row is None or row.claim_token != claim.token:
+        return None
+    return row
+
+
+def _clear_claim(row: LibraryPendingObjectDelete) -> None:
+    row.claimed_until = None
+    row.claim_token = None
 
 
 def _utc(value: datetime) -> datetime:
