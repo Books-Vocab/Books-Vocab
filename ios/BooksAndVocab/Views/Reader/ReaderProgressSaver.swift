@@ -7,7 +7,8 @@ import ReadiumShared
 /// 背景：`ReaderView.handleLocationChange` 每次翻頁都更新 `Book` 的
 /// `lastReadLocatorJSON` / `dateLastRead` / `progression`，但**從不** `save()`，
 /// 仰賴 SwiftData 非確定性 autosave。crash / OOM 被殺前未 flush 則最後位置遺失，
-/// 且與 PDF 路徑（`PDFReaderView` 每次 `pageDidChange` 顯式 `safeSave()`）行為不一致。
+/// PDF 路徑（`PDFReaderView` 經 `PDFProgressRecorder` 委派）共用同一個 saver 與 debounce 窗口，
+/// 兩條閱讀器的落盤語意一致。
 ///
 /// 修法：在記憶體寫入後**顯式** `save()`，但翻頁高頻 → 用 debounce 把連續翻頁
 /// coalesce 成窗口尾端單次落盤，避免每頁同步 I/O 卡頓。退出 / 退背景時 `flush()`
