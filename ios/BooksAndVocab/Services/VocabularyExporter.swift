@@ -14,7 +14,8 @@ enum VocabularyExporter {
 
     /// 匯出為 CSV 格式
     static func exportAsCSV(entries: [VocabularyEntry]) -> URL? {
-        var csv = "Word,Translation,Part of Speech,Context,Book,Chapter,Date\n"
+        // U+FEFF BOM：Excel 對 BOM-less UTF-8 會當 ANSI 讀，中文譯文會亂碼。
+        var csv = "\u{FEFF}Word,Translation,Part of Speech,Context,Book,Chapter,Date\n"
         for entry in entries {
             let fields = [
                 escapeCSV(entry.word),
@@ -59,11 +60,11 @@ enum VocabularyExporter {
     static func exportAsAnki(entries: [VocabularyEntry]) -> URL? {
         var tsv = ""
         for entry in entries {
-            let front = "\(entry.word)\n<small>\(entry.context)</small>"
-            var back = entry.translation
+            let front = "\(escapeHTML(entry.word))\n<small>\(escapeHTML(entry.context))</small>"
+            var back = escapeHTML(entry.translation)
 
-            if let pos = entry.partOfSpeech, !pos.isEmpty { back = "(\(pos)) \(back)" }
-            if let exp = entry.explanation { back += "\n\(exp)" }
+            if let pos = entry.partOfSpeech, !pos.isEmpty { back = "(\(escapeHTML(pos))) \(back)" }
+            if let exp = entry.explanation { back += "\n\(escapeHTML(exp))" }
 
             tsv += "\(escapeTab(front))\t\(escapeTab(back))\n"
         }
@@ -90,6 +91,13 @@ enum VocabularyExporter {
         let safe = text.first.map(formulaTriggers.contains) == true ? "'" + text : text
         let escaped = safe.replacingOccurrences(of: "\"", with: "\"\"")
         return "\"\(escaped)\""
+    }
+
+    /// Anki 欄位為 HTML；`&` 必須先轉義，否則後續實體會被二次轉義。
+    private static func escapeHTML(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private static func escapeTab(_ text: String) -> String {
