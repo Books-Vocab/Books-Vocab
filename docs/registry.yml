@@ -65,6 +65,8 @@ documents:
       - production-safety-changed
     sources:
       - ops/devops_kg_safe.sh
+      - ops/lib/devops_run_guard.sh
+      - ops/lib/hermetic_ops_test.sh
       - ops/release.sh
       - ops/kg_reconcile.sh
 
@@ -443,6 +445,20 @@ documents:
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
       - ops/release.sh
+
+  - id: runbook.incident_2026_10_09_kg_data_deleted
+    path: docs/runbook/incidents/2026-10-09-kg-data-deleted-by-test.md
+    kind: runbook
+    authority: derived
+    triggers:
+      - production-safety-changed
+    sources:
+      - devops.sh
+      - ops/devops_kg_safe.sh
+      - ops/lib/devops_run_guard.sh
+      - ops/lib/hermetic_ops_test.sh
+      - ops/test_devops.sh
+      - ops/test_ops.sh
 
   - id: sop.architecture
     path: docs/sop/architecture.md
