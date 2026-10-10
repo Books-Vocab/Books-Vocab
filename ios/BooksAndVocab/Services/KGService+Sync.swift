@@ -557,6 +557,12 @@ extension KGService {
                 outcome.cancelled = true
                 continue
             }
+            // token 還在從 keychain 載入（#2714）：這輪沒做事，不是 401，不可登出也不算失敗。
+            if error is KGSessionPendingError {
+                AppLog.kg.info("backgroundSync \(label) skipped: session token pending")
+                outcome.cancelled = true
+                continue
+            }
             if error is KGError, case KGError.unauthorized = error {
                 await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
                 lastBackgroundSyncError = L10n.string("登入已過期")
@@ -869,6 +875,7 @@ extension KGService {
     /// decoding and unexpected failures are actionable and get recorded.
     nonisolated static func shouldRecordSyncFailure(_ error: Error) -> Bool {
         if error is CancellationError { return false }
+        if error is KGSessionPendingError { return false }
         if let kgError = error as? KGError {
             switch kgError {
             case .offline, .networkError, .unauthorized, .notAuthenticated:
