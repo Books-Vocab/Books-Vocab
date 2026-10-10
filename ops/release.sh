@@ -1440,6 +1440,9 @@ promote_version_at() {  # $1=ref → pyproject 與 api.py 的 backend 版號（�
 # completed/success**；同 suite 內被 rerun 取代的舊失敗 attempt 不擋（#2660），不同 suite 的失敗（另一次獨立
 # CI 執行）仍拒絕。skipped／neutral／in_progress／缺席都不算綠；run 缺 id／check_suite.id 無法判定最新 attempt
 # → 不算綠。total_count 與實收 run 數不符 → 視為不完整。
+# 實證（#2660 P2，2026-10-10 唯讀 gh api）：run 37920482067（pr-gate）attempt 1 = failure、attempt 2 = success，
+# 兩者 run_id 與 check_suite_id 皆為 102741169602；attempt 2 的 job（如 backend-quality / backend-quality，
+# id 113886985309，started 2026-10-09T15:14:57Z）落在同一 suite。故「同 suite 內取 id 最大」即最新 attempt；跨 suite 不合併。
 # seam：KG_CHECK_RUNS_JSON_CMD <sha> 回傳 raw gh JSON（可為多頁串接），讓測試走真的 jq 過濾器。
 promote_assert_backend_quality() {  # $1=sha
   local sha="$1" out rc=0
