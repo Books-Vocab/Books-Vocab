@@ -667,7 +667,11 @@ def _delete_external_card(user: UserRecord, card_id: str, notebook_id: str) -> E
         peer_ids = link_peer_ids(graph, card.id)
         graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
     except Exception:
-        cards.restore(card.id, notebook_id=notebook_id)
+        try:
+            cards.restore(card.id, notebook_id=notebook_id)
+        except Exception:
+            # Never let a failed rollback mask the original graph error.
+            logger.warning("[%s] Failed to restore card %s after graph error", user["id"], card.id, exc_info=True)
         raise
     touch_peers(cards, peer_ids, card)
     try:

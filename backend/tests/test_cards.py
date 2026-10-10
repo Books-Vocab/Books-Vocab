@@ -642,3 +642,17 @@ class TestNfcLowerMigration:
             # And lookups work
             assert store2.find_by_content("CAFÉ") is not None
             assert store2.find_by_content("hello") is not None
+
+
+class TestRestoreSuperseded:
+    def test_restore_returns_false_when_active_duplicate_exists(self, store):
+        """A concurrent add of the same content makes the partial unique index
+        reject the revive; restore must report False instead of raising."""
+        tombstoned = store.add(content="apple", meaning="fruit")
+        store.delete(tombstoned.id)
+        replacement = store.add(content="apple", meaning="fruit again")
+        assert replacement.id != tombstoned.id
+
+        assert store.restore(tombstoned.id) is False
+        assert store.get(tombstoned.id).is_deleted is True
+        assert store.get(replacement.id).is_deleted is False

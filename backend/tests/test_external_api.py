@@ -1121,6 +1121,7 @@ def test_external_card_meaning_update_survives_embedding_eviction_failure(extern
     assert edited.json()["meaning"] == "新"
 
 
+
 def test_external_card_meaning_update_queues_card_for_judging(external_api, monkeypatch):
     from kg.deps import _graph_store
     from kg.service_factories import clear_store_cache
@@ -1172,3 +1173,34 @@ def test_external_card_unchanged_meaning_update_neither_evicts_nor_queues(extern
         assert card_id not in _graph_store(user_dir, notebook_id="default").pop_pending_judge()
     finally:
         clear_store_cache()
+
+def test_external_card_delete_graph_failure_not_masked_by_restore_conflict(external_api, monkeypatch):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    seen_dirs: list = []
+    original_card_store = external_router._card_store
+
+    def recording_card_store(user_dir):
+        seen_dirs.append(user_dir)
+        return original_card_store(user_dir)
+
+    monkeypatch.setattr(external_router, "_card_store", recording_card_store)
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "superseded", "meaning": "被取代"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+    user = {"id": external_api.user_id, "dir": seen_dirs[-1]}
+
+    def fail_graph_after_concurrent_add(_graph, _card_id):
+        # A concurrent add of the same content lands while the delete is in flight.
+        original_card_store(user["dir"]).add(content="superseded", meaning="新的", notebook_id="default")
+        raise RuntimeError("graph cleanup boom")
+
+    monkeypatch.setattr(external_router, "link_peer_ids", fail_graph_after_concurrent_add)
+
+    with pytest.raises(RuntimeError, match="graph cleanup boom"):
+        external_router._delete_external_card(user, card_id, "default")
+

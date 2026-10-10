@@ -295,7 +295,8 @@ class CardMutationMixin:
         return False
 
     def restore(self, card_id: str, *, notebook_id: str | None = None) -> bool:
-        """Undo a soft-delete. Returns True if restored, False if card not found.
+        """Undo a soft-delete. Returns True if restored, False if card not found or
+        superseded by an active card with the same content (never raises for that).
 
         If `notebook_id` is provided, the card is only restored when it
         actually belongs to that notebook; an id pointing at another
@@ -310,7 +311,15 @@ class CardMutationMixin:
             if card and (notebook_id is None or card.notebook_id == notebook_id):
                 card.is_deleted = False
                 card.updated_at = datetime.now(UTC)
-                session.commit()
+                try:
+                    session.commit()
+                except IntegrityError:
+                    # An active card with the same content was added after the
+                    # delete; the partial unique index rejects the revive. The
+                    # tombstone is superseded, so report not-restored.
+                    session.rollback()
+                    _LOGGER.warning("restore of card %s superseded by an active duplicate", card_id)
+                    return False
                 return True
             return False
 
