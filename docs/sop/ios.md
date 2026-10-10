@@ -194,10 +194,11 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 ./ops/ios_ops.sh test --launch-benchmark
 ./ops/ios_ops.sh test --ui --ui-launch-profile standard testLaunchShowsAllTabs
 ./ops/ios_ops.sh test --ui --dataset marketing_demo -g FixtureDatasetUITests # 注入 named UI World（ops/fixtures/ui_worlds/<name>.json）
-./ops/ios_ops.sh test --all-targets --timeout 1200          # scheme 全量：unit + UI
+./ops/ios_ops.sh test --all-targets --dataset marketing_demo --timeout 1200          # scheme 全量：unit + UI
 ./ops/ios_ops.sh test --file FooTests.swift --list          # 只列 resolved -only-testing selectors
 ```
 
+- `--all-targets` 與 `--ui` 同守：必須帶 `--dataset`／`--dataset-file`（無 dataset 會被拒，否則 UI 測試對空世界大量失敗；dataset env 注入 xctestrun 全部 target）。`--timeout` 只限制 lock 等待，**不**限制 xcodebuild 執行時間；單測上限由 XCTest allowance 與外層命令 timeout 負責。`test --clean-cache` 會在 build lock 內連同 `.cache/ios-build-derived-data` 一併清除（它計入 disk budget，不清會讓 build 後的 test 撞 exit 75）。
 - 預設 scope 是 `unit`，會自動加 `-only-testing:BooksAndVocabTests`；UI tests 不會被誤混進 unit full。
 - `./ops/ios_ops.sh build --json` / 一般 `test --json` 會把 delegate stdout/stderr 導到 stderr，stdout 保留單一 `kg.ios.run.v1` payload；`test --coverage --json` 會在同一 payload 內嵌 `coverage: kg.ios.coverage.v1`；已存在原生 JSON 契約的 `test --cache-status|--prepare-cache|--clean-cache --json` 維持原 schema，不再包一層 run report。
 - **裸方法名（positional）會反查自己的容器**：`test --ui testLaunchShowsAllTabs` 這種不含 `/` 的參數，runner 會掃該 scope 的 test 目錄，把方法歸到它**自己所屬**的 `class` / `@Suite` 容器（Swift Testing id 會帶簽名如 `foo()`），不再硬拼成「與 target 同名的 class」。找不到就在 **parse 期 exit 1**（訊息會指向 `Class/method` 規則），不會白跑一整輪 build+test 才在尾端撞 false-green guard。**「找不到」會分辨兩種成因**：名字真的不存在 → 印通用規則；名字其實住在**另一個 target**（少給 `--ui` / `--unit`，最常見的形狀就是拿 UI test 名字跑預設 unit scope）→ 錯誤會**指名它所屬的 target/容器**並印出可直接複製的修正命令。兩種都仍 exit 1，runner **不會**自作主張改跑另一個 scope。掃描**不遞迴**：測試若放在子目錄就找不到，改用 `Class/method` 形式——那是永遠直通、不做存在性檢查的逃生口（例：`test --ui ExploreNavigationUITests/testExploreTabIsReachableAndRendersSection`）。
@@ -295,9 +296,9 @@ Hosted workflow 以 committed `Package.resolved` 建立 SwiftPM source cache；�
 | iOS 編譯面或簡單型別修正 | `./ops/ios_ops.sh build` |
 | iOS model/service/presenter/test 邏輯 | `./ops/ios_ops.sh test --file <相關Tests.swift>` 或 `-g <pattern>` + `./ops/ios_ops.sh build` |
 | UI / navigation / accessibility / app launch | 相關 unit test + `./ops/ios_ops.sh test --ui ...` + `./ops/ios_ops.sh build` |
-| test runner / scheme / SwiftData model / sync lifecycle / 跨 feature 共用面 | `./ops/ios_ops.sh test --all-targets --timeout 1200` + `./ops/ios_ops.sh build` |
+| test runner / scheme / SwiftData model / sync lifecycle / 跨 feature 共用面 | `./ops/ios_ops.sh test --all-targets --dataset marketing_demo --timeout 1200` + `./ops/ios_ops.sh build` |
 | 多個 test 失敗或原因不清 | `./ops/ios_test_matrix.sh --timeout 300 [--start-at File.swift]`,逐檔定位後再修 |
-| release / cleanup all / 宣稱 iOS 全綠 | `./ops/ios_ops.sh test --all-targets --timeout 1200` + `./ops/ios_ops.sh build` |
+| release / cleanup all / 宣稱 iOS 全綠 | `./ops/ios_ops.sh test --all-targets --dataset marketing_demo --timeout 1200` + `./ops/ios_ops.sh build` |
 
 原則:
 - 不用 `--all-targets` 當第一反應;先跑最小可證明範圍,避免把多個根因混在一起。

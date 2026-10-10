@@ -568,7 +568,7 @@ grep -q 'emit_workflow_step_json' "$IOS_OPS_RELEASE_LIB" \
   && ok "workflow JSON emits structured steps" || fail_t "workflow JSON missing structured step emitter"
 grep -q 'write_workflow_release_steps_json' "$IOS_OPS_RELEASE_LIB" \
   && ok "workflow step generation is centralized" || fail_t "workflow missing shared step generator"
-grep -q './ops/ios_ops.sh test --all-targets --timeout 1200' "$IOS_OPS_RELEASE_LIB" \
+grep -q './ops/ios_ops.sh test --all-targets --dataset marketing_demo --timeout 1200' "$IOS_OPS_RELEASE_LIB" \
   && ok "workflow includes all-targets test gate" || fail_t "workflow missing all-targets test command"
 grep -q './ops/asc_text_bundle.py dump -o asc.json' "$IOS_OPS_RELEASE_LIB" \
   && ok "workflow includes ASC text bundle review" || fail_t "workflow missing asc_text_bundle dump"
@@ -1561,6 +1561,13 @@ section "ios_test fixture dataset flag (--dataset/--dataset-file)"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --dataset marketing_demo -g Foo 2>&1 || true)"
 [[ "$ds_out" == *"requires --ui"* ]] \
   && ok "ios_test rejects --dataset outside --ui scope" || fail_t "ios_test --dataset scope guard: $ds_out"
+# #2668: --all-targets 含 UI target，與 --ui 同樣必須帶 UI World dataset（否則 UI 測試對空世界大量失敗）。
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --all-targets 2>&1 || true)"
+[[ "$ds_out" == *"--all-targets requires --dataset"* ]] \
+  && ok "ios_test --all-targets refuses to run without a UI World dataset" || fail_t "ios_test --all-targets dataset-required guard: $ds_out"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --all-targets --dataset definitely-not-a-dataset 2>&1 || true)"
+[[ "$ds_out" == *"dataset file not found"* ]] \
+  && ok "ios_test --all-targets accepts --dataset (reaches dataset validation)" || fail_t "ios_test --all-targets --dataset scope guard: $ds_out"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset a --dataset-file b 2>&1 || true)"
 [[ "$ds_out" == *"either --dataset or --dataset-file"* ]] \
   && ok "ios_test rejects --dataset + --dataset-file together" || fail_t "ios_test dataset exclusivity guard: $ds_out"

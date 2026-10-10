@@ -497,7 +497,7 @@ app_review_workflow_gate_json() {
 write_workflow_release_steps_json() {
   local out="$1" version="$2" build="$3" tf_latest="$4" archive_line="$5" archive_version="$6" archive_build="$7" asc_state="$8" app_review_gate="$9"
   emit_workflow_step_json "$out" 1 "preflight" "todo" "./ops/ios_ops.sh doctor" "readiness dashboard; fix status=block before upload"
-  emit_workflow_step_json "$out" 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --timeout 1200" "prove unit+UI scheme behavior before release claim"
+  emit_workflow_step_json "$out" 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --dataset marketing_demo --timeout 1200" "prove unit+UI scheme behavior before release claim"
   emit_workflow_step_json "$out" 3 "build" "todo" "./ops/ios_ops.sh build" "compile gate; first screen shows xcresult warnings/errors"
 
   if [[ -n "$archive_line" && "$archive_version" == "$version" && "$archive_build" == "$build" ]]; then
