@@ -1121,7 +1121,6 @@ def test_external_card_meaning_update_survives_embedding_eviction_failure(extern
     assert edited.json()["meaning"] == "新"
 
 
-
 def test_external_card_meaning_update_queues_card_for_judging(external_api, monkeypatch):
     from kg.deps import _graph_store
     from kg.service_factories import clear_store_cache
@@ -1174,6 +1173,7 @@ def test_external_card_unchanged_meaning_update_neither_evicts_nor_queues(extern
     finally:
         clear_store_cache()
 
+
 def test_external_card_delete_graph_failure_not_masked_by_restore_conflict(external_api, monkeypatch):
     api_key = _create_key(external_api)
     headers = {"X-KG-API-Key": api_key}
@@ -1204,3 +1204,118 @@ def test_external_card_delete_graph_failure_not_masked_by_restore_conflict(exter
     with pytest.raises(RuntimeError, match="graph cleanup boom"):
         external_router._delete_external_card(user, card_id, "default")
 
+
+def _key_store_fns(tmp_path, users):
+    lock_file = tmp_path / "users.lock"
+    return {
+        "users_lock_file": lock_file,
+        "load_users": lambda: users,
+        "save_users": lambda payload: None,
+    }
+
+
+def _owned_key_records(users, user_id):
+    return [record for record in users["_external_api_keys"].values() if record.get("user_id") == user_id]
+
+
+def test_issue_revoke_cycles_keep_per_user_key_records_bounded(tmp_path):
+    from kg.external_api_keys import MAX_KEY_RECORDS_PER_USER, issue_api_key, revoke_api_key
+
+    user_id = "user-1"
+    users = {user_id: {"config": {}}}
+    fns = _key_store_fns(tmp_path, users)
+    for _ in range(MAX_KEY_RECORDS_PER_USER * 3):
+        issued = issue_api_key(user_id, label="cycle", **fns)
+        revoke_api_key(user_id, issued["keyId"], **fns)
+
+    assert len(_owned_key_records(users, user_id)) <= MAX_KEY_RECORDS_PER_USER
+
+
+def test_issue_drops_revoked_records_past_retention_window(tmp_path):
+    from kg.external_api_keys import issue_api_key
+
+    user_id = "user-1"
+    old = "2020-01-01T00:00:00+00:00"
+    users = {
+        user_id: {"config": {}},
+        "_external_api_keys": {
+            "f" * 32: {
+                "user_id": user_id,
+                "label": "ancient",
+                "created_at": old,
+                "revoked_at": old,
+                "secret_hash": "x",
+            },
+        },
+    }
+    issue_api_key(user_id, label="fresh", **_key_store_fns(tmp_path, users))
+
+    assert "f" * 32 not in users["_external_api_keys"]
+
+
+def test_list_api_keys_is_capped_and_keeps_every_active_key(tmp_path):
+    from kg.external_api_keys import MAX_KEY_RECORDS_PER_USER, list_api_keys
+
+    user_id = "user-1"
+    records = {
+        f"{index:032x}": {
+            "user_id": user_id,
+            "label": "revoked",
+            "created_at": f"2026-01-01T00:{index % 60:02d}:00+00:00",
+            "revoked_at": f"2026-01-02T00:{index % 60:02d}:00+00:00",
+        }
+        for index in range(MAX_KEY_RECORDS_PER_USER * 10)
+    }
+    active_id = "e" * 32
+    records[active_id] = {
+        "user_id": user_id,
+        "label": "active-old",
+        "created_at": "2025-06-01T00:00:00+00:00",
+        "revoked_at": None,
+    }
+    users = {user_id: {"config": {}}, "_external_api_keys": records}
+
+    listed = list_api_keys(user_id, load_users=lambda: users)
+
+    assert len(listed) <= MAX_KEY_RECORDS_PER_USER
+    assert any(item["keyId"] == active_id for item in listed)
+
+
+def test_external_card_delete_graph_store_failure_keeps_card_and_propagates(external_api, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    created = external_api.client.post("/api/v1/cards", json={"content": "gfail", "meaning": "图"}, headers=headers)
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+    user = {"id": external_api.user_id, "dir": external_api.data_dir / "users" / external_api.user_id}
+
+    original_graph_store = external_router._graph_store
+    broken = {"on": True}
+
+    def flaky_graph(*args, **kwargs):
+        if broken["on"]:
+            raise RuntimeError("graph store unavailable")
+        return original_graph_store(*args, **kwargs)
+
+    monkeypatch.setattr(external_router, "_graph_store", flaky_graph)
+    with pytest.raises(RuntimeError, match="graph store unavailable"):
+        external_router._delete_external_card(user, card_id, "default")
+
+    broken["on"] = False
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+
+
+def test_external_card_delete_succeeds_when_embedding_store_cannot_open(external_api, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    created = external_api.client.post("/api/v1/cards", json={"content": "efail", "meaning": "嵌"}, headers=headers)
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+    user = {"id": external_api.user_id, "dir": external_api.data_dir / "users" / external_api.user_id}
+
+    def broken_embeddings(*_args, **_kwargs):
+        raise RuntimeError("embedding store unavailable")
+
+    monkeypatch.setattr(external_router, "_embedding_store", broken_embeddings)
+    result = external_router._delete_external_card(user, card_id, "default")
+
+    assert result.deleted is True

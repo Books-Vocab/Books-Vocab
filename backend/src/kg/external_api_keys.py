@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import secrets
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,8 @@ from .users_lock import users_file_lock
 EXTERNAL_API_KEY_INDEX = "_external_api_keys"
 EXTERNAL_API_KEY_PREFIX = "kg_"
 MAX_ACTIVE_KEYS_PER_USER = 10
+MAX_KEY_RECORDS_PER_USER = 50
+REVOKED_KEY_RETENTION = timedelta(days=30)
 
 UsersLoader = Callable[[], UsersPayload]
 UsersSaver = Callable[[UsersPayload], None]
@@ -67,6 +69,47 @@ def _public_record(key_id: str, record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _prune_user_records(key_index: dict[str, dict[str, Any]], user_id: str, *, now: datetime) -> None:
+    """Bound one user's records before a new key is added.
+
+    Revoked records past the retention window are dropped; if the user still
+    holds the cap, the oldest revoked records are evicted first. Active keys
+    are never pruned here (they are bounded by MAX_ACTIVE_KEYS_PER_USER).
+    """
+
+    owned = {
+        key_id: record
+        for key_id, record in key_index.items()
+        if isinstance(record, dict) and record.get("user_id") == user_id
+    }
+    cutoff = now - REVOKED_KEY_RETENTION
+    for key_id, record in list(owned.items()):
+        revoked_at = _timestamp(record.get("revoked_at"))
+        if revoked_at is not None and revoked_at < cutoff:
+            del key_index[key_id]
+            del owned[key_id]
+
+    oldest_revoked = sorted(
+        (key_id for key_id, record in owned.items() if record.get("revoked_at")),
+        key=lambda key_id: _timestamp(owned[key_id].get("revoked_at")) or datetime.min.replace(tzinfo=UTC),
+    )
+    overflow = len(owned) - (MAX_KEY_RECORDS_PER_USER - 1)
+    for key_id in oldest_revoked[: max(overflow, 0)]:
+        del key_index[key_id]
+
+
 def _created_at_sort_key(record: dict[str, Any]) -> tuple[datetime, str]:
     value = record.get("createdAt")
     try:
@@ -98,6 +141,7 @@ def issue_api_key(
             raise KeyError(user_id)
 
         key_index = _index(users, create=True)
+        _prune_user_records(key_index, user_id, now=datetime.now(tz=UTC))
         active_count = sum(
             1
             for record in key_index.values()
@@ -139,7 +183,17 @@ def list_api_keys(
         if isinstance(record, dict) and record.get("user_id") == user_id
     ]
     records.sort(key=_created_at_sort_key, reverse=True)
-    return records
+    # Every active key is always listed; revoked history fills the remaining cap, newest first.
+    active_total = sum(1 for record in records if not record["revokedAt"])
+    revoked_budget = max(MAX_KEY_RECORDS_PER_USER - active_total, 0)
+    listed: list[dict[str, Any]] = []
+    for record in records:
+        if record["revokedAt"]:
+            if revoked_budget == 0:
+                continue
+            revoked_budget -= 1
+        listed.append(record)
+    return listed
 
 
 def revoke_api_key(
