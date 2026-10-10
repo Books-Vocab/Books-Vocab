@@ -9,6 +9,7 @@ from kg.vocab_crud import list_vocab_cards
 # Fake helpers
 # ---------------------------------------------------------------------------
 
+
 def _card_builder(card, graph, cards_by_id):
     return {"id": card.id, "content": card.content, "cards_by_id": cards_by_id}
 
@@ -32,8 +33,11 @@ class _FakeCardsStore:
     def __init__(self, cards):
         self._cards = list(cards)
 
-    def get_modified_since(self, parsed_since, notebook_id: str | None = None):
-        return list(self._cards)
+    def get_modified_since(self, parsed_since, notebook_id: str | None = None, *, limit=None, after=None):
+        rows = sorted(self._cards, key=lambda c: (c.updated_at, c.id))
+        if after is not None:
+            rows = [c for c in rows if (c.updated_at, c.id) > after]
+        return rows[:limit]
 
     def get_batch(self, card_ids: set[str]) -> dict:
         return {c.id: c for c in self._cards if c.id in card_ids}
@@ -76,13 +80,19 @@ class _FakeLink:
 # Tests: list_vocab_cards full sync now returns (cards, next_cursor)
 # ---------------------------------------------------------------------------
 
+
 def test_list_vocab_cards_full_sync_returns_all():
     """Full sync (since=None) with a large enough limit returns ALL cards."""
-    cards = [_FakeCard(id=f"c{i}", content=f"word{i}",
-                       updated_at=datetime(2024, 1, 1, tzinfo=UTC) + timedelta(seconds=i)) for i in range(5)]
+    cards = [
+        _FakeCard(id=f"c{i}", content=f"word{i}", updated_at=datetime(2024, 1, 1, tzinfo=UTC) + timedelta(seconds=i))
+        for i in range(5)
+    ]
     store = _FakeCardsStore(cards)
     result, cursor = list_vocab_cards(
-        since=None, cards_store=store, graph=_FakeGraph(), card_response_builder=_card_builder,
+        since=None,
+        cards_store=store,
+        graph=_FakeGraph(),
+        card_response_builder=_card_builder,
         limit=1000,
     )
     assert len(result) == 5
@@ -106,29 +116,40 @@ def test_list_vocab_cards_with_since_returns_modified():
 # E2: cursor pagination + neighbour resolution
 # ---------------------------------------------------------------------------
 
+
 def test_paged_returns_cursor():
     """A bounded full-sync page returns a next_cursor when more rows remain."""
     base = datetime(2024, 1, 1, tzinfo=UTC)
-    cards = [_FakeCard(id=f"c{i:02d}", content=f"w{i}",
-                       updated_at=base + timedelta(seconds=i)) for i in range(5)]
+    cards = [_FakeCard(id=f"c{i:02d}", content=f"w{i}", updated_at=base + timedelta(seconds=i)) for i in range(5)]
     store = _FakeCardsStore(cards)
 
     page1, cursor1 = list_vocab_cards(
-        since=None, cards_store=store, graph=_FakeGraph(),
-        card_response_builder=_card_builder, limit=2,
+        since=None,
+        cards_store=store,
+        graph=_FakeGraph(),
+        card_response_builder=_card_builder,
+        limit=2,
     )
     assert [c["id"] for c in page1] == ["c00", "c01"]
     assert cursor1 == (cards[1].updated_at, "c01")
 
     page2, cursor2 = list_vocab_cards(
-        since=None, cards_store=store, graph=_FakeGraph(),
-        card_response_builder=_card_builder, limit=2, after=cursor1,
+        since=None,
+        cards_store=store,
+        graph=_FakeGraph(),
+        card_response_builder=_card_builder,
+        limit=2,
+        after=cursor1,
     )
     assert [c["id"] for c in page2] == ["c02", "c03"]
 
     page3, cursor3 = list_vocab_cards(
-        since=None, cards_store=store, graph=_FakeGraph(),
-        card_response_builder=_card_builder, limit=2, after=cursor2,
+        since=None,
+        cards_store=store,
+        graph=_FakeGraph(),
+        card_response_builder=_card_builder,
+        limit=2,
+        after=cursor2,
     )
     assert [c["id"] for c in page3] == ["c04"]
     assert cursor3 is None  # last page, fewer than limit -> drained
@@ -146,8 +167,11 @@ def test_neighbours_resolved_on_page():
     graph = _FakeGraph({"a": ["b"], "b": ["a"]})
 
     page1, _cursor = list_vocab_cards(
-        since=None, cards_store=store, graph=graph,
-        card_response_builder=_card_builder, limit=1,
+        since=None,
+        cards_store=store,
+        graph=graph,
+        card_response_builder=_card_builder,
+        limit=1,
     )
     assert [c["id"] for c in page1] == ["a"]
     # neighbour b resolved into cards_by_id even though it's not on this page
@@ -157,23 +181,25 @@ def test_neighbours_resolved_on_page():
 def test_since_with_cursor():
     """since branch also honours limit + after for consistency."""
     base = datetime(2024, 1, 1, tzinfo=UTC)
-    cards = [_FakeCard(id=f"c{i:02d}", content=f"w{i}",
-                       updated_at=base + timedelta(seconds=i)) for i in range(4)]
+    cards = [_FakeCard(id=f"c{i:02d}", content=f"w{i}", updated_at=base + timedelta(seconds=i)) for i in range(4)]
 
-    class _SinceStore(_FakeCardsStore):
-        def get_modified_since(self, parsed_since, notebook_id: str | None = None):
-            return sorted(self._cards, key=lambda c: (c.updated_at, c.id))
-
-    store = _SinceStore(cards)
+    store = _FakeCardsStore(cards)
     page1, cursor1 = list_vocab_cards(
-        since="2023-01-01T00:00:00Z", cards_store=store, graph=_FakeGraph(),
-        card_response_builder=_card_builder, limit=2,
+        since="2023-01-01T00:00:00Z",
+        cards_store=store,
+        graph=_FakeGraph(),
+        card_response_builder=_card_builder,
+        limit=2,
     )
     assert [c["id"] for c in page1] == ["c00", "c01"]
     assert cursor1 == (cards[1].updated_at, "c01")
 
     page2, _cursor2 = list_vocab_cards(
-        since="2023-01-01T00:00:00Z", cards_store=store, graph=_FakeGraph(),
-        card_response_builder=_card_builder, limit=2, after=cursor1,
+        since="2023-01-01T00:00:00Z",
+        cards_store=store,
+        graph=_FakeGraph(),
+        card_response_builder=_card_builder,
+        limit=2,
+        after=cursor1,
     )
     assert [c["id"] for c in page2] == ["c02", "c03"]

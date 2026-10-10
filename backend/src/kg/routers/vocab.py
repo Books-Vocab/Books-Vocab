@@ -368,6 +368,7 @@ def update_word_content(
         graph_store_factory=_graph_store,
         card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
+        embedding_store_factory=_embedding_store,
         notebook_id=notebook_id,
     )
 

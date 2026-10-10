@@ -203,3 +203,88 @@ def test_get_modified_since_after_cursor_and_filters(store):
     assert [c.id for c in page] == [ids[3], ids[4]]
     everything = store.get_modified_since(base, exclude_notebook_ids=("nb2",))
     assert [c.id for c in everything] == [*ids[1:], "gone"]
+
+
+def test_get_batch_survives_more_ids_than_sqlite_bind_limit(store):
+    # Real SQLite store: one IN clause with >32766 binds raises OperationalError
+    # ("too many SQL variables") unless the lookup is chunked.
+    base = datetime(2024, 1, 1, 0, 0, 0)
+    _add(store, "real-1", updated_at=base)
+    _add(store, "real-2", updated_at=base)
+    ids = {"real-1", "real-2"} | {f"ghost-{i}" for i in range(33_000)}
+    found = store.get_batch(ids)
+    assert set(found) == {"real-1", "real-2"}
+    assert found["real-1"].id == "real-1"
+
+
+def test_since_page_resolves_out_of_page_neighbours_beyond_bind_limit(store):
+    from types import SimpleNamespace
+
+    from kg.vocab_crud import list_vocab_cards
+
+    base = datetime(2024, 1, 1, 0, 0, 0)
+    _add(store, "p0", updated_at=base)
+
+    class _Graph:
+        def get_links_for(self, card_id):
+            if card_id != "p0":
+                return []
+            return [SimpleNamespace(from_id="p0", to_id=f"ghost-{i}") for i in range(33_000)]
+
+    responses, _cursor = list_vocab_cards(
+        since="2000-01-01T00:00:00Z",
+        cards_store=store,
+        graph=_Graph(),
+        card_response_builder=lambda card, graph, by_id: card.id,
+        notebook_id=None,
+        limit=5,
+    )
+    assert responses == ["p0"]
+
+
+def test_since_pages_over_modified_set_larger_than_bind_limit(store):
+    # #2687 done-when: a modified set above SQLite's bind limit pages through
+    # the since path with each page bounded by `limit`, no OperationalError.
+    from kg.vocab_crud import list_vocab_cards
+
+    class _NoGraph:
+        def get_links_for(self, card_id):
+            return []
+
+    base = datetime(2024, 1, 1, 0, 0, 0)
+    total = 33_000
+    with Session(store.engine) as session:
+        session.add_all(
+            Card(
+                id=f"m{i:05d}",
+                content=f"word-{i}",
+                meaning="m",
+                updated_at=base + timedelta(seconds=i),
+                notebook_id="default",
+                is_deleted=False,
+            )
+            for i in range(total)
+        )
+        session.commit()
+
+    def page(after):
+        return list_vocab_cards(
+            since="2000-01-01T00:00:00Z",
+            cards_store=store,
+            graph=_NoGraph(),
+            card_response_builder=lambda card, graph, by_id: card.id,
+            notebook_id=None,
+            limit=10_000,
+            after=after,
+        )
+
+    seen: list[str] = []
+    after = None
+    for _ in range(4):
+        responses, after = page(after)
+        assert len(responses) <= 10_000
+        seen.extend(responses)
+        if after is None:
+            break
+    assert len(seen) == total
+    assert len(set(seen)) == total

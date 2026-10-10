@@ -79,6 +79,7 @@ from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
 from ..sentry_init import capture_handled
 from ..service_factories import create_client
 from ..types import UserRecord
+from ..vocab_crud import reembed_after_meaning_edit
 from ..vocab_graph_ops import link_peer_ids, touch_peers
 from ..vocab_handlers import (
     archive_word_response,
@@ -588,7 +589,25 @@ def _update_external_card(
     updated = _card_store(user["dir"]).update(card.id, **updates)
     if updated is None:
         raise NotFoundError("Card", card_id)
+    if "meaning" in updates and updates["meaning"] != card.meaning:
+        _reembed_after_meaning_edit(user, card.id, notebook_id)
     return _render_card(user, updated, notebook_id)
+
+
+def _reembed_after_meaning_edit(user: UserRecord, card_id: str, notebook_id: str) -> None:
+    # The edit is already durable; store-creation failures are captured and
+    # skipped so they never turn a successful update into a retry-prone 5xx.
+    try:
+        embeddings = _embedding_store(user["dir"], llm=None, notebook_id=notebook_id)
+    except Exception as exc:
+        capture_handled(exc, context="external_api.embedding_evict")
+        embeddings = None
+    try:
+        graph = _graph_store(user["dir"], notebook_id=notebook_id)
+    except Exception as exc:
+        capture_handled(exc, context="external_api.judge_requeue")
+        graph = None
+    reembed_after_meaning_edit(embeddings, graph, card_id)
 
 
 @router.patch("/api/v1/cards/{card_id}", response_model=CardResponse)

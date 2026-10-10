@@ -10,6 +10,7 @@ from ..api_models import (
     CardResponse,
     VocabContentUpdateRequest,
 )
+from ..sentry_init import capture_handled
 from ..vocab_crud import (
     archive_vocab_word,
     batch_archive_vocab_words,
@@ -133,6 +134,7 @@ def update_word_content_response(
     card_store_factory: CardStoreFactory,
     graph_store_factory: GraphStoreFactory,
     card_response_builder: CardResponseBuilder,
+    embedding_store_factory: EmbeddingStoreFactory,
     notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
@@ -143,6 +145,14 @@ def update_word_content_response(
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
+    embeddings = None
+    if req.meaning is not None:
+        # Evict-only: llm=None is legal, no embed call or quota involved.
+        try:
+            embeddings = embedding_store_factory(user["dir"], llm=None, notebook_id=notebook_id)
+        except Exception as exc:
+            # The edit is still applied; a missing eviction only leaves a stale vector.
+            capture_handled(exc, context="vocab.embedding_evict")
     return update_vocab_word_content(
         word,
         meaning=req.meaning,
@@ -151,6 +161,7 @@ def update_word_content_response(
         cards_store=stores.cards,
         graph=stores.graph,
         card_response_builder=card_response_builder,
+        embeddings=embeddings,
         notebook_id=notebook_id,
     )
 
