@@ -602,6 +602,20 @@ struct StatsPresenter: View {
         .accessibilityValue(value)
     }
 
+    /// 20 weeks in production. Already overflows the heatmap viewport: the probe measured
+    /// the container at ~163pt while 20 weeks need ≥325pt of content. UI tests may override
+    /// the week count (`KG_UI_TEST_HEATMAP_WEEKS`) to pin a deterministic overflow for the
+    /// open-on-latest-week check (#2736), independent of device width.
+    private static var heatmapWeeks: Int {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["KG_UI_TEST_HEATMAP_WEEKS"],
+           let weeks = Int(raw), (1...104).contains(weeks) {
+            return weeks
+        }
+        #endif
+        return 20
+    }
+
     private func heatmapSection(_ summary: StatsPresentation.Summary) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Button { showCalendar = true } label: {
@@ -624,7 +638,7 @@ struct StatsPresenter: View {
                     VocabActivityHeatmap(
                         activity: summary.activity,
                         thresholds: summary.heatmapThresholds,
-                        weeks: 20,
+                        weeks: Self.heatmapWeeks,
                         clock: activeProjectionClock
                     )
                 }
