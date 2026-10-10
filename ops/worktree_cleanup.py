@@ -172,6 +172,13 @@ def cleanup_resolved_local_assets(
         if git_rc != 0:
             print(f"✗ worktree remove failed: {output}", file=sys.stderr)
             return exit_block
+    elif worktree is not None:
+        # Directory already gone but git still holds its registration; prune
+        # stale entries so the checked-out branch becomes deletable.
+        git_rc, output = git(["worktree", "prune"], root)
+        if git_rc != 0:
+            print(f"✗ worktree prune failed: {output}", file=sys.stderr)
+            return exit_block
     local_head, problem = _local_branch_head(branch, root=root, git=git)
     if problem:
         print(f"✗ resolve --remove blocked: {problem}", file=sys.stderr)
