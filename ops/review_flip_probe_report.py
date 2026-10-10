@@ -141,10 +141,11 @@ def parse_jsonl(lines: list[str]) -> ParsedRun:
 
 
 # DEBUG-only `gap.geom` PerfLog（TodayReviewPresenter / TodayReviewSwipeDeck，#2026）。
-# 文字格式與 Swift 端 mark 字串逐字對齊；w 可含空白，故 w 以 " h=" 為右界。
+# 文字格式與 Swift 端 mark 字串逐字對齊；w 可含空白，且可能含 " h=… reveal=…" 片段，
+# 故 w 必須 greedy：右界是「最後一段完整 h/reveal/dismiss/off/idx 尾巴」，非第一個 " h=".
 GAP_GEOM_RE = re.compile(
     r"gap\.geom\s+slot=(?P<slot>-?\d+)\s+role=(?P<role>\S+)\s+kind=(?P<kind>\S+)"
-    r"\s+w=(?P<word>.*?)\s+h=(?P<height>-?\d+(?:\.\d+)?)"
+    r"\s+w=(?P<word>.*)\s+h=(?P<height>-?\d+(?:\.\d+)?)"
     r"\s+reveal=(?P<reveal>-?\d+)\s+dismiss=(?P<dismiss>[01])"
     r"\s+off=(?P<offset>-?\d+)\s+idx=(?P<progress>.*?)\s*$"
 )
