@@ -300,6 +300,367 @@ def test_legal_formats_succeed_on_all_three_models(isolated_api, fmt):
     assert up.status_code == 200, up.text
 
 
+class _RecordingS3:
+    """Fake S3 client that records presigns and deletes."""
+
+    def __init__(self):
+        self.deleted: list[tuple[str, str]] = []
+
+    def generate_presigned_url(self, operation, *, Params, ExpiresIn):
+        return f"https://storage.test/{Params['Key']}"
+
+    def delete_object(self, *, Bucket, Key):
+        self.deleted.append((Bucket, Key))
+        return {}
+
+
+def _bucket_settings(api):
+    _swap_settings(
+        KGSettings(
+            data_dir=api.data_dir,
+            jwt_secret=TEST_JWT_SECRET,
+            library_bucket="kg-library-test",
+        )
+    )
+
+
+def _upload(api, book_id, fmt, *, local_only=False):
+    resp = api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": fmt, "byte_size": 10, "local_only": local_only},
+        headers=api.headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp
+
+
+def _pending_keys(api) -> list[str]:
+    from kg.library.store import LibraryStore
+
+    store = LibraryStore(api.data_dir / "users" / api.user_id / "library.db")
+    try:
+        return store.pending_object_keys()
+    finally:
+        store.close()
+
+
+class _FailingS3(_RecordingS3):
+    """Fake S3 client whose delete always fails."""
+
+    def delete_object(self, *, Bucket, Key):
+        raise RuntimeError("s3 unavailable")
+
+
+class _MissingObjectS3(_RecordingS3):
+    """Fake S3 client whose delete reports the object as already gone."""
+
+    class exceptions:  # noqa: N801 - mirrors boto3 client.exceptions
+        class NoSuchKey(Exception):
+            pass
+
+    def delete_object(self, *, Bucket, Key):
+        raise self.exceptions.NoSuchKey(Key)
+
+
+def _setup(api, monkeypatch, s3):
+    import kg.routers.library as library_router
+
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings, **_kw: s3)
+    _bucket_settings(api)
+
+
+def test_soft_delete_deletes_stored_object(isolated_api, monkeypatch):
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="del-1")
+    key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+
+    resp = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+
+    assert resp.status_code == 200, resp.text
+    assert s3.deleted == [("kg-library-test", key)]
+    assert _pending_keys(isolated_api) == []
+
+
+def test_repeated_soft_delete_deletes_object_once(isolated_api, monkeypatch):
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="del-2")
+    key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+
+    for _ in range(2):
+        resp = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+        assert resp.status_code == 200, resp.text
+
+    assert s3.deleted == [("kg-library-test", key)]
+
+
+def test_soft_delete_survives_delete_failure_and_keeps_key_pending(isolated_api, monkeypatch, caplog):
+    _setup(isolated_api, monkeypatch, _FailingS3())
+    book_id = _seed_book(isolated_api, client_book_id="del-3")
+    key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+
+    with caplog.at_level("WARNING"):
+        resp = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+
+    assert resp.status_code == 200, resp.text
+    assert any(key in rec.getMessage() for rec in caplog.records)
+    assert _pending_keys(isolated_api) == [key]
+
+
+def test_format_change_deletes_previous_key(isolated_api, monkeypatch):
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="fmt-1")
+    old_key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+    new_key = _upload(isolated_api, book_id, "pdf").json()["object_key"]
+
+    assert new_key != old_key
+    assert s3.deleted == [("kg-library-test", old_key)]
+    assert _pending_keys(isolated_api) == []
+
+
+def test_same_key_reupload_deletes_nothing(isolated_api, monkeypatch):
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="same-1")
+    _upload(isolated_api, book_id, "epub")
+    _upload(isolated_api, book_id, "epub")
+
+    assert s3.deleted == []
+    assert _pending_keys(isolated_api) == []
+
+
+def test_local_only_change_deletes_previous_key(isolated_api, monkeypatch):
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="local-1")
+    old_key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+    _upload(isolated_api, book_id, "epub", local_only=True)
+
+    assert s3.deleted == [("kg-library-test", old_key)]
+    assert _pending_keys(isolated_api) == []
+
+
+def test_format_change_survives_delete_failure_and_retries_next_request(isolated_api, monkeypatch):
+    failing = _FailingS3()
+    _setup(isolated_api, monkeypatch, failing)
+    book_id = _seed_book(isolated_api, client_book_id="retry-1")
+    old_key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+    _upload(isolated_api, book_id, "pdf")
+    assert _pending_keys(isolated_api) == [old_key]
+
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    _upload(isolated_api, book_id, "pdf")
+
+    assert s3.deleted == [("kg-library-test", old_key)]
+    assert _pending_keys(isolated_api) == []
+
+
+def test_reusing_recorded_key_clears_it_from_ledger(isolated_api, monkeypatch):
+    _setup(isolated_api, monkeypatch, _FailingS3())
+    book_id = _seed_book(isolated_api, client_book_id="reuse-1")
+    _upload(isolated_api, book_id, "epub")
+    _upload(isolated_api, book_id, "epub", local_only=True)
+    assert len(_pending_keys(isolated_api)) == 1
+
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    _upload(isolated_api, book_id, "epub")
+
+    assert _pending_keys(isolated_api) == []
+    assert s3.deleted == []
+
+
+def test_account_erasure_reclaims_keys_left_pending_by_failed_deletes(isolated_api, monkeypatch):
+    from kg.account_erasure import delete_account_assets
+
+    _setup(isolated_api, monkeypatch, _FailingS3())
+    book_id = _seed_book(isolated_api, client_book_id="erase-1")
+    old_key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+    new_key = _upload(isolated_api, book_id, "pdf").json()["object_key"]
+    isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+
+    s3 = _RecordingS3()
+    reclaimed = delete_account_assets(
+        isolated_api.data_dir,
+        [isolated_api.user_id],
+        library_bucket="kg-library-test",
+        library_s3_client=s3,
+    )
+
+    assert set(reclaimed) == {old_key, new_key}
+    assert {key for _, key in s3.deleted} == {old_key, new_key}
+
+
+def test_account_erasure_succeeds_when_object_already_gone(isolated_api, monkeypatch):
+    from kg.account_erasure import delete_account_assets
+
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="erase-2")
+    key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+    isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+    assert s3.deleted == [("kg-library-test", key)]
+    s3 = _MissingObjectS3()
+
+    reclaimed = delete_account_assets(
+        isolated_api.data_dir,
+        [isolated_api.user_id],
+        library_bucket="kg-library-test",
+        library_s3_client=s3,
+    )
+
+    assert key in reclaimed
+
+
+def test_reclaim_is_bounded_per_request(isolated_api, monkeypatch):
+    import kg.routers.library as library_router
+
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, _FailingS3())
+    book_ids = [_seed_book(isolated_api, client_book_id=f"batch-{i}") for i in range(7)]
+    for book_id in book_ids:
+        _upload(isolated_api, book_id, "epub")
+        _upload(isolated_api, book_id, "pdf")
+    assert len(_pending_keys(isolated_api)) == 7
+
+    _setup(isolated_api, monkeypatch, s3)
+    _upload(isolated_api, book_ids[0], "pdf")
+
+    assert len(s3.deleted) == library_router._RECLAIM_BATCH == 5
+    assert len(_pending_keys(isolated_api)) == 2
+
+
+def test_client_creation_failure_does_not_fail_request(isolated_api, monkeypatch):
+    import kg.routers.library as library_router
+
+    s3 = _RecordingS3()
+    _setup(isolated_api, monkeypatch, s3)
+    book_id = _seed_book(isolated_api, client_book_id="noclient-1")
+    key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+
+    def _boom(settings, **_kw):
+        raise RuntimeError("no credentials")
+
+    monkeypatch.setattr(library_router, "_library_s3_client", _boom)
+    resp = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+
+    assert resp.status_code == 200, resp.text
+    assert _pending_keys(isolated_api) == [key]
+
+
+def _store(api):
+    from kg.library.store import LibraryStore
+
+    return LibraryStore(api.data_dir / "users" / api.user_id / "library.db")
+
+
+def test_reclaim_skips_and_clears_stale_row_for_live_key(isolated_api):
+    """A ledger row left behind for a key a live book references (e.g. written from
+    a stale snapshot) must be dropped without deleting the object."""
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryPendingObjectDelete
+
+    book_id = _seed_book(isolated_api, client_book_id="race-1")
+    store = _store(isolated_api)
+    try:
+        key = "library/u/race-1/asset.epub"
+        store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
+        with Session(store.engine) as session:
+            session.add(LibraryPendingObjectDelete(object_key=key, book_id=book_id))
+            session.commit()
+        assert store.pending_object_keys() == [key]
+
+        deleted: list[str] = []
+        assert store.reclaim_pending_object(key, deleted.append) is False
+
+        assert deleted == []
+        assert store.pending_object_keys() == []
+    finally:
+        store.close()
+
+
+def test_set_asset_blocks_until_in_flight_reclaim_commits(isolated_api):
+    import threading
+
+    book_id = _seed_book(isolated_api, client_book_id="race-2")
+    store = _store(isolated_api)
+    try:
+        key = "library/u/race-2/asset.epub"
+        store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
+        store.set_asset(book_id, storage="local", object_key=None, byte_size=1, sha256=None)
+        assert store.pending_object_keys() == [key]
+
+        readopt = threading.Thread(
+            target=lambda: store.set_asset(book_id, storage="object", object_key=key, byte_size=1, sha256=None)
+        )
+        observed: dict[str, bool] = {}
+
+        def delete(_key: str) -> None:
+            readopt.start()
+            readopt.join(timeout=0.5)
+            observed["blocked"] = readopt.is_alive()
+
+        assert store.reclaim_pending_object(key, delete) is True
+        readopt.join(timeout=10)
+
+        assert observed["blocked"], "set_asset ran while reclaim held the write lock"
+        assert not readopt.is_alive()
+        assert store.pending_object_keys() == []
+    finally:
+        store.close()
+
+
+def test_racing_asset_changes_record_every_superseded_key(isolated_api):
+    """A->B committing while A->C waits must leave both A and B in the ledger."""
+    import threading
+
+    from sqlmodel import Session
+
+    from kg.library.store import LibraryBook
+
+    book_id = _seed_book(isolated_api, client_book_id="race-3")
+    store = _store(isolated_api)
+    other = _store(isolated_api)
+    try:
+        key_a, key_b, key_c = (f"library/u/race-3/asset.{ext}" for ext in ("epub", "pdf", "txt"))
+        store.set_asset(book_id, storage="object", object_key=key_a, byte_size=1, sha256=None)
+
+        errors: list[BaseException] = []
+
+        def to_c() -> None:
+            try:
+                other.set_asset(book_id, storage="object", object_key=key_c, byte_size=1, sha256=None)
+            except BaseException as exc:  # pragma: no cover - failure path
+                errors.append(exc)
+
+        # Hold the write lock the way an in-flight A->B change does, start A->C,
+        # then commit A->B.
+        with Session(store.engine) as session:
+            from kg.library.store import _lock_book, _record_pending_delete
+
+            _lock_book(session, book_id)
+            thread = threading.Thread(target=to_c)
+            thread.start()
+            thread.join(timeout=0.3)
+            assert thread.is_alive(), "A->C should wait for the in-flight change"
+            book = session.get(LibraryBook, book_id)
+            _record_pending_delete(session, book_id, key_a)
+            book.asset_object_key = key_b
+            session.add(book)
+            session.commit()
+        thread.join(timeout=10)
+
+        assert errors == []
+        assert store.pending_object_keys() == sorted([key_a, key_b])
+    finally:
+        other.close()
+        store.close()
+
+
 # ---------------------------------------------------------------------------
 # Upload target integrity (Issue #2525)
 # ---------------------------------------------------------------------------

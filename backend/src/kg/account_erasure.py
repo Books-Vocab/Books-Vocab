@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import HTTPException
+from sqlalchemy import inspect
 from sqlmodel import Session, select
 
-from .library.store import LibraryBook
+from .library.store import LibraryBook, LibraryPendingObjectDelete
 from .sqlite_utils import make_sqlite_engine
 
 # S3 DeleteObjects accepts at most 1000 keys per request.
@@ -22,7 +23,11 @@ class ObjectStorageClient(Protocol):
 
 
 def _asset_object_keys(data_dir: Path, user_ids: Iterable[str]) -> tuple[str, ...]:
-    """Read the durable object-key ledger without requiring user metadata."""
+    """Read the durable object-key ledger without requiring user metadata.
+
+    Covers keys referenced by any row (including tombstones) and keys recorded
+    as superseded or tombstoned in the pending-delete ledger.
+    """
     keys: list[str] = []
     for uid in dict.fromkeys(user_ids):
         library_db = data_dir / "users" / uid / "library.db"
@@ -35,6 +40,9 @@ def _asset_object_keys(data_dir: Path, user_ids: Iterable[str]) -> tuple[str, ..
                 keys.extend(
                     book.asset_object_key for book in books if book.asset_storage == "object" and book.asset_object_key
                 )
+                # Databases created before the ledger existed have no table yet.
+                if inspect(engine).has_table(LibraryPendingObjectDelete.__tablename__):
+                    keys.extend(session.exec(select(LibraryPendingObjectDelete.object_key)).all())
         finally:
             engine.dispose()
     return tuple(dict.fromkeys(keys))
