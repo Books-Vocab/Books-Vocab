@@ -1385,3 +1385,23 @@ def test_external_card_meaning_update_survives_judge_requeue_failure(external_ap
     assert edited.status_code == 200, edited.text
     assert edited.json()["meaning"] == "新"
     assert captured == ["vocab.judge_requeue"]
+
+
+def test_external_card_meaning_update_graph_open_failure_is_captured_not_raised(external_api, monkeypatch):
+    """#2957: a graph store that fails to open is captured and skipped by the meaning-edit side effects."""
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    created = external_api.client.post("/api/v1/cards", json={"content": "gopen", "meaning": "舊"}, headers=headers)
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+    user = {"id": external_api.user_id, "dir": external_api.data_dir / "users" / external_api.user_id}
+
+    def broken_graph(*_args, **_kwargs):
+        raise RuntimeError("graph store unavailable")
+
+    captured: list[str] = []
+    monkeypatch.setattr(external_router, "_graph_store", broken_graph)
+    monkeypatch.setattr(external_router, "capture_handled", lambda exc, *, context: captured.append(context))
+
+    external_router._reembed_after_meaning_edit(user, card_id, "default")
+
+    assert captured == ["external_api.judge_requeue"]
