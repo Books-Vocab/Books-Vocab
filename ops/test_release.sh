@@ -39,13 +39,13 @@ OPS_TEST="$WORKSPACE/ops/test_ops.sh"
 [[ -x "$OPS_TEST" ]] \
   && ok "ops/test_ops.sh executable" || fail_t "ops/test_ops.sh missing or not executable"
 ops_help="$(bash "$OPS_TEST" --help 2>&1)"
-echo "$ops_help" | grep -qE 'set -euo pipefail|^ROOT=|^UV_BIN=' \
+grep -qE 'set -euo pipefail|^ROOT=|^UV_BIN=' <<<"$ops_help" \
   && fail_t "test_ops help leaks shell code" \
   || ok "test_ops help is comment-only"
 ops_list="$(bash "$OPS_TEST" --list 2>&1)"
-echo "$ops_list" | grep -q '^release$' \
+grep -q '^release$' <<<"$ops_list" \
   && ok "test_ops lists release group" || fail_t "test_ops --list missing release"
-echo "$ops_list" | grep -q '^podcast-ops$' \
+grep -q '^podcast-ops$' <<<"$ops_list" \
   && ok "test_ops lists podcast-ops group" || fail_t "test_ops --list missing podcast-ops"
 
 # ── 4. release.sh 僅在非 API transaction 路徑委派 bump primitive ─────────────
@@ -68,20 +68,20 @@ grep -qE 'YES=(0|"")|YES=$' "$REL" \
   && ok "YES defaults to off (dry-run)"     || fail_t "YES not defaulting to dry-run"
 tag_body="$(awk '/^cmd_tag\(\)/,/^}/' "$REL")"
 # 真正的 push 標的＝`push origin`（script 用 git -C "$ROOT" push origin，dry-run 用中文「推送 origin」不撞）
-echo "$tag_body" | grep -q 'push origin' \
+grep -q 'push origin' <<<"$tag_body" \
   && ok "tag has real push origin"          || fail_t "tag missing push origin"
 # 真正的 push/commit/tag 必須在 YES gate 之內
-echo "$tag_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]|if \[ "\$YES"' \
+grep -qE 'if \[\[ \$YES -eq 1 \]\]|if \[ "\$YES"' <<<"$tag_body" \
   && ok "tag guards side-effects behind --yes" || fail_t "tag missing --yes guard"
 # 負控（鎖不變量）：push origin 不可洩進 dry-run/else 分支 —— 否則無 --yes 也會推
-echo "$tag_body" | awk '/else/,/fi/' | grep -q 'push origin' \
+grep -q 'push origin' <<<"$(awk '/else/,/fi/' <<<"$tag_body")" \
   && fail_t "push origin leaked into dry-run branch (would push without --yes)" \
   || ok "dry-run branch contains no push origin"
 
 # ── 5b. detached HEAD 守衛（避免 push origin HEAD；review footgun 回歸） ──────
-echo "$tag_body" | grep -q 'detached HEAD' \
+grep -q 'detached HEAD' <<<"$tag_body" \
   && ok "tag guards detached HEAD"          || fail_t "tag missing detached-HEAD guard (would push origin HEAD)"
-echo "$tag_body" | grep -q 'backend/uv.lock' \
+grep -q 'backend/uv.lock' <<<"$tag_body" \
   && ok "api tag includes synchronized uv.lock" || fail_t "api tag would leave synchronized uv.lock uncommitted"
 
 # ── 5c. release 統一入口 gate：dry-run 預設、須在 main、委派 deploy/upload ────
@@ -90,12 +90,12 @@ rel_body="$(awk '/^cmd_release\(\)/,/^}/' "$REL")"
 grep -q 'orchestrate deploy' "$REL" \
   && fail_t "release.sh references the nonexistent 'orchestrate deploy'; the only prod route is promote" \
   || ok "no dead 'orchestrate deploy' reference (prod advance = promote)"
-echo "$rel_body" | grep -q 'ios_release.sh' \
+grep -q 'ios_release.sh' <<<"$rel_body" \
   && ok "release ios delegates to ios_release.sh --upload" || fail_t "release missing ios_release delegation"
-echo "$rel_body" | grep -qE 'branch.*== main|== main.*branch|"\$branch" == main' \
+grep -qE 'branch.*== main|== main.*branch|"\$branch" == main' <<<"$rel_body" \
   && ok "release guards on-main"            || fail_t "release missing on-main guard"
 # 負控：生產觸點（deploy/upload）不可洩進 dry-run 分支（--yes 前 return）
-echo "$rel_body" | awk '/YES -ne 1/,/return 0/' | grep -qE 'push origin.*prod|--upload' \
+grep -qE 'push origin.*prod|--upload' <<<"$(awk '/YES -ne 1/,/return 0/' <<<"$rel_body")" \
   && fail_t "production touch leaked into release dry-run branch" \
   || ok "release dry-run branch contains no production touch"
 
@@ -126,13 +126,15 @@ section "Read-only commands stay read-only"
 status_body="$(awk '/^cmd_status\(\)/,/^}/' "$REL")"
 # 只看「被執行的」git 寫入，不看被印出來的字串：status 印 remediation 提示（例如
 # 誤標 tag 的刪除指令）是它的職責，不是副作用。先剔除 echo/printf 行再掃。
-status_exec_body() { echo "$status_body" | grep -vE '^[[:space:]]*(echo|printf)\b'; }
-status_exec_body | grep -qE 'git push|git commit|git tag ' \
+status_exec_body() { grep -vE '^[[:space:]]*(echo|printf)\b' <<<"$status_body"; }
+status_exec="$(status_exec_body)"
+grep -qE 'git push|git commit|git tag ' <<<"$status_exec" \
   && fail_t "status has a write/remote op (must be read-only)" \
   || ok "status is read-only"
 # 守衛本身不得被上面的剔除規則掏空：植入一個真正的寫入語句必須仍被抓到。
-printf '%s\n' '  git push origin main' \
-  | grep -vE '^[[:space:]]*(echo|printf)\b' | grep -qE 'git push|git commit|git tag ' \
+bare_write="$(printf '%s\n' '  git push origin main')"
+guard_out="$(grep -vE '^[[:space:]]*(echo|printf)\b' <<<"$bare_write")"
+grep -qE 'git push|git commit|git tag ' <<<"$guard_out" \
   && ok "read-only guard still catches a real write op" \
   || fail_t "read-only guard was defanged — a bare git push now slips through"
 
@@ -144,18 +146,18 @@ section "No false CI claim"
 # ── 9. --help 不洩漏 shell 程式碼（dogfood A-F6/C：usage sed 範圍越界回歸） ──
 section "Help output stays comment-only"
 help_out="$(bash "$REL" --help 2>&1)"
-echo "$help_out" | grep -qE 'set -euo pipefail|^ROOT=|^YES=' \
+grep -qE 'set -euo pipefail|^ROOT=|^YES=' <<<"$help_out" \
   && fail_t "help leaks shell code (set/ROOT/YES bled into usage)" \
   || ok "help is comment-only (no shell code leak)"
 
 # ── 10. status 漂移警示（dogfood A-F2/C：tag↔檔內版號不一致須警告） ──────────
 section "Status drift warning"
-echo "$status_body" | grep -q '版號漂移' \
+grep -q '版號漂移' <<<"$status_body" \
   && ok "status warns on tag↔file version drift" || fail_t "status missing drift warning"
 
 # ── 11. status 長清單截斷（dogfood A-F3：234 筆 commit 不該吐成 688 行牆） ────
 section "Status truncates long commit list"
-echo "$status_body" | grep -q 'head -15' \
+grep -q 'head -15' <<<"$status_body" \
   && ok "status caps commit list (head -15)" || fail_t "status dumps full commit wall (no truncation)"
 
 # ── 12. release_bump.sh ios 的 sed 必須錨定，不得全域掃 ────────────────────
@@ -288,9 +290,9 @@ grep -q 'MARKETING_VERSION = 9.9;' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pb
   && ! grep -q '9\.9\.1' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
   && ok "dry-run leaves pbxproj untouched" || fail_t "dry-run modified pbxproj (must not write without --yes)"
 # 13b. dry-run 輸出：舊→新 + 指引 --yes
-echo "$dry_out" | grep -q '9.9 → 9.9.1' \
+grep -q '9.9 → 9.9.1' <<<"$dry_out" \
   && ok "dry-run prints old→new version" || fail_t "dry-run missing old→new preview: $dry_out"
-echo "$dry_out" | grep -q -- '--yes' \
+grep -q -- '--yes' <<<"$dry_out" \
   && ok "dry-run points to --yes" || fail_t "dry-run does not mention --yes"
 # 13c. api dry-run：兩檔皆不動、輸出含舊→新
 api_dry="$(KG_ROOT="$TMP2" bash "$BUMP" api 0.2.0 2>&1)" \
@@ -298,7 +300,7 @@ api_dry="$(KG_ROOT="$TMP2" bash "$BUMP" api 0.2.0 2>&1)" \
 grep -q 'version = "0.1.0"' "$TMP2/backend/pyproject.toml" \
   && grep -q 'version="0.1.0"' "$TMP2/backend/src/kg/api.py" \
   && ok "api dry-run leaves pyproject+api.py untouched" || fail_t "api dry-run modified version files"
-echo "$api_dry" | grep -q '0.1.0 → 0.2.0' \
+grep -q '0.1.0 → 0.2.0' <<<"$api_dry" \
   && ok "api dry-run prints old→new" || fail_t "api dry-run missing old→new preview: $api_dry"
 # 13d0. wrapper 無 --yes：dry-run 不寫檔（wrapper 路徑，非只測 primitive）
 KG_ROOT="$TMP2" bash "$REL" bump api 0.2.0 >/dev/null 2>&1 \
@@ -572,9 +574,9 @@ PBX
 # 14a. dry-run（無 --yes）：exit 0、印舊→新 build、不寫檔
 bb_dry="$(KG_ROOT="$TMP3" bash "$REL" bump-build ios 2>&1)" \
   && ok "bump-build ios dry-run exits 0" || fail_t "bump-build ios dry-run exited non-zero: $bb_dry"
-echo "$bb_dry" | grep -q '7 → 8' \
+grep -q '7 → 8' <<<"$bb_dry" \
   && ok "dry-run prints old→new build" || fail_t "dry-run missing old→new build preview: $bb_dry"
-echo "$bb_dry" | grep -q -- '--yes' \
+grep -q -- '--yes' <<<"$bb_dry" \
   && ok "dry-run points to --yes" || fail_t "dry-run does not mention --yes"
 grep -q 'CURRENT_PROJECT_VERSION = 7;' "$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
   && ! grep -q 'CURRENT_PROJECT_VERSION = 8;' "$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
@@ -592,7 +594,7 @@ bb_pbx="$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 # 14c. api 拒絕（api 無 build number 概念），錯誤訊息給可行動指引
 bb_api="$(KG_ROOT="$TMP3" bash "$REL" bump-build api 2>&1)" \
   && fail_t "bump-build api should be rejected" \
-  || { echo "$bb_api" | grep -q 'bump api' \
+  || { grep -q 'bump api' <<<"$bb_api" \
          && ok "bump-build api 拒絕且指向 bump api" || fail_t "bump-build api error not actionable: $bb_api"; }
 # 14d. 多餘 positional 拒絕（不得靜默忽略）
 KG_ROOT="$TMP3" bash "$REL" bump-build ios 9.9.1 >/dev/null 2>&1 \
@@ -675,7 +677,7 @@ noatt_out="$(bash "$fx_a/ops/release.sh" release ios 2.0.1 --new-version-after-r
 [[ "$noatt_rc" -ne 0 ]] \
   && ok "removed --new-version-after-ready hard-errors instead of being ignored" \
   || fail_t "removed --new-version-after-ready was silently accepted"
-echo "$noatt_out" | grep -q 'shipped ios' \
+grep -q 'shipped ios' <<<"$noatt_out" \
   && ok "removed-flag error points at the verb that replaced it" \
   || fail_t "removed-flag error does not name the shipped verb: $noatt_out"
 [[ "$(git -C "$fx_a" rev-parse HEAD)" == "$head_a" ]] \
@@ -694,7 +696,7 @@ git -C "$fx_b" tag "ios/2.0.0+5"
 mismatch_rc=0
 mismatch_out="$(bash "$fx_b/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || mismatch_rc=$?
 [[ "$mismatch_rc" -ne 0 ]] \
-  && echo "$mismatch_out" | grep -q 'shipped ios' \
+  && grep -q 'shipped ios' <<<"$mismatch_out" \
   && ok "no shipped tag: refuses and points at the shipped verb instead of guessing" \
   || fail_t "missing shipped tag was not actionably rejected: $mismatch_out"
 [[ ! -e "$fx_b/upload.called" ]] \
@@ -822,7 +824,7 @@ downgrade_out="$(bash "$fx_e/ops/release.sh" release ios 1.9.9 --yes 2>&1)" || d
 [[ "$downgrade_rc" -ne 0 \
    && "$(git -C "$fx_e" rev-parse HEAD)" == "$head_e" \
    && ! -e "$fx_e/upload.called" ]] \
-  && echo "$downgrade_out" | grep -q '高於.*2.0.0' \
+  && grep -q '高於.*2.0.0' <<<"$downgrade_out" \
   && ok "iOS new marketing version must increase monotonically" \
   || fail_t "iOS downgrade was not safely rejected: $downgrade_out"
 
@@ -866,7 +868,7 @@ pending_out="$(bash "$fx_g/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || pen
    && "$(git -C "$fx_g" rev-parse HEAD)" == "$head_g" ]] \
   && ok "skipping a version that has builds but no shipped tag is refused pre-upload" \
   || fail_t "released past an unconfirmed version (the 2.0.1 incident shape): $pending_out"
-echo "$pending_out" | grep -q '2\.0\.0' \
+grep -q '2\.0\.0' <<<"$pending_out" \
   && ok "pending-version error names the version that was about to be skipped" \
   || fail_t "pending-version error does not name 2.0.0: $pending_out"
 # 正控：補上 2.0.0 的上架 tag 後，同一條 candidate 命令必須放行。
@@ -908,10 +910,10 @@ classify_version_drift '$1' '$2'"
 else
   fail_t "release.sh has no classify_version_drift seam (ios/2.0.1 mistag stays undiagnosed)"
 fi
-echo "$status_body" | grep -q 'classify_version_drift' \
+grep -q 'classify_version_drift' <<<"$status_body" \
   && ok "status classifies drift instead of always advising a bump" \
   || fail_t "status still emits a single undirected drift warning"
-echo "$status_body" | grep -q '誤標' \
+grep -q '誤標' <<<"$status_body" \
   && ok "status names the mistagged case" || fail_t "status has no mistagged branch"
 
 # ── 16. last_tag 只認 released 形狀（build tag 不得污染） ────────────────────
@@ -978,8 +980,9 @@ MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6;
 PBX
 printf '[project]\nversion = "2.0.1"\n' > "$fx_lt/backend/pyproject.toml"
 status_fx="$(bash "$fx_lt/ops/release.sh" status 2>&1)"
-echo "$status_fx" | grep -E '^■ ios' | grep -q 'ios/2.0.0+6' \
-  && fail_t "status reports the build tag as the last released version: $(echo "$status_fx" | grep -E '^■ ios')" \
+ios_status_lines="$(grep -E '^■ ios' <<<"$status_fx")"
+grep -q 'ios/2.0.0+6' <<<"$ios_status_lines" \
+  && fail_t "status reports the build tag as the last released version: $ios_status_lines" \
   || ok "status caller reports the released tag, not the build tag"
 
 # A current project tuple with an existing build tag is already sealed.  Status
@@ -993,13 +996,13 @@ git -C "$fx_status_sealed" add ios/BooksAndVocab.xcodeproj/project.pbxproj
 git -C "$fx_status_sealed" commit -q -m "ios: prepare ios 2.0.1 build 12"
 git -C "$fx_status_sealed" tag "ios/2.0.1+12"
 status_sealed="$(bash "$fx_status_sealed/ops/release.sh" status 2>&1)"
-echo "$status_sealed" | grep -q 'ios/2.0.1+12' \
+grep -q 'ios/2.0.1+12' <<<"$status_sealed" \
   && ok "status exposes the current sealed iOS build tag" \
   || fail_t "status omitted the current sealed iOS build tag: $status_sealed"
-echo "$status_sealed" | grep -q '自最新 build tag 無未封版 ios: commit' \
+grep -q '自最新 build tag 無未封版 ios: commit' <<<"$status_sealed" \
   && ok "status measures unsealed iOS delta after the current build tag" \
   || fail_t "status treated the sealed build as a pending iOS backlog: $status_sealed"
-echo "$status_sealed" | grep -q '待發版 1 筆 ios: commit' \
+grep -q '待發版 1 筆 ios: commit' <<<"$status_sealed" \
   && fail_t "status still reports shipped-range commits as pending after build sealing" \
   || ok "status does not report shipped-range commits as pending after build sealing"
 
@@ -1049,7 +1052,7 @@ conflict_out="$(bash "$fx_bc/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || c
   || fail_t "conflict moved the existing build tag or HEAD"
 # 這條斷言必須綁在**同一行**同時出現 tag 名與既有 commit：只 grep 短 sha 會被 git 的
 # push range 行（`84b9bb5..312e381 main -> main`）滿足，於是在完全沒有拒絕訊息時也變綠。
-echo "$conflict_out" | grep -q "ios/2.0.1+6.*$(git -C "$fx_bc" rev-parse --short "$sealed_bc")" \
+grep -q "ios/2.0.1+6.*$(git -C "$fx_bc" rev-parse --short "$sealed_bc")" <<<"$conflict_out" \
   && ok "conflict error names both the build tag and the commit it already points at" \
   || fail_t "conflict error is not actionable (no single line naming tag + existing commit): $conflict_out"
 
@@ -1100,10 +1103,10 @@ git -C "$fx_cl" tag ios/2.0.0
 git -C "$fx_cl" commit -q --allow-empty -m "ios: 新增 after shipping"
 git -C "$fx_cl" tag "ios/2.0.0+6"          # build tag 指向較新的 commit
 cl_out="$(bash "$fx_cl/ops/release_changelog.sh" ios 2>&1)"
-echo "$cl_out" | grep -q '自 ios/2\.0\.0[^+]' && ! echo "$cl_out" | grep -q '2\.0\.0+6' \
+grep -q '自 ios/2\.0\.0[^+]' <<<"$cl_out" && ! grep -q '2\.0\.0+6' <<<"$cl_out" \
   && ok "changelog anchors on the released tag, not the build tag" \
   || fail_t "changelog anchored on a build tag: $cl_out"
-echo "$cl_out" | grep -q 'after shipping' \
+grep -q 'after shipping' <<<"$cl_out" \
   && ok "changelog still lists commits made after the released tag" \
   || fail_t "changelog silently emptied itself (no error, just no content): $cl_out"
 
@@ -1114,12 +1117,12 @@ git -C "$fx_cl" commit -q --allow-empty -m "feat(ios): dark app icon"
 mkdir -p "$fx_cl/ios/BooksAndVocab"; echo x > "$fx_cl/ios/BooksAndVocab/A.swift"
 git -C "$fx_cl" add ios && git -C "$fx_cl" commit -q -m "tidy the reader margins"
 cl_d="$(bash "$fx_cl/ops/release_changelog.sh" ios --draft 2>&1)"
-cl_new="$(echo "$cl_d" | awk '/^#### New/{f=1;next} /^#/{f=0} f&&/^- /')"
-echo "$cl_new" | grep -q 'login coverage' \
+cl_new="$(awk '/^#### New/{f=1;next} /^#/{f=0} f&&/^- /' <<<"$cl_d")"
+grep -q 'login coverage' <<<"$cl_new" \
   && fail_t "test commit counted as feature: $cl_new" || ok "test(ios) commit is not a feature"
-echo "$cl_new" | grep -q 'dark app icon' && ok "feat(ios) title counted as New" || fail_t "feat(ios) missed: $cl_d"
-echo "$cl_d" | grep -q 'tidy the reader margins' && ok "path-only ios commit counted" || fail_t "path-only ios commit missed: $cl_d"
-echo "$cl_d" | grep -q '^## Unreleased' && ok "--draft prints an Unreleased section" || fail_t "no Unreleased header: $cl_d"
+grep -q 'dark app icon' <<<"$cl_new" && ok "feat(ios) title counted as New" || fail_t "feat(ios) missed: $cl_d"
+grep -q 'tidy the reader margins' <<<"$cl_d" && ok "path-only ios commit counted" || fail_t "path-only ios commit missed: $cl_d"
+grep -q '^## Unreleased' <<<"$cl_d" && ok "--draft prints an Unreleased section" || fail_t "no Unreleased header: $cl_d"
 
 # 真 merge-commit 路徑：merge body 首行常是 PR 最後一個 commit 主旨（#2411 body=test(...) 實為 entitlement 修復）。
 section "changelog: real PR titles, needs-curation list, word boundaries, bad input"
@@ -1134,11 +1137,11 @@ echo 0 > "$fx_cm/backend/src/kg/billing.py"
 git -C "$fx_cm" add -A && git -C "$fx_cm" commit -q -m "chore: seed"
 cm_run() { KG_PR_TITLES_FILE="${CM_TITLES:-/dev/null}" bash "$fx_cm/ops/release_changelog.sh" "$@"; }
 cm_empty="$(cm_run api 2>&1)"
-echo "$cm_empty" | grep -q '自 initial' && echo "$cm_empty" | grep -q 'seed' \
+grep -q '自 initial' <<<"$cm_empty" && grep -q 'seed' <<<"$cm_empty" \
   && ok "no tag: whole history is the range ('initial')" || fail_t "no-tag range wrong: $cm_empty"
 git -C "$fx_cm" tag api/1.0.0
 cm_empty="$(cm_run api --draft 2>&1)" && cm_rc=0 || cm_rc=$?
-echo "$cm_empty" | grep -q '無變更（自 api/1.0.0' && [ "$cm_rc" = 0 ] \
+grep -q '無變更（自 api/1.0.0' <<<"$cm_empty" && [ "$cm_rc" = 0 ] \
   && ok "empty range prints 無變更 and exits 0" || fail_t "empty range wrong rc=$cm_rc: $cm_empty"
 cm_pr() {  # <n> <branch> <file-content> <commit-subject> ：在 branch 上改 billing.py 後 --no-ff 合併，body 首行 = commit 主旨
   git -C "$fx_cm" checkout -q -b "$2"
@@ -1153,42 +1156,42 @@ cm_pr 2413 lane-zh x3 "新增 發票匯出"
 cm_pr 2414 lane-cursor x4 "wip: cursor tweak"                               # 一般 PR：body 首行失真，真標題才對
 printf '2411\ttest(billing): grace-period entitlement fixture\n2413\t新增 發票匯出\n2414\tfix(api): reject empty cursor\n' > "$TMP5/cm_titles.tsv"
 cm_off="$(cm_run api --draft 2>&1)"
-echo "$cm_off" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'reject empty cursor' \
+grep -q 'reject empty cursor' <<<"$(awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' <<<"$cm_off")" \
   && fail_t "no title map, yet the real title appeared: $cm_off" \
   || ok "without a title map an ordinary PR falls back to its (misleading) merge body"
 cm_on="$(CM_TITLES="$TMP5/cm_titles.tsv" cm_run api --draft 2>&1)"
-echo "$cm_on" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'reject empty cursor.*#2414' \
+grep -q 'reject empty cursor.*#2414' <<<"$(awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' <<<"$cm_on")" \
   && ok "real PR title (seam) classifies an ordinary PR as Fixed, with the PR number appended" || fail_t "real title ignored: $cm_on"
 for cm_which in off on; do
   cm_txt="$cm_off"; [ "$cm_which" = on ] && cm_txt="$cm_on"
-  echo "$cm_txt" | awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' | grep -q 'grace-period entitlement' \
+  grep -q 'grace-period entitlement' <<<"$(awk '/^#### Fixed/{f=1;next} /^#/{f=0} f' <<<"$cm_txt")" \
     && fail_t "lane PR with a test(...) title was classified Fixed ($cm_which): $cm_txt" \
     || ok "lane PR titled test(...) is not auto-classified as a fix ($cm_which)"
-  echo "$cm_txt" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'grace-period entitlement.*#2411' \
+  grep -q 'grace-period entitlement.*#2411' <<<"$(awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' <<<"$cm_txt")" \
     && ok "lane PR #2411 lands in Needs curation ($cm_which)" || fail_t "#2411 missing from Needs curation ($cm_which): $cm_txt"
 done
-echo "$cm_on" | awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' | grep -q 'reject empty cursor' \
+grep -q 'reject empty cursor' <<<"$(awk '/^### Needs curation/{f=1;next} /^###/{f=0} f' <<<"$cm_on")" \
   && fail_t "correctly classified merge still listed as needs-curation: $cm_on" || ok "correctly classified merge is not in needs-curation"
-echo "$cm_on" | awk '/^#### Improved/{f=1;next} /^#/{f=0} f' | grep -q 'latest cache' \
+grep -q 'latest cache' <<<"$(awk '/^#### Improved/{f=1;next} /^#/{f=0} f' <<<"$cm_on")" \
   && ok "'latest' does not match the test keyword (word boundary)" || fail_t "'speed up the latest cache' misclassified: $cm_on"
-echo "$cm_on" | awk '/^### Internal/{f=1;next} /^###/{f=0} f' | grep -q '共 1 項' \
+grep -q '共 1 項' <<<"$(awk '/^### Internal/{f=1;next} /^###/{f=0} f' <<<"$cm_on")" \
   && ok "only the lane test(...) PR is counted internal" || fail_t "internal count wrong: $cm_on"
 # gh --limit 撞頂：較舊 PR 標題會靜默退回 merge body → 必須警告（用 count seam KG_PR_TITLES_LIMIT）
 cm_warn="$(KG_PR_TITLES_LIMIT=3 KG_PR_TITLES_FILE="$TMP5/cm_titles.tsv" bash "$fx_cm/ops/release_changelog.sh" api --draft 2>&1 >/dev/null)" || true
-echo "$cm_warn" | grep -q '已達上限' \
+grep -q '已達上限' <<<"$cm_warn" \
   && ok "titles count == limit warns on stderr" || fail_t "no limit warning: $cm_warn"
 cm_warn="$(KG_PR_TITLES_LIMIT=4 KG_PR_TITLES_FILE="$TMP5/cm_titles.tsv" bash "$fx_cm/ops/release_changelog.sh" api --draft 2>&1 >/dev/null)" || true
-echo "$cm_warn" | grep -q '已達上限' \
+grep -q '已達上限' <<<"$cm_warn" \
   && fail_t "warned below the limit: $cm_warn" || ok "titles count below the limit does not warn"
-echo "$cm_on" | grep -q '新增 發票匯出' \
+grep -q '新增 發票匯出' <<<"$cm_on" \
   && ok "non-ASCII PR title survives the title map and classifier" || fail_t "non-ASCII title lost: $cm_on"
-echo "$cm_on" | awk '/^#### New/{f=1;next} /^#/{f=0} f' | grep -q '新增 發票匯出' \
+grep -q '新增 發票匯出' <<<"$(awk '/^#### New/{f=1;next} /^#/{f=0} f' <<<"$cm_on")" \
   && ok "新增 title is classified New" || fail_t "新增 title misclassified: $cm_on"
 cm_bad="$(cm_run api --draft no-such-ref 2>&1 >/dev/null)" && cm_rc=0 || cm_rc=$?
-{ [ "$cm_rc" -ne 0 ] && echo "$cm_bad" | grep -q 'no-such-ref'; } \
+{ [ "$cm_rc" -ne 0 ] && grep -q 'no-such-ref' <<<"$cm_bad"; } \
   && ok "invalid since-ref: clear stderr message and non-zero exit" || fail_t "invalid ref rc=$cm_rc: $cm_bad"
 cm_bad="$(cm_run api --drat 2>&1 >/dev/null)" && cm_rc=0 || cm_rc=$?
-{ [ "$cm_rc" -ne 0 ] && echo "$cm_bad" | grep -q '用法'; } \
+{ [ "$cm_rc" -ne 0 ] && grep -q '用法' <<<"$cm_bad"; } \
   && ok "unknown second argument rejected with usage" || fail_t "--drat accepted rc=$cm_rc: $cm_bad"
 cm_bad="$(cm_run api --draft api/1.0.0 extra 2>&1 >/dev/null)" && cm_rc=0 || cm_rc=$?
 [ "$cm_rc" -ne 0 ] && ok "extra trailing argument rejected" || fail_t "trailing arg accepted: $cm_bad"
@@ -1221,7 +1224,7 @@ dry_s="$(KG_ASC_SHIPPED_CMD="$fx_s/asc-stub.sh" bash "$fx_s/ops/release.sh" ship
 [[ "$dry_rc" -eq 0 ]] && ok "shipped dry-run exits 0" || fail_t "shipped dry-run exited $dry_rc: $dry_s"
 [[ -z "$(git -C "$fx_s" tag -l 'ios/2.0.0')" ]] \
   && ok "shipped dry-run creates no tag" || fail_t "shipped dry-run created a tag"
-echo "$dry_s" | grep -q -- '--yes' \
+grep -q -- '--yes' <<<"$dry_s" \
   && ok "shipped dry-run points to --yes" || fail_t "shipped dry-run does not mention --yes: $dry_s"
 
 # 19b. --yes：ios/2.0.0 落在 build tag 指的那顆 commit 上，並推 origin。
@@ -1251,7 +1254,7 @@ git -C "$fx_sm" tag "ios/2.0.0+6" "$right_sm"
 mm_rc=0
 mm_out="$(KG_ASC_SHIPPED_CMD="$fx_sm/asc-stub.sh" bash "$fx_sm/ops/release.sh" shipped ios --yes 2>&1)" || mm_rc=$?
 [[ "$mm_rc" -ne 0 && "$(git -C "$fx_sm" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$wrong_sm" ]] \
-  && echo "$mm_out" | grep -q 'tag -d ios/2.0.0' \
+  && grep -q 'tag -d ios/2.0.0' <<<"$mm_out" \
   && ok "shipped refuses to move an existing shipped tag and prints the manual remediation" \
   || fail_t "shipped moved or silently accepted a conflicting shipped tag: $mm_out"
 
@@ -1287,7 +1290,7 @@ make_shipped_fixture "$fx_sn" "$remote_sn" "2.0.0 6"
 nr_rc=0
 nr_out="$(KG_ASC_SHIPPED_CMD="$fx_sn/asc-stub.sh" bash "$fx_sn/ops/release.sh" shipped ios --yes 2>&1)" || nr_rc=$?
 [[ "$nr_rc" -ne 0 && -z "$(git -C "$fx_sn" tag -l 'ios/2.0.0')" ]] \
-  && echo "$nr_out" | grep -q -- '--commit' \
+  && grep -q -- '--commit' <<<"$nr_out" \
   && ok "missing build tag: refuses and offers the manual --commit escape hatch" \
   || fail_t "missing build tag was not actionably refused: $nr_out"
 
@@ -1297,7 +1300,7 @@ man_rc=0
 man_out="$(KG_ASC_SHIPPED_CMD="$fx_sn/asc-stub.sh" bash "$fx_sn/ops/release.sh" shipped ios --commit "$manual_sn" --yes 2>&1)" || man_rc=$?
 [[ "$(git -C "$fx_sn" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$manual_sn" ]] \
   && ok "--commit override lands the shipped tag" || fail_t "--commit override did not tag: $man_out"
-echo "$man_out" | grep -q '人工' \
+grep -q '人工' <<<"$man_out" \
   && ok "--commit override announces it is a human assertion, not a verified join" \
   || fail_t "--commit override does not flag itself as manual: $man_out"
 
@@ -1336,7 +1339,7 @@ rdry="$(bash "$fx_r/ops/release.sh" resubmit ios 2>&1)" || rdry_rc=$?
   && ok "resubmit dry-run exits 0 without uploading" || fail_t "resubmit dry-run misbehaved: $rdry"
 grep -q 'CURRENT_PROJECT_VERSION = 5;' "$fx_r/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
   && ok "resubmit dry-run leaves pbxproj untouched" || fail_t "resubmit dry-run wrote pbxproj"
-echo "$rdry" | grep -q 'ios/2.0.0+6' \
+grep -q 'ios/2.0.0+6' <<<"$rdry" \
   && ok "resubmit dry-run names the build tag it will create" \
   || fail_t "resubmit dry-run does not preview the build tag: $rdry"
 
@@ -1351,10 +1354,10 @@ rdry_drift="$(ASC_LATEST_BUILD=8 bash "$fx_rd/ops/release.sh" resubmit ios 2>&1)
    && "$(grep -c 'CURRENT_PROJECT_VERSION = 5;' "$fx_rd/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 ]] \
   && ok "resubmit dry-run does not mutate under ASC drift" \
   || fail_t "ASC-drift dry-run mutated or failed: $rdry_drift"
-echo "$rdry_drift" | grep -q 'ASC TestFlight latest=8' \
+grep -q 'ASC TestFlight latest=8' <<<"$rdry_drift" \
   && ok "resubmit dry-run prints the ASC latest build" \
   || fail_t "resubmit dry-run hides ASC latest build: $rdry_drift"
-echo "$rdry_drift" | grep -q 'build 5 → 9' && echo "$rdry_drift" | grep -q 'ios/2.0.0+9' \
+grep -q 'build 5 → 9' <<<"$rdry_drift" && grep -q 'ios/2.0.0+9' <<<"$rdry_drift" \
   && ok "ASC drift dry-run selects max(local, ASC)+1" \
   || fail_t "ASC drift dry-run still selects local+1: $rdry_drift"
 
@@ -1389,7 +1392,7 @@ rmal_rc=0
 rmal_out="$(ASC_LATEST_BUILD=not-a-number bash "$fx_rmal/ops/release.sh" resubmit ios --yes 2>&1)" || rmal_rc=$?
 [[ "$rmal_rc" -ne 0 && "$(git -C "$fx_rmal" rev-parse HEAD)" == "$head_rmal" \
    && ! -e "$fx_rmal/upload.called" ]] \
-  && echo "$rmal_out" | grep -q 'ASC' \
+  && grep -q 'ASC' <<<"$rmal_out" \
   && ok "malformed ASC latest build is refused before mutation" \
   || fail_t "malformed ASC latest build was not fail-closed: $rmal_out"
 
@@ -1439,7 +1442,7 @@ rf_finalize_out="$(bash "$fx_rf/ops/release.sh" finalize ios 2.0.0 6 --yes 2>&1)
 # 20d. api 拒絕，且指路。
 ra_rc=0
 ra_out="$(bash "$fx_r/ops/release.sh" resubmit api --yes 2>&1)" || ra_rc=$?
-[[ "$ra_rc" -ne 0 ]] && echo "$ra_out" | grep -q 'ios' \
+[[ "$ra_rc" -ne 0 ]] && grep -q 'ios' <<<"$ra_out" \
   && ok "resubmit api is rejected with guidance" || fail_t "resubmit api not rejected: $ra_out"
 
 # 20e. Candidate lane is the supported execution surface; main is reserved for
@@ -1447,7 +1450,7 @@ ra_out="$(bash "$fx_r/ops/release.sh" resubmit api --yes 2>&1)" || ra_rc=$?
 git -C "$fx_r" checkout -q -b side
 rb_rc=0
 rb_out="$(bash "$fx_r/ops/release.sh" resubmit ios --yes 2>&1)" || rb_rc=$?
-[[ "$rb_rc" -ne 0 ]] && echo "$rb_out" | grep -q '未 finalize' \
+[[ "$rb_rc" -ne 0 ]] && grep -q '未 finalize' <<<"$rb_out" \
   && ok "resubmit does not bypass a pending candidate on another lane" || fail_t "resubmit bypassed pending candidate: $rb_out"
 git -C "$fx_r" checkout -q main
 
@@ -1478,10 +1481,10 @@ fx_st="$TMP5/status-nobuildtag"
 make_status_fixture "$fx_st" 2.0.0 6
 git -C "$fx_st" tag ios/2.0.0
 st_out="$(bash "$fx_st/ops/release.sh" status 2>&1)"
-echo "$st_out" | grep -q 'MARKETING_VERSION=2.0.0' && echo "$st_out" | grep -q 'CURRENT_PROJECT_VERSION=6' \
+grep -q 'MARKETING_VERSION=2.0.0' <<<"$st_out" && grep -q 'CURRENT_PROJECT_VERSION=6' <<<"$st_out" \
   && ok "status prints the project's marketing version and build number" \
   || fail_t "status does not print (version, build): $st_out"
-echo "$st_out" | grep -q 'ios/2.0.0+6' \
+grep -q 'ios/2.0.0+6' <<<"$st_out" \
   && ok "status names the missing build tag for the current (version, build)" \
   || fail_t "status is silent about the unrecorded build: $st_out"
 
@@ -1493,9 +1496,9 @@ git -C "$fx_st2" tag ios/2.0.0
 git -C "$fx_st2" tag "ios/2.0.0+5"
 git -C "$fx_st2" tag "ios/2.0.0+6"
 st2_out="$(bash "$fx_st2/ops/release.sh" status 2>&1)"
-echo "$st2_out" | grep -q 'ios/2.0.0+5' && echo "$st2_out" | grep -q 'ios/2.0.0+6' \
+grep -q 'ios/2.0.0+5' <<<"$st2_out" && grep -q 'ios/2.0.0+6' <<<"$st2_out" \
   && ok "status lists the known build tags" || fail_t "status does not list build tags: $st2_out"
-echo "$st2_out" | grep -q '沒有 build tag' \
+grep -q '沒有 build tag' <<<"$st2_out" \
   && fail_t "status warns about a missing build tag that actually exists: $st2_out" \
   || ok "status does not warn when the current build is recorded"
 
@@ -1506,7 +1509,7 @@ git -C "$fx_sp" tag api/2.0.1
 prod_base="$(git -C "$fx_sp" rev-parse HEAD)"
 git -C "$fx_sp" update-ref refs/remotes/origin/prod "$prod_base"
 sp_out="$(bash "$fx_sp/ops/release.sh" status 2>&1)"
-echo "$sp_out" | grep -q 'api/2.0.1 已在 origin/prod' \
+grep -q 'api/2.0.1 已在 origin/prod' <<<"$sp_out" \
   && ok "status says the api tag is already on origin/prod" \
   || fail_t "status does not report api tag→prod ancestry: $sp_out"
 # 反向：prod 落後於 tag 時必須改口，否則上面那條可能是恆真字串。
@@ -1514,7 +1517,7 @@ git -C "$fx_sp" commit -q --allow-empty -m "api: after prod"
 git -C "$fx_sp" tag -d api/2.0.1 >/dev/null
 git -C "$fx_sp" tag api/2.0.1
 sp2_out="$(bash "$fx_sp/ops/release.sh" status 2>&1)"
-echo "$sp2_out" | grep -q 'api/2.0.1 尚未進 origin/prod' \
+grep -q 'api/2.0.1 尚未進 origin/prod' <<<"$sp2_out" \
   && ok "status flips to 尚未進 origin/prod when the tag is not deployed" \
   || fail_t "status reports prod ancestry as a constant: $sp2_out"
 
@@ -2022,7 +2025,7 @@ chmod +x "$TMP7/shim/gh"
 # 單一 backend-quality run / 單頁 JSON / 多頁（gh --paginate 會串接多個 JSON 物件）。
 pr_run() {  # $1=status $2=conclusion(或 null) [$3=name] [$4=check_suite.id] [$5=run id]
   local c="$2"; [[ "$c" == null ]] || c="\"$c\""
-  printf '{"id":%s,"name":"%s","status":"%s","conclusion":%s,"check_suite":{"id":%s}}' "${5:-100}" "${3:-backend-quality}" "$1" "$c" "${4:-1}"
+  printf '{"id":%s,"name":"%s","status":"%s","conclusion":%s,"check_suite":{"id":%s}}' "${5:-100}" "${3:-backend-quality / backend-quality}" "$1" "$c" "${4:-1}"
 }
 pr_page() {  # $1=total_count，其餘=run JSON
   local n="$1"; shift; local IFS=,
@@ -2147,8 +2150,10 @@ p_ci "failed then green rerun in same suite passes (#2660)" "" "$(pr_page 2 "$(p
 p_ci "green rerun listed before older failure still passes (order-independent)" "" "$(pr_page 2 "$(pr_run completed success '' 1 101)" "$(pr_run completed failure '' 1 100)")"
 p_ci "failure in a different suite is not hidden by green rerun elsewhere" "$P_NOTGREEN" "$(pr_page 3 "$(pr_run completed failure '' 1 100)" "$(pr_run completed success '' 1 101)" "$(pr_run completed failure '' 2 200)")"
 p_ci "newest attempt in_progress refused even if older one was green" "$P_NOTGREEN" "$(pr_page 2 "$(pr_run completed success '' 1 100)" "$(pr_run in_progress null '' 1 101)")"
-p_ci "run without id/check_suite refused (cannot tell newest attempt)" "$P_NOTGREEN" '{"total_count":1,"check_runs":[{"name":"backend-quality","status":"completed","conclusion":"success"}]}'
+p_ci "run without id/check_suite refused (cannot tell newest attempt)" "$P_NOTGREEN" '{"total_count":1,"check_runs":[{"name":"backend-quality / backend-quality","status":"completed","conclusion":"success"}]}'
 p_ci "missing backend-quality refused" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success agent-review)")"
+p_ci "bare 'backend-quality' name is not the real check-run (refused)" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success backend-quality)")"
+p_ci "sibling 'backend-quality / image-lock' does not count (refused)" "沒有任何 backend-quality check-run" "$(pr_page 1 "$(pr_run completed success 'backend-quality / image-lock')")"
 p_ci "empty check_runs refused"        "沒有任何 backend-quality check-run" "$(pr_page 0)"
 p_ci "garbage refused"                 "check-runs 回應無法解析" "not json"
 p_ci "empty output refused"            "check-runs 回應無法解析" ""
@@ -2166,9 +2171,9 @@ mk_promote_fx ghargs
 printf '%s' "$P_OK" > "$P_FX/gh_out.json"; : > "$P_FX/gh.log"
 P_RC=0; P_OUT="$(PATH="$TMP7/shim:$PATH" KG_TEST_GITLOG="$P_FX/git.log" KG_TEST_GHLOG="$P_FX/gh.log" KG_TEST_GH_OUT="$P_FX/gh_out.json" \
   bash "$P_FX/ops/release.sh" promote backend "$P_TGT" 2>&1)" || P_RC=$?
-[[ $P_RC -eq 0 ]] && grep -q -- "--paginate" "$P_FX/gh.log" && grep -q "check_name=backend-quality" "$P_FX/gh.log" \
+[[ $P_RC -eq 0 ]] && grep -q -- "--paginate" "$P_FX/gh.log" && grep -qF "check_name=backend-quality%20%2F%20backend-quality" "$P_FX/gh.log" \
   && grep -q "filter=all" "$P_FX/gh.log" && grep -q "commits/$P_TGT/check-runs" "$P_FX/gh.log" \
-  && ok "gh query is paginated and server-side filtered to backend-quality (filter=all)" \
+  && ok "gh query is paginated and server-side filtered to 'backend-quality / backend-quality' (filter=all)" \
   || fail_t "gh argv wrong (rc=$P_RC): $(cat "$P_FX/gh.log") :: $P_OUT"
 
 # --wait：收斂成功 / 逾時 / 線上版本是別的 SHA。
