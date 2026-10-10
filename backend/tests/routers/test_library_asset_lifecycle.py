@@ -67,7 +67,7 @@ def test_deleted_book_asset_is_not_downloadable(isolated_api, monkeypatch):
         def generate_presigned_url(self, operation, *, Params, ExpiresIn):
             return "https://storage.test/presigned"
 
-    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: FakeS3Client())
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings, *, fast=False: FakeS3Client())
 
     book_id = _seed_book(isolated_api)
     uploaded = isolated_api.client.post(
@@ -118,7 +118,7 @@ def test_deleted_book_asset_upload_is_rejected_before_side_effects(
             presign_calls.append((operation, Params, ExpiresIn))
             return "https://storage.test/presigned"
 
-    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: FakeS3Client())
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings, *, fast=False: FakeS3Client())
 
     book_id = _seed_book(isolated_api)
     deleted = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
