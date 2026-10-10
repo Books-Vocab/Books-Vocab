@@ -1,0 +1,4740 @@
+{
+  "schema": "kg.fixture.dataset.v2",
+  "datasetID": "review_height_varied",
+  "assets": {
+    "books": {
+      "atomic_habits_markdown": {
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
+        "installAs": "Books/atomic-habits.md",
+        "byteSize": 391,
+        "contentType": "text/markdown; charset=utf-8"
+      },
+      "word_architect_markdown": {
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
+        "installAs": "Books/word-architect.md",
+        "byteSize": 391,
+        "contentType": "text/markdown; charset=utf-8"
+      },
+      "the_shallows_markdown": {
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
+        "installAs": "Books/the-shallows.md",
+        "byteSize": 391,
+        "contentType": "text/markdown; charset=utf-8"
+      },
+      "catalog_reader_pdf": {
+        "sourcePath": "ops/fixtures/assets/catalog-reader.pdf",
+        "sha256": "8538c4b3876e20bc3a473a82930ebccbf0699595544fd98ccb750214f451a662",
+        "installAs": "Books/catalog-reader.pdf",
+        "byteSize": 752,
+        "contentType": "application/pdf"
+      },
+      "catalog_reader_epub": {
+        "sourcePath": "ops/fixtures/assets/catalog-reader.epub",
+        "sha256": "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
+        "installAs": "Books/catalog-reader.epub",
+        "byteSize": 1690,
+        "contentType": "application/epub+zip"
+      },
+      "reader_real_book_epub": {
+        "sourcePath": "ops/fixtures/assets/reader-real-book.epub",
+        "sha256": "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
+        "installAs": "Books/reader-real-book.epub",
+        "byteSize": 18653,
+        "contentType": "application/epub+zip"
+      },
+      "reader_invalid_destination_epub": {
+        "sourcePath": "ops/fixtures/assets/reader-invalid-destination.epub",
+        "sha256": "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f",
+        "installAs": "Books/reader-invalid-destination.epub",
+        "byteSize": 17344,
+        "contentType": "application/epub+zip"
+      }
+    },
+    "audio": {
+      "atomic_habits_ep1_flash_playable": {
+        "sourcePath": "ops/fixtures/assets/podcast_demo_long.mp3",
+        "sha256": "49335dc19eaa45de7ee01499ea1a8a1736fb903fabfb5e61912dc2c69bf61994",
+        "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
+        "byteSize": 120286,
+        "contentType": "audio/mpeg"
+      },
+      "atomic_habits_ep1_flash_auth": {
+        "sourcePath": "ops/fixtures/assets/podcast_demo.mp3",
+        "sha256": "415409cd0d2e2cf204c63a2cf318d3766da0bac0b6d74499eb9da9184f2ff108",
+        "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
+        "byteSize": 96591,
+        "contentType": "audio/mpeg"
+      }
+    },
+    "subtitles": {
+      "atomic_habits_ep1_flash_srt_playable": {
+        "sourcePath": "ops/fixtures/assets/fixture-subtitles.srt",
+        "sha256": "fdc8e9d460d85d362f4271ec7d3ab63d630df31313df4ec02fd27163fc485ae3",
+        "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt",
+        "byteSize": 196,
+        "contentType": "application/x-subrip; charset=utf-8"
+      },
+      "atomic_habits_ep1_flash_srt_auth": {
+        "sourcePath": "ops/fixtures/assets/fixture-subtitles.srt",
+        "sha256": "fdc8e9d460d85d362f4271ec7d3ab63d630df31313df4ec02fd27163fc485ae3",
+        "installAs": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt",
+        "byteSize": 196,
+        "contentType": "application/x-subrip; charset=utf-8"
+      }
+    },
+    "text": {
+      "atomic_habits_raw_ch_04": {
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
+        "installAs": "Books/sources/atomic-habits-raw-ch-04.md",
+        "byteSize": 391,
+        "contentType": "text/markdown; charset=utf-8"
+      }
+    },
+    "images": {
+      "notebook_cover_app_icon": {
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "NotebookCovers/catalog-notebook-cover.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_required": {
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-required.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_required_empty": {
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-required-empty.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_counterexample_empty": {
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-counterexample-empty.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_counterexample_retry": {
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-counterexample-retry.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      }
+    }
+  },
+  "preferences": {
+    "userDefaults": {
+      "app_language_selection": "traditionalChinese",
+      "app_appearance_selection": "system",
+      "translation_source_lang": "en",
+      "translation_source_lang_updated_at": 1781424000,
+      "translation_target_lang": "zh-Hant",
+      "translation_target_lang_updated_at": 1781424000,
+      "auto_sync_enabled": true,
+      "activeNotebookId": "default",
+      "active_notebook_updated_at": 1781424000,
+      "review_settings_mode": "relaxed",
+      "review_settings_mode_updated_at": 1781424000,
+      "review_settings_progress_paused": true,
+      "review_settings_progress_updated_at": 1783677599,
+      "review_settings_autoplay_speed": "normal",
+      "review_settings_autoplay_sound_enabled": true,
+      "podcast.wordFollowEnabled": true,
+      "podcast.autoPauseOnLookup": true,
+      "podcast.subtitleSize": "large",
+      "reader_settings_font": "Mono",
+      "reader_settings_fontSize": 1.25,
+      "reader_settings_lineHeight": 2.1,
+      "reader_settings_scrollMode": true,
+      "reader_settings_showHitTestingDebug": false,
+      "reader_settings_underlineOpacity": 0.6,
+      "vocab_highlight_colorPreset": "rose",
+      "vocab_highlight_opacity": 0.6,
+      "review_settings_progress_paused_at": 1783677599
+    },
+    "ubiquitousKeyValueStore": {
+      "app_language_selection": "traditionalChinese",
+      "app_appearance_selection": "system",
+      "translation_source_lang": "en",
+      "translation_source_lang_updated_at": 1781424000,
+      "translation_target_lang": "zh-Hant",
+      "translation_target_lang_updated_at": 1781424000,
+      "activeNotebookId": "default",
+      "active_notebook_updated_at": 1781424000,
+      "review_settings_mode": "relaxed",
+      "review_settings_mode_updated_at": 1781424000,
+      "review_settings_progress_paused": true,
+      "review_settings_progress_updated_at": 1783677599,
+      "reader_settings_font": "Mono",
+      "reader_settings_fontSize": 1.25,
+      "reader_settings_lineHeight": 2.1,
+      "reader_settings_scrollMode": true,
+      "reader_settings_underlineOpacity": 0.6,
+      "vocab_highlight_colorPreset": "rose",
+      "vocab_highlight_opacity": 0.6,
+      "review_settings_progress_paused_at": 1783677599
+    }
+  },
+  "auth": {
+    "signedIn": {
+      "isLoggedIn": true,
+      "userId": "demo-user",
+      "token": "demo-access-token",
+      "displayName": "示範使用者",
+      "email": "demo@wordnexus.lol",
+      "provider": "apple",
+      "providerUserId": "apple:demo-user",
+      "keychainTokenState": "available",
+      "authError": null,
+      "isAuthenticating": false
+    },
+    "settingsSignedIn": {
+      "isLoggedIn": true,
+      "userId": "settings-user",
+      "token": "settings-access-token",
+      "displayName": "Chen Liang",
+      "email": "chen@example.com",
+      "provider": "apple",
+      "providerUserId": "apple:settings-user",
+      "keychainTokenState": "available",
+      "authError": null,
+      "isAuthenticating": false
+    },
+    "longIdentity": {
+      "isLoggedIn": true,
+      "userId": "long-identity-user",
+      "token": "long-identity-access-token",
+      "displayName": "王小明的超級長英文混中文顯示名稱測試 Wonderfully Long Display Name",
+      "email": "an.extremely.long.email.address.for.layout.testing@example-domain.com",
+      "provider": "apple",
+      "providerUserId": "apple:long-identity-user",
+      "keychainTokenState": "available",
+      "authError": null,
+      "isAuthenticating": false
+    },
+    "guest": {
+      "isLoggedIn": false,
+      "userId": null,
+      "token": null,
+      "displayName": null,
+      "email": null,
+      "provider": null,
+      "providerUserId": null,
+      "keychainTokenState": "absent",
+      "authError": null,
+      "isAuthenticating": false
+    },
+    "guestAuthenticating": {
+      "isLoggedIn": false,
+      "userId": null,
+      "token": null,
+      "displayName": null,
+      "email": null,
+      "provider": null,
+      "providerUserId": null,
+      "keychainTokenState": "absent",
+      "authError": null,
+      "isAuthenticating": true
+    },
+    "guestError": {
+      "isLoggedIn": false,
+      "userId": null,
+      "token": null,
+      "displayName": null,
+      "email": null,
+      "provider": null,
+      "providerUserId": null,
+      "keychainTokenState": "absent",
+      "authError": "無法連線至驗證伺服器，請稍後再試。",
+      "isAuthenticating": false
+    }
+  },
+  "entitlements": {
+    "pro": {
+      "pro": {
+        "is_active": true,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "active",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": true,
+        "expires_at": "2099-12-31T23:59:59Z",
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    },
+    "free": {
+      "pro": {
+        "is_active": false,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "inactive",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": false,
+        "expires_at": null,
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    },
+    "cancelledButActive": {
+      "pro": {
+        "is_active": true,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "active",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": false,
+        "expires_at": "2026-06-20T08:00:00Z",
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    },
+    "adminGranted": {
+      "pro": {
+        "is_active": true,
+        "product_id": null,
+        "plan_name": "Books & Vocab Pro",
+        "price_display": null,
+        "status": "active",
+        "is_trial": false,
+        "trial_days": null,
+        "will_renew": false,
+        "expires_at": null,
+        "source": "admin",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    }
+  },
+  "settings": {
+    "logged_out": {
+      "authFixtureRef": "auth.guest",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": false,
+        "userInitials": null,
+        "avatarURL": null,
+        "displayName": "未登入",
+        "email": null,
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": null,
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
+    },
+    "account_logged_out_error": {
+      "authFixtureRef": "auth.guestError",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": false,
+        "userInitials": null,
+        "avatarURL": null,
+        "displayName": "未登入",
+        "email": null,
+        "authError": "無法連線至驗證伺服器，請稍後再試。",
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": null,
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
+    },
+    "preferences_auto_sync_off": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "English",
+        "selectedAppearance": "淺色",
+        "translationSource": "English",
+        "translationTarget": "日本語",
+        "selectedReviewMode": "密集",
+        "autoSyncEnabled": false,
+        "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "intensive",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "fast",
+        "autoplaySoundEnabled": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "免費方案",
+        "badgeText": "未訂閱",
+        "badgeTone": "neutral",
+        "summary": "升級 Pro 解鎖知識圖譜與播客。",
+        "detail": "目前使用免費額度，部分進階功能受限。",
+        "sourceLabel": "無",
+        "managementNote": "尚未訂閱，可隨時於 App Store 開始。",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "曾經購買過？點此恢復先前的訂閱。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "升級 Pro",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": {
+        "label": "required-settings",
+        "assetID": "settings-required",
+        "stepLabel": "required-settings"
+      },
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "preferences_logged_out_no_sync": {
+      "authFixtureRef": "auth.guest",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": false,
+        "userInitials": null,
+        "avatarURL": null,
+        "displayName": "未登入",
+        "email": null,
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "深色",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "已凍結 · 自訂",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": true,
+        "progressPausedAt": 1733500000,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": null,
+      "evidence": {
+        "label": "section-navigation",
+        "assetID": "settings-section-navigation",
+        "stepLabel": "section-navigation"
+      },
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "bookSync": null
+    },
+    "subscribed_active": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.pro",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "已解鎖全部功能，適合上架與宣傳截圖。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "account_long_identity": {
+      "authFixtureRef": "auth.longIdentity",
+      "entitlementsFixtureRef": "entitlements.pro",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "WW",
+        "avatarURL": null,
+        "displayName": "王小明的超級長英文混中文顯示名稱測試 Wonderfully Long Display Name",
+        "email": "an.extremely.long.email.address.for.layout.testing@example-domain.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "custom",
+        "customInitialIntervalHours": 24,
+        "customRememberedMultiplier": 2.1,
+        "customForgotMultiplier": 0.35,
+        "customMinimumIntervalHours": 4,
+        "customMaximumIntervalHours": 2160,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "已解鎖全部功能，適合長姓名版面壓力測試。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "subscription_free": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "免費方案",
+        "badgeText": "未訂閱",
+        "badgeTone": "neutral",
+        "summary": "升級 Pro 解鎖知識圖譜與播客。",
+        "detail": "目前使用免費額度，部分進階功能受限。",
+        "sourceLabel": "無",
+        "managementNote": "尚未訂閱，可隨時於 App Store 開始。",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "曾經購買過？點此恢復先前的訂閱。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "升級 Pro",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "subscription_loading": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": false,
+        "connectionPulse": true,
+        "serverCardCount": 0,
+        "lastSyncDescription": null,
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "—",
+        "badgeText": "載入中",
+        "badgeTone": "neutral",
+        "summary": "正在確認訂閱狀態…",
+        "detail": "請稍候，系統正在與 App Store 通訊。",
+        "sourceLabel": "確認中",
+        "managementNote": "正在連線…",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "載入中…",
+        "isRestoreAvailable": false,
+        "ctaTitle": "重新整理",
+        "isRefreshing": true
+      },
+      "syncSummary": {
+        "isConnected": false,
+        "isSyncing": false,
+        "summaryText": "離線",
+        "lastSyncedText": null,
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
+    },
+    "deleting_account": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.pro",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "已解鎖全部功能。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": true
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
+    },
+    "long_content_counterexample": {
+      "authFixtureRef": "auth.longIdentity",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "王明",
+        "avatarURL": null,
+        "displayName": "王小明的超級長英文混中文顯示名稱測試 Wonderfully Long Display Name",
+        "email": "an.extremely.long.email.address.for.layout.testing@example-domain.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "reviewSettings": null,
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "bookSync": null,
+      "about": {
+        "version": "2.0.1 (7)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": {
+        "label": "long-content-counterexample",
+        "assetID": "settings-long-content-counterexample",
+        "stepLabel": "long-content-counterexample"
+      },
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "reset_counterexample": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "English",
+        "selectedAppearance": "深色",
+        "translationSource": "English",
+        "translationTarget": "日本語",
+        "selectedReviewMode": "密集",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "reviewSettings": null,
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "bookSync": null,
+      "about": {
+        "version": "2.0.1 (7)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": {
+        "label": "reset-counterexample",
+        "assetID": "settings-reset-counterexample",
+        "stepLabel": "reset-counterexample"
+      },
+      "resetLifecycle": {
+        "phase": "succeeded",
+        "before": {
+          "localCardCount": 3,
+          "hasCustomPreferences": true,
+          "isLoggedIn": true
+        },
+        "after": {
+          "localCardCount": 0,
+          "hasCustomPreferences": false,
+          "isLoggedIn": true
+        },
+        "terminalMessage": "本機資料與設定已重設。",
+        "canRetry": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "pricing_unavailable": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "10 分鐘前",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "Pro",
+        "badgeText": "確認中",
+        "badgeTone": "neutral",
+        "summary": "免費試用與月費將以 App Store 顯示為準。",
+        "detail": "目前已取得方案狀態，但價格資訊尚未回來；不影響你稍後進入訂閱頁。",
+        "sourceLabel": "App Store",
+        "managementNote": "價格與試用週期會在 App Store 完整顯示。",
+        "pricingUnavailableMessage": "App Store 價格載入中，稍後會自動更新。",
+        "restoreLabel": "可恢復購買",
+        "restoreDescription": "若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "開始免費試用",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 10 分鐘前",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "bookSync": {
+        "text": "同步異常",
+        "detail": "iCloud 帳號暫時無法使用（CKError.notAuthenticated）",
+        "tone": "warning"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null
+    },
+    "sync_terminal_error_retry_success": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.pro",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 2,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "Pro",
+        "badgeTone": "success",
+        "summary": "已解鎖全部功能。",
+        "detail": "同步生命週期測試使用固定 Pro 帳號。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 2 張",
+        "lastSyncedText": "上次同步 10 分鐘前",
+        "lifecycle": "terminalError",
+        "message": "同步失敗，部分資料已保留，可重試。",
+        "attempt": 1,
+        "dataOutcome": "partial"
+      },
+      "bookSync": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null
+    },
+    "debug_backend_local": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": "僅供本地測試帳號切換使用"
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "http://127.0.0.1:8000",
+        "isConnected": false,
+        "connectionPulse": true,
+        "serverCardCount": 12,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": true,
+        "localServerURL": "http://127.0.0.1:8000",
+        "observation": {
+          "previewLines": [
+            "12:30:02 [INFO] event=app_session_started",
+            "12:30:05 [INFO] event=background_sync_triggered",
+            "12:30:07 [INFO] event=background_sync_completed duration_ms=1820 success=true"
+          ],
+          "totalCount": 24
+        }
+      },
+      "subscription": null,
+      "syncSummary": {
+        "isConnected": false,
+        "isSyncing": false,
+        "summaryText": "離線",
+        "lastSyncedText": null,
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "evidence": null,
+      "resetLifecycle": null,
+      "manualLoginUserId": "debug-user-id",
+      "debugLocalServerURL": "http://127.0.0.1:8000",
+      "reviewSettings": null,
+      "bookSync": null
+    }
+  },
+  "bookshelf": {
+    "book_card_placeholder_epub": {
+      "books": [
+        {
+          "title": "原子習慣",
+          "author": "James Clear",
+          "fileName": "catalog-reader.epub",
+          "format": "epub",
+          "bookAssetRef": "books.catalog_reader_epub",
+          "progression": null,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": null
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_pdf_format": {
+      "books": [
+        {
+          "title": "深度工作論文集",
+          "author": "Cal Newport",
+          "fileName": "catalog-reader.pdf",
+          "format": "pdf",
+          "bookAssetRef": "books.catalog_reader_pdf",
+          "progression": null,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": null
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_mid_progress": {
+      "books": [
+        {
+          "title": "刻意練習",
+          "author": "Anders Ericsson",
+          "fileName": "catalog-reader.epub",
+          "format": "epub",
+          "bookAssetRef": "books.catalog_reader_epub",
+          "progression": 0.42,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": "2024-05-31T14:13:20Z"
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_complete": {
+      "books": [
+        {
+          "title": "心流",
+          "author": "Mihaly Csikszentmihalyi",
+          "fileName": "catalog-reader.epub",
+          "format": "epub",
+          "bookAssetRef": "books.catalog_reader_epub",
+          "progression": 1,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": "2024-06-05T05:20:00Z"
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_long_title": {
+      "books": [
+        {
+          "title": "尋找心流：最優體驗的科學與日常生活中的應用實踐指南",
+          "author": "Mihaly Csikszentmihalyi & Co-Author With A Rather Long Name",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.08,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": "2024-05-20T11:33:20Z"
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "progress_card": {
+      "books": [
+        {
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "fileName": "atomic-habits.md",
+          "format": "md",
+          "bookAssetRef": "books.atomic_habits_markdown",
+          "progression": 0.72,
+          "dateAdded": "2025-12-20T00:00:00Z",
+          "dateLastRead": "2026-01-06T21:00:00Z",
+          "preferredNotebookId": null
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "placeholder_card": {
+      "books": [
+        {
+          "title": "The Shallows",
+          "author": "Nicholas Carr",
+          "fileName": "the-shallows.md",
+          "format": "md",
+          "bookAssetRef": "books.the_shallows_markdown",
+          "progression": 0.31,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-06T08:30:00Z",
+          "preferredNotebookId": null
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_unbound": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": null,
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_bound": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": "reader-nb-green",
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_long_bound": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": "reader-nb-12",
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_empty": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": null,
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "empty_library": {
+      "books": [],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "with_books_library": {
+      "books": [
+        {
+          "title": "Catalog Reader EPUB",
+          "author": "Word Nexus Fixtures",
+          "fileName": "catalog-reader.epub",
+          "format": "epub",
+          "bookAssetRef": "books.catalog_reader_epub",
+          "progression": 0.56,
+          "dateAdded": "2026-01-01T00:00:00Z",
+          "dateLastRead": "2026-01-06T09:30:00Z",
+          "preferredNotebookId": null
+        },
+        {
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "fileName": "atomic-habits.md",
+          "format": "md",
+          "bookAssetRef": "books.atomic_habits_markdown",
+          "progression": 0.72,
+          "dateAdded": "2025-12-20T00:00:00Z",
+          "dateLastRead": "2026-01-06T21:00:00Z",
+          "preferredNotebookId": null
+        },
+        {
+          "title": "Word Architect",
+          "author": "Lena Harper",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.64,
+          "dateAdded": "2025-12-28T00:00:00Z",
+          "dateLastRead": "2026-01-05T22:15:00Z",
+          "preferredNotebookId": null
+        },
+        {
+          "title": "The Shallows",
+          "author": "Nicholas Carr",
+          "fileName": "the-shallows.md",
+          "format": "md",
+          "bookAssetRef": "books.the_shallows_markdown",
+          "progression": 0.31,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-06T08:30:00Z",
+          "preferredNotebookId": null
+        },
+        {
+          "title": "Catalog Reader PDF",
+          "author": "Word Nexus Fixtures",
+          "fileName": "catalog-reader.pdf",
+          "format": "pdf",
+          "bookAssetRef": "books.catalog_reader_pdf",
+          "progression": 0.18,
+          "dateAdded": "2026-01-03T00:00:00Z",
+          "dateLastRead": "2026-01-06T10:45:00Z",
+          "preferredNotebookId": null
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "loading_overlay": {
+      "books": [],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    }
+  },
+  "notebook": {
+    "empty": {
+      "notebooks": [],
+      "editStates": []
+    },
+    "readerPickerPopulated": {
+      "notebooks": [
+        {
+          "remoteId": "reader-nb-default",
+          "name": "我的單字本",
+          "color": null,
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-green",
+          "name": "綠野仙蹤生詞",
+          "color": "#2E8B57",
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-blue",
+          "name": "商業英文",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        }
+      ],
+      "editStates": []
+    },
+    "readerPickerMany": {
+      "notebooks": [
+        {
+          "remoteId": "reader-nb-1",
+          "name": "單字本 #1 — 長標題測試截斷行為的範例文字",
+          "color": "#2E8B57",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-2",
+          "name": "單字本 #2 — 長標題測試截斷行為的範例文字",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-3",
+          "name": "單字本 #3 — 長標題測試截斷行為的範例文字",
+          "color": "#C9A227",
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-4",
+          "name": "單字本 #4 — 長標題測試截斷行為的範例文字",
+          "color": "#7A4FD0",
+          "isDefault": false,
+          "sortOrder": 3,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-5",
+          "name": "單字本 #5 — 長標題測試截斷行為的範例文字",
+          "color": "#E0533B",
+          "isDefault": false,
+          "sortOrder": 4,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-6",
+          "name": "單字本 #6 — 長標題測試截斷行為的範例文字",
+          "color": "#2E8B57",
+          "isDefault": false,
+          "sortOrder": 5,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-7",
+          "name": "單字本 #7 — 長標題測試截斷行為的範例文字",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 6,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-8",
+          "name": "單字本 #8 — 長標題測試截斷行為的範例文字",
+          "color": "#C9A227",
+          "isDefault": false,
+          "sortOrder": 7,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-9",
+          "name": "單字本 #9 — 長標題測試截斷行為的範例文字",
+          "color": "#7A4FD0",
+          "isDefault": false,
+          "sortOrder": 8,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-10",
+          "name": "單字本 #10 — 長標題測試截斷行為的範例文字",
+          "color": "#E0533B",
+          "isDefault": false,
+          "sortOrder": 9,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-11",
+          "name": "單字本 #11 — 長標題測試截斷行為的範例文字",
+          "color": "#2E8B57",
+          "isDefault": false,
+          "sortOrder": 10,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-12",
+          "name": "單字本 #12 — 長標題測試截斷行為的範例文字",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 11,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-13",
+          "name": "單字本 #13 — 長標題測試截斷行為的範例文字",
+          "color": "#C9A227",
+          "isDefault": false,
+          "sortOrder": 12,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        },
+        {
+          "remoteId": "reader-nb-14",
+          "name": "單字本 #14 — 長標題測試截斷行為的範例文字",
+          "color": "#7A4FD0",
+          "isDefault": false,
+          "sortOrder": 13,
+          "entries": [],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null
+        }
+      ],
+      "editStates": []
+    },
+    "populated": {
+      "notebooks": [
+        {
+          "remoteId": "default",
+          "name": "我的單字本",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [
+            {
+              "word": "incremental",
+              "translation": "漸進的；逐步累積的",
+              "context": "Atomic habits are the compound interest of self-improvement; incremental gains accrue over time.",
+              "explanation": "形容變化以微小、連續的步伐發生，強調累積而非一次到位。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Fundamentals",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "meticulous",
+              "translation": "一絲不苟的；非常仔細的",
+              "context": "The editor was meticulous about every line break and caption.",
+              "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Word Architect",
+              "chapterTitle": "Writing Tone",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "ubiquitous",
+              "translation": "無所不在的；普遍存在的",
+              "context": "Smartphones have become ubiquitous in modern classrooms.",
+              "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "A Medium of the Most General Nature",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            }
+          ],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null,
+          "color": null
+        },
+        {
+          "remoteId": "nb-atomic",
+          "name": "原子習慣筆記",
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [
+            {
+              "word": "cue",
+              "translation": "提示；觸發信號",
+              "context": "Make the cue of a good habit obvious in your environment.",
+              "explanation": "行為觸發的起點，習慣迴路的第一環。",
+              "partOfSpeech": "n.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The 1st Law: Make It Obvious",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "compound",
+              "translation": "複利累積；疊加增長",
+              "context": "Small improvements compound into remarkable results.",
+              "explanation": "微小效益隨時間相乘放大，而非線性相加。",
+              "partOfSpeech": "v.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Fundamentals",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "plateau",
+              "translation": "高原期；停滯期",
+              "context": "Habits often appear to make no difference until you cross a critical plateau.",
+              "explanation": "進步在表面停滯、實則潛能蓄積的階段。",
+              "partOfSpeech": "n.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Plateau of Latent Potential",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            }
+          ],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null,
+          "color": null
+        },
+        {
+          "remoteId": "nb-shallows",
+          "name": "深度閱讀",
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [
+            {
+              "word": "rewire",
+              "translation": "重新佈線；改變神經迴路",
+              "context": "The internet may be rewiring how we read and think.",
+              "explanation": "比喻長期行為重塑大腦的神經連結。",
+              "partOfSpeech": "v.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "The Juggler's Brain",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "distraction",
+              "translation": "分心；干擾",
+              "context": "Every hyperlink is an invitation to distraction.",
+              "explanation": "注意力被外物拉離當前任務的狀態。",
+              "partOfSpeech": "n.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "The Juggler's Brain",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "concise",
+              "translation": "簡潔的；言簡意賅的",
+              "context": "Strong writing is concise without being abrupt.",
+              "explanation": "用最少的字準確表達，不冗贅也不突兀。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Word Architect",
+              "chapterTitle": "Writing Tone",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            }
+          ],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null,
+          "color": null
+        }
+      ],
+      "editStates": []
+    },
+    "single": {
+      "notebooks": [
+        {
+          "remoteId": "default",
+          "name": "我的單字本",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [
+            {
+              "word": "incremental",
+              "translation": "漸進的；逐步累積的",
+              "context": "Atomic habits are the compound interest of self-improvement; incremental gains accrue over time.",
+              "explanation": "形容變化以微小、連續的步伐發生，強調累積而非一次到位。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Fundamentals",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "meticulous",
+              "translation": "一絲不苟的；非常仔細的",
+              "context": "The editor was meticulous about every line break and caption.",
+              "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Word Architect",
+              "chapterTitle": "Writing Tone",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            },
+            {
+              "word": "ubiquitous",
+              "translation": "無所不在的；普遍存在的",
+              "context": "Smartphones have become ubiquitous in modern classrooms.",
+              "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "A Medium of the Most General Nature",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false
+            }
+          ],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": null,
+          "color": null
+        }
+      ],
+      "editStates": []
+    },
+    "coverGallery": {
+      "notebooks": [
+        {
+          "remoteId": "cover-pattern-dots",
+          "name": "圓點",
+          "color": "#4A90D9",
+          "coverPattern": "dots",
+          "coverImageAssetRef": null,
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-pattern-lines",
+          "name": "條紋",
+          "color": "#4A90D9",
+          "coverPattern": "lines",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-pattern-grid",
+          "name": "格線",
+          "color": "#8E6FD6",
+          "coverPattern": "grid",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-pattern-waves",
+          "name": "波浪",
+          "color": "#3FA77A",
+          "coverPattern": "waves",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 3,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-pattern-circles",
+          "name": "同心圓",
+          "color": "#E0735C",
+          "coverPattern": "circles",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 4,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-pattern-noise",
+          "name": "噪點",
+          "color": "#6E7781",
+          "coverPattern": "noise",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 5,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-solid-long-title",
+          "name": "我的英文單字本 — 進階學術詞彙與片語收藏夾",
+          "color": "#C9A227",
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 6,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        },
+        {
+          "remoteId": "cover-image-app-icon",
+          "name": "App Icon Cover",
+          "color": "#20242A",
+          "coverPattern": null,
+          "coverImageAssetRef": "images.notebook_cover_app_icon",
+          "isDefault": false,
+          "sortOrder": 7,
+          "entries": [],
+          "syncStatus": 1,
+          "cardState": null
+        }
+      ],
+      "editStates": []
+    },
+    "cardGallery": {
+      "notebooks": [
+        {
+          "remoteId": "card-heavy-default",
+          "name": "我的單字本",
+          "color": "#5077A0",
+          "coverPattern": "dots",
+          "coverImageAssetRef": null,
+          "cardState": {
+            "cardCount": 626,
+            "dueCount": 538,
+            "unlearnedCount": 0,
+            "reviewedCount": 88,
+            "pendingCount": 2,
+            "lastActivity": "2026-06-14T23:00:00Z",
+            "isActive": true
+          },
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "card-light-gre",
+          "name": "GRE 字根",
+          "color": "#7A8C6A",
+          "coverPattern": "grid",
+          "coverImageAssetRef": null,
+          "cardState": {
+            "cardCount": 42,
+            "dueCount": 3,
+            "unlearnedCount": 15,
+            "reviewedCount": 24,
+            "pendingCount": 0,
+            "lastActivity": "2026-06-14T00:00:00Z",
+            "isActive": false
+          },
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "card-fresh-self",
+          "name": "Self",
+          "color": "#B5826A",
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "cardState": {
+            "cardCount": 0,
+            "dueCount": 0,
+            "unlearnedCount": 0,
+            "reviewedCount": 0,
+            "pendingCount": 0,
+            "lastActivity": null,
+            "isActive": false
+          },
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "card-long-name",
+          "name": "我的學測必背 7000 單字本 (含倒車雷達進階口語延伸)",
+          "color": "#8B7AA8",
+          "coverPattern": "stripes",
+          "coverImageAssetRef": null,
+          "cardState": {
+            "cardCount": 7000,
+            "dueCount": 1234,
+            "unlearnedCount": 567,
+            "reviewedCount": 5199,
+            "pendingCount": 0,
+            "lastActivity": "2026-06-14T23:30:00Z",
+            "isActive": true
+          },
+          "isDefault": false,
+          "sortOrder": 3,
+          "entries": [],
+          "syncStatus": 1
+        }
+      ],
+      "editStates": []
+    },
+    "editGallery": {
+      "notebooks": [],
+      "editStates": [
+        {
+          "id": "create_blank",
+          "mode": "create",
+          "name": "",
+          "color": null,
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_color_pattern",
+          "mode": "edit",
+          "name": "GRE 高頻字",
+          "color": "#AFC2D3",
+          "coverPattern": "dots",
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_color_only",
+          "mode": "edit",
+          "name": "雅思核心詞彙",
+          "color": "#DCABA4",
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_long_name",
+          "mode": "edit",
+          "name": "莎士比亞十四行詩裡那些古英文罕用字與華麗修辭專用詞庫",
+          "color": "#C5B2D0",
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_custom_image",
+          "mode": "edit",
+          "name": "旅行閱讀詞庫",
+          "color": "#6F8EA3",
+          "coverPattern": null,
+          "coverImageAssetRef": "images.notebook_cover_app_icon"
+        },
+        {
+          "id": "edit_empty_name",
+          "mode": "edit",
+          "name": "",
+          "color": "#B1C5AE",
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        }
+      ]
+    }
+  },
+  "podcast": {
+    "shelf_continue": {
+      "series": {
+        "remoteId": "s-atomic",
+        "title": "Atomic Habits Unpacked",
+        "hostNames": [
+          "Ava Chen"
+        ],
+        "colorHex": "#4A90D9",
+        "coverPattern": "waves"
+      },
+      "episodes": [
+        {
+          "episodeNumber": 1,
+          "title": "The Fundamentals of Tiny Change",
+          "durationSec": 1832,
+          "lastPlayedTime": 845
+        },
+        {
+          "episodeNumber": 2,
+          "title": "Make It Obvious",
+          "durationSec": 2105,
+          "lastPlayedTime": 310
+        },
+        {
+          "episodeNumber": 3,
+          "title": "The Plateau of Latent Potential",
+          "durationSec": 1968,
+          "lastPlayedTime": null
+        }
+      ]
+    },
+    "shelf_single": {
+      "series": {
+        "remoteId": "s-atomic",
+        "title": "Atomic Habits Unpacked",
+        "hostNames": [
+          "Ava Chen"
+        ],
+        "colorHex": "#4A90D9",
+        "coverPattern": "waves"
+      },
+      "episodes": [
+        {
+          "episodeNumber": 1,
+          "title": "The Fundamentals of Tiny Change",
+          "durationSec": 1832,
+          "lastPlayedTime": 845
+        }
+      ]
+    }
+  },
+  "todayReview": {
+    "front": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The editor was meticulous about every line break and caption."
+        ],
+        "rootForm": "meticulous",
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
+        "graphLinksByKind": {
+          "shares_usage": [
+            {
+              "id": "md-link-1",
+              "cardId": "md-meticulous",
+              "word": "precise",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.82,
+              "reason": "都與精確相關",
+              "hidden": false
+            },
+            {
+              "id": "md-link-2",
+              "cardId": "md-meticulous",
+              "word": "thorough",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.79,
+              "reason": "都與仔細相關",
+              "hidden": false
+            }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "front",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 1,
+      "rememberedCount": 2,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": true
+    },
+    "back": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The editor was meticulous about every line break and caption."
+        ],
+        "rootForm": "meticulous",
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
+        "graphLinksByKind": {
+          "shares_usage": [
+            {
+              "id": "md-link-1",
+              "cardId": "md-meticulous",
+              "word": "precise",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.82,
+              "reason": "都與精確相關",
+              "hidden": false
+            },
+            {
+              "id": "md-link-2",
+              "cardId": "md-meticulous",
+              "word": "thorough",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.79,
+              "reason": "都與仔細相關",
+              "hidden": false
+            }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 1,
+      "rememberedCount": 2,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "completed": {
+      "progressText": "12 / 12",
+      "currentCard": null,
+      "nextCard": null,
+      "revealStage": "front",
+      "canShuffle": false,
+      "canGoPrevious": false,
+      "canGoNext": false,
+      "remainingCount": 0,
+      "forgotCount": 4,
+      "rememberedCount": 8,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 1,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "autoplay": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The editor was meticulous about every line break and caption."
+        ],
+        "rootForm": "meticulous",
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
+        "graphLinksByKind": {}
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 0,
+      "rememberedCount": 0,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": true,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.5,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "autoplayPaused": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The editor was meticulous about every line break and caption."
+        ],
+        "rootForm": "meticulous",
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
+        "graphLinksByKind": {}
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 0,
+      "rememberedCount": 0,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": true,
+      "isAutoPlayPaused": true,
+      "autoplayProgress": 0.5,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "productionFront": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "production",
+        "reviewExamples": [
+          "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell."
+        ],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {
+          "shares_usage": [
+            {
+              "id": "md-prod-1",
+              "cardId": "md-ubiquitous",
+              "word": "pervasive",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.83,
+              "reason": "都描述普遍存在",
+              "hidden": false
+            },
+            {
+              "id": "md-prod-2",
+              "cardId": "md-ubiquitous",
+              "word": "omnipresent",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.8,
+              "reason": "都指無所不在",
+              "hidden": false
+            }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "production",
+        "reviewExamples": [],
+        "rootForm": "meticulous",
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "front",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 1,
+      "rememberedCount": 2,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "productionBack": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "production",
+        "reviewExamples": [
+          "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell."
+        ],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {
+          "shares_usage": [
+            {
+              "id": "md-prod-1",
+              "cardId": "md-ubiquitous",
+              "word": "pervasive",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.83,
+              "reason": "都描述普遍存在",
+              "hidden": false
+            },
+            {
+              "id": "md-prod-2",
+              "cardId": "md-ubiquitous",
+              "word": "omnipresent",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.8,
+              "reason": "都指無所不在",
+              "hidden": false
+            }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "production",
+        "reviewExamples": [],
+        "rootForm": "meticulous",
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 1,
+      "rememberedCount": 2,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "longContent": {
+      "progressText": "5 / 18",
+      "currentCard": {
+        "word": "serendipity",
+        "translation": "機緣巧合；意外發現美好事物的能力與運氣",
+        "context": "It was pure serendipity that, while searching the archive for an unrelated maritime ledger, she stumbled upon the only surviving letter in which the composer described, in his own trembling hand, the night the symphony's final movement first came to him.",
+        "explanation": "指在尋找某事物的過程中，意外發現了另一件同樣珍貴、甚至更有價值的事物的現象或才能。這個詞帶有強烈的正面與浪漫色彩，常用於描述科學發現、人際相遇或藝術靈感的偶然降臨；與單純的「運氣」不同，serendipity 隱含當事人具備察覺並把握偶然機會的敏銳度，因此它既描述外在的巧合，也讚許內在的洞察力。",
+        "partOfSpeech": "n.",
+        "bookTitle": "The Travels and Adventures of Three Princes of Serendip",
+        "chapterTitle": "On Discoveries Neither Sought Nor Expected",
+        "dateAdded": "2024-12-24T05:46:40Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "A series of serendipitous encounters led the two researchers to co-author the paper that would eventually reshape the field.",
+          "Finding that out-of-print edition in a roadside stall was a moment of genuine serendipity.",
+          "Much of scientific progress depends on serendipity tempered by a prepared, observant mind."
+        ],
+        "rootForm": "serendipity",
+        "inflections": [
+          "serendipitous",
+          "serendipitously"
+        ],
+        "graphLinksByKind": {
+          "shares_usage": [
+            {
+              "id": "lc-1",
+              "cardId": "c-1",
+              "word": "fortuitous",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.84,
+              "reason": "都描述偶然",
+              "hidden": false
+            },
+            {
+              "id": "lc-2",
+              "cardId": "c-2",
+              "word": "providence",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.8,
+              "reason": "都帶命運色彩",
+              "hidden": false
+            },
+            {
+              "id": "lc-3",
+              "cardId": "c-3",
+              "word": "happenstance",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.78,
+              "reason": "都指巧合",
+              "hidden": false
+            },
+            {
+              "id": "lc-4",
+              "cardId": "c-4",
+              "word": "windfall",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.72,
+              "reason": "意外之得",
+              "hidden": false
+            },
+            {
+              "id": "lc-5",
+              "cardId": "c-5",
+              "word": "kismet",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.69,
+              "reason": "命定的緣分",
+              "hidden": false
+            }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 13,
+      "forgotCount": 1,
+      "rememberedCount": 4,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    }
+  },
+  "runtimePodcast": {
+    "playablePreview": {
+      "audioAssetRef": "audio.atomic_habits_ep1_flash_playable",
+      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable",
+      "seriesRemoteId": "ui-playable-series",
+      "seriesTitle": "Atomic Habits",
+      "hostNames": [
+        "Lab Podcast"
+      ],
+      "preferredNotebookId": null,
+      "color": "sunset",
+      "coverPattern": "waves",
+      "sortOrder": -10000,
+      "durationSec": 120.0,
+      "episodes": [
+        {
+          "remoteId": "ui-playable-series_ep_01",
+          "episodeNumber": 1,
+          "title": "Actual Lab Episode",
+          "durationSec": 120.0,
+          "audioAvailable": true,
+          "previewAvailable": true,
+          "previewDurationSec": 180,
+          "subtitleAvailable": true,
+          "download": {
+            "audioAssetRef": "audio.atomic_habits_ep1_flash_playable",
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable",
+            "localAudioPath": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
+            "localSubtitlePath": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt"
+          }
+        }
+      ]
+    },
+    "tieredCatalog": {
+      "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
+      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
+      "seriesRemoteId": "ui-auth-series",
+      "seriesTitle": "Atomic Habits (Auth Probe)",
+      "hostNames": [
+        "Lab Podcast"
+      ],
+      "preferredNotebookId": null,
+      "color": "sunset",
+      "coverPattern": "waves",
+      "sortOrder": -10000,
+      "durationSec": 1034.6,
+      "episodes": [
+        {
+          "remoteId": "ui-auth-series_ep_01",
+          "episodeNumber": 1,
+          "title": "Tiered Access Preview Episode",
+          "durationSec": 1034.6,
+          "audioAvailable": true,
+          "previewAvailable": true,
+          "previewDurationSec": 180,
+          "subtitleAvailable": true,
+          "download": {
+            "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
+            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
+            "localSubtitlePath": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
+          }
+        },
+        {
+          "remoteId": "ui-auth-series_ep_02",
+          "episodeNumber": 2,
+          "title": "Tiered Access Gated Episode",
+          "durationSec": 1034.6,
+          "audioAvailable": true,
+          "previewAvailable": false,
+          "previewDurationSec": 0,
+          "subtitleAvailable": true,
+          "download": {
+            "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
+            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
+            "localSubtitlePath": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
+          }
+        }
+      ]
+    }
+  },
+  "reader": {
+    "realBookLibrary": {
+      "textAssetRef": "text.atomic_habits_raw_ch_04",
+      "bookAssetRef": "books.reader_real_book_epub",
+      "title": "Atomic Habits — Introduction",
+      "author": "James Clear",
+      "bookFileName": "reader-real-book.epub",
+      "notebookRemoteId": "ui-reader-notebook",
+      "notebookName": "Reader Flow Vocab",
+      "entry": {
+        "explanation": "introduction 的語境說明，用於 UI World 測試資料。",
+        "partOfSpeech": "n.",
+        "chapterTitle": "Introduction",
+        "kgCardId": "ui-reader-introduction",
+        "difficultyTier": "core",
+        "reviewExamples": [
+          "Introduction — My Story"
+        ],
+        "collocations": null,
+        "rootForm": null,
+        "inflections": null,
+        "reviewIntervalHours": 24,
+        "nextReviewAt": "2026-01-06T00:00:00Z",
+        "lastReviewedAt": "2026-01-05T00:00:00Z",
+        "reviewCount": 3,
+        "reviewStreak": 2,
+        "lastReviewFeedbackRaw": 1,
+        "graphLinksByKind": {},
+        "word": "introduction",
+        "translation": "引言；導論",
+        "context": "Introduction — My Story",
+        "bookTitle": "Atomic Habits — Introduction",
+        "reviewMode": "recognition",
+        "syncStatus": 1,
+        "actionType": "add",
+        "isArchived": false
+      },
+      "notebookSyncStatus": 1
+    },
+    "invalidDestinationLibrary": {
+      "textAssetRef": "text.atomic_habits_raw_ch_04",
+      "bookAssetRef": "books.reader_invalid_destination_epub",
+      "title": "Reader Invalid Destination",
+      "author": "KG Fixture",
+      "bookFileName": "reader-invalid-destination.epub",
+      "notebookRemoteId": "ui-reader-invalid-destination-notebook",
+      "notebookName": "Reader Invalid Destination Vocab",
+      "entry": {
+        "explanation": "invalid destination counterexample 的詞庫資料，不應由 TOC 導覽假成功掩蓋。",
+        "partOfSpeech": "n.",
+        "chapterTitle": "Valid Chapter",
+        "kgCardId": "ui-reader-invalid-destination",
+        "difficultyTier": "core",
+        "reviewExamples": [
+          "Valid Chapter — reader retry path"
+        ],
+        "collocations": null,
+        "rootForm": null,
+        "inflections": null,
+        "reviewIntervalHours": 24,
+        "nextReviewAt": "2026-01-06T00:00:00Z",
+        "lastReviewedAt": "2026-01-05T00:00:00Z",
+        "reviewCount": 1,
+        "reviewStreak": 1,
+        "lastReviewFeedbackRaw": 1,
+        "graphLinksByKind": {},
+        "word": "valid",
+        "translation": "有效",
+        "context": "Valid Chapter — reader retry path",
+        "bookTitle": "Reader Invalid Destination",
+        "reviewMode": "recognition",
+        "syncStatus": 1,
+        "actionType": "add",
+        "isArchived": false
+      },
+      "notebookSyncStatus": 1
+    }
+  },
+  "vocabulary": {},
+  "reviewDeck": {
+    "probe": {
+      "notebookRemoteId": "default",
+      "notebookName": "Review Height Varied Fixture",
+      "entries": [
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-000",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort000 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort000",
+          "translation": "短卡譯文",
+          "context": "A short variedshort000 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-001",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall001",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-002",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 002."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 002",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 002.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-003",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort003 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort003",
+          "translation": "短卡譯文",
+          "context": "A short variedshort003 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-004",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall004",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-005",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 005."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 005",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 005.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-006",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort006 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort006",
+          "translation": "短卡譯文",
+          "context": "A short variedshort006 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-007",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall007",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-008",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 008."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 008",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 008.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-009",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort009 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort009",
+          "translation": "短卡譯文",
+          "context": "A short variedshort009 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-010",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall010",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-011",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 011."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 011",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 011.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-012",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort012 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort012",
+          "translation": "短卡譯文",
+          "context": "A short variedshort012 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-013",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall013",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-014",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 014."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 014",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 014.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-015",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort015 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort015",
+          "translation": "短卡譯文",
+          "context": "A short variedshort015 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-016",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall016",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-017",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 017."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 017",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 017.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-018",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort018 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort018",
+          "translation": "短卡譯文",
+          "context": "A short variedshort018 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-019",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall019",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-020",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 020."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 020",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 020.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-021",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort021 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort021",
+          "translation": "短卡譯文",
+          "context": "A short variedshort021 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-022",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall022",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-023",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 023."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 023",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 023.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-024",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort024 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort024",
+          "translation": "短卡譯文",
+          "context": "A short variedshort024 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-025",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall025",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-026",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 026."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 026",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 026.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-027",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort027 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort027",
+          "translation": "短卡譯文",
+          "context": "A short variedshort027 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-028",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall028",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-029",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 029."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 029",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 029.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-030",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort030 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort030",
+          "translation": "短卡譯文",
+          "context": "A short variedshort030 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-031",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall031",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-032",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 032."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 032",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 032.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-033",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort033 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort033",
+          "translation": "短卡譯文",
+          "context": "A short variedshort033 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-034",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall034",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-035",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 035."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 035",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 035.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-036",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort036 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort036",
+          "translation": "短卡譯文",
+          "context": "A short variedshort036 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-037",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedtall037",
+          "translation": "高卡譯文",
+          "context": "The negotiator patiently coaxed every reluctant stakeholder back to the table, reframing each objection until the whole room drifted, almost imperceptibly, toward the compromise that nobody in the building had honestly believed was reachable when the morning began.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-038",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short phrase example 038."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "a rather long recognition phrase that wraps across three lines 038",
+          "translation": "多行片語譯文",
+          "context": "A short phrase example 038.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        },
+        {
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "varied-039",
+          "difficultyTier": "intermediate",
+          "reviewExamples": [
+            "A short variedshort039 example."
+          ],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "variedshort039",
+          "translation": "短卡譯文",
+          "context": "A short variedshort039 example.",
+          "bookTitle": "Review Probe Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false
+        }
+      ],
+      "notebookSyncStatus": 1
+    }
+  },
+  "syncPresenter": {
+    "ready": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "ready",
+      "failureKind": null,
+      "pendingCount": 3,
+      "addCount": 2,
+      "deleteCount": 1,
+      "steps": [],
+      "summaryText": "",
+      "pendingRows": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "word": "ineffable",
+          "partOfSpeech": "adj.",
+          "translation": "難以言喻的",
+          "wordTone": "primary",
+          "isStrikethrough": false,
+          "actionSystemImage": "minus.circle",
+          "actionTone": "secondary",
+          "actionAccessibilityLabel": "移除待收錄"
+        },
+        {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "word": "ephemeral",
+          "partOfSpeech": "adj.",
+          "translation": "短暫的",
+          "wordTone": "primary",
+          "isStrikethrough": false,
+          "actionSystemImage": "minus.circle",
+          "actionTone": "secondary",
+          "actionAccessibilityLabel": "移除待收錄"
+        },
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "word": "obsolete",
+          "partOfSpeech": "adj.",
+          "translation": "過時的",
+          "wordTone": "destructive",
+          "isStrikethrough": true,
+          "actionSystemImage": "arrow.uturn.backward",
+          "actionTone": "destructive",
+          "actionAccessibilityLabel": "復原刪除"
+        }
+      ]
+    },
+    "running": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "running",
+      "failureKind": null,
+      "pendingCount": 3,
+      "addCount": 2,
+      "deleteCount": 1,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "已刪除 1 個單字"
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "running",
+          "current": 1,
+          "total": 2,
+          "detail": ""
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        }
+      ],
+      "summaryText": "",
+      "pendingRows": []
+    },
+    "completed": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "completed",
+      "failureKind": null,
+      "pendingCount": 0,
+      "addCount": 0,
+      "deleteCount": 0,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "已刪除 1 個單字"
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "done",
+          "current": 2,
+          "total": 2,
+          "detail": "2 新增, 0 已存在"
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已交由伺服器背景處理"
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已同步 5 筆複習紀錄"
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "本地單字已建立完成"
+        }
+      ],
+      "summaryText": "",
+      "pendingRows": []
+    },
+    "partialFailure": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "failed",
+      "failureKind": "partial",
+      "pendingCount": 1,
+      "addCount": 1,
+      "deleteCount": 0,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "已刪除 1 個單字"
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "error",
+          "current": 1,
+          "total": 2,
+          "detail": "部分上傳失敗（1 筆）"
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已交由伺服器背景處理"
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已同步 5 筆複習紀錄"
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "本地單字已建立完成"
+        }
+      ],
+      "summaryText": "部分項目未成功同步，可直接再次重試。",
+      "pendingRows": []
+    },
+    "fullFailure": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "failed",
+      "failureKind": "full",
+      "pendingCount": 3,
+      "addCount": 2,
+      "deleteCount": 1,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "running",
+          "current": 0,
+          "total": 1,
+          "detail": ""
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        }
+      ],
+      "summaryText": "網路連線中斷，請稍後再試。",
+      "pendingRows": []
+    }
+  },
+  "sharedDecks": {
+    "fixtures": {
+      "loading": {
+        "label": "explore-loading",
+        "phase": "loading",
+        "retryPhase": null,
+        "deckIDs": [],
+        "assetIDs": [
+          "images.explore_required"
+        ]
+      },
+      "loaded": {
+        "label": "explore-loaded",
+        "phase": "loaded",
+        "retryPhase": null,
+        "deckIDs": [
+          "deck_official_gre_high_freq"
+        ],
+        "assetIDs": [
+          "images.explore_required"
+        ]
+      },
+      "empty": {
+        "label": "explore-empty",
+        "phase": "empty",
+        "retryPhase": null,
+        "deckIDs": [],
+        "assetIDs": [
+          "images.explore_required_empty"
+        ]
+      },
+      "retry": {
+        "label": "explore-retry",
+        "phase": "error",
+        "retryPhase": "loaded",
+        "deckIDs": [
+          "deck_official_gre_high_freq"
+        ],
+        "assetIDs": [
+          "images.explore_required"
+        ]
+      },
+      "empty-counterexample": {
+        "label": "explore-empty-counterexample",
+        "phase": "empty",
+        "retryPhase": null,
+        "deckIDs": [],
+        "assetIDs": [
+          "images.explore_counterexample_empty"
+        ]
+      },
+      "retry-counterexample": {
+        "label": "explore-retry-counterexample",
+        "phase": "error",
+        "retryPhase": "loaded",
+        "deckIDs": [
+          "deck_counterexample_retry"
+        ],
+        "assetIDs": [
+          "images.explore_counterexample_retry"
+        ]
+      }
+    },
+    "decks": {
+      "deck_official_gre_high_freq": {
+        "remoteId": "deck_official_gre_high_freq",
+        "title": "🧭 GRE high-frequency vocabulary for deliberate reading — العربية עברית and durable recall across scripts",
+        "authorLabel": "KG Editorial",
+        "isOfficial": true,
+        "category": "exam",
+        "languagePair": "en-zh-Hant",
+        "tags": [
+          "GRE",
+          "high-frequency",
+          "cross-script"
+        ],
+        "cardCount": 120,
+        "downloadCount": 2450,
+        "ratingAvg": 4.8,
+        "ratingCount": 128,
+        "color": "#315C8C",
+        "coverPattern": "aurora",
+        "updatedAt": "2026-08-12T00:00:00Z",
+        "assetID": "images.explore_required",
+        "sampleCards": [
+          {
+            "id": "card-gre-001",
+            "content": "abate",
+            "pos": "verb",
+            "meaning": "減弱；緩和",
+            "examples": [
+              "The storm began to abate."
+            ],
+            "collocations": [
+              "abate concern"
+            ],
+            "note": "Usage note: pair with calm and deliberate reading.",
+            "difficulty": 0.3,
+            "mode": "recognition",
+            "rootForm": "abate",
+            "inflections": [
+              "abates",
+              "abated",
+              "abating"
+            ]
+          }
+        ]
+      },
+      "deck_counterexample_retry": {
+        "remoteId": "deck_counterexample_retry",
+        "title": "Retry counterexample deck",
+        "authorLabel": "Fixture Counterexample",
+        "isOfficial": false,
+        "category": "counterexample",
+        "languagePair": "en-zh-Hant",
+        "tags": [
+          "counterexample"
+        ],
+        "cardCount": 1,
+        "downloadCount": 0,
+        "ratingAvg": null,
+        "ratingCount": 0,
+        "color": "#8C3B3B",
+        "coverPattern": "retry",
+        "updatedAt": "2026-08-12T00:00:00Z",
+        "assetID": "images.explore_counterexample_retry",
+        "sampleCards": []
+      }
+    }
+  },
+  "scenarioContext": {
+    "reviewClock": {
+      "now": "2026-07-10T09:59:59Z",
+      "frozenEpoch": 1783677599,
+      "anchorDay": "2026-07-09",
+      "timeZone": "Pacific/Honolulu",
+      "source": "history_plan.anchor_day"
+    },
+    "surfaceContracts": {
+      "explore": {
+        "required": [
+          {
+            "fixtureID": "loading",
+            "stepLabel": "explore-loading",
+            "index": 0,
+            "assetIDs": [
+              "explore_required"
+            ]
+          },
+          {
+            "fixtureID": "loaded",
+            "stepLabel": "explore-loaded",
+            "index": 1,
+            "assetIDs": [
+              "explore_required"
+            ]
+          },
+          {
+            "fixtureID": "empty",
+            "stepLabel": "explore-empty",
+            "index": 2,
+            "assetIDs": [
+              "explore_required_empty"
+            ]
+          },
+          {
+            "fixtureID": "retry",
+            "stepLabel": "explore-retry",
+            "index": 3,
+            "assetIDs": [
+              "explore_required"
+            ]
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "empty-counterexample",
+            "stepLabel": "explore-empty-counterexample",
+            "index": 4,
+            "assetIDs": [
+              "explore_counterexample_empty"
+            ]
+          },
+          {
+            "fixtureID": "retry-counterexample",
+            "stepLabel": "explore-retry-counterexample",
+            "index": 5,
+            "assetIDs": [
+              "explore_counterexample_retry"
+            ]
+          }
+        ]
+      },
+      "settings": {
+        "required": [
+          {
+            "fixtureID": "settings.clean-preferences",
+            "stepLabel": "settings",
+            "index": 0,
+            "assetIDs": []
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "settings.reset-counterexample",
+            "stepLabel": "reset-counterexample",
+            "index": 1,
+            "assetIDs": []
+          }
+        ]
+      },
+      "reviewCalendar": {
+        "required": [
+          {
+            "fixtureID": "review-calendar.calendar",
+            "stepLabel": "calendar",
+            "index": 0,
+            "assetIDs": [
+              "review-calendar.calendar"
+            ]
+          },
+          {
+            "fixtureID": "review-calendar.empty-day",
+            "stepLabel": "empty-day",
+            "index": 1,
+            "assetIDs": [
+              "review-calendar.empty-day"
+            ]
+          },
+          {
+            "fixtureID": "review-calendar.populated-day",
+            "stepLabel": "populated-day",
+            "index": 2,
+            "assetIDs": [
+              "review-calendar.populated-day"
+            ]
+          },
+          {
+            "fixtureID": "review-calendar.timezone-boundary",
+            "stepLabel": "timezone-boundary",
+            "index": 3,
+            "assetIDs": [
+              "review-calendar.timezone-boundary"
+            ]
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "review-calendar.empty-day-counterexample",
+            "stepLabel": "empty-day-counterexample",
+            "index": 0,
+            "assetIDs": [
+              "review-calendar.empty-day-counterexample"
+            ]
+          },
+          {
+            "fixtureID": "review-calendar.timezone-boundary-counterexample",
+            "stepLabel": "timezone-boundary-counterexample",
+            "index": 1,
+            "assetIDs": [
+              "review-calendar.timezone-boundary-counterexample"
+            ]
+          }
+        ]
+      }
+    },
+    "readerPassage": {
+      "bookTitle": "人物群像",
+      "activeWord": "engraved",
+      "activePartOfSpeech": "adj.",
+      "activeTranslation": "雕刻的",
+      "activeExplanation": "強調在堅硬表面上，透過刻劃留下圖案或文字，與印刷或繪製不同。",
+      "activeContext": "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude.",
+      "paragraphs": [
+        "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude. Patience, Vivenna told herself. It’s not her fault she’s so abrasive. “Ambush. accomplices. Something.",
+        "Then she was given a dose of unwanted Breath. Now she was confronted by the most unholy of abominations. Some were as modest as Vivenna’s and others even had muted colors—though these were usually accented by bright scarves or hats."
+      ],
+      "vocabWords": [
+        "abominations",
+        "abrasive",
+        "accented",
+        "accomplices"
+      ],
+      "activeWords": [
+        "engraved"
+      ]
+    },
+    "wordDetail": {
+      "notebookRemoteId": "spec-nb-1",
+      "notebookName": "人物群像",
+      "notebookSyncStatus": 1,
+      "bookTitle": "人物群像",
+      "entries": [
+        {
+          "word": "engraved",
+          "translation": "雕刻的",
+          "context": "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully **engraved** glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude.",
+          "explanation": "強調在堅硬表面上，透過刻劃留下圖案或文字，與印刷或繪製不同。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "人物群像",
+          "chapterTitle": null,
+          "kgCardId": "spec-nb1-card50",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully **engraved** glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude."
+          ],
+          "collocations": [
+            "engraved glass",
+            "engraved jewelry",
+            "beautifully engraved"
+          ],
+          "rootForm": "engrave",
+          "inflections": [
+            "engraving",
+            "engraves",
+            "engrave"
+          ],
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "reviewIntervalHours": 725.534167,
+          "nextReviewAt": "2026-07-26T07:34:37Z",
+          "lastReviewedAt": "2026-06-26T02:02:34Z",
+          "reviewCount": 3,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "spec-link-nb1-47",
+                "cardId": "spec-nb1-card27",
+                "word": "chiseled",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.8,
+                "reason": "兩者都用於形容被雕刻或有雕刻痕跡的狀態。engraved 較為廣泛，可用於金屬、木頭等材質的雕刻；chiseled 則更常形容輪廓分明、線條銳利的雕刻效果，尤其用於形容人臉或身體的肌肉線條。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "chiseled",
+          "translation": "雕刻般的",
+          "context": "The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the **chiseled** masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude.",
+          "explanation": "形容臉部輪廓分明、線條銳利，如同用鑿子雕刻而成，常用於形容男性俊美的外貌。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "人物群像",
+          "chapterTitle": null,
+          "kgCardId": "spec-nb1-card27",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the **chiseled** masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude."
+          ],
+          "collocations": [
+            "chiseled jawline",
+            "chiseled features",
+            "chiseled face"
+          ],
+          "rootForm": "chiseled",
+          "inflections": null,
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "reviewIntervalHours": 332.864444,
+          "nextReviewAt": "2026-07-15T06:00:28Z",
+          "lastReviewedAt": "2026-07-01T09:08:36Z",
+          "reviewCount": 3,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        }
+      ],
+      "reviewHistory": []
+    }
+  }
+}
