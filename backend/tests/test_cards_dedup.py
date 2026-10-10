@@ -365,3 +365,25 @@ class TestOpenWithLegacyDuplicates:
             assert idx is not None
         finally:
             reopened.close()
+
+
+class TestCrossNotebook:
+    def test_same_word_in_other_notebooks_survives_unscoped_dedup(self, store):
+        """#2695: with notebook_id=None the dedup key must include the notebook."""
+        a = _insert_dup(store, "ephemeral", notebook_id="nb_a")
+        b = _insert_dup(store, "ephemeral", notebook_id="nb_b")
+
+        assert store.deduplicate() == 0
+
+        assert {c.id for c in _active(store)} == {a.id, b.id}
+        assert _deleted(store) == []
+
+    def test_unscoped_dedup_still_collapses_duplicates_within_a_notebook(self, store):
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        _insert_dup(store, "lucid", notebook_id="nb_a", review_count=1, created_at=base)
+        keep = _insert_dup(store, "lucid", notebook_id="nb_a", review_count=4, created_at=base)
+        other = _insert_dup(store, "lucid", notebook_id="nb_b")
+
+        assert store.deduplicate() == 1
+
+        assert {c.id for c in _active(store)} == {keep.id, other.id}
