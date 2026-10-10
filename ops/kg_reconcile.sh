@@ -55,6 +55,13 @@ CURL_BIN="${CURL_BIN:-curl}"
 KG_INFRA_HEALTH="${KG_INFRA_HEALTH:-$KG_RECON_REPO/ops/infra_health.sh}"
 KG_STATE_FILE="${KG_STATE_FILE:-$KG_RECON_REPO/backups/reconciler.state}"   # poison/cursor 私有游標
 KG_DEPLOY_LOG="${KG_DEPLOY_LOG:-$KG_RECON_REPO/backups/deploy.log}"
+# 資料目錄守衛（2026-10-09 事故：~/kg-data 被刪 ~3h 無人察覺，#2921）。reconciler 跑在 felix
+# 本機，直接 stat 資料目錄：不存在、或 users/ 子目錄數為 0 → unhealthy；容量或用戶數相對上一輪
+# 基線驟降超過 DROP_PCT% → ALERT（不 gate 部署）。基線檔刪除即接受新水位（合法大清理後）。
+KG_DATA_DIR="${KG_DATA_DIR:-$HOME/kg-data}"
+KG_RECON_DATA_GUARD="${KG_RECON_DATA_GUARD:-1}"            # 0=停用
+KG_RECON_DATA_DROP_PCT="${KG_RECON_DATA_DROP_PCT:-50}"
+KG_DATA_BASELINE_FILE="${KG_DATA_BASELINE_FILE:-$(dirname "$KG_STATE_FILE")/data_dir.baseline}"
 KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
 KG_LOCAL_HEALTH_URL="${KG_LOCAL_HEALTH_URL:-http://localhost:8000/api/system/info}"
 # readiness（fail-closed）：資料目錄存在且可寫、users/ 在、啟動時建立的檔案都在。
@@ -304,6 +311,44 @@ probe_ready_or_fail() {
   emit_verdict "unhealthy"; exit 1
 }
 
+# 資料目錄守衛。每個非 dry-run、非 locked 的 tick 都跑（90s 週期，遠小於 5 分鐘告警要求）。
+# 不存在／users/ 無子目錄 = 資料遺失，與 readiness 失敗同級：ALERT + verdict=unhealthy + exit 1。
+# 驟降只告警：基線不更新（持續告警直到人工處理或刪基線檔），不阻擋部署。
+probe_data_dir_or_fail() {
+  [[ "$KG_RECON_DATA_GUARD" == "1" ]] || return 0
+  local users mb base_mb="" base_users="" pct="$KG_RECON_DATA_DROP_PCT" dropped=0
+  if [[ ! -d "$KG_DATA_DIR" ]]; then
+    alert "資料目錄不存在：${KG_DATA_DIR}（用戶資料可能已遺失，需立即人工檢查並從備份還原）。"
+    emit_verdict "unhealthy"; exit 1
+  fi
+  users="$(find "$KG_DATA_DIR/users" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ' || true)"
+  [[ "$users" =~ ^[0-9]+$ ]] || users=0
+  if (( users == 0 )); then
+    alert "資料目錄 ${KG_DATA_DIR}/users 沒有任何用戶子目錄（目錄被清空或 users/ 遺失），需立即人工檢查並從備份還原。"
+    emit_verdict "unhealthy"; exit 1
+  fi
+  mb="$(du -sm "$KG_DATA_DIR" 2>/dev/null | cut -f1 || true)"
+  [[ "$mb" =~ ^[0-9]+$ ]] || mb=0
+  if [[ -f "$KG_DATA_BASELINE_FILE" ]] && [[ "$pct" =~ ^[0-9]+$ ]]; then
+    read -r base_mb base_users < "$KG_DATA_BASELINE_FILE" || true
+    if [[ "$base_mb" =~ ^[0-9]+$ && "$base_users" =~ ^[0-9]+$ ]]; then
+      if (( 10#$mb * 100 < 10#$base_mb * (100 - 10#$pct) )); then
+        alert "資料目錄容量驟降：${base_mb}MB → ${mb}MB（超過 ${pct}%）。疑似資料被刪；確認屬合法清理後刪除 ${KG_DATA_BASELINE_FILE} 以接受新水位。"
+        dropped=1
+      fi
+      if (( 10#$users * 100 < 10#$base_users * (100 - 10#$pct) )); then
+        alert "用戶目錄數驟降：${base_users} → ${users}（超過 ${pct}%）。疑似資料被刪；確認屬合法後刪除 ${KG_DATA_BASELINE_FILE} 以接受新水位。"
+        dropped=1
+      fi
+    fi
+  fi
+  if (( dropped == 0 )); then
+    mkdir -p "$(dirname "$KG_DATA_BASELINE_FILE")" 2>/dev/null || true
+    printf '%s %s\n' "$mb" "$users" > "$KG_DATA_BASELINE_FILE" 2>/dev/null || true
+  fi
+  return 0
+}
+
 # 不會部署的出口（noop / ff-only / poisoned-skip）若 readiness 是 000，不能回報健康。
 unready_exit_if_blind() {
   [[ "$PRE_READY" == "1" ]] && return 0
@@ -495,7 +540,7 @@ run_health_gate() {
   # KG_HEALTH_DEPLOY_DRIFT=0：部署收斂是本腳本自己的職責，把自己的收斂狀態當成自己的
   # 健康條件會構成迴圈——release 推進 origin/prod 後、下一輪收斂完成前必然 drift，於是
   # 這一關會回滾一次本來健康的部署。故對自我 gate 關掉那組 metric（IMP-0022）。
-  ih_json="$(KG_HEALTH_PROBE_URL="${KG_PUBLIC_URL}/api/system/info" KG_HEALTH_DEPLOY_DRIFT=0 "$KG_INFRA_HEALTH" --json 2>/dev/null)"
+  ih_json="$(KG_HEALTH_PROBE_URL="${KG_PUBLIC_URL}/api/system/info" KG_HEALTH_DEPLOY_DRIFT=0 KG_HEALTH_DATA_GUARD=0 "$KG_INFRA_HEALTH" --json 2>/dev/null)"
   ih=$?
   set -e
   case "$ih" in
@@ -741,6 +786,7 @@ main() {
     log "deploy 鎖 $KG_LOCK_DIR 已被持有（人工 deploy 進行中？）→ 跳過 VERSION 自癒，本輪讓路。"
     emit_verdict "locked"; exit 0
   fi
+  [[ "$dry_run" == "1" ]] || probe_data_dir_or_fail
   [[ "$dry_run" == "1" ]] || probe_ready_or_fail
   if [[ "$dry_run" != "1" ]]; then
     local live_ver

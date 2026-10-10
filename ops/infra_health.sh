@@ -25,6 +25,15 @@
 #   KG_HEALTH_CERT_WARN/CRIT  ERR_WARN/CRIT  SWAP_WARN/CRIT  RESTART_WARN
 #   KG_HEALTH_TICK_WARN/CRIT  （reconciler 心跳年齡秒數）
 #
+# 資料目錄守衛（#2921，2026-10-09 ~/kg-data 被刪 ~3h 無人察覺）：
+#   KG_HEALTH_DATA_GUARD        1=啟用(預設) 0=停用 data_dir_mb 的缺失／驟降判定與 users_dir_count。
+#                               reconciler 部署 gate 設 0（它有自己的 probe_data_dir_or_fail，
+#                               host 資料遺失不是新版的錯，不該回滾+poison 健康的部署）。
+#   KG_HEALTH_DATA_MB_BASELINE / KG_HEALTH_USERS_BASELINE
+#                               選填：預期水位。現值低於 baseline×(100-DROP_PCT)% → crit。
+#                               未設則只判「目錄缺失」「users/ 子目錄數為 0」。
+#   KG_HEALTH_DATA_DROP_PCT     驟降門檻百分比（預設 50）
+#
 # 部署漂移組（IMP-0022）相關 env：
 #   KG_HEALTH_DEPLOY_DRIFT  1=啟用(預設) 0=停用 deploy_drift / reconciler_tick_age_s /
 #                           reconciler_poison_active 三個 metric。reconciler 自我 gate
@@ -82,6 +91,10 @@ TICK_WARN="${KG_HEALTH_TICK_WARN:-600}";  TICK_CRIT="${KG_HEALTH_TICK_CRIT:-1800
 POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN:-3600}"
 # 部署漂移組總開關。reconciler 自我 gate 時關掉，理由見下方判讀段。
 DEPLOY_DRIFT="${KG_HEALTH_DEPLOY_DRIFT:-1}"
+DATA_GUARD="${KG_HEALTH_DATA_GUARD:-1}"
+DATA_DROP_PCT="${KG_HEALTH_DATA_DROP_PCT:-50}"
+DATA_MB_BASELINE="${KG_HEALTH_DATA_MB_BASELINE:-}"
+USERS_BASELINE="${KG_HEALTH_USERS_BASELINE:-}"
 
 log() { echo "$@" >&2; }
 
@@ -230,6 +243,7 @@ printf "ingress\t%s\n" "$(pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 && echo
 # traceback 都不是錯誤記錄（#2317）。grep -c 無匹配會印 0 但 exit 1，故保留 || true。
 printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -cE "\"level\": ?\"(ERROR|CRITICAL)\"|^(ERROR|CRITICAL)[: ]" || true)"
 printf "data_dir_mb\t%s\n" "$(du -sm "$D" 2>/dev/null | cut -f1 || echo 0)"
+if [ -d "$D" ]; then printf "data_dir_exists\tyes\n"; printf "users_dir_count\t%s\n" "$(find "$D/users" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d " ")"; else printf "data_dir_exists\tno\n"; fi
 # 部署漂移組（IMP-0022）。全用雙引號：本段是單引號字串，出現單引號會提前結束它，
 # 故不得改用 awk（awk 程式需要單引號）。各自帶 || 保底，printf 恆回 0，不觸 set -e。
 # host_now_epoch 讓年齡一律用**遠端**時鐘相減，免本機時鐘偏移污染讀數。
@@ -365,7 +379,31 @@ add log_errors_1h "近1h ERROR 級 log 事件" "${errs:-?}" "$(th_high "${errs:-
 # 憑證
 add cert_days_left "TLS 憑證剩餘" "${CERT_DAYS:-?} 天" "$(th_low "${CERT_DAYS:-}" $CERT_WARN $CERT_CRIT)" "$CERT_DAYS"
 
-ddir="$(getm data_dir_mb)"; add data_dir_mb "資料目錄大小" "${ddir:-?}MB" ok "$ddir"
+ddir="$(getm data_dir_mb)"
+if [[ "$DATA_GUARD" != "1" ]]; then
+  add data_dir_mb "資料目錄大小" "${ddir:-?}MB" ok "$ddir"
+else
+  # 資料目錄守衛（#2921）：缺失／無用戶／相對 baseline 驟降 → crit；量不到 → unknown(→warn)。
+  # drop_crit 的 baseline 與百分比都先過數值守衛（同 th_high 的 env 前導零理由）。
+  dexists="$(getm data_dir_exists)"; ucount="$(getm users_dir_count)"
+  drop_crit() { local v="$1" b="$2"
+    [[ "$v" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ && "$DATA_DROP_PCT" =~ ^[0-9]+$ ]] || return 1
+    (( 10#$v * 100 < 10#$b * (100 - 10#$DATA_DROP_PCT) )); }
+  if [[ "$dexists" == "no" ]]; then
+    add data_dir_mb "資料目錄大小" "目錄不存在" crit ""
+    add users_dir_count "用戶目錄數" "資料目錄不存在" crit ""
+  else
+    if [[ -z "$dexists" || ! "$ddir" =~ ^[0-9]+$ ]]; then dst="unknown"
+    elif drop_crit "$ddir" "$DATA_MB_BASELINE"; then dst="crit"
+    else dst="ok"; fi
+    add data_dir_mb "資料目錄大小" "${ddir:-?}MB${DATA_MB_BASELINE:+ (baseline ${DATA_MB_BASELINE}MB)}" "$dst" "$ddir"
+    if [[ ! "$ucount" =~ ^[0-9]+$ ]]; then ust="unknown"
+    elif (( 10#$ucount == 0 )); then ust="crit"
+    elif drop_crit "$ucount" "$USERS_BASELINE"; then ust="crit"
+    else ust="ok"; fi
+    add users_dir_count "用戶目錄數" "${ucount:-?}${USERS_BASELINE:+ (baseline ${USERS_BASELINE})}" "$ust" "$ucount"
+  fi
+fi
 
 # ── 4b. 部署漂移組（IMP-0022）────────────────────────────────────────────────
 # 補的是這樣一個盲區：felix 生產是否收斂到 origin/prod、reconciler 是否還活著、是否卡在
