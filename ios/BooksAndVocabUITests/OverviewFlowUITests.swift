@@ -236,9 +236,9 @@ final class OverviewFlowUITests: UITestCase {
         executionTimeAllowance = 420
     }
 
-    /// #2736: the heatmap must open scrolled to the latest week. 52 weeks overflow
-    /// every device, so this is not vacuous on the wide CI device; without the
-    /// scroll position the strip opens at the oldest week and the latest is off-screen.
+    /// #2736: the heatmap must open scrolled to the latest week. The 52-week override
+    /// (`KG_UI_TEST_HEATMAP_WEEKS`) overflows the viewport on every device, so the premise
+    /// is deterministic; without the scroll position the strip opens at the oldest week.
     @MainActor
     func testActivityHeatmapOpensOnLatestWeek() throws {
         let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
@@ -270,16 +270,34 @@ final class OverviewFlowUITests: UITestCase {
             return probeValue().contains(needle)
         }
 
+        // Wait until the strip reaches the trailing edge (or time out), then read the probe once.
+        // Precondition and behavior below judge this same snapshot, so they cannot disagree.
+        _ = waitForProbe(containing: "trailing=1", timeout: 10)
+        let probe = probeValue()
         // Precondition (test premise): the 52-week grid must overflow the viewport,
         // otherwise "latest week visible" holds trivially without any scroll fix.
         XCTAssertTrue(
-            waitForProbe(containing: "overflow=1", timeout: 10),
-            "precondition failed: 52-week heatmap did not overflow its viewport (probe=\(probeValue()))"
+            probe.contains("overflow=1"),
+            "precondition failed: 52-week heatmap did not overflow its viewport (probe=\(probe))"
         )
         // The assertion under test: the overflowing strip rests on the trailing (latest) edge.
         XCTAssertTrue(
-            waitForProbe(containing: "trailing=1", timeout: 5),
-            "heatmap did not open scrolled to the latest week (probe=\(probeValue()))"
+            probe.contains("trailing=1"),
+            "heatmap did not open scrolled to the latest week (probe=\(probe))"
+        )
+
+        // AX contract: the calendar opener stays one labelled, hittable Button after the heatmap
+        // change, and tapping it opens Review Calendar. Cells live inside the heatmap Button label,
+        // so the opener is the only addressable calendar entry point.
+        let openers = app.buttons.matching(identifier: "reviewCalendar.open")
+        XCTAssertEqual(openers.count, 1, "reviewCalendar.open must match exactly one Button")
+        let opener = openers.element(boundBy: 0)
+        XCTAssertFalse(opener.label.isEmpty, "reviewCalendar.open must keep its localized label")
+        XCTAssertTrue(opener.isHittable, "reviewCalendar.open must stay hittable with the heatmap present")
+        opener.tapWhenReady()
+        XCTAssertTrue(
+            ReviewCalendarPage(app: app).monthHeader.waitUntilExists(timeout: 10),
+            "tapping reviewCalendar.open must open Review Calendar"
         )
     }
 
