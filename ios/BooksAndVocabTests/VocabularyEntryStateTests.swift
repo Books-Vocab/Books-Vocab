@@ -32,6 +32,15 @@ struct VocabularyEntryStateTests {
         #expect(orderAB == [firstID, secondID])
     }
 
+    @Test("封存單字詳情必須以 activeEntries 作為候選池（#2727）")
+    func archivedSheetPassesActiveEntriesToWordDetailSheet() throws {
+        let source = try Self.archivedSheetSource()
+        #expect(
+            source.contains("WordDetailSheet(entry: entry, allEntries: activeEntries)"),
+            "ArchivedVocabSheet must pass allEntries: activeEntries to WordDetailSheet, otherwise the candidate pool is empty"
+        )
+    }
+
     private static func archivedSheetSource() throws -> String {
         let testFileURL = URL(fileURLWithPath: #filePath)
         let iosRootURL = testFileURL
