@@ -5,6 +5,28 @@ private enum ReviewTiming {
     static let shortcutHintDismissDelay: Duration = .seconds(3)
 }
 
+/// Decides whether review hotkeys must yield to an active modal surface.
+/// Covers the link/sheet surfaces that present over the review. Help (`isHelpPresented`)
+/// is deliberately excluded: Esc and `?` are handled by the switch itself to close it.
+/// Kept ungated (not behind macCatalyst) so the policy is unit-testable on iOS.
+enum TodayReviewHotkeyPolicy {
+    static func suppressesHotkeys(
+        hasLinkedCardStack: Bool,
+        hasAddLinkRequest: Bool,
+        hasPendingLinkDetail: Bool,
+        isLayoutEditorPresented: Bool,
+        hasTappedLink: Bool,
+        hasExplainSheet: Bool
+    ) -> Bool {
+        hasLinkedCardStack
+            || hasAddLinkRequest
+            || hasPendingLinkDetail
+            || isLayoutEditorPresented
+            || hasTappedLink
+            || hasExplainSheet
+    }
+}
+
 enum ReviewIntent {
     case reveal
     case collapse
@@ -430,7 +452,14 @@ struct TodayReviewView: View {
     /// Hardware-keyboard shortcuts on Mac Catalyst (replaces the old AppKit
     /// macKeyResponder path). Requires the view to hold keyboard focus.
     private func handleCatalystKey(_ press: KeyPress) -> Bool {
-        guard state.linkedCardStack.isEmpty else { return false }
+        guard !TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: !state.linkedCardStack.isEmpty,
+            hasAddLinkRequest: addLinkRequest != nil,
+            hasPendingLinkDetail: pendingLinkDetail != nil,
+            isLayoutEditorPresented: showLayoutEditor,
+            hasTappedLink: state.tappedLink != nil,
+            hasExplainSheet: explainSheetItem != nil
+        ) else { return false }
         switch press.key {
         case .space:
             return perform(state.revealStage == .front ? .reveal : .collapse)
