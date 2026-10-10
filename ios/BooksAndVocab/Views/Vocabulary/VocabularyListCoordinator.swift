@@ -31,25 +31,33 @@ final class VocabularyListCoordinator: VocabularyListCoordinating {
     }
 
     func exportCSV(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
-        runExport(VocabularyExporter.exportAsCSV, entries: entries, toastCoordinator: toastCoordinator)
+        runExport(.csv, entries: entries, toastCoordinator: toastCoordinator)
     }
 
     func exportJSON(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
-        runExport(VocabularyExporter.exportAsJSON, entries: entries, toastCoordinator: toastCoordinator)
+        runExport(.json, entries: entries, toastCoordinator: toastCoordinator)
     }
 
     func exportAnki(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
-        runExport(VocabularyExporter.exportAsAnki, entries: entries, toastCoordinator: toastCoordinator)
+        runExport(.anki, entries: entries, toastCoordinator: toastCoordinator)
     }
 
-    /// 共用匯出流程：產生暫存檔 URL，失敗時統一彈出錯誤 toast。
+    /// 共用匯出流程：空清單與寫檔失敗都統一彈錯誤 toast，且不暴露 URL。
     private func runExport(
-        _ makeFile: ([VocabularyEntry]) -> URL?,
+        _ format: VocabularyExportFormat,
         entries: [VocabularyEntry],
         toastCoordinator: AppToastCoordinator
     ) {
-        exportURL = makeFile(entries)
-        if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
+        switch VocabularyExporter.export(entries: entries, format: format) {
+        case .success(let url):
+            exportURL = url
+        case .failure(.empty):
+            exportURL = nil
+            toastCoordinator.error(NotebookListCopy.exportEmpty)
+        case .failure(.writeFailed):
+            exportURL = nil
+            toastCoordinator.error("匯出失敗".localized)
+        }
     }
 
     func startKnowledgeReview(entries: [VocabularyEntry]) {

@@ -8,13 +8,25 @@
 
 import Foundation
 
+enum VocabularyExportFormat: CaseIterable {
+    case csv, json, anki
+}
+
+enum VocabularyExportError: Error, Equatable {
+    /// 沒有可匯出的單字：不產生零列檔案。
+    case empty
+    /// 暫存檔寫入失敗。
+    case writeFailed
+}
+
 enum VocabularyExporter {
 
     // MARK: - Public API
 
     /// 匯出為 CSV 格式
     static func exportAsCSV(entries: [VocabularyEntry]) -> URL? {
-        var csv = "Word,Translation,Part of Speech,Context,Book,Chapter,Date\n"
+        // U+FEFF BOM：Excel 對 BOM-less UTF-8 會當 ANSI 讀，中文譯文會亂碼。
+        var csv = "\u{FEFF}Word,Translation,Part of Speech,Context,Book,Chapter,Date\n"
         for entry in entries {
             let fields = [
                 escapeCSV(entry.word),
@@ -59,15 +71,31 @@ enum VocabularyExporter {
     static func exportAsAnki(entries: [VocabularyEntry]) -> URL? {
         var tsv = ""
         for entry in entries {
-            let front = "\(entry.word)\n<small>\(entry.context)</small>"
-            var back = entry.translation
+            let front = "\(escapeHTML(entry.word))\n<small>\(escapeHTML(entry.context))</small>"
+            var back = escapeHTML(entry.translation)
 
-            if let pos = entry.partOfSpeech, !pos.isEmpty { back = "(\(pos)) \(back)" }
-            if let exp = entry.explanation { back += "\n\(exp)" }
+            if let pos = entry.partOfSpeech, !pos.isEmpty { back = "(\(escapeHTML(pos))) \(back)" }
+            if let exp = entry.explanation { back += "\n\(escapeHTML(exp))" }
 
             tsv += "\(escapeTab(front))\t\(escapeTab(back))\n"
         }
         return saveToTemp(content: tsv, filename: "vocabulary_anki.tsv")
+    }
+
+    /// 唯一的 UI 匯出入口。空清單在此短路（不產生零列檔案），呼叫端只負責把結果映射為 UI。
+    static func export(
+        entries: [VocabularyEntry],
+        format: VocabularyExportFormat
+    ) -> Result<URL, VocabularyExportError> {
+        guard !entries.isEmpty else { return .failure(.empty) }
+        let url: URL?
+        switch format {
+        case .csv: url = exportAsCSV(entries: entries)
+        case .json: url = exportAsJSON(entries: entries)
+        case .anki: url = exportAsAnki(entries: entries)
+        }
+        guard let url else { return .failure(.writeFailed) }
+        return .success(url)
     }
 
     // MARK: - Internal Helpers
@@ -90,6 +118,13 @@ enum VocabularyExporter {
         let safe = text.first.map(formulaTriggers.contains) == true ? "'" + text : text
         let escaped = safe.replacingOccurrences(of: "\"", with: "\"\"")
         return "\"\(escaped)\""
+    }
+
+    /// Anki 欄位為 HTML；`&` 必須先轉義，否則後續實體會被二次轉義。
+    private static func escapeHTML(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private static func escapeTab(_ text: String) -> String {

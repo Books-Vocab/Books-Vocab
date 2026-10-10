@@ -114,4 +114,51 @@ struct VocabularyExporterPOSTests {
     @Test func test_anki_exports_are_independent() throws {
         try expectIndependentExports(VocabularyExporter.exportAsAnki(entries:))
     }
+
+    @Test func test_csv_starts_with_utf8_bom_and_keeps_chinese() throws {
+        let url = try #require(VocabularyExporter.exportAsCSV(entries: [makeEntry()]))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let data = try Data(contentsOf: url)
+        // Excel reads BOM-less UTF-8 as ANSI and garbles the Chinese translation.
+        #expect(data.prefix(3) == Data([0xEF, 0xBB, 0xBF]))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.contains("\"引用\""))
+    }
+
+    @Test func test_anki_html_escapes_fields_but_keeps_small_wrapper() throws {
+        let entry = VocabularyEntry(
+            word: "a<b",
+            translation: "x & y > z",
+            context: "a<b & c>",
+            explanation: "x<y & z",
+            partOfSpeech: "a<b",
+            bookTitle: "B"
+        )
+        let tsv = try read(VocabularyExporter.exportAsAnki(entries: [entry]))
+        #expect(tsv.contains("<small>a&lt;b &amp; c&gt;</small>"))
+        #expect(tsv.contains("a&lt;b<br><small>"))
+        #expect(tsv.contains("x &amp; y &gt; z"))
+        #expect(!tsv.contains("a<b & c>"))
+        // POS and explanation are HTML fields too: escaped, never raw.
+        #expect(tsv.contains("(a&lt;b) x &amp; y &gt; z<br>x&lt;y &amp; z"))
+        #expect(!tsv.contains("(a<b)"))
+        #expect(!tsv.contains("x<y"))
+    }
+
+    @Test func test_export_empty_notebook_returns_empty_error_for_every_format() {
+        // 守門在 exporter 內：刪掉 guard 會變成 .success，此測試即紅。
+        for format in VocabularyExportFormat.allCases {
+            #expect(VocabularyExporter.export(entries: [], format: format) == .failure(.empty))
+        }
+    }
+
+    @Test func test_export_non_empty_notebook_writes_file_for_every_format() throws {
+        for format in VocabularyExportFormat.allCases {
+            let url = try VocabularyExporter.export(entries: [makeEntry()], format: format).get()
+            defer { try? FileManager.default.removeItem(at: url) }
+            #expect(FileManager.default.fileExists(atPath: url.path))
+            let text = try String(contentsOf: url, encoding: .utf8)
+            #expect(text.contains("invoke"))
+        }
+    }
 }

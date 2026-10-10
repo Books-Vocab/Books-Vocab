@@ -16,6 +16,7 @@ enum NotebookListCopy {
     static var sortMenuTitle: String { L10n.string("排序方式") }
     static var sortAccessibilityLabel: String { L10n.string("排序") }
     static var exportFailure: String { L10n.string("匯出失敗") }
+    static var exportEmpty: String { L10n.string("單字本沒有可匯出的單字") }
     static var reconcileErrorTitle: String { L10n.string("單字本同步失敗") }
     static var retryTitle: String { L10n.string("重試") }
 
