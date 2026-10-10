@@ -32,12 +32,15 @@ class _Cards:
             cards = [card for card in cards if (card.updated_at, card.id) > (after[0], after[1])]
         return sorted(cards, key=lambda card: (card.updated_at, card.id))[:limit]
 
-    def get_modified_since(self, since, *, notebook_id=None):
-        return [
+    def get_modified_since(self, since, *, notebook_id=None, limit=None, after=None):
+        rows = [
             card
             for card in sorted(self.cards, key=lambda card: (card.updated_at, card.id))
             if (notebook_id is None or card.notebook_id == notebook_id) and card.updated_at > since
         ]
+        if after is not None:
+            rows = [card for card in rows if (card.updated_at, card.id) > (after[0], after[1])]
+        return rows[:limit]
 
     def get_batch(self, card_ids):
         return {card.id: card for card in self.cards if card.id in card_ids}

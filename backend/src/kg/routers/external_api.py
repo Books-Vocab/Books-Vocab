@@ -588,6 +588,14 @@ def _update_external_card(
     updated = _card_store(user["dir"]).update(card.id, **updates)
     if updated is None:
         raise NotFoundError("Card", card_id)
+    if "meaning" in updates and updates["meaning"] != card.meaning:
+        try:
+            _embedding_store(user["dir"], llm=None, notebook_id=notebook_id).remove(card.id)
+        except Exception as exc:
+            # The edit is already durable; a stale vector is recoverable, so
+            # it must not turn a successful update into a retry-prone 5xx.
+            logger.warning("[%s] Failed to evict embedding for edited card %s", user["id"], card.id, exc_info=True)
+            capture_handled(exc, context="external_api.embedding_evict")
     return _render_card(user, updated, notebook_id)
 
 

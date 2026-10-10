@@ -51,8 +51,11 @@ class _FakeCardsStore:
     def get_batch(self, card_ids):
         return {c.id: c for c in self._cards if c.id in card_ids}
 
-    def get_modified_since(self, parsed_since, notebook_id: str | None = None):
-        return list(self._cards)
+    def get_modified_since(self, parsed_since, notebook_id: str | None = None, *, limit=None, after=None):
+        rows = sorted(self._cards, key=lambda c: (c.updated_at, c.id))
+        if after is not None:
+            rows = [c for c in rows if (c.updated_at, c.id) > after]
+        return rows[:limit]
 
     def find_by_content(self, content: str, notebook_id: str | None = None):
         import unicodedata

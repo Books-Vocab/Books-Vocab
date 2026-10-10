@@ -284,3 +284,65 @@ def test_every_static_patch_segment_forwards_content_edit(isolated_api, segment)
     stored = _stored_card(isolated_api, segment)
     assert stored is not None
     assert (stored.meaning, stored.note) == ("new meaning", "teacher note")
+
+
+def _seed_embedding(api, word, monkeypatch):
+    """Give the seeded card a stored vector (the embed call itself is faked)."""
+    import numpy as np
+
+    from kg.deps import _embedding_store
+    from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
+
+    monkeypatch.setattr(
+        EmbeddingStore,
+        "_embed",
+        lambda self, texts, *, llm=None: np.ones((len(texts), EMBEDDING_DIM), dtype=np.float32),
+    )
+    card = _stored_card(api, word)
+    user_dir = api.data_dir / "users" / api.user_id
+    store = _embedding_store(user_dir, llm=None)
+    store.add(card.id, card.embed_text())
+    assert store.has(card.id)
+    return card.id, store
+
+
+def test_meaning_edit_evicts_stale_embedding(isolated_api, monkeypatch):
+    from kg.service_factories import clear_store_cache
+
+    clear_store_cache()
+    try:
+        word = _seed_word(isolated_api)
+        card_id, store = _seed_embedding(isolated_api, word, monkeypatch)
+        r = isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": "new"}, headers=isolated_api.headers)
+        assert r.status_code == 200, r.text
+        assert not store.has(card_id)
+    finally:
+        clear_store_cache()
+
+
+def test_note_only_edit_keeps_embedding(isolated_api, monkeypatch):
+    from kg.service_factories import clear_store_cache
+
+    clear_store_cache()
+    try:
+        word = _seed_word(isolated_api)
+        card_id, store = _seed_embedding(isolated_api, word, monkeypatch)
+        r = isolated_api.client.patch(f"/api/vocab/{word}", json={"note": "n"}, headers=isolated_api.headers)
+        assert r.status_code == 200, r.text
+        assert store.has(card_id)
+    finally:
+        clear_store_cache()
+
+
+def test_meaning_edit_survives_embedding_eviction_failure(isolated_api, monkeypatch):
+    import kg.service_factories as factories
+
+    word = _seed_word(isolated_api)
+
+    def boom(*_a, **_k):
+        raise OSError("embedding store unavailable")
+
+    monkeypatch.setattr(factories, "create_embedding_store", boom)
+    r = isolated_api.client.patch(f"/api/vocab/{word}", json={"meaning": "new"}, headers=isolated_api.headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["meaning"] == "new"
