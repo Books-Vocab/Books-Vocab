@@ -45,35 +45,31 @@ struct TodayReviewShortcutCatalogTests {
             hasLinkedCardStack: false,
             hasAddLinkRequest: false,
             hasPendingLinkDetail: false,
-            isLayoutEditorPresented: false
+            isLayoutEditorPresented: false,
+            hasTappedLink: false,
+            hasExplainSheet: false
         ))
     }
 
     @Test func hotkeySuppression_blocksWhileAnyModalSurfaceIsActive() {
-        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
-            hasLinkedCardStack: true,
-            hasAddLinkRequest: false,
-            hasPendingLinkDetail: false,
-            isLayoutEditorPresented: false
-        ))
-        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
-            hasLinkedCardStack: false,
-            hasAddLinkRequest: true,
-            hasPendingLinkDetail: false,
-            isLayoutEditorPresented: false
-        ))
-        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
-            hasLinkedCardStack: false,
-            hasAddLinkRequest: false,
-            hasPendingLinkDetail: true,
-            isLayoutEditorPresented: false
-        ))
-        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
-            hasLinkedCardStack: false,
-            hasAddLinkRequest: false,
-            hasPendingLinkDetail: false,
-            isLayoutEditorPresented: true
-        ))
+        let surfaces: [(linkedStack: Bool, addLink: Bool, pendingDetail: Bool, layout: Bool, tappedLink: Bool, explain: Bool)] = [
+            (true, false, false, false, false, false),
+            (false, true, false, false, false, false),
+            (false, false, true, false, false, false),
+            (false, false, false, true, false, false),
+            (false, false, false, false, true, false),
+            (false, false, false, false, false, true),
+        ]
+        for surface in surfaces {
+            #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
+                hasLinkedCardStack: surface.linkedStack,
+                hasAddLinkRequest: surface.addLink,
+                hasPendingLinkDetail: surface.pendingDetail,
+                isLayoutEditorPresented: surface.layout,
+                hasTappedLink: surface.tappedLink,
+                hasExplainSheet: surface.explain
+            ))
+        }
     }
 }
 #endif
