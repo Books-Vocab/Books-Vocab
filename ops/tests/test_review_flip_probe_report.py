@@ -16,8 +16,18 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 parse_jsonl = MODULE.parse_jsonl
+parse_gap_geom = MODULE.parse_gap_geom
 evaluate = MODULE.evaluate
 DEFAULT_THRESHOLDS = MODULE.DEFAULT_THRESHOLDS
+
+GAP_GEOM_FRONT = (
+    "2026-10-10 14:00:00.000 I BooksAndVocab[1:2] gap.geom slot=0 role=active "
+    "kind=slot w=gapshort0 h=94.0 reveal=0 dismiss=0 off=0 idx=3 / 12"
+)
+GAP_GEOM_LONG_WORD = (
+    "gap.geom slot=2 role=preview kind=slot w=a rather long recognition phrase "
+    "h=151.5 reveal=2 dismiss=1 off=-40 idx=1 / 8"
+)
 
 
 def _header(**overrides):
@@ -265,3 +275,48 @@ class TestCli:
         )
         assert result.returncode == 2
         assert json.loads(result.stdout)["result"] == "invalid"
+
+
+class TestParseGapGeom:
+    def test_parses_slot_record_with_spaces_in_word_and_progress(self):
+        records, errors = parse_gap_geom([GAP_GEOM_FRONT])
+
+        assert errors == []
+        assert records == [
+            {
+                "slot": 0,
+                "role": "active",
+                "kind": "slot",
+                "word": "gapshort0",
+                "height": 94.0,
+                "reveal": "0",
+                "dismiss": False,
+                "offset": 0,
+                "progress": "3 / 12",
+            }
+        ]
+
+    def test_word_with_spaces_and_negative_offset_parse(self):
+        records, errors = parse_gap_geom([GAP_GEOM_LONG_WORD])
+
+        assert errors == []
+        assert records[0]["word"] == "a rather long recognition phrase"
+        assert records[0]["height"] == 151.5
+        assert records[0]["dismiss"] is True
+        assert records[0]["offset"] == -40
+
+    def test_ignores_unrelated_console_lines(self):
+        records, errors = parse_gap_geom(
+            ["Simulator booted", GAP_GEOM_FRONT, "PerfLog review: flip 3 done"]
+        )
+
+        assert len(records) == 1
+        assert errors == []
+
+    def test_malformed_gap_geom_line_is_an_error_not_a_crash(self):
+        truncated = "gap.geom slot=0 role=active kind=slot w=gapshort0 h=oops"
+        records, errors = parse_gap_geom([GAP_GEOM_FRONT, truncated])
+
+        assert len(records) == 1
+        assert len(errors) == 1
+        assert "line 2" in errors[0]
