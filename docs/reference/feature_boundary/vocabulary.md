@@ -211,15 +211,15 @@ Vocabulary 只呈現一般 Card；所有詞條共用同一套 detail、edit、ar
 
 ## 動態佈局契約（複習卡片）
 
-改 `ReviewCardLayout.swift` / `ReviewCardView.swift` 前必讀。**版面規則**（前五條）由 `ReviewCardRenderPlanTests` / `ReviewCardBudgetParityTests` / `ReviewCardLayoutStoreTests` / `ReviewCardLayoutEditorTests` 釘住；**效能那條沒有單元測試守得住**，它的量測面是 `./ops/review_flip_probe.sh`，而該 gate **目前是紅的**（見該條）。
+改 `ReviewCardLayout.swift` / `ReviewCardView.swift` 前必讀。**版面規則**（前五條）由 `ReviewCardRenderPlanTests` / `ReviewCardBudgetParityTests` / `ReviewCardLayoutStoreTests` / `ReviewCardLayoutEditorTests` 釘住；**效能那條沒有單元測試守得住**，它的量測面是 `./ops/review_flip_probe.sh`，而該 gate 最後一次有證據的結果是**紅的**（見該條）。`parse_gap_geom`（`ops/review_flip_probe_report.py`）與高度變化的對照世界 `review_height_varied` 已由 unit test／`ui_world_manifest` 釘住；量測本身未在該 lane 重跑。
 
 - **固定精簡順序，不可改動**：① 例句縮到目標詞前後各 3 詞 → ② 解釋降 2 行、再降 1 行 → ③ 搭配詞 2 列降 1 列（以 +N 表示）→ ④ 知識連結每組 2 項降 1 項、再降單列摘要 +N → ⑤ **最後才**降 section spacing 與 fold padding（走 `foldSectionSpacingCompact`，不是就地寫死）。
 - **不會被自動隱藏的東西**：題目、答案、詞性、難度。使用者勾選的長內容至少保留 minimal 摘要；只有 Accessibility Dynamic Type 下連 minimal 都放不下，才啟用垂直捲動（`requiresScrollFallback`）。
 - **natural 這一層就是「目前出貨的卡片」**：解釋 3 行、搭配詞 2 列、背面例句不截斷。若把它們當成「已經壓過的一層」，未動過的預設 profile 會比它要重現的畫面更鬆，得等階梯跑完才回到原樣。
 - **正面預算不預留反面高度**，且不隨 reveal 階段變動（展開時區塊收合，但讓預算長大會在翻卡中途重解正面）。反面拿的是「同一份 contentHeight 扣掉正面實際佔用」——inset 只扣一次。
 - **一份 chrome、一份 spacing**：solver 扣的 `chromeHeight` 由 `ReviewCardChrome.verticalInset(for:)` 給，renderer 畫的 padding 也由它給；solver 解出的 `sectionSpacing` 直接回傳給 renderer 畫，renderer 不得自己從 token 再推一次。
-- **效能（目標，尚未達成 —— `review_flip_probe` 紅燈中）**：欄位資料在 `TodayReviewCardCache` 預先整理；fling 每幀不得重建 `CardDocument` 或重新遍歷 paragraphs。只有 profile / 寬度 / Dynamic Type / 卡片 identity 改變才重算（量測 cache key = `ReviewCardMeasurementKey`）。反面重內容維持 reveal 才 mount、collapse 動畫結束才 unmount。
-  **已知缺口**：`reviewMeasurementProbes` 為了取三層高度，會在卡片內渲染**隱藏的量測副本**（每欄最多 3 份，六欄最多 18 份），而 cache key 含 `cardKey`（word + dateAdded）→ **每換一張卡就整批重量測，而且落在推進那一幀**。「只在 identity 改變時重算」在逐卡推進的情境下＝每張卡都重算。量測證據：`./ops/review_flip_probe.sh --simulator --release --dataset-file ops/fixtures/ui_worlds/marketing_demo.json --flips 30` 在 `3222aec3a`（solver 上線前）為 p95 16.667ms / 0 stalls，在 `7099f803f`（solver 上線）之後起 p95 33–34ms / stalls 7 之 30。修的方向是把量測移出關鍵幀（沿用 `TodayReviewCardCache` 既有的 prewarm window 預熱下一張），而不是放寬門檻。
+- **效能（目標，尚未達成；最後已知紅，本次未重量測）**：欄位資料在 `TodayReviewCardCache` 預先整理；fling 每幀不得重建 `CardDocument` 或重新遍歷 paragraphs。只有 profile / 寬度 / Dynamic Type / 卡片 identity 改變才重算（量測 cache key = `ReviewCardMeasurementKey`）。反面重內容維持 reveal 才 mount、collapse 動畫結束才 unmount。
+  **已知缺口**：`reviewMeasurementProbes` 為了取三層高度，會在卡片內渲染**隱藏的量測副本**（每欄最多 3 份，六欄最多 18 份），而 cache key 含 `cardKey`（word + dateAdded）→ **每換一張卡就整批重量測，而且落在推進那一幀**。「只在 identity 改變時重算」在逐卡推進的情境下＝每張卡都重算。量測證據：`./ops/review_flip_probe.sh --simulator --release --dataset-file ops/fixtures/ui_worlds/marketing_demo.json --flips 30` 在 `3222aec3a`（solver 上線前）為 p95 16.667ms / 0 stalls，在 `7099f803f`（solver 上線）之後起 p95 33–34ms / stalls 7 之 30。修的方向是把量測移出關鍵幀（沿用 `TodayReviewCardCache` 既有的 prewarm window 預熱下一張），而不是放寬門檻。對照世界 `ops/fixtures/ui_worlds/review_height_varied.json`（40 張交替短／高／多行卡，`probe` 牌組）供 H1 量測使用；以它跑 `./ops/review_flip_probe.sh --simulator --release --dataset-file ops/fixtures/ui_worlds/review_height_varied.json --flips 30` 的結果：**NOT RUN**（需 simulator 量測，未在 `debug/issue-2026-wave` 內執行）。
 
 ## 共用依賴
 
