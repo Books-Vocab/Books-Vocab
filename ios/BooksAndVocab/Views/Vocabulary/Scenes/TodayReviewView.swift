@@ -5,6 +5,22 @@ private enum ReviewTiming {
     static let shortcutHintDismissDelay: Duration = .seconds(3)
 }
 
+/// Decides whether review hotkeys must yield to an active modal surface.
+/// Kept ungated (not behind macCatalyst) so the policy is unit-testable on iOS.
+enum TodayReviewHotkeyPolicy {
+    static func suppressesHotkeys(
+        hasLinkedCardStack: Bool,
+        hasAddLinkRequest: Bool,
+        hasPendingLinkDetail: Bool,
+        isLayoutEditorPresented: Bool
+    ) -> Bool {
+        hasLinkedCardStack
+            || hasAddLinkRequest
+            || hasPendingLinkDetail
+            || isLayoutEditorPresented
+    }
+}
+
 enum ReviewIntent {
     case reveal
     case collapse
@@ -430,7 +446,12 @@ struct TodayReviewView: View {
     /// Hardware-keyboard shortcuts on Mac Catalyst (replaces the old AppKit
     /// macKeyResponder path). Requires the view to hold keyboard focus.
     private func handleCatalystKey(_ press: KeyPress) -> Bool {
-        guard state.linkedCardStack.isEmpty else { return false }
+        guard !TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: !state.linkedCardStack.isEmpty,
+            hasAddLinkRequest: addLinkRequest != nil,
+            hasPendingLinkDetail: pendingLinkDetail != nil,
+            isLayoutEditorPresented: showLayoutEditor
+        ) else { return false }
         switch press.key {
         case .space:
             return perform(state.revealStage == .front ? .reveal : .collapse)

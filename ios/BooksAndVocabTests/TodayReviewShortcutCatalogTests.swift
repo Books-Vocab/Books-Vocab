@@ -39,5 +39,41 @@ struct TodayReviewShortcutCatalogTests {
         #expect(TodayReviewShortcutCatalog.navigationHints.map(\.key) == ["↑", "↓", "S", "D"])
         #expect(TodayReviewShortcutCatalog.sessionHints.map(\.key) == ["P", "Esc", "?"])
     }
+
+    @Test func hotkeySuppression_allowsPlainReview() {
+        #expect(!TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: false,
+            hasAddLinkRequest: false,
+            hasPendingLinkDetail: false,
+            isLayoutEditorPresented: false
+        ))
+    }
+
+    @Test func hotkeySuppression_blocksWhileAnyModalSurfaceIsActive() {
+        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: true,
+            hasAddLinkRequest: false,
+            hasPendingLinkDetail: false,
+            isLayoutEditorPresented: false
+        ))
+        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: false,
+            hasAddLinkRequest: true,
+            hasPendingLinkDetail: false,
+            isLayoutEditorPresented: false
+        ))
+        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: false,
+            hasAddLinkRequest: false,
+            hasPendingLinkDetail: true,
+            isLayoutEditorPresented: false
+        ))
+        #expect(TodayReviewHotkeyPolicy.suppressesHotkeys(
+            hasLinkedCardStack: false,
+            hasAddLinkRequest: false,
+            hasPendingLinkDetail: false,
+            isLayoutEditorPresented: true
+        ))
+    }
 }
 #endif
