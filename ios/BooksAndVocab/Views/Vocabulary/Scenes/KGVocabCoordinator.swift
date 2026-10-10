@@ -179,6 +179,9 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                     do {
                         try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
                         modelContext.delete(entry)
+                    } catch let KGError.httpError(statusCode: 404, _) {
+                        // 404 = server 已無此字 → 刪除意圖已達成，本地收斂（#2728）。
+                        modelContext.delete(entry)
                     } catch {
                         failedCount += 1
                         AppLog.kg.error("deleteCard retry failed '\(entry.word)': \(error.localizedDescription)")
