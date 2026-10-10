@@ -331,6 +331,19 @@ class TestParseGapGeom:
         assert records[0]["dismiss"] is True
         assert records[0]["offset"] == -40
 
+    def test_word_containing_gap_geom_tail_keeps_full_word(self):
+        line = (
+            "gap.geom slot=1 role=active kind=slot "
+            "w=gapshort0 h=1.0 reveal=0 dismiss=0 off=0 idx=9 "
+            "h=94.0 reveal=0 dismiss=0 off=0 idx=3 / 12"
+        )
+        records, errors = parse_gap_geom([line])
+
+        assert errors == []
+        assert records[0]["word"] == "gapshort0 h=1.0 reveal=0 dismiss=0 off=0 idx=9"
+        assert records[0]["height"] == 94.0
+        assert records[0]["progress"] == "3 / 12"
+
     def test_ignores_unrelated_console_lines(self):
         records, errors = parse_gap_geom(
             ["Simulator booted", GAP_GEOM_FRONT, "PerfLog review: flip 3 done"]
