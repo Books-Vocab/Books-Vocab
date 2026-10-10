@@ -145,7 +145,7 @@ Migration 順序：
 刪除語意必須是 tombstone，而不是只刪本機 row。使用者刪書時：
 
 - metadata tombstone 同步到後端，其他裝置隱藏該書。
-- 本機檔案可立即刪除；object storage asset 是否刪除由 retention / recovery policy 決定。
+- 本機檔案可立即刪除；object storage asset 在 tombstone commit 後 best-effort 立即 `delete_object`（`DELETE /api/library/books/{id}`），asset 格式 / local-only 變更時同樣刪除被取代的舊 key；刪除失敗只記 log、不使請求失敗，舊 key 留在 `library.db` 的 `librarypendingobjectdelete` ledger，於下一次 library 寫入重試，並由帳號刪除（erasure）兜底回收。目前沒有「刪書後 recovery window」：tombstone 不可還原 asset。
 - 詞卡的 `bookId` 關聯不應硬刪詞卡；只解除來源書關聯或保留書名 snapshot。
 
 ### Rollout PR sequence（目標順序）
