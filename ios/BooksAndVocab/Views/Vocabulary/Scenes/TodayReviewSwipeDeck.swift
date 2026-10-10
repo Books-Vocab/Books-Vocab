@@ -138,7 +138,8 @@ extension TodayReviewPresenter {
             #if DEBUG
             // gap 調查（slot 整體）：量整個 slot VStack 的 layout 高度（transform 前）。
             // 非 active slot 的 h 明顯 > active = 撐高 reviewCard ZStack、把 expand
-            // zone 下推 → 使用者看到的縫隙。role/word 指認撐高者，answer 分量判 H1/H2。
+            // zone 下推 → 使用者看到的縫隙。role/word 指認撐高者。目前只 emit kind=slot；
+            // answer 高度未量測，H1/H2 的 answer 分量尚未接線。
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
                 logSlotGeometry(slot: slot, role: role, kind: "slot", word: content.card.word, height: h)
             }
@@ -171,8 +172,9 @@ extension TodayReviewPresenter {
     /// Gap 調查儀器（DEBUG-only，RELEASE 零成本）。逐 slot 記 layout 高度，
     /// 供離線比對「非 active slot 是否比 active 高 → 撐高 reviewCard ZStack →
     /// 把 expand zone 下推 = 卡片與底部大縫隙」。
-    /// - kind=slot：整個 slot VStack 的 layout 高度。
-    /// - kind=answer：answer surface 經 frame(height:) clamp 後高度（front 應為 0）。
+    /// - kind=slot：整個 slot VStack 的 layout 高度（本檔 emit）。
+    /// - kind=deck：牌組層級的高度，slot=-1（TodayReviewPresenter emit）。
+    /// 目前只 emit slot 與 deck；kind=answer 未 emit，answer surface 高度未量測。
     /// 不 gate、附完整相位脈絡（reveal/dismiss/off/idx），離線 grep 過濾 settled front。
     func logSlotGeometry(slot: Int, role: TodayReviewCardSlotRole, kind: String, word: String, height: CGFloat) {
         PerfLog.review.mark(
