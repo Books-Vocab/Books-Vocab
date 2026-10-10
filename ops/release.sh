@@ -750,8 +750,8 @@ cmd_status() {
     fi
     n="$(printf '%s' "$commits" | grep -c . || true)"
     # 建議 bump 等級
-    if printf '%s' "$commits" | grep -qiE 'breaking|重寫|!:'; then suggest=major
-    elif printf '%s' "$commits" | grep -qiE 'feat|新增|支援|feature'; then suggest=minor
+    if grep -qiE 'breaking|重寫|!:' <<<"$commits"; then suggest=major
+    elif grep -qiE 'feat|新增|支援|feature' <<<"$commits"; then suggest=minor
     else suggest=patch; fi
     curver="$(current_version "$c")"
     basever="${lt#"$tp"}"; [[ -n "$basever" ]] || basever="$curver"
@@ -1435,7 +1435,7 @@ promote_version_at() {  # $1=ref → pyproject 與 api.py 的 backend 版號（�
   printf '%s\n' "$py"
 }
 
-# CI 證據（嚴格版）：server-side 只取名為 backend-quality 的 check-run（filter=all 含被 rerun 取代的舊 run），
+# CI 證據（嚴格版）：server-side 只取名為 "backend-quality / backend-quality"（caller / reusable job）的 check-run（filter=all 含被 rerun 取代的舊 run），
 # --paginate 取全頁，jq -s 合併。依 check_suite.id 分組：**每個 suite 內 id 最大（最新 attempt）的 run 必須
 # completed/success**；同 suite 內被 rerun 取代的舊失敗 attempt 不擋（#2660），不同 suite 的失敗（另一次獨立
 # CI 執行）仍拒絕。skipped／neutral／in_progress／缺席都不算綠；run 缺 id／check_suite.id 無法判定最新 attempt
