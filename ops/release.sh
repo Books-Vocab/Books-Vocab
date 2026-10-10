@@ -1032,7 +1032,7 @@ tag_api_at_commit() {  # $1=component $2=version（SHIPPED_COMMIT = --commit 值
   git -C "$ROOT" fetch -q origin prod || err "git fetch origin prod 失敗；fail-closed。"
   git -C "$ROOT" merge-base --is-ancestor "$sha" "$prod" 2>/dev/null \
     || err "${sha:0:12} 不是 live origin/prod=${prod:0:12} 的 ancestor（從未上過生產）；拒絕補 tag"
-  echo "component=api  version=$v  tag=$tag  commit=$sha（補打歷史 tag，不 commit、不動 branch）"
+  echo "component=api  version=$v  tag=$tag  commit=${sha}（補打歷史 tag，不 commit、不動 branch）"
   if [[ $YES -eq 1 ]]; then
     git -C "$ROOT" tag "$tag" "$sha"
     git -C "$ROOT" push origin "$tag"
