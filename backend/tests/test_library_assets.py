@@ -887,3 +887,68 @@ def test_presigned_put_url_signs_content_length_with_real_client(isolated_api, m
     assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
     assert "content-length" in query["X-Amz-SignedHeaders"][0].split(";")
     assert url.netloc.startswith("kg-library-test.s3.") and url.netloc != "kg-library-test.s3.amazonaws.com"
+
+
+def test_asset_upload_into_reclaim_lease_returns_retryable_409(isolated_api, monkeypatch):
+    """#2959 item 1: set_asset colliding with an in-flight reclaim lease must surface
+    as 409 from POST asset-upload (retryable), and must not re-adopt the leased key."""
+    _setup(isolated_api, monkeypatch, _RecordingS3())
+    book_id = _seed_book(isolated_api, client_book_id="lease-409")
+    key = _upload(isolated_api, book_id, "epub").json()["object_key"]
+
+    store = _store(isolated_api)
+    try:
+        store.set_asset(book_id, storage="local", object_key=None, byte_size=1, sha256=None)
+        claims = store.claim_pending_objects(5)
+        assert [c.object_key for c in claims] == [key]
+
+        resp = isolated_api.client.post(
+            f"/api/library/books/{book_id}/asset-upload",
+            json={"format": "epub", "byte_size": 10},
+            headers=isolated_api.headers,
+        )
+        assert resp.status_code == 409, resp.text
+        assert store.get(book_id).asset_object_key is None
+
+        store.finish_pending_object(claims[0], deleted=True)
+    finally:
+        store.close()
+
+
+def test_concurrent_claimers_never_both_claim_the_same_key(isolated_api):
+    """#2959 item 4: separate connections racing for one pending key on real threads;
+    exactly one may win the claim (the earlier double-claim tests were sequential)."""
+    import threading
+
+    book_id = _seed_book(isolated_api, client_book_id="race-4")
+    seed = _store(isolated_api)
+    key = "library/u/race-4/asset.epub"
+    try:
+        _superseded_key(seed, book_id, key)
+    finally:
+        seed.close()
+
+    racers = [_store(isolated_api) for _ in range(8)]
+    barrier = threading.Barrier(len(racers))
+    results: list[list] = [[] for _ in racers]
+    errors: list[BaseException] = []
+
+    def claim(index: int) -> None:
+        try:
+            barrier.wait(timeout=10)
+            results[index] = racers[index].claim_pending_objects(1)
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=claim, args=(i,)) for i in range(len(racers))]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        assert errors == []
+        claimed = [c.object_key for batch in results for c in batch]
+        assert claimed == [key]
+    finally:
+        for store in racers:
+            store.close()
