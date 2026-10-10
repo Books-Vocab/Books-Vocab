@@ -163,11 +163,7 @@ def test_register_cannot_reuse_published_local_asset_with_disjoint_work(
     rc, refusal = registry._register_record(
         state,
         branch="feat/published" if reuse == "branch" else "feat/new",
-        path=(
-            str(tmp_path / "released")
-            if reuse == "path"
-            else str(tmp_path / "new")
-        ),
+        path=(str(tmp_path / "released") if reuse == "path" else str(tmp_path / "new")),
         intent="disjoint takeover",
         base="main",
         external_ids=["ISSUE-2"],
@@ -176,7 +172,9 @@ def test_register_cannot_reuse_published_local_asset_with_disjoint_work(
     )
 
     assert rc == registry.EXIT_CLAIMED
-    assert refusal["owners"][0][f"{reuse if reuse == 'branch' else 'worktree_path'}_overlap"]
+    assert refusal["owners"][0][
+        f"{reuse if reuse == 'branch' else 'worktree_path'}_overlap"
+    ]
     assert state["records"] == [published]
 
 

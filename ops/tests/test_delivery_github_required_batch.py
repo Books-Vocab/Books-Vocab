@@ -762,4 +762,6 @@ def test_deliver_and_control_plane_share_terminal_check_states() -> None:
     assert "STARTUP_FAILURE" in check_states.FAILURE_STATES
     assert github_required_batch._FAILURE_STATES is check_states.FAILURE_STATES
     assert github_checks._FAILURE_STATES is check_states.FAILURE_STATES
-    assert github_required_batch._status_from_states({"STARTUP_FAILURE"}).name == "FAILURE"
+    assert (
+        github_required_batch._status_from_states({"STARTUP_FAILURE"}).name == "FAILURE"
+    )
