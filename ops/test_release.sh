@@ -2194,6 +2194,10 @@ t_run() {  # $@=release.sh tag 之後的參數 → P_OUT/P_RC
 t_remote_tag() { git --git-dir="$P_REMOTE" rev-parse -q --verify "refs/tags/$1" 2>/dev/null; }
 mk_promote_fx tagfill
 git -C "$P_FX" push -q origin "$P_TGT:refs/heads/prod"
+# locale 回歸：deliver 以 Python 子程序啟動檢查時 LC_CTYPE 會變成 C.UTF-8；此時 bash 把全形「（」前的 $sha 併入變數名，set -u 直接失敗
+P_RC=0; P_OUT="$(LC_CTYPE=C.UTF-8 PATH="$TMP7/shim:$PATH" KG_TEST_GITLOG="$P_FX/git.log" bash "$P_FX/ops/release.sh" tag api 1.0.0 --commit "$P_BASE" 2>&1)" || P_RC=$?
+[[ $P_RC -eq 0 && "$P_OUT" != *"unbound variable"* ]] \
+  && ok "tag api --commit dry-run survives a UTF-8 LC_CTYPE (fullwidth punctuation after \$var)" || fail_t "UTF-8 locale breaks tag --commit (rc=$P_RC): $P_OUT"
 t_run api 1.0.0 --commit "$P_BASE"
 [[ $P_RC -eq 0 && "$P_OUT" == *"$P_BASE"* && -z "$(git -C "$P_FX" tag -l)" ]] && ! p_pushed \
   && ok "tag api --commit dry-run prints plan, creates no tag, pushes nothing" || fail_t "tag --commit dry-run wrong (rc=$P_RC): $P_OUT"
