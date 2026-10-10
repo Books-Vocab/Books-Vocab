@@ -81,6 +81,11 @@ def _timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _revoked_sort_key(record: dict[str, Any]) -> datetime:
+    """Revocation recency: the single ordering key for keeping and evicting revoked history."""
+    return _timestamp(record.get("revoked_at")) or datetime.min.replace(tzinfo=UTC)
+
+
 def _prune_user_records(key_index: dict[str, dict[str, Any]], user_id: str, *, now: datetime) -> None:
     """Bound one user's records before a new key is added.
 
@@ -103,7 +108,7 @@ def _prune_user_records(key_index: dict[str, dict[str, Any]], user_id: str, *, n
 
     oldest_revoked = sorted(
         (key_id for key_id, record in owned.items() if record.get("revoked_at")),
-        key=lambda key_id: _timestamp(owned[key_id].get("revoked_at")) or datetime.min.replace(tzinfo=UTC),
+        key=lambda key_id: _revoked_sort_key(owned[key_id]),
     )
     overflow = len(owned) - (MAX_KEY_RECORDS_PER_USER - 1)
     for key_id in oldest_revoked[: max(overflow, 0)]:
@@ -177,23 +182,25 @@ def list_api_keys(
 ) -> list[dict[str, Any]]:
     users = load_users()
     key_index = _index(users)
-    records = [
-        _public_record(key_id, record)
+    owned = {
+        key_id: record
         for key_id, record in key_index.items()
         if isinstance(record, dict) and record.get("user_id") == user_id
-    ]
+    }
+    records = [_public_record(key_id, record) for key_id, record in owned.items()]
     records.sort(key=_created_at_sort_key, reverse=True)
-    # Every active key is always listed; revoked history fills the remaining cap, newest first.
+    # Every active key is always listed; revoked history fills the remaining cap, most recently revoked first.
     active_total = sum(1 for record in records if not record["revokedAt"])
     revoked_budget = max(MAX_KEY_RECORDS_PER_USER - active_total, 0)
-    listed: list[dict[str, Any]] = []
-    for record in records:
-        if record["revokedAt"]:
-            if revoked_budget == 0:
-                continue
-            revoked_budget -= 1
-        listed.append(record)
-    return listed
+    kept_revoked = {
+        key_id
+        for key_id in sorted(
+            (key_id for key_id, record in owned.items() if record.get("revoked_at")),
+            key=lambda key_id: _revoked_sort_key(owned[key_id]),
+            reverse=True,
+        )[:revoked_budget]
+    }
+    return [record for record in records if not record["revokedAt"] or record["keyId"] in kept_revoked]
 
 
 def revoke_api_key(

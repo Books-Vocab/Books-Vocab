@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Any, Protocol
 
 from openai import OpenAIError
@@ -212,14 +213,15 @@ async def _step_enrich(
                     updated += cards.batch_update(batch_updates)
                 if meaning_changed_ids:
                     from ..deps import _embedding_store, _graph_store
-                    from ..vocab_crud import reembed_after_meaning_edit
+                    from ..vocab_crud import reembed_meaning_edits_best_effort
 
                     make_embeddings = embedding_store_factory or _embedding_store
                     make_graph = graph_store_factory or _graph_store
-                    embeddings = make_embeddings(user["dir"], llm=None, notebook_id=notebook_id)
-                    graph = make_graph(user["dir"], notebook_id=notebook_id)
-                    for changed_id in meaning_changed_ids:
-                        reembed_after_meaning_edit(embeddings, graph, changed_id)
+                    reembed_meaning_edits_best_effort(
+                        meaning_changed_ids,
+                        open_embeddings=partial(make_embeddings, user["dir"], llm=None, notebook_id=notebook_id),
+                        open_graph=partial(make_graph, user["dir"], notebook_id=notebook_id),
+                    )
                     meaning_changed_ids.clear()
 
     if batch_errors and not got_results:

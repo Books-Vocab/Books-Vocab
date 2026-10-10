@@ -622,7 +622,7 @@ class _AddLinkGraph:
         self.queued.append(card_id)
 
 
-def _run_default_enrich(monkeypatch, *, meaning_fix, embeddings, graph):
+def _run_default_enrich(monkeypatch, *, meaning_fix, embeddings=None, graph, open_embeddings=None, note=None):
     import logging
     from types import SimpleNamespace
 
@@ -632,8 +632,12 @@ def _run_default_enrich(monkeypatch, *, meaning_fix, embeddings, graph):
     import kg.tracked_llm as tracked_llm
     from kg.vocab_add_link_operation import _default_enrich
 
+    result = {"word": "luminous", "meaning_fix": meaning_fix}
+    if note is not None:
+        result["note"] = note
+
     async def stream(llm, targets, **kwargs):
-        yield {"status": "running", "results": [{"word": "luminous", "meaning_fix": meaning_fix}]}
+        yield {"status": "running", "results": [result]}
 
     monkeypatch.setattr(enrich_mod, "enrich_cards_stream", stream)
     monkeypatch.setattr(providers, "provider_for", lambda _task: SimpleNamespace(chat_model="m"))
@@ -649,7 +653,7 @@ def _run_default_enrich(monkeypatch, *, meaning_fix, embeddings, graph):
             user={"id": "user-1", "dir": "/tmp/user-1"},
             client_factory=lambda _provider: None,
             logger=logging.getLogger("test_add_link_meaning"),
-            embeddings=embeddings,
+            open_embeddings=open_embeddings or (lambda: embeddings),
             graph=graph,
         )
     )
@@ -672,4 +676,38 @@ def test_add_link_unchanged_meaning_fix_neither_evicts_nor_queues(monkeypatch):
     _run_default_enrich(monkeypatch, meaning_fix="旧", embeddings=embeddings, graph=graph)
 
     assert embeddings.removed == []
+    assert graph.queued == []
+
+
+def _broken_embedding_factory():
+    raise RuntimeError("embedding store unavailable")
+
+
+def test_add_link_unchanged_meaning_never_opens_embedding_store(monkeypatch):
+    opened = []
+
+    def open_embeddings():
+        opened.append(True)
+        return _broken_embedding_factory()
+
+    cards = _run_default_enrich(
+        monkeypatch, meaning_fix="旧", graph=_AddLinkGraph(), open_embeddings=open_embeddings, note="新注解"
+    )
+
+    assert opened == []
+    assert cards.updates == [[("t1", {"note": "新注解", "meaning": "旧"})]]
+
+
+def test_add_link_embedding_store_failure_keeps_other_enrich_fields(monkeypatch):
+    graph = _AddLinkGraph()
+
+    cards = _run_default_enrich(
+        monkeypatch,
+        meaning_fix="新",
+        graph=graph,
+        open_embeddings=_broken_embedding_factory,
+        note="新注解",
+    )
+
+    assert cards.updates == [[("t1", {"meaning": "新", "note": "新注解"})]]
     assert graph.queued == []

@@ -489,7 +489,7 @@ async def _default_enrich(
     progress: Callable[[dict[str, Any]], None] | None = None,
     sense_context: str = "",
     graph: Any = None,
-    embeddings: Any = None,
+    open_embeddings: Callable[[], Any] | None = None,
 ) -> None:
     from .deps_quota import _is_pro
     from .enrich import enrich_cards_stream
@@ -543,10 +543,14 @@ async def _default_enrich(
             meaning_changed = updates["meaning"] != card.meaning
         if updates:
             cards.batch_update([(card.id, updates)])
-            if meaning_changed:
-                from .vocab_crud import reembed_after_meaning_edit
+            if meaning_changed and open_embeddings is not None:
+                from .vocab_crud import reembed_meaning_edits_best_effort
 
-                reembed_after_meaning_edit(embeddings, graph, card.id)
+                reembed_meaning_edits_best_effort(
+                    [card.id],
+                    open_embeddings=open_embeddings,
+                    open_graph=lambda: graph,
+                )
 
 
 def _default_link(
@@ -767,7 +771,9 @@ async def run_add_link_operation(
                                 progress=report_enrichment,
                                 sense_context=payload.get("context", ""),
                                 graph=graph,
-                                embeddings=make_embeddings(user["dir"], llm=None, notebook_id=record["notebook_id"]),
+                                open_embeddings=lambda: make_embeddings(
+                                    user["dir"], llm=None, notebook_id=record["notebook_id"]
+                                ),
                             )
                         else:
                             await enrich_fn(

@@ -1281,6 +1281,33 @@ def test_list_api_keys_is_capped_and_keeps_every_active_key(tmp_path):
     assert any(item["keyId"] == active_id for item in listed)
 
 
+def test_list_api_keys_keeps_newest_revocations_by_revoked_at_not_created_at(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from kg.external_api_keys import MAX_KEY_RECORDS_PER_USER, list_api_keys
+
+    user_id = "user-1"
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    total = MAX_KEY_RECORDS_PER_USER + 5
+    # Index i: created later as i grows, but revoked earlier as i grows, so the
+    # newest creations are the oldest revocations. Retention must follow revoked_at.
+    records = {
+        f"{index:032x}": {
+            "user_id": user_id,
+            "label": "revoked",
+            "created_at": (base + timedelta(minutes=index)).isoformat(),
+            "revoked_at": (base + timedelta(days=1) - timedelta(minutes=index)).isoformat(),
+        }
+        for index in range(total)
+    }
+    users = {user_id: {"config": {}}, "_external_api_keys": records}
+
+    listed = list_api_keys(user_id, load_users=lambda: users)
+
+    expected = {f"{index:032x}" for index in range(MAX_KEY_RECORDS_PER_USER)}
+    assert {item["keyId"] for item in listed} == expected
+
+
 def test_external_card_delete_graph_store_failure_keeps_card_and_propagates(external_api, monkeypatch):
     headers = {"X-KG-API-Key": _create_key(external_api)}
     created = external_api.client.post("/api/v1/cards", json={"content": "gfail", "meaning": "图"}, headers=headers)

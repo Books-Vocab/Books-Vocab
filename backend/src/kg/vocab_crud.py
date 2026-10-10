@@ -6,7 +6,7 @@ import base64
 import binascii
 import json
 import logging
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, Protocol
 
@@ -466,6 +466,28 @@ def reembed_after_meaning_edit(embeddings: Any, graph: Any, card_id: str) -> Non
     meaning actually changed (``embed_text`` embeds the meaning)."""
     evict_card_embedding(embeddings, card_id)
     queue_card_for_judging(graph, card_id)
+
+
+def reembed_meaning_edits_best_effort(
+    card_ids: Collection[str],
+    *,
+    open_embeddings: Callable[[], Any],
+    open_graph: Callable[[], Any],
+) -> None:
+    """Re-embed cards whose meaning was already committed. Opening a store is
+    lazy and best-effort: the meaning write is durable, so a store that fails
+    to open must not fail the caller. Warn, report and skip this batch."""
+    if not card_ids:
+        return
+    try:
+        embeddings = open_embeddings()
+        graph = open_graph()
+    except Exception as exc:
+        logger.warning("re-embed skipped for %d meaning edit(s): store unavailable: %s", len(card_ids), exc)
+        capture_handled(exc, context="vocab.reembed_open")
+        return
+    for card_id in card_ids:
+        reembed_after_meaning_edit(embeddings, graph, card_id)
 
 
 def delete_vocab_word(
