@@ -773,13 +773,17 @@ protocol AccountPreferenceLifecycle {
 }
 
 struct AccountPreferenceLifecycleCoordinator: AccountPreferenceLifecycle {
+    var layoutStore: ReviewCardLayoutStore = .shared
+
     func activate(accountID: String?) {
+        layoutStore.activateAccount(accountID)
         ReviewSettingsStore.shared.activateAccount(accountID)
         ActiveNotebookStore.shared.activateAccount(accountID)
         TranslationLanguage.activateAccount(accountID)
     }
 
     func suspend() {
+        layoutStore.suspendForAccountBoundary()
         ReviewSettingsStore.shared.suspendForAccountBoundary()
         ActiveNotebookStore.shared.suspendForAccountBoundary()
         TranslationLanguage.suspendForAccountBoundary()
