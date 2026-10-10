@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from datetime import datetime
+
+from pydantic import BaseModel, Field, FiniteFloat, field_validator, model_validator
 
 
 class ReviewStateEntry(BaseModel):
@@ -103,8 +105,18 @@ class ReviewClockConfig(BaseModel):
     """
 
     is_paused: bool = False
-    paused_at: str | None = None  # ISO8601;僅 is_paused=True 時有意義
+    paused_at: str | None = Field(default=None, max_length=64)  # ISO8601;僅 is_paused=True 時有意義
     updated_at: float | None = None  # LWW timestamp, epoch 秒
+
+    @field_validator("paused_at")
+    @classmethod
+    def _paused_at_is_iso8601(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                datetime.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("paused_at must be an ISO8601 timestamp") from exc
+        return value
 
     @model_validator(mode="after")
     def _normalize_consistency(self) -> ReviewClockConfig:
@@ -127,11 +139,11 @@ class ReviewModeConfig(BaseModel):
     """
 
     mode: str = "relaxed"  # relaxed / intensive / custom
-    custom_initial_interval_hours: float = 12
-    custom_remembered_multiplier: float = 1.9
-    custom_forgot_multiplier: float = 0.45
-    custom_minimum_interval_hours: float = 6
-    custom_maximum_interval_hours: float = 1440
+    custom_initial_interval_hours: FiniteFloat = 12
+    custom_remembered_multiplier: FiniteFloat = 1.9
+    custom_forgot_multiplier: FiniteFloat = 0.45
+    custom_minimum_interval_hours: FiniteFloat = 6
+    custom_maximum_interval_hours: FiniteFloat = 1440
     updated_at: float | None = None  # LWW timestamp, epoch 秒
 
     @model_validator(mode="after")

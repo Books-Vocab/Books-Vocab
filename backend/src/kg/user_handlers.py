@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
+import re
 import shutil
 import sqlite3
 import uuid
@@ -65,6 +67,34 @@ class GraphStoreFactory(Protocol):
     def __call__(self, user_dir: Path) -> GraphStore: ...
 
 
+_ACTIVE_NOTEBOOK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _finite_or_default(value: Any, default: float) -> float:
+    """Legacy users.json rows may hold NaN/Infinity/garbage; never echo them to clients."""
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
+
+
+def _valid_paused_at(value: Any) -> str | None:
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return value
+
+
+def _valid_active_notebook_id(value: Any) -> str:
+    return value if isinstance(value, str) and _ACTIVE_NOTEBOOK_ID_RE.fullmatch(value) else "default"
+
+
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     translation_data = config.get("translation")
     if isinstance(translation_data, dict):
@@ -80,7 +110,7 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     if isinstance(clock_data, dict):
         review_clock = ReviewClockConfig(
             is_paused=_normalize_persisted_bool(clock_data.get("is_paused"), default=False),
-            paused_at=clock_data.get("paused_at"),
+            paused_at=_valid_paused_at(clock_data.get("paused_at")),
             updated_at=clock_data.get("updated_at"),
         )
     else:
@@ -90,11 +120,11 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     if isinstance(mode_data, dict):
         review_mode = ReviewModeConfig(
             mode=mode_data.get("mode", "relaxed"),
-            custom_initial_interval_hours=mode_data.get("custom_initial_interval_hours", 12),
-            custom_remembered_multiplier=mode_data.get("custom_remembered_multiplier", 1.9),
-            custom_forgot_multiplier=mode_data.get("custom_forgot_multiplier", 0.45),
-            custom_minimum_interval_hours=mode_data.get("custom_minimum_interval_hours", 6),
-            custom_maximum_interval_hours=mode_data.get("custom_maximum_interval_hours", 1440),
+            custom_initial_interval_hours=_finite_or_default(mode_data.get("custom_initial_interval_hours"), 12),
+            custom_remembered_multiplier=_finite_or_default(mode_data.get("custom_remembered_multiplier"), 1.9),
+            custom_forgot_multiplier=_finite_or_default(mode_data.get("custom_forgot_multiplier"), 0.45),
+            custom_minimum_interval_hours=_finite_or_default(mode_data.get("custom_minimum_interval_hours"), 6),
+            custom_maximum_interval_hours=_finite_or_default(mode_data.get("custom_maximum_interval_hours"), 1440),
             updated_at=mode_data.get("updated_at"),
         )
     else:
@@ -103,7 +133,7 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     vu_data = config.get("vocab_ui")
     if isinstance(vu_data, dict):
         vocab_ui = VocabUIConfig(
-            active_notebook_id=vu_data.get("active_notebook_id", "default"),
+            active_notebook_id=_valid_active_notebook_id(vu_data.get("active_notebook_id")),
             updated_at=vu_data.get("updated_at"),
         )
     else:
