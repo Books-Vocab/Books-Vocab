@@ -1,4 +1,5 @@
 """Tests for store cache eviction behavior."""
+
 from __future__ import annotations
 
 import threading
@@ -9,9 +10,10 @@ from unittest.mock import MagicMock
 from kg.service_factories import _get_cached, clear_store_cache, create_library_store
 
 
-def test_evicted_store_is_closed():
-    """When cache exceeds max, evicted store's close() should be called."""
+def test_evicted_store_engine_is_disposed_not_closed():
+    """LRU eviction disposes the engine (store stays usable); close() is for deletion."""
     import kg.service_factories as sf
+
     old_max = sf._STORE_CACHE_MAX
 
     try:
@@ -26,8 +28,9 @@ def test_evicted_store_is_closed():
         _get_cached("b", lambda: mock2)
         _get_cached("c", lambda: mock3)  # should evict mock1
 
-        mock1.close.assert_called_once()
-        mock2.close.assert_not_called()
+        mock1.engine.dispose.assert_called_once()
+        mock1.close.assert_not_called()
+        mock2.engine.dispose.assert_not_called()
     finally:
         sf._STORE_CACHE_MAX = old_max
         clear_store_cache()
@@ -99,6 +102,7 @@ def test_factory_runs_outside_lock():
     """factory() must execute without holding _STORE_CACHE_LOCK so slow
     SQLite/npy initialisation doesn't block other cache lookups."""
     import kg.service_factories as sf
+
     clear_store_cache()
     try:
         observed_locked: list[bool] = []
@@ -185,4 +189,21 @@ def test_concurrent_misses_dedupe_to_single_factory_call():
         assert built[0] is built[1]
         assert calls == 1
     finally:
+        clear_store_cache()
+
+
+def test_lru_eviction_keeps_held_card_store_writable(tmp_path):
+    """#2711: a store held across an await must still write after LRU eviction."""
+    import kg.service_factories as sf
+
+    old_max = sf._STORE_CACHE_MAX
+    try:
+        clear_store_cache()
+        sf._STORE_CACHE_MAX = 1
+        held = sf.create_card_store(tmp_path / "a")
+        sf.create_card_store(tmp_path / "b")  # evicts the held store
+        assert held.engine is not None
+        held.add("hello", "你好")
+    finally:
+        sf._STORE_CACHE_MAX = old_max
         clear_store_cache()
