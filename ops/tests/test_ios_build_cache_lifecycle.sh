@@ -158,6 +158,20 @@ if command -v shlock >/dev/null 2>&1; then
   [[ -d "$clean_dd/Build" ]] || fail "--clean-cache removed the cache while the build lock was held"
 fi
 
+# #2668: build-then-test 會被 sibling ios-build-derived-data 的預算占用擋下；--clean-cache 必須一併清掉它。
+clean_build_dd="$(dirname "$clean_root")/ios-build-derived-data"
+mkdir -p "$clean_build_dd/Build/Products"
+touch -t 200001010000 "$clean_dd"
+run_clean >"$tmp/clean-build-dd.out" 2>&1 || fail "--clean-cache failed with a sibling build DerivedData present"
+[[ ! -e "$clean_build_dd" ]] || fail "--clean-cache left ios-build-derived-data behind (#2668)"
+[[ ! -e "$clean_dd" ]] || fail "--clean-cache left the test key behind when build DerivedData existed"
+# 被 active consumer 擋下時，build DerivedData 也不可被動到
+mkdir -p "$clean_dd/Build" "$clean_build_dd/Build"
+touch "$clean_dd"
+run_clean >/dev/null 2>&1 && fail "--clean-cache ignored the active-consumer guard"
+[[ -d "$clean_build_dd/Build" ]] || fail "--clean-cache removed build DerivedData despite refusing for an active consumer"
+rm -rf "$clean_dd" "$clean_build_dd"
+mkdir -p "$clean_dd/Build"
 # idle key (stale touch, no lock) -> clean succeeds; fresh touch + force -> also succeeds
 touch -t 200001010000 "$clean_dd"
 run_clean >"$tmp/clean-idle.out" 2>&1 || fail "--clean-cache refused an idle key"

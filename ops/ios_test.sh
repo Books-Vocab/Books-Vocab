@@ -55,6 +55,10 @@ LOCK_FILE="${KG_IOS_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"   # override only 
 # Shares the build lock with `ios_build.sh`, so it shares the same override:
 # `--timeout` per call, `KG_IOS_BUILD_LOCK_TIMEOUT` for callers that cannot pass
 # flags (see the note in ios_build.sh).
+# NOTE (#2668): `--timeout` bounds ONLY lock waits (build / device / ui-video lock).
+# It does NOT cap xcodebuild execution time; per-test limits come from XCTest's
+# -test-timeouts-enabled allowance (KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE) and the
+# outer job/command timeout. A long --all-targets run can therefore exceed --timeout.
 TIMEOUT="${KG_IOS_BUILD_LOCK_TIMEOUT:-600}"
 POLL_INTERVAL=3
 DEFAULT_SIMULATOR='iPhone 17 Pro Max'
@@ -556,16 +560,18 @@ fi
 if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
   UI_FIXTURE_DATASET_FILE="$PROJECT_ROOT/ops/fixtures/ui_worlds/$UI_FIXTURE_DATASET_NAME.json"
 fi
-if [[ "$TEST_SCOPE" == "ui" && -z "$UI_FIXTURE_DATASET_FILE" && "$LIVE_DEMO" -eq 0 && "$LIST_ONLY" -eq 0 && -z "$TEST_CACHE_ACTION" ]]; then
-  echo "[ios_test] error: --ui requires --dataset <name> or --dataset-file <path> (UI World is the single source of truth)" >&2
+if [[ ( "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ) && -z "$UI_FIXTURE_DATASET_FILE" && "$LIVE_DEMO" -eq 0 && "$LIST_ONLY" -eq 0 && -z "$TEST_CACHE_ACTION" ]]; then
+  # --all-targets 含 UI target：無 dataset 時 UI 測試對空世界大量失敗（#2668），與 --ui 同守。
+  scope_flag="--ui"; [[ "$TEST_SCOPE" == "all" ]] && scope_flag="--all-targets"
+  echo "[ios_test] error: $scope_flag requires --dataset <name> or --dataset-file <path> (UI World is the single source of truth)" >&2
   available_worlds="$(cd "$PROJECT_ROOT/ops/fixtures/ui_worlds" 2>/dev/null && ls -- *.json 2>/dev/null | sed 's/\.json$//' | paste -sd ' ' - || true)"
   echo "[ios_test] available datasets (ops/fixtures/ui_worlds/): ${available_worlds:-none}" >&2
   exit 1
 fi
 if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
-  # 限 --ui：UI World env 會被 app 內 FixtureDatasetStore 全程讀取。
-  if [[ "$TEST_SCOPE" != "ui" ]]; then
-    echo "[ios_test] error: --dataset/--dataset-file requires --ui" >&2
+  # 限 --ui／--all-targets：UI World env 會被 app 內 FixtureDatasetStore 全程讀取。
+  if [[ "$TEST_SCOPE" != "ui" && "$TEST_SCOPE" != "all" ]]; then
+    echo "[ios_test] error: --dataset/--dataset-file requires --ui or --all-targets" >&2
     exit 1
   fi
   # --list / cache action 不會執行 staging，silent ignore 會誤導「dataset 已生效」。
@@ -1147,6 +1153,9 @@ handle_cache_action() {
         exit 75
       fi
       rm -rf "$derived_root"
+      # ios_ops build 的 DerivedData（TEST_CACHE_ROOT 的 sibling）同計入 disk-budget；
+      # 不清它則 build-then-test 會 cache-budget-headroom-exhausted（#2668）。已持 build lock，與 build writer 互斥。
+      rm -rf "$(dirname "$TEST_CACHE_ROOT")/ios-build-derived-data"
       release_build_lock
       payload="$(print_cache_payload clean ok "$cache_key" "$derived_root" "" false)"
       ;;
