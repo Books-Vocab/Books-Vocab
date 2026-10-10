@@ -136,9 +136,7 @@ def parse_jsonl(lines: list[str]) -> ParsedRun:
         else:
             parsed.errors.append(f"line {lineno}: unknown record type {kind!r}")
     if flip_indices != list(range(len(flip_indices))):
-        parsed.errors.append(
-            "flip indices must be a contiguous sequence starting at 0"
-        )
+        parsed.errors.append("flip indices must be a contiguous sequence starting at 0")
     return parsed
 
 
@@ -222,7 +220,9 @@ def evaluate(parsed: ParsedRun, thresholds: dict, min_flips: int) -> dict:
         reasons.append(f"invalid: n={n} < min_flips={min_flips}")
         return verdict
     if len(parsed.flips) != n:
-        reasons.append(f"invalid: flip records ({len(parsed.flips)}) != summary n ({n})")
+        reasons.append(
+            f"invalid: flip records ({len(parsed.flips)}) != summary n ({n})"
+        )
         return verdict
 
     # ---- pre-registered performance gates ----
