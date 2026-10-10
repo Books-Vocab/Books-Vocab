@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -407,6 +411,84 @@ def test_git_commands_park_main_compensates_detach_when_cas_mutation_fails() -> 
 
     assert client.branch == "main"
     assert client.calls[-1] == ("switch", "main")
+
+
+def _park_main_harness(
+    on_update_ref: Callable[[], None],
+) -> tuple[GitCommands, _ParkClient, str, str]:
+    base = "a" * 40
+    local = "b" * 40
+
+    class Query:
+        def local_main_sha(self) -> str:
+            return local
+
+        def origin_main_sha(self) -> str:
+            return base
+
+    client = _ParkClient(on_update_ref)
+    commands = GitCommands(repo=Path("/repo"), client=client, query=Query())
+    return commands, client, local, base
+
+
+class _ParkClient:
+    def __init__(self, on_update_ref: Callable[[], None]) -> None:
+        self.branch = "main"
+        self.on_update_ref = on_update_ref
+        self.calls: list[tuple[str, ...]] = []
+
+    def run(self, *args: str, cwd: Path | None = None) -> str:
+        del cwd
+        self.calls.append(args)
+        if args == ("branch", "--show-current"):
+            return self.branch
+        if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+            return ""
+        if args[:2] == ("checkout", "--detach"):
+            self.branch = ""
+            return ""
+        if args[:1] == ("update-ref",):
+            self.on_update_ref()
+            return ""
+        if args == ("switch", "main"):
+            self.branch = "main"
+            return ""
+        raise AssertionError(args)
+
+
+def _raise_keyboard_interrupt() -> None:
+    raise KeyboardInterrupt
+
+
+def _raise_os_error() -> None:
+    raise OSError("disk went away")
+
+
+def _send_sigterm() -> None:
+    os.kill(os.getpid(), signal.SIGTERM)
+    time.sleep(2)
+
+
+@pytest.mark.parametrize(
+    ("trigger", "expected"),
+    [
+        (_raise_keyboard_interrupt, KeyboardInterrupt),
+        (_raise_os_error, OSError),
+        (_send_sigterm, SystemExit),
+    ],
+)
+def test_git_commands_park_main_restores_main_on_interrupt_or_unexpected_error(
+    trigger: Callable[[], None], expected: type[BaseException]
+) -> None:
+    commands, client, local, base = _park_main_harness(trigger)
+    previous = signal.getsignal(signal.SIGTERM)
+
+    with pytest.raises(expected):
+        commands.park_main_to_origin(expected_local_sha=local, expected_origin_sha=base)
+
+    assert client.branch == "main"
+    assert client.calls[-1] == ("switch", "main")
+    assert signal.getsignal(signal.SIGTERM) is previous
 
 
 def test_git_commands_park_main_compensates_local_ref_when_origin_drifts() -> None:

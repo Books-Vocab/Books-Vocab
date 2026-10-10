@@ -31,7 +31,8 @@ prints its last lines to stderr; the failure JSON lists the checks with their
 ``log`` paths.  Logs hold raw test output, never the environment.  There is no way to pass an outcome in by hand.
 
 ``deliver.py gc`` retires lanes whose PR is already merged (the ghost claims
-`doctor.py` reports) via `delivery.py cleanup-merged`.
+`doctor.py` reports) via `delivery.py cleanup-merged`, worktree present or not,
+after one REST read of the closed PRs.
 
 ``deliver.py redeliver --branch <published-lane-branch> --worktree <fixed-tip>
 [--lane <new-lane>] --check ... [--merge]`` replaces a published PR after review
@@ -56,10 +57,12 @@ from types import SimpleNamespace
 from typing import Any
 
 from delivery_control.adapters.operation_lock import OperationLock
+from delivery_control.domain.check_states import FAILURE_STATES, SUCCESS_STATES
 from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.services.pr_contract import (
     parse_body_holds,
     pull_request_label_holds,
+    salvage_body_issues,
 )
 from lib import worktree_scope
 
@@ -70,6 +73,9 @@ PR_GATE = OPS.parent / ".github" / "workflows" / "pr-gate.yml"
 # Raised by delivery_control/adapters/operation_lock.py (a test pins the text).
 LOCK_BUSY = "delivery mutation already in progress"
 LOCK_RETRY_SECONDS = 5.0
+# GitHub closes `Closes #N` issues a moment after the merge event (#2654).
+ISSUE_CLOSE_POLLS = 5
+ISSUE_CLOSE_POLL_SECONDS = 3.0
 AGENT_REVIEW = OPS.parent / ".github" / "workflows" / "agent-review.yml"
 REVIEW_CHECK = "agent-review"
 # The workflow posts its verdicts as extra check runs carrying this external_id
@@ -113,7 +119,15 @@ Runner = Callable[[list[str], Path | None], Proc]
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> Proc:
-    done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     return Proc(done.returncode, done.stdout, done.stderr)
 
 
@@ -330,6 +344,13 @@ def next_stage(record: dict[str, Any] | None, pr: dict[str, Any] | None) -> str:
         if pr.get("state") == "MERGED":
             return "cleanup"
         if pr.get("state") == "OPEN":
+            # A publish that died after creating the PR leaves the lane short
+            # of ``published``; waiting would queue an unpublished record (#2448).
+            status = record.get("status") if record else None
+            if status == "active":
+                return "receipt" if record.get("handback_seal") else "hand-back"
+            if status == "cleanup_pending":
+                return "release-published"
             return "wait-required"
         raise DeliverError(
             f"PR #{pr.get('number')} is {pr.get('state')}; open a fresh lane"
@@ -413,6 +434,28 @@ def quota_reply(items: list[dict[str, Any]], since: str, bots: tuple[str, ...]) 
         ):
             return True
     return False
+
+
+CR_VERDICT = re.compile(r"(?im)^[ \t]*CR verdict:[ \t]*(approve|approved)\b")
+CR_TRUSTED = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+
+def cr_verdict_recorded(
+    items: list[dict[str, Any]], head: str, bots: tuple[str, ...]
+) -> bool:
+    """A maintainer comment/review on the PR saying `CR verdict: APPROVE <head>`.
+
+    The verdict must name the exact head, come from a repository maintainer and
+    not from the review bot, so `--accept-no-review` cites something on the PR
+    rather than free text.
+    """
+    return any(
+        (item.get("user") or {}).get("login") not in bots
+        and item.get("author_association") in CR_TRUSTED
+        and head in str(item.get("body") or "")
+        and CR_VERDICT.search(str(item.get("body") or "")) is not None
+        for item in items
+    )
 
 
 def review_run_id(run: dict[str, Any]) -> int | None:
@@ -499,6 +542,9 @@ class Delivery:
         # its Scope, and supersede the replaced PR once this one exists.
         self.before_claim: Callable[[], object] = lambda: None
         self.after_publish: Callable[[dict[str, Any]], object] = lambda _pr: None
+        # the open PR redeliver closes after publishing; publish preflight must
+        # not count it as a Scope collision.
+        self.replaces_pr: int | None = None
 
     def mutate(
         self,
@@ -697,32 +743,16 @@ class Delivery:
             )
         return base
 
-    def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
-        """Abandon an active claim whose base is not the branch's fork point.
+    def claim_base_is_stale(self, record: dict[str, Any]) -> bool:
+        """Whether an active claim's base is not the branch's fork point.
 
         A claim adopted against a stale local ``main`` records that old base;
         once the branch sits on a newer ``origin/main`` the three-dot diff then
-        includes merged main commits and the receipt refuses.  The registry's
-        own ``resolve --status abandoned`` retires the claim; the caller then
-        re-adopts against that fork point.
+        includes merged main commits and the receipt refuses.  The caller
+        re-adopts with ``worktree_orchestrate.py readopt``, which retires the
+        claim and adopts again under one operation-lock lease.
         """
-        fork = self.claim_base()
-        if record.get("base_sha") == fork:
-            return False
-        head = self.git("rev-parse", "HEAD", stage="preflight")
-        sealed = record.get("handed_back_sha")
-        self.abandon(
-            branch,
-            str(self.work),
-            record.get("claim_generation", 0),
-            str(sealed or head),
-            "retire stale-base claim",
-        )
-        self.say(
-            f"claim base {record.get('base_sha')} is not the fork point {fork}; "
-            "claim retired, re-adopting"
-        )
-        return True
+        return record.get("base_sha") != self.claim_base()
 
     def wait_for(self, what: str, probe: Callable[[], str | None]) -> str:
         deadline = self.clock() + self.args.timeout
@@ -776,11 +806,21 @@ class Delivery:
 
         if stage in ("adopt", "hand-back", "receipt"):
             self.rebase_if_behind()
+        stale_claim: tuple[int, str] | None = None  # (generation, head) to retire
         if (
             stage in ("hand-back", "receipt")
             and record is not None
-            and self.reclaim_if_base_stale(record, branch)
+            and self.claim_base_is_stale(record)
         ):
+            self.say(
+                f"claim base {record.get('base_sha')} is not the fork point "
+                f"{self.claim_base()}; re-adopting"
+            )
+            head = str(
+                record.get("handed_back_sha")
+                or self.git("rev-parse", "HEAD", stage="preflight")
+            )
+            stale_claim = (int(record.get("claim_generation") or 0), head)
             record, stage = None, "adopt"
         if stage in ("adopt", "hand-back"):
             if not self.args.check:
@@ -850,7 +890,7 @@ class Delivery:
                     self.mutate(
                         [
                             orchestrate,
-                            "adopt",
+                            "readopt" if stale_claim else "adopt",
                             "--worktree",
                             str(self.work),
                             "--base",
@@ -864,6 +904,16 @@ class Delivery:
                             "--codex-thread-id",
                             self.args.thread_id,
                             "--delegated",
+                            *(
+                                [
+                                    "--expected-generation",
+                                    str(stale_claim[0]),
+                                    "--expected-head-sha",
+                                    stale_claim[1],
+                                ]
+                                if stale_claim
+                                else []
+                            ),
                             "--json",
                         ],
                         self.work,
@@ -913,6 +963,11 @@ class Delivery:
                         for number in numbers
                         for item in (flag, str(number))
                     ],
+                    *(
+                        ["--replaces-pr", str(self.replaces_pr)]
+                        if self.replaces_pr is not None
+                        else []
+                    ),
                 ],
                 self.home,
                 "publish",
@@ -928,6 +983,14 @@ class Delivery:
             raise DeliverError("no PR to wait on")
         number = int(pr["number"])
         self.after_publish(pr)
+        if stage == "release-published":
+            self.mutate(
+                [*delivery, "release-published", "--pr", str(number)],
+                self.home,
+                "release-published",
+            )
+            self.say(f"released the local lane of published #{number}")
+            stage = "wait-required"
         if stage == "wait-required":
             self.wait_for("required check", lambda: self._required(repo, number))
             self.say(f"required passed on #{number}")
@@ -951,7 +1014,62 @@ class Delivery:
             )
             self.mutate([*delivery, "sync-main"], canon, "sync-main")
             self.say(f"merged #{number}; lane cleaned and main synced")
+            self.verify_issues_closed(repo, number)
         return self.summary(branch, lane, number, "merged")
+
+    def verify_issues_closed(self, repo: str, number: int) -> None:
+        """Every ``Closes`` issue of the merged PR must be closed now (#2654).
+
+        The lane is already cleaned, so this only reports: a still-open issue
+        means the PR never linked it (or GitHub did not process the keyword).
+        """
+        body = must(
+            self.runner,
+            [
+                "gh",
+                "pr",
+                "view",
+                str(number),
+                "--repo",
+                repo,
+                "--json",
+                "body",
+                "-q",
+                ".body",
+            ],
+            self.home,
+            "read PR body",
+        ).stdout
+        for issue in salvage_body_issues(body).closes:
+            for attempt in range(ISSUE_CLOSE_POLLS):
+                state = must(
+                    self.runner,
+                    [
+                        "gh",
+                        "issue",
+                        "view",
+                        str(issue),
+                        "--repo",
+                        repo,
+                        "--json",
+                        "state",
+                        "-q",
+                        ".state",
+                    ],
+                    self.home,
+                    "read issue state",
+                ).stdout.strip()
+                if state == "CLOSED":
+                    self.say(f"issue #{issue} closed by #{number}")
+                    break
+                if attempt + 1 < ISSUE_CLOSE_POLLS:
+                    self.sleep(ISSUE_CLOSE_POLL_SECONDS)
+            else:
+                raise DeliverError(
+                    f"#{number} merged with Closes #{issue} but issue #{issue} is "
+                    "still open; close it with a link to the merged PR "
+                    "(owner preference: close each issue when its fix merges)"
+                )
 
     def _required(self, repo: str, number: int) -> str | None:
         out = must(
@@ -961,9 +1079,9 @@ class Delivery:
             "read checks",
         ).stdout
         state = required_state(json.loads(out or "[]"))
-        if state == "SUCCESS":
+        if state in SUCCESS_STATES:
             return state
-        if state in ("FAILURE", "ERROR", "CANCELLED"):
+        if state in FAILURE_STATES:
             raise DeliverError(f"required check is {state} on #{number}; see the PR")
         return None
 
@@ -1132,6 +1250,19 @@ class Delivery:
                     "review the exact head and re-run with "
                     "--accept-no-review '<CR verdict>'"
                 )
+            if not cr_verdict_recorded(
+                self.gh_pages(f"repos/{repo}/issues/{number}/comments?per_page=100")
+                + self.gh_pages(f"repos/{repo}/pulls/{number}/reviews?per_page=100"),
+                head,
+                bots,
+            ):
+                raise DeliverError(
+                    f"refusing to queue #{number}: --accept-no-review needs a "
+                    f"recorded CR verdict on the PR, and none names {head}; have "
+                    "CR review the exact head, then a maintainer comments "
+                    f"'CR verdict: APPROVE {head}' on the PR "
+                    "(docs/sop/review_discipline.md) and re-run"
+                )
             self.say(f"accepted #{number} without an exact-head review ({no_review})")
         findings = review_findings(
             self.gh_pages(f"repos/{repo}/pulls/{number}/comments?per_page=100"),
@@ -1282,6 +1413,7 @@ class Replacement:
         self.old_number = int(pr["number"])
         self.guard(repo)
         self.check_lineage(record)  # before any hook can retire or close anything
+        d.replaces_pr = self.old_number
         d.before_claim = lambda: self.retire(repo)
         d.after_publish = lambda new: self.supersede(repo, new)
         return d.deliver()
@@ -1448,6 +1580,44 @@ def redeliver(
 # --- gc ---------------------------------------------------------------------
 
 
+# A lane that still owns its Scope; merged/abandoned records are history.
+GC_STATUSES = frozenset({"active", "published", "cleanup_pending"})
+
+
+def _merged_pulls(
+    runner: Runner, repo: str, canon: Path
+) -> dict[str, list[tuple[int, str]]]:
+    """Head branch -> [(PR number, head sha)] of merged PRs, in one REST read.
+
+    One paginated core-quota call replaces a GraphQL ``gh pr list`` per record
+    (#2419), which exhausted the shared GraphQL quota on a large registry.
+    """
+    out = must(
+        runner,
+        ["gh", "api", "--paginate", "--slurp"]
+        + [f"repos/{repo}/pulls?state=closed&per_page=100"],
+        canon,
+        "list closed PRs",
+    ).stdout
+    merged: dict[str, list[tuple[int, str]]] = {}
+    for page in json.loads(out or "[]"):
+        for pr in page:
+            head = pr.get("head") or {}
+            if pr.get("merged_at") and head.get("ref"):
+                merged.setdefault(str(head["ref"]), []).append(
+                    (int(pr["number"]), str(head.get("sha") or ""))
+                )
+    return merged
+
+
+def _worktree_head(runner: Runner, rec: dict[str, Any]) -> str:
+    path = Path(str(rec.get("path", "")))
+    if not path.is_dir():
+        return ""
+    found = runner(["git", "rev-parse", "HEAD"], path)
+    return found.stdout.strip() if found.returncode == 0 else ""
+
+
 def gc(
     args: argparse.Namespace, runner: Runner, lock: LockWait | None = None
 ) -> dict[str, Any]:
@@ -1471,56 +1641,59 @@ def gc(
         ).stdout
     )
     records = data["records"] if isinstance(data, dict) else data
-    retired, kept = [], []
+    merged = _merged_pulls(runner, repo, canon)
+    retired, kept, seen = [], [], set()
     for rec in records:
-        if rec.get("status") != "published" or Path(str(rec.get("path", ""))).exists():
+        if rec.get("status") not in GC_STATUSES:
             continue
-        found = runner(
-            [
-                "gh",
-                "pr",
-                "list",
-                "--repo",
-                repo,
-                "--head",
-                str(rec["branch"]),
-                "--state",
-                "merged",
-                "--json",
-                "number",
-                "-q",
-                ".[0].number",
-            ],
-            canon,
-        ).stdout.strip()
-        if not found:
+        branch = str(rec["branch"])
+        candidates = merged.get(branch, [])
+        if not candidates:
+            if rec.get("status") == "published":
+                kept.append({"branch": branch, "why": "published, PR not merged"})
+            continue
+        lane_head = str(rec.get("handed_back_sha") or "") or _worktree_head(runner, rec)
+        found = next(
+            (
+                number
+                for number, pr_head in candidates
+                if lane_head
+                and (
+                    lane_head == pr_head
+                    or runner(
+                        ["git", "merge-base", "--is-ancestor", lane_head, pr_head],
+                        canon,
+                    ).returncode
+                    == 0
+                )
+            ),
+            None,
+        )
+        if found is None:
             kept.append(
-                {
-                    "branch": rec["branch"],
-                    "why": "published, worktree gone, PR not merged",
-                }
+                {"branch": branch, "why": "merged PR does not contain the lane HEAD"}
             )
             continue
         if args.dry_run:
-            retired.append(
-                {"branch": rec["branch"], "pr": int(found), "applied": False}
-            )
+            retired.append({"branch": branch, "pr": found, "applied": False})
             continue
-        must(
-            runner,
-            [
-                str(canon / "ops" / "delivery.py"),
-                "--repo",
-                str(canon),
+        if found not in seen:  # two records for one PR: one cleanup
+            seen.add(found)
+            must(
+                runner,
+                [
+                    str(canon / "ops" / "delivery.py"),
+                    "--repo",
+                    str(canon),
+                    "cleanup-merged",
+                    "--pr",
+                    str(found),
+                ],
+                canon,
                 "cleanup-merged",
-                "--pr",
-                found,
-            ],
-            canon,
-            "cleanup-merged",
-            lock,
-        )
-        retired.append({"branch": rec["branch"], "pr": int(found), "applied": True})
+                lock,
+            )
+        retired.append({"branch": branch, "pr": found, "applied": True})
     return {"schema": SCHEMA, "retired": retired, "kept": kept}
 
 
@@ -1586,7 +1759,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="REASON",
         help=(
             f"with --merge: queue although {REVIEW_CHECK} only reached neutral "
-            "(the bot never reviewed the head) by --timeout; the reason is logged"
+            "(the bot never reviewed the head) by --timeout; needs a maintainer "
+            "comment 'CR verdict: APPROVE <head sha>' on the PR; the reason is logged"
         ),
     )
     options.add_argument(
@@ -1613,7 +1787,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--branch", help="resume a published lane whose worktree is already gone"
     )
     sub = parser.add_subparsers(dest="command")
-    clean = sub.add_parser("gc", help="retire published lanes whose PR already merged")
+    clean = sub.add_parser("gc", help="retire lanes whose PR already merged")
     clean.add_argument("--dry-run", action="store_true")
     again = sub.add_parser(
         "redeliver",

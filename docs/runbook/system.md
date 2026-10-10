@@ -195,6 +195,7 @@ PR readiness workflow 的 parser 入口是：
 - source inventory 可局部解析時，malformed registry／PR／runtime／Git observation 留在對應 lane 或 `source_problems`；raw registry 非 object、無效 external ID、unknown status 都必須可見，metrics 不把 unmapped／unknown 供給算成 owner-mapped durable supply。
 - duplicate PR、Scope collision、dirty／missing worktree、owner unavailable、stale base／HEAD、required failure、hold 或 CAS race 只封鎖該 exact lane；不要因另一條 lane 綠就 bulk transition、delete 或重寫。
 - publish、local release、queue、merged cleanup 與 main sync 都可重跑，但只在 readback 仍符合原 receipt 時 idempotent。`worktree_registry.py sweep --commit` 不可作 cleanup shortcut；逐 record 使用 exact generation／branch／path／HEAD transition。
+- ghost lane（registry active、worktree 目錄已不在、無 hand-back、分支無領先 origin/main 的 commit）會一直佔住 Scope 並擋住新 `open`。`worktree_orchestrate.py preflight` 與 `worktree_registry.py sweep --json` 的 `ghosts` 列出它們，`open` 的 Scope 拒絕訊息會標出 `ghost` owner；`worktree_orchestrate.py retire-ghosts`（預設 dry-run，`--apply` 才寫）以 exact generation／HEAD CAS 把它們 abandon，不碰仍有 worktree 或有 commit 的 lane。
 
 ## Local worktree boundary
 

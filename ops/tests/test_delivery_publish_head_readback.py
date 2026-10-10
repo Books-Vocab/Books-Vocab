@@ -151,7 +151,9 @@ def test_publish_waits_for_existing_pr_head_after_branch_push() -> None:
     )
 
     class Preflight:
-        def check(self, _receipt: HandbackReceipt) -> PublicationContext:
+        def check(
+            self, _receipt: HandbackReceipt, *, replaced_pr: int | None = None
+        ) -> PublicationContext:
             return context
 
     class Git:

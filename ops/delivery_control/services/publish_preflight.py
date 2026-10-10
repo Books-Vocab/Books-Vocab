@@ -57,6 +57,7 @@ class PublishPreflightService:
         receipt: HandbackReceipt,
         registry: RegistrySnapshot,
         pull_requests: tuple[PullRequestSnapshot, ...],
+        replaced_pr: int | None = None,
     ) -> bool:
         paths = set(receipt.scope.paths)
         inventory = self.registry.list_collision_claims()
@@ -71,6 +72,8 @@ class PublishPreflightService:
         for pull_request in pull_requests:
             if pull_request.branch == receipt.branch:
                 continue
+            if replaced_pr is not None and pull_request.number == replaced_pr:
+                continue  # redeliver closes it right after this publication
             if overlap_paths(paths, self.github.changed_paths(pull_request.number)):
                 return True
         return False
@@ -310,7 +313,9 @@ class PublishPreflightService:
                 "owner reanchor cannot remove paths from an existing PR Scope"
             )
 
-    def check(self, receipt: HandbackReceipt) -> PublicationContext:
+    def check(
+        self, receipt: HandbackReceipt, *, replaced_pr: int | None = None
+    ) -> PublicationContext:
         self._require_canonical_main()
         registry = self.registry.get(receipt.lane_id)
         if registry is None:
@@ -338,6 +343,7 @@ class PublishPreflightService:
                 receipt=receipt,
                 registry=registry,
                 pull_requests=pull_request_inventory.records,
+                replaced_pr=replaced_pr,
             )
         except DeliverySourceError as error:
             raise PolicyViolation(f"collision inventory failed: {error}") from error

@@ -19,3 +19,6 @@ def _isolated_delivery_operation_lock(
     """
     lock_dir: Path = tmp_path_factory.mktemp("delivery-locks")
     monkeypatch.setenv("KG_DELIVERY_LOCK_DIR", str(lock_dir))
+    # Operators and daemons export the opt-in wait (=120); an inherited value
+    # would turn tests that expect an immediate busy refusal into long stalls.
+    monkeypatch.delenv("KG_DELIVERY_LOCK_WAIT_SECONDS", raising=False)

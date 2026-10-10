@@ -25,7 +25,7 @@ import subprocess
 import sys
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -310,6 +310,38 @@ def evaluate_delivery(data: dict[str, Any] | None, now: datetime) -> Finding:
     return Finding("delivery", level, text, problems)
 
 
+REVIEW_QUOTA_PHRASE = "usage limits"
+REVIEW_QUOTA_WINDOW_DAYS = 30
+REVIEW_QUOTA_RECENT_DAYS = 3
+
+
+def evaluate_review_quota(data: dict[str, int] | None) -> Finding:
+    """How often the review bot answered "usage limits" instead of reviewing."""
+    if data is None:
+        return Finding(
+            "review", "warn", "review bot quota unavailable (gh read failed)"
+        )
+    text = (
+        f"{data['month']} PR(s) got the review bot's usage-limit reply in "
+        f"{REVIEW_QUOTA_WINDOW_DAYS}d, {data['recent']} in the last "
+        f"{REVIEW_QUOTA_RECENT_DAYS}d"
+    )
+    if data["recent"]:
+        return Finding(
+            "review",
+            "warn",
+            text,
+            [
+                (
+                    "Codex review quota looks exhausted: agent-review settles "
+                    "neutral; use the recorded CR fallback in "
+                    "docs/sop/review_discipline.md"
+                )
+            ],
+        )
+    return Finding("review", "ok", text)
+
+
 ACCEPTANCE_TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER"})
 
 
@@ -565,6 +597,29 @@ def collect_delivery(repo: Path) -> dict[str, Any] | None:
     return delivery_metrics.collect(repo)
 
 
+def collect_review_quota(
+    repo: Path, now: datetime, run: Any = _run
+) -> dict[str, int] | None:
+    """PRs carrying a usage-limit comment, over the month and the recent days."""
+
+    counts: dict[str, int] = {}
+    for key, days in (
+        ("month", REVIEW_QUOTA_WINDOW_DAYS),
+        ("recent", REVIEW_QUOTA_RECENT_DAYS),
+    ):
+        since = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+        done = run(
+            ["gh", "pr", "list", "--state", "all", "--limit", "1000"]
+            + ["--search", f'"{REVIEW_QUOTA_PHRASE}" in:comments updated:>={since}']
+            + ["--json", "number"],
+            repo,
+        )
+        if done.returncode or not done.stdout:
+            return None
+        counts[key] = len(json.loads(done.stdout))
+    return counts
+
+
 def collect_disk() -> dict[str, Any] | None:
     try:
         return json.loads(DISK_GUARD_FILE.read_text())
@@ -679,13 +734,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     complexity_finding = evaluate_complexity(*collect_complexity(repo))
     delivery = evaluate_delivery(collect_delivery(repo), now)
+    review = evaluate_review_quota(collect_review_quota(repo, now))
     issues_finding = (
         Finding("issues", "warn", "could not list open issues via gh", [issues_error])
         if issues_error is not None
         else evaluate_issues(issues, results)
     )
     if args.ci:
-        findings = [*ci, gap, sentry, delivery, complexity_finding, issues_finding]
+        findings = [
+            *ci,
+            gap,
+            sentry,
+            delivery,
+            review,
+            complexity_finding,
+            issues_finding,
+        ]
     else:
         findings = [
             evaluate_git(git),
@@ -694,6 +758,7 @@ def main(argv: list[str] | None = None) -> int:
             gap,
             sentry,
             delivery,
+            review,
             evaluate_disk(collect_disk()),
             complexity_finding,
             issues_finding,

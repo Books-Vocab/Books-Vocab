@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
+from ..domain.check_states import FAILURE_STATES, SUCCESS_STATES, TERMINAL_STATES
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.models import CheckStatus
 from ..domain.observations import CheckSnapshot, PullRequestSnapshot
@@ -18,11 +19,9 @@ from .timestamps import parse_optional_timestamp
 _NO_REQUIRED_CHECKS_RE = re.compile(
     r"no (?:required )?checks reported on the '([^'\n]+)' branch"
 )
-_FAILURE_STATES = frozenset(
-    {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
-)
-_SUCCESS_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
-_TERMINAL_STATES = _FAILURE_STATES | _SUCCESS_STATES
+_FAILURE_STATES = FAILURE_STATES
+_SUCCESS_STATES = SUCCESS_STATES
+_TERMINAL_STATES = TERMINAL_STATES
 
 
 def _status_from_states(states: set[str]) -> CheckStatus:

@@ -31,6 +31,10 @@ Collaborator approval 與獨立 agent review 都是品質與風險的 review evi
 - `agent-review` 缺失、失敗、延遲或成功都不會單獨阻塞 queue／merge；若 evidence 明確指出 P0、P1 或 security，必須另行寫成 durable typed hold／label，該 hold 才是硬性阻塞來源。
 - repository ruleset 的 required contexts 應維持只有短 `required`。這是降低無意義的 transport gate，不是移除 review；agent-review 仍可用來改善品質與發現風險。
 
+### Recorded CR fallback（外部 reviewer 不可用時）
+
+Codex bot 回「usage limits」或 `agent-review` 長時間 neutral 時，`deliver.py --merge` 會立刻拒絕 queue（不空等 `--timeout`）。唯一放行路徑：CR 依本 SOP 審 exact HEAD，maintainer（OWNER／MEMBER／COLLABORATOR）在 PR 留下 comment 或 review，一行 `CR verdict: APPROVE <40 字元 head SHA>`（其後可附 CR 的理由與驗證證據）；再以 `--accept-no-review '<理由>'` 重跑。`deliver.py` 會讀 PR 的 comments 與 reviews，找不到命中 exact head、由 maintainer 而非 review bot 留下的 approve verdict 就拒絕，所以理由欄不能只是自由文字。HEAD 變動後舊 verdict 不算。額度使用狀況見 `ops/doctor.py` 的 `review` 區塊。
+
 ## External-agent connector receipt boundary
 
 `multi_agent_v1` external agents are not repo-local subprocesses.  The caller

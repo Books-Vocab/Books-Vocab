@@ -8,6 +8,7 @@ delivery mutation fail with ``delivery mutation already in progress``.
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import sys
@@ -147,6 +148,8 @@ def test_scoped_lease_commands_are_exactly_the_narrowed_mutations() -> None:
         "queue",
         "cleanup-merged",
         "release-published",
+        "publish",
+        "drain",
     }
     assert cli.SCOPED_LEASE_COMMANDS <= cli.MUTATING_COMMANDS
 
@@ -246,3 +249,131 @@ def test_legacy_cleanup_merged_stays_inside_one_lease(
     captured = capsys.readouterr()
     assert exit_code == 0, captured.err
     assert observed == [(41, True)]
+
+
+def test_publish_network_io_runs_outside_and_registry_writes_inside_the_lease(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#2463: push / PR create / GitHub reads never hold the global lease."""
+
+    application, registry, git, github = _application(tmp_path)
+    calls: Calls = []
+
+    def held() -> bool:
+        return _lease_held(tmp_path)
+
+    _observe(
+        github,
+        "github",
+        ("create_pull_request", "get_pull_request", "changed_paths"),
+        calls,
+        held,
+    )
+    _observe(git, "git", ("push_branch", "remove_worktree"), calls, held)
+    _observe(registry, "registry", ("record_published_base",), calls, held)
+
+    exit_code = cli.main(
+        [
+            "--repo",
+            str(tmp_path),
+            "publish",
+            "--lane",
+            "DIRECT-CLI",
+            "--title",
+            "fix: exact delivery",
+        ],
+        application_factory=lambda **_: application,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    by_name: dict[str, set[bool]] = {}
+    for name, was_held in calls:
+        by_name.setdefault(name, set()).add(was_held)
+    assert by_name["git.push_branch"] == {False}
+    assert by_name["github.create_pull_request"] == {False}
+    assert by_name["github.get_pull_request"] == {False}
+    assert by_name["registry.record_published_base"] == {True}
+    assert by_name["git.remove_worktree"] == {True}
+
+
+def test_publish_proceeds_while_another_process_holds_the_lock_until_registry_write(
+    tmp_path: Path,
+) -> None:
+    application, registry, git, _ = _application(tmp_path)
+    lock_path = OperationLock(tmp_path, command="x").path
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    seen: list[str] = []
+    original = git.push_branch
+
+    def push_while_foreign_holds(*args: object, **kwargs: object) -> object:
+        seen.append("push")
+        return original(*args, **kwargs)
+
+    git.push_branch = push_while_foreign_holds  # type: ignore[method-assign]
+    with lock_path.open("a+") as foreign:
+        fcntl.flock(foreign.fileno(), fcntl.LOCK_EX)
+        with pytest.raises(Exception, match="already in progress"):
+            cli._run_command_serialized(
+                cli._parser().parse_args(
+                    [
+                        "--repo",
+                        str(tmp_path),
+                        "publish",
+                        "--lane",
+                        "DIRECT-CLI",
+                        "--title",
+                        "fix: exact delivery",
+                    ]
+                ),
+                application,
+            )
+    # network phase ran without the lock; only the registry section refused.
+    assert seen == ["push"]
+    assert registry.record.status == "active"
+
+
+def _captured_waits(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, argv: list[str]
+) -> list[float | None]:
+    waits: list[float | None] = []
+    real = cli.OperationLock
+
+    def recording(repo: Path, *, command: str, wait_seconds: float | None = None):
+        waits.append(wait_seconds)
+        return real(repo, command=command, wait_seconds=wait_seconds)
+
+    monkeypatch.setattr(cli, "OperationLock", recording)
+    application, *_ = _application(tmp_path)
+    args = cli._parser().parse_args(["--repo", str(tmp_path), *argv])
+    with contextlib.suppress(Exception):  # only the lock wait is under test
+        cli._run_command_serialized(args, application)
+    return waits
+
+
+def test_lock_timeout_flag_reaches_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waits = _captured_waits(
+        monkeypatch,
+        tmp_path,
+        ["--lock-timeout", "7", "sync-main"],
+    )
+    assert waits == [7.0]
+
+
+def test_cleanup_merged_waits_by_default_and_other_commands_do_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("KG_DELIVERY_LOCK_WAIT_SECONDS", raising=False)
+    args = cli._parser().parse_args(["cleanup-merged", "--pr", "41"])
+    assert cli.lock_wait_seconds(args) == 120.0
+    args = cli._parser().parse_args(
+        ["--lock-timeout", "0", "cleanup-merged", "--pr", "41"]
+    )
+    assert cli.lock_wait_seconds(args) == 0.0
+    args = cli._parser().parse_args(["sync-main"])
+    assert cli.lock_wait_seconds(args) is None
+    monkeypatch.setenv("KG_DELIVERY_LOCK_WAIT_SECONDS", "9")
+    args = cli._parser().parse_args(["cleanup-merged", "--pr", "41"])
+    assert cli.lock_wait_seconds(args) is None  # the env var decides

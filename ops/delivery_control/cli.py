@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from .adapters.operation_lock import OperationLock
+from .adapters.operation_lock import WAIT_SECONDS_ENV, OperationLock
 from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
 from .controller.metrics import measure_merge_cadence
@@ -58,6 +58,7 @@ MUTATING_COMMANDS = frozenset(
         "repair-pr-metadata",
         "trigger-required",
         "cleanup-merged",
+        "drain",
         "abandon-pr",
         "cleanup-abandoned",
         "discard-abandoned-handback",
@@ -74,7 +75,25 @@ MUTATING_COMMANDS = frozenset(
 # never hold it.  _run_command_serialized hands them a per-section lease on the
 # same lock path.  queue writes only GitHub, guarded there by expected head,
 # base and body readback; cleanup sections are resumable from cleanup_pending.
-SCOPED_LEASE_COMMANDS = frozenset({"queue", "cleanup-merged", "release-published"})
+SCOPED_LEASE_COMMANDS = frozenset(
+    {"queue", "cleanup-merged", "release-published", "publish", "drain"}
+)
+
+
+# cleanup-merged is the observed starvation case (#2463): it follows a merge
+# and must not be refused just because another delivery briefly holds the lease.
+DEFAULT_LOCK_WAIT_SECONDS = {"cleanup-merged": 120.0}
+
+
+def lock_wait_seconds(args: argparse.Namespace) -> float | None:
+    """Flag > env var (resolved by OperationLock) > per-command default."""
+
+    explicit = getattr(args, "lock_timeout", None)
+    if explicit is not None:
+        return explicit
+    if os.environ.get(WAIT_SECONDS_ENV):
+        return None
+    return DEFAULT_LOCK_WAIT_SECONDS.get(args.command)
 
 
 def _jsonable(value: object) -> object:
@@ -121,6 +140,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--runtime-status-file", type=Path)
+    parser.add_argument(
+        "--lock-timeout",
+        type=float,
+        metavar="SECONDS",
+        help=(
+            "wait up to SECONDS (capped at 3600) for the delivery mutation lease "
+            "instead of refusing at once; overrides KG_DELIVERY_LOCK_WAIT_SECONDS "
+            "(cleanup-merged waits 120s by default)"
+        ),
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     inspect = commands.add_parser("inspect", help="classify every known delivery lane")
@@ -267,6 +296,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     validate.add_argument("--head-sha", required=True)
     validate.add_argument("--body-file", type=Path, default=Path("-"))
+    validate.add_argument(
+        "--head-ref",
+        help="actual PR head branch; an issue-<N> branch must link that Issue",
+    )
 
     render_candidate = commands.add_parser(
         "render-candidate-body",
@@ -305,6 +338,12 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("--title", required=True)
     publish.add_argument("--closes", type=int, action="append", metavar="N")
     publish.add_argument("--refs", type=int, action="append", metavar="N")
+    publish.add_argument(
+        "--replaces-pr",
+        type=int,
+        help="open PR that redeliver closes after this publication; "
+        "excluded from the Scope collision check only",
+    )
 
     published_base = commands.add_parser(
         "record-published-base",
@@ -338,6 +377,25 @@ def _parser() -> argparse.ArgumentParser:
         help="restore canonical body metadata on one durable PR",
     )
     repair_metadata.add_argument("--pr", type=int, required=True)
+
+    drain = commands.add_parser(
+        "drain",
+        help="one process: enqueue gate-green published PRs, clean up merged ones",
+    )
+    drain.add_argument(
+        "--once", action="store_true", help="run a single cycle instead of looping"
+    )
+    drain.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="plan one cycle and execute nothing",
+    )
+    drain.add_argument(
+        "--interval", type=float, default=30.0, help="seconds between cycles"
+    )
+    drain.add_argument(
+        "--timeout", type=float, default=3600.0, help="stop looping after SECONDS"
+    )
 
     commands.add_parser(
         "trigger-required", help="dispatch required checks for one exact published PR"
@@ -637,7 +695,9 @@ def run_command(
             if args.body_file == Path("-")
             else args.body_file.read_text(encoding="utf-8")
         )
-        return validate_pull_request_body(body, expected_head_sha=args.head_sha)
+        return validate_pull_request_body(
+            body, expected_head_sha=args.head_sha, head_ref=args.head_ref
+        )
     if args.command == "render-candidate-body":
         raw = (
             sys.stdin.read()
@@ -716,6 +776,8 @@ def run_command(
             title=args.title,
             closes=args.closes,
             refs=args.refs,
+            replaced_pr=args.replaces_pr,
+            operation_lease=operation_lease,
         )
     if args.command == "record-published-base":
         return application.record_published_base(args.pr)
@@ -725,6 +787,14 @@ def run_command(
         return application.enqueue(
             pull_request_number=args.pr,
             holds=frozenset(HoldKind(item) for item in args.hold or ()),
+        )
+    if args.command == "drain":
+        return application.drain(
+            once=args.once,
+            dry_run=args.dry_run,
+            interval=args.interval,
+            timeout=args.timeout,
+            operation_lease=operation_lease,
         )
     if args.command == "reconcile-holds":
         return application.reconcile_holds(
@@ -836,6 +906,8 @@ def _result_exit_code(command: str, result: object) -> int:
         return 2
     if command == "watchdog-claim":
         return 0 if _watchdog_dispatch_authorized(result) else 2
+    if command == "drain":
+        return {"stuck": 1, "timeout": 2}.get(str(_result_field(result, "stopped")), 0)
     if command in APPLY_COMMANDS:
         verdict = _result_field(result, "verdict")
         if verdict == "partial-failure":
@@ -890,13 +962,16 @@ def _run_command_serialized(
         # repository.  Real applications always expose the canonical path.
         return run_command(args, application)
     canonical = Path(repo)
+    wait = lock_wait_seconds(args)
     if args.command in SCOPED_LEASE_COMMANDS:
         return run_command(
             args,
             application,
-            operation_lease=lambda section: OperationLock(canonical, command=section),
+            operation_lease=lambda section: OperationLock(
+                canonical, command=section, wait_seconds=wait
+            ),
         )
-    with OperationLock(canonical, command=args.command):
+    with OperationLock(canonical, command=args.command, wait_seconds=wait):
         return run_command(args, application)
 
 
@@ -984,6 +1059,8 @@ def _command_verdict(command: str, result: object) -> str:
             else getattr(result, "ready", None)
         )
         return "ready" if ready is True else "blocked"
+    if command == "drain":
+        return str(_result_field(result, "stopped"))
     if command in APPLY_COMMANDS:
         verdict = _result_field(result, "verdict")
         return verdict if isinstance(verdict, str) else "success"

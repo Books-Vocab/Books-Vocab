@@ -18,7 +18,9 @@ state, or release state.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -50,6 +52,7 @@ from worktree_reanchor_core import git_ops as reanchor_git_ops
 from worktree_reanchor_core import registry_ops as reanchor_registry_ops
 from worktree_reanchor_core.domain import commit_sha as reanchor_commit_sha
 from worktree_reanchor_core.errors import ReanchorRefused
+from worktree_registry_core.maintenance import ghost_facts
 
 SCHEMA = "kg.worktree.orchestrate.v2"
 GATE_SCHEMA = "kg.worktree.gate.v2"
@@ -69,12 +72,14 @@ MUTATING_COMMANDS = frozenset(
     {
         "open",
         "adopt",
+        "readopt",
         "reanchor",
         "reanchor-handback",
         "resume-published",
         "recover-published-remote",
         "hand-back",
         "resolve",
+        "retire-ghosts",
         "freeze",
     }
 )
@@ -123,9 +128,23 @@ def _is_frozen() -> dict[str, Any] | None:
     path = _freeze_path()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except FileNotFoundError:
         return None
-    return payload if isinstance(payload, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return _unreadable_freeze(path, type(exc).__name__)
+    if not isinstance(payload, dict):
+        return _unreadable_freeze(path, "payload is not a JSON object")
+    return payload
+
+
+def _unreadable_freeze(path: Path, detail: str) -> dict[str, Any]:
+    # Fail closed: a freeze file that exists but cannot be trusted blocks
+    # mutations until `freeze off` (or `freeze on --force`) replaces it.
+    return {
+        "schema": "kg.worktree.freeze.v1",
+        "reason": f"freeze state unreadable ({detail}): {path}",
+        "unreadable": True,
+    }
 
 
 def _write_freeze(payload: dict[str, Any] | None) -> None:
@@ -226,6 +245,15 @@ def _registry_register(
     return rc, record
 
 
+def _open_usage_refusal(args: argparse.Namespace, reason: str) -> int:
+    _emit(
+        {"schema": SCHEMA, "action": "refused", "reason": reason},
+        as_json=args.json,
+        human=f"✗ open refused: {reason}",
+    )
+    return EXIT_USAGE
+
+
 def cmd_open(args: argparse.Namespace) -> int:
     refusal = _require_unfrozen("open")
     if refusal:
@@ -266,6 +294,20 @@ def cmd_open(args: argparse.Namespace) -> int:
             human=f"✗ open refused: path exists: {worktree}",
         )
         return EXIT_USAGE
+    if (
+        getattr(args, "scope", None) is None
+        and getattr(args, "scope_file", None) is None
+    ):
+        return _open_usage_refusal(
+            args, "--scope or --scope-file is required to open a lane (#2658)"
+        )
+    if (
+        getattr(args, "delegated", False)
+        and not (getattr(args, "codex_thread_id", None) or "").strip()
+    ):
+        return _open_usage_refusal(
+            args, "--codex-thread-id is required for delegated open (#2658)"
+        )
     external_ids = list(getattr(args, "external_id", []) or [])
     requires_external_id = bool(
         getattr(args, "delegated", False) or getattr(args, "codex_thread_id", None)
@@ -464,6 +506,49 @@ def cmd_adopt(args: argparse.Namespace) -> int:
             else f"✗ adopt refused: {record.get('reason', record)}"
         ),
     )
+    return rc
+
+
+def cmd_readopt(args: argparse.Namespace) -> int:
+    """Retire the worktree's claim and adopt it again inside one lock lease.
+
+    ``main`` takes the operation lock once for the whole command, so a rival
+    ``open`` with an overlapping Scope cannot claim the files between the
+    retire and the adopt (#2466).  The retire is the registry's compare-and-swap
+    on the claim generation and head; if it refuses, nothing changed.
+    """
+    refusal = _require_unfrozen("readopt")
+    worktree = _path(args.worktree or os.getcwd())
+    rc, branch = _git(["branch", "--show-current"], worktree)
+    if refusal or rc != 0 or not branch:
+        reason = refusal or "worktree is detached or not a git worktree"
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": reason},
+            as_json=args.json,
+            human=f"✗ readopt refused: {reason}",
+        )
+        return EXIT_BLOCK if refusal else EXIT_USAGE
+    rc = cmd_resolve(
+        argparse.Namespace(
+            status="abandoned",
+            branch=branch,
+            path=str(worktree),
+            state=args.state,
+            json=args.json,
+            expected_generation=args.expected_generation,
+            expected_head_sha=args.expected_head_sha,
+            remove=False,
+        )
+    )
+    if rc != EXIT_OK:
+        return rc
+    rc = cmd_adopt(args)
+    if rc != EXIT_OK:
+        print(
+            f"✗ readopt: the claim on {branch} was retired but the adopt failed; "
+            "adopt the worktree again",
+            file=sys.stderr,
+        )
     return rc
 
 
@@ -1869,13 +1954,77 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         "registry": str(state_path),
         "active_worktrees": len(active),
         "worktrees": _git(["worktree", "list"], ROOT)[1],
+        "ghosts": _ghosts(state),
     }
+    ghost_note = (
+        f"; {len(payload['ghosts'])} ghost lane(s) retirable (retire-ghosts --apply)"
+        if payload["ghosts"]
+        else ""
+    )
     _emit(
         payload,
         as_json=args.json,
-        human=f"✓ preflight: {len(active)} active local worktree(s)",
+        human=f"✓ preflight: {len(active)} active local worktree(s){ghost_note}",
     )
     return EXIT_OK
+
+
+def _ghosts(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        facts
+        for record in registry._active_records(state)
+        if (facts := ghost_facts(record))
+    ]
+
+
+def cmd_retire_ghosts(args: argparse.Namespace) -> int:
+    """Abandon ghost lanes (active, worktree gone, no commits) with exact CAS (#2771)."""
+    state_file = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
+    ghosts = _ghosts(registry.load_state(state_file))
+    retired: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for ghost in ghosts if args.apply else []:
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = registry.main(
+                [
+                    "resolve",
+                    "--branch",
+                    str(ghost["branch"]),
+                    "--path",
+                    str(ghost["path"]),
+                    "--status",
+                    "abandoned",
+                    "--expected-generation",
+                    str(ghost["claim_generation"]),
+                    "--expected-head-sha",
+                    str(ghost["expected_head_sha"]),
+                    "--state",
+                    str(state_file),
+                ],
+                acquire_lock=False,
+            )
+        (retired if rc == EXIT_OK else failed).append(ghost)
+    _emit(
+        {
+            "schema": SCHEMA,
+            "action": "retire-ghosts",
+            "apply": bool(args.apply),
+            "ghosts": ghosts,
+            "retired": retired,
+            "failed": failed,
+        },
+        as_json=args.json,
+        human=(
+            f"✓ retired {len(retired)} ghost lane(s)"
+            if args.apply
+            else f"{len(ghosts)} ghost lane(s) retirable; rerun with --apply"
+        ),
+    )
+    return EXIT_BLOCK if failed else EXIT_OK
 
 
 def cmd_freeze(args: argparse.Namespace) -> int:
@@ -1985,6 +2134,40 @@ def _cleanup_pending_retire_evidence(
     )
 
 
+def _already_abandoned(args: argparse.Namespace) -> bool:
+    """Whether the abandon CAS for this exact claim already landed (#2761).
+
+    A ``resolve --remove`` whose physical cleanup blocked after the CAS cannot
+    be rerun through the registry (``abandoned`` is not a legal source), so the
+    rerun skips the CAS and only re-drives cleanup.  The match is exact:
+    generation and stored HEAD equal the guards, and no newer live claim owns
+    the branch or path.
+    """
+
+    if args.status != "abandoned" or not (args.branch or args.path):
+        return False
+    try:
+        state = registry.load_state(registry._state_path(args))
+    except (OSError, ValueError):
+        return False
+    records = [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict)
+        and registry._record_matches(record, branch=args.branch, path=args.path)
+    ]
+    live = {"active", "cleanup_pending", "published"}
+    if any(record.get("status") in live for record in records):
+        return False
+    return any(
+        record.get("status") == "abandoned"
+        and registry._claim_generation(record, "claim_generation")
+        == args.expected_generation
+        and record.get("handed_back_sha") == args.expected_head_sha
+        for record in records
+    )
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     branch = None
     worktree = None
@@ -2027,9 +2210,17 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--expected-generation", str(args.expected_generation)]
     if args.expected_head_sha:
         argv += ["--expected-head-sha", args.expected_head_sha]
-    rc = registry.main(
-        argv, acquire_lock=False, cleanup_pending_evidence=retire_evidence
-    )
+    if args.remove and _already_abandoned(args):
+        print(
+            "resolve: registry already abandoned this exact claim; "
+            "re-driving local cleanup",
+            file=sys.stderr,
+        )
+        rc = EXIT_OK
+    else:
+        rc = registry.main(
+            argv, acquire_lock=False, cleanup_pending_evidence=retire_evidence
+        )
     if rc != EXIT_OK or not args.remove:
         return rc
     return worktree_cleanup.cleanup_resolved_local_assets(
@@ -2047,6 +2238,16 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="GitHub-native local worktree coordinator"
     )
+    parser.add_argument(
+        "--lock-timeout",
+        type=float,
+        metavar="SECONDS",
+        help=(
+            "wait up to SECONDS (capped at 3600) for the delivery mutation "
+            "lease; overrides KG_DELIVERY_LOCK_WAIT_SECONDS (place before the "
+            "subcommand)"
+        ),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(p: argparse.ArgumentParser) -> None:
@@ -2060,6 +2261,16 @@ def _parser() -> argparse.ArgumentParser:
     pre.add_argument("--incoming-main")
     pre.set_defaults(func=cmd_preflight)
 
+    ghosts_cmd = sub.add_parser(
+        "retire-ghosts",
+        help="abandon active lanes whose worktree is gone and carry no commits",
+    )
+    common(ghosts_cmd)
+    ghosts_cmd.add_argument(
+        "--apply", action="store_true", help="retire (default: dry-run)"
+    )
+    ghosts_cmd.set_defaults(func=cmd_retire_ghosts)
+
     op = sub.add_parser(
         "open",
         help="create a branch and linked worktree",
@@ -2068,7 +2279,9 @@ def _parser() -> argparse.ArgumentParser:
             "--delegated or --codex-thread-id is supplied, provide at least "
             "one --external-id with a non-blank value. This validation runs "
             "before base resolution, registry, branch, or worktree mutation; "
-            "legacy non-owner open semantics are unchanged."
+            "legacy non-owner open semantics are unchanged. open also "
+            "requires --scope or --scope-file, and --delegated requires "
+            "--codex-thread-id (#2658)."
         ),
     )
     common(op)
@@ -2092,22 +2305,36 @@ def _parser() -> argparse.ArgumentParser:
     op.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     op.set_defaults(func=cmd_open)
 
+    def adopt_args(p: argparse.ArgumentParser) -> None:
+        common(p)
+        p.add_argument("--worktree", default=None)
+        p.add_argument("--intent", required=True)
+        p.add_argument("--base", default=BASE_DEFAULT)
+        p.add_argument("--external-id", action="append", default=[])
+        p.add_argument("--scope")
+        p.add_argument("--scope-file")
+        p.add_argument(
+            "--scope-from-diff",
+            action="store_true",
+            help="derive Scope from the worktree's diff against --base",
+        )
+        p.add_argument("--codex-thread-id")
+        p.add_argument(
+            "--delegated", action=argparse.BooleanOptionalAction, default=None
+        )
+
     ad = sub.add_parser("adopt", help="register an existing linked worktree")
-    common(ad)
-    ad.add_argument("--worktree", default=None)
-    ad.add_argument("--intent", required=True)
-    ad.add_argument("--base", default=BASE_DEFAULT)
-    ad.add_argument("--external-id", action="append", default=[])
-    ad.add_argument("--scope")
-    ad.add_argument("--scope-file")
-    ad.add_argument(
-        "--scope-from-diff",
-        action="store_true",
-        help="derive Scope from the worktree's diff against --base",
-    )
-    ad.add_argument("--codex-thread-id")
-    ad.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
+    adopt_args(ad)
     ad.set_defaults(func=cmd_adopt)
+
+    re_ad = sub.add_parser(
+        "readopt",
+        help="retire the worktree's stale claim and adopt it again in one lock lease",
+    )
+    adopt_args(re_ad)
+    re_ad.add_argument("--expected-generation", type=int, required=True)
+    re_ad.add_argument("--expected-head-sha", required=True)
+    re_ad.set_defaults(func=cmd_readopt)
 
     worktree_reanchor.add_parser(
         sub, common=common, handler=cmd_reanchor, default_repo=ROOT
@@ -2218,13 +2445,16 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    lock_timeout = getattr(args, "lock_timeout", None)
     needs_lock = args.command in MUTATING_COMMANDS and not (
         args.command == "freeze" and args.action == "status"
     )
     if not needs_lock:
         return int(args.func(args))
     anchor = registry.common_anchor(ROOT)
-    with OperationLock(anchor, command=f"worktree:{args.command}"):
+    with OperationLock(
+        anchor, command=f"worktree:{args.command}", wait_seconds=lock_timeout
+    ):
         return int(args.func(args))
 
 

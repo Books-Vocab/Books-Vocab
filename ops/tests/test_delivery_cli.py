@@ -766,6 +766,12 @@ def test_publish_parser_collects_repeated_closes_and_refs() -> None:
     assert (bare.closes, bare.refs) == (None, None)
 
 
+def test_publish_parser_takes_the_replaced_pr_only_when_given() -> None:
+    base = ["publish", "--lane", "L", "--title", "t"]
+    assert _parser().parse_args(base).replaces_pr is None
+    assert _parser().parse_args([*base, "--replaces-pr", "50"]).replaces_pr == 50
+
+
 def test_publish_without_issue_sources_keeps_the_legacy_body() -> None:
     app, github = _publish_app(external_ids=("DIRECT-CLI",))
 
@@ -805,6 +811,43 @@ def test_publish_flags_replace_registry_external_issue_ids() -> None:
     app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery", refs=[2392])
 
     assert parse_body_issues(github.pull_request.body) == IssueLinks(refs=(2392,))
+
+
+def test_publish_derives_closes_from_issue_named_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(globals(), "BRANCH", "debug/issue-2477-wave")
+    registry = FakeRegistry()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=(github := FakeGitHub()),
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(closes=(2477,))
+
+
+def test_publish_explicit_refs_override_issue_named_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(globals(), "BRANCH", "debug/issue-2477-wave")
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=(github := FakeGitHub()),
+        registry=FakeRegistry(),
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery", refs=[2477])
+
+    assert parse_body_issues(github.pull_request.body) == IssueLinks(refs=(2477,))
 
 
 def test_publish_records_github_advanced_base_without_rewriting_handback() -> None:
@@ -1413,7 +1456,9 @@ def test_cli_serializes_remote_orphan_discard_with_operation_lock(
     lock_calls: list[tuple[object, ...]] = []
 
     class FakeLock:
-        def __init__(self, repo: Path, *, command: str) -> None:
+        def __init__(
+            self, repo: Path, *, command: str, wait_seconds: float | None = None
+        ) -> None:
             lock_calls.append(("init", repo, command))
 
         def __enter__(self) -> Self:

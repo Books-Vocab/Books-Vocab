@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
+from ..domain.check_states import FAILURE_STATES, SUCCESS_STATES, TERMINAL_STATES
 from ..domain.models import CheckStatus
 from ..domain.observations import CheckSnapshot
 from .errors import AdapterPayloadError
@@ -14,11 +15,9 @@ from .timestamps import parse_optional_timestamp
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _MAX_BATCH_SIZE = 50
-_FAILURE_STATES = frozenset(
-    {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
-)
-_SUCCESS_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
-_TERMINAL_STATES = _FAILURE_STATES | _SUCCESS_STATES
+_FAILURE_STATES = FAILURE_STATES
+_SUCCESS_STATES = SUCCESS_STATES
+_TERMINAL_STATES = TERMINAL_STATES
 
 
 def _status_from_states(states: set[str]) -> CheckStatus:

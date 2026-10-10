@@ -752,3 +752,16 @@ def test_batch_rejects_malformed_repository_identity() -> None:
 
     with pytest.raises(AdapterPayloadError, match="owner/name"):
         checks.prime_required_snapshots((12,))
+
+
+def test_deliver_and_control_plane_share_terminal_check_states() -> None:
+    """One definition of red/green so deliver and the control plane cannot disagree (#2447)."""
+    from delivery_control.adapters import github_checks, github_required_batch
+    from delivery_control.domain import check_states
+
+    assert "STARTUP_FAILURE" in check_states.FAILURE_STATES
+    assert github_required_batch._FAILURE_STATES is check_states.FAILURE_STATES
+    assert github_checks._FAILURE_STATES is check_states.FAILURE_STATES
+    assert (
+        github_required_batch._status_from_states({"STARTUP_FAILURE"}).name == "FAILURE"
+    )

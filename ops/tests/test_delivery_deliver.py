@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import contextlib
 import fcntl
 import io
@@ -66,6 +67,10 @@ class FakeWorld:
             state.get("checks", [[{"name": "required", "state": "SUCCESS"}]])
         )
         self.pr_state = list(state.get("pr_state", ["MERGED"]))
+        # `## Issues` body of the merged PR and the state GitHub reports per
+        # linked Issue (a list is consumed one read at a time, last repeats).
+        self.pr_body: str = state.get("pr_body", "")
+        self.issue_states: dict[int, list[str]] = state.get("issue_states", {})
         self.merged_prs = state.get("merged_prs", {})
         self.diff = state.get("diff", "M\0ops/a.py\0A\0ops/b.py\0")
         self.fork = state.get("fork", "f" * 40)
@@ -89,6 +94,7 @@ class FakeWorld:
         )
         self.review_comments: list[dict[str, Any]] = state.get("review_comments", [])
         self.issue_comments: list[dict[str, Any]] = state.get("issue_comments", [])
+        self.pr_reviews: list[dict[str, Any]] = state.get("pr_reviews", [])
         # Workflow runs by id (None: GitHub answers 404); a run not listed here
         # belongs to the PR whose head was last read, as the real ones do.
         self.actions_runs: dict[int, dict[str, Any] | None] = state.get(
@@ -262,6 +268,19 @@ class FakeWorld:
                     **extra,
                 }
                 return ok(json.dumps({"data": {"repository": {"pullRequest": node}}}))
+            if cmd[1] == "api" and "/pulls?state=closed" in cmd[-1]:
+                closed = [
+                    {
+                        "number": number,
+                        "merged_at": "2026-10-09T00:00:00Z",
+                        "head": {"ref": branch, "sha": self.head},
+                    }
+                    for branch, number in self.merged_prs.items()
+                ]
+                closed.append(  # closed without merging: never a gc candidate
+                    {"number": 5, "merged_at": None, "head": {"ref": "feat/open"}}
+                )
+                return ok(json.dumps([closed]))
             if cmd[1] == "api" and "/check-runs?" in cmd[-1]:
                 runs = self.review_runs
                 batch = runs.pop(0) if len(runs) > 1 else runs[0]
@@ -286,9 +305,14 @@ class FakeWorld:
             if cmd[1] == "api" and "/issues/" in cmd[-1]:
                 return ok(json.dumps([self.issue_comments]))
             if cmd[1] == "api" and cmd[-1].endswith("/reviews?per_page=100"):
-                return ok(json.dumps([[]]))
+                return ok(json.dumps([self.pr_reviews]))
             if cmd[1] == "api" and cmd[-1].endswith("/comments?per_page=100"):
                 return ok(json.dumps([self.review_comments]))
+            if cmd[1:3] == ["issue", "view"]:
+                reads = self.issue_states.get(int(cmd[3]), ["CLOSED"])
+                return ok(reads.pop(0) if len(reads) > 1 else reads[0])
+            if cmd[1:3] == ["pr", "view"] and cmd[cmd.index("--json") + 1] == "body":
+                return ok(self.pr_body)
             if cmd[1:3] == ["pr", "view"]:
                 self.viewed_pr = int(cmd[3])
             if cmd[1:3] == ["pr", "view"] and "headRefOid,headRefName" in cmd:
@@ -424,6 +448,18 @@ def test_check_outcomes_come_from_exit_codes_and_run_to_the_end() -> None:
         ({"status": "active", "handback_seal": {"x": 1}}, None, "receipt"),
         ({"status": "published"}, None, "wait-required"),
         (None, {"state": "OPEN", "number": 1}, "wait-required"),
+        ({"status": "published"}, {"state": "OPEN", "number": 1}, "wait-required"),
+        ({"status": "active"}, {"state": "OPEN", "number": 1}, "hand-back"),
+        (
+            {"status": "active", "handback_seal": {"x": 1}},
+            {"state": "OPEN", "number": 1},
+            "receipt",
+        ),
+        (
+            {"status": "cleanup_pending"},
+            {"state": "OPEN", "number": 1},
+            "release-published",
+        ),
         ({"status": "published"}, {"state": "MERGED", "number": 1}, "cleanup"),
     ],
 )
@@ -460,6 +496,10 @@ def test_new_lane_runs_every_stage_in_order_and_stops_before_merge() -> None:
     assert result["result"] == "ready-to-merge"
     assert result["pr"] == 77
     assert world.names() == ["adopt", "hand-back", "receipt", "publish"]
+    publish = next(
+        c for c in world.calls if c[0].endswith("delivery.py") and c[3] == "publish"
+    )
+    assert "--replaces-pr" not in publish  # only redeliver excludes a PR
 
 
 def _publish_call(world: FakeWorld) -> list[str]:
@@ -617,6 +657,37 @@ def test_a_published_lane_resumes_without_rerunning_checks() -> None:
     assert result["lane"] == "LANE-1"
     assert not any(c[0] == "bash" for c in world.calls)
     assert world.names() == []
+
+
+def test_an_open_pr_on_a_half_published_lane_completes_publish_not_ready() -> None:
+    world = FakeWorld(
+        record={
+            "branch": "feat/thing",
+            "status": "active",
+            "handback_seal": {"x": 1},
+            "base_sha": "f" * 40,
+            "external_ids": ["LANE-1"],
+        },
+        prs=[{"number": 9, "state": "OPEN"}],
+    )
+    code, result = ship(world)
+    assert code == 0
+    assert world.names() == ["receipt", "publish"]
+    assert result["result"] == "ready-to-merge"
+
+
+def test_a_cleanup_pending_lane_with_an_open_pr_is_released_before_waiting() -> None:
+    world = FakeWorld(
+        record={
+            "branch": "feat/thing",
+            "status": "cleanup_pending",
+            "external_ids": ["LANE-1"],
+        },
+        prs=[{"number": 9, "state": "OPEN"}],
+    )
+    code, _result = ship(world)
+    assert code == 0
+    assert world.names() == ["release-published"]
 
 
 def test_a_merged_pr_goes_straight_to_cleanup() -> None:
@@ -849,8 +920,22 @@ def test_a_neutral_review_followed_by_a_review_is_queued() -> None:
     assert result["review"]["accepted_no_review"] is None
 
 
+def _cr_verdict(
+    head: str = HEAD,
+    verdict: str = "APPROVE",
+    association: str = "OWNER",
+    login: str = "maintainer",
+) -> dict[str, Any]:
+    return {
+        "user": {"login": login},
+        "author_association": association,
+        "created_at": "2026-10-09T10:10:00Z",
+        "body": f"CR verdict: {verdict} {head}\nno P0/P1 at the exact head",
+    }
+
+
 def test_an_explicit_reason_queues_without_a_review_and_records_it() -> None:
-    world = FakeWorld(review_runs=[_NEUTRAL])
+    world = FakeWorld(review_runs=[_NEUTRAL], issue_comments=[_cr_verdict()])
     reason = "codex quota exhausted; reviewed by hand"
     code, result = ship(
         world, "--check", "u=good", "--merge", "--accept-no-review", reason
@@ -889,7 +974,9 @@ def _polls(world: FakeWorld) -> int:
 
 
 def test_accept_no_review_takes_a_settled_neutral_at_once_without_polling() -> None:
-    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE])
+    world = FakeWorld(
+        review_runs=[_NEUTRAL_UNAVAILABLE], issue_comments=[_cr_verdict()]
+    )
     reason = "CR verdict: no blockers at the exact head"
     code, result = ship(
         world, "--check", "u=good", "--merge", "--accept-no-review", reason
@@ -983,7 +1070,8 @@ def test_a_pending_review_is_still_waited_for_before_a_neutral_is_accepted() -> 
         review_runs=[
             [_review("in_progress", job=True)],
             _NEUTRAL_UNAVAILABLE,
-        ]
+        ],
+        issue_comments=[_cr_verdict()],
     )
     code, result = ship(
         world, "--check", "u=good", "--merge", "--accept-no-review", "CR ok"
@@ -991,6 +1079,39 @@ def test_a_pending_review_is_still_waited_for_before_a_neutral_is_accepted() -> 
     assert code == 0, result
     assert _polls(world) == 2
     assert world.sleeps != []
+
+
+@pytest.mark.parametrize(
+    "comments",
+    [
+        [],
+        [_cr_verdict(head="d" * 40)],
+        [_cr_verdict(verdict="REQUEST_CHANGES")],
+        [_cr_verdict(association="NONE")],
+        [_cr_verdict(login=BOT)],
+    ],
+    ids=["none", "other-head", "rejecting", "untrusted-author", "review-bot"],
+)
+def test_accept_no_review_needs_a_recorded_cr_verdict_on_the_exact_head(
+    comments: list[dict[str, Any]],
+) -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE], issue_comments=comments)
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "looks fine"
+    )
+    assert code == 1, result
+    assert "needs a recorded CR verdict" in result["error"]
+    assert f"CR verdict: APPROVE {HEAD}" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_cr_verdict_in_a_pr_review_body_also_counts() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL_UNAVAILABLE], pr_reviews=[_cr_verdict()])
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "CR ok"
+    )
+    assert code == 0, result
+    assert _calls_at(world, _is_queue)
 
 
 def test_accepting_no_review_does_not_override_a_failed_review() -> None:
@@ -1115,17 +1236,37 @@ def test_the_review_bots_are_read_from_the_workflow() -> None:
 # ---- gc -------------------------------------------------------------------
 
 
-def _gc_world(tmp_path: Path) -> FakeWorld:
+def _gc_world(tmp_path: Path, **state: Any) -> FakeWorld:
     gone = tmp_path / "gone"
     present = tmp_path / "present"
     present.mkdir()
-    world = FakeWorld(merged_prs={"feat/merged": 41})
+    world = FakeWorld(merged_prs={"feat/merged": 41, "feat/live": 42}, **state)
     records = [
-        {"branch": "feat/merged", "status": "published", "path": str(gone)},
+        {
+            "branch": "feat/merged",
+            "status": "published",
+            "path": str(gone),
+            "handed_back_sha": HEAD,
+        },
         {"branch": "feat/open", "status": "published", "path": str(gone)},
-        {"branch": "feat/live", "status": "published", "path": str(present)},
+        # merged, but the worktree still exists (#2419)
+        {
+            "branch": "feat/live",
+            "status": "published",
+            "path": str(present),
+            "handed_back_sha": HEAD,
+        },
+        # never published, so only the merged PR proves it is done
         {"branch": "feat/active", "status": "active", "path": str(gone)},
+        {
+            "branch": "feat/old",
+            "status": "merged",
+            "path": str(gone),
+            "handed_back_sha": HEAD,
+        },
     ]
+    world.merged_prs["feat/old"] = 43
+    world.merged_prs["feat/active"] = 44
     world.record = None
     original = world.__call__
 
@@ -1139,25 +1280,59 @@ def _gc_world(tmp_path: Path) -> FakeWorld:
     return world
 
 
-def test_gc_retires_only_published_lanes_whose_pr_merged(tmp_path: Path) -> None:
-    world = _gc_world(tmp_path)
+def _gc(world: FakeWorld, *, dry_run: bool = False) -> dict[str, Any]:
     import argparse
 
-    result = deliver.gc(
-        argparse.Namespace(dry_run=False), lambda cmd, cwd: world.__call__(cmd, cwd)
+    return deliver.gc(
+        argparse.Namespace(dry_run=dry_run), lambda cmd, cwd: world.__call__(cmd, cwd)
     )
-    assert result["retired"] == [{"branch": "feat/merged", "pr": 41, "applied": True}]
-    assert [k["branch"] for k in result["kept"]] == ["feat/open"]
+
+
+def test_gc_retires_every_live_lane_whose_pr_merged_even_with_its_worktree(
+    tmp_path: Path,
+) -> None:
+    world = _gc_world(tmp_path)
+    result = _gc(world)
+    assert result["retired"] == [
+        {"branch": "feat/merged", "pr": 41, "applied": True},
+        {"branch": "feat/live", "pr": 42, "applied": True},
+    ]
+    assert [k["branch"] for k in result["kept"]] == ["feat/open", "feat/active"]
+
+
+def test_gc_asks_github_once_however_many_records_there_are(tmp_path: Path) -> None:
+    world = _gc_world(tmp_path)
+    _gc(world)
+    assert [c for c in world.calls if c[1:3] == ["pr", "list"]] == []
+    assert len([c for c in world.calls if c[1] == "api"]) == 1
+
+
+def test_gc_keeps_a_lane_whose_head_is_not_in_the_merged_pr(tmp_path: Path) -> None:
+    world = _gc_world(tmp_path, old_is_ancestor=False, head="b" * 40)
+    result = _gc(world)
+    assert result["retired"] == []
+    assert {k["branch"] for k in result["kept"]} >= {"feat/merged", "feat/live"}
+
+
+def test_gc_fails_loudly_when_github_cannot_be_read(tmp_path: Path) -> None:
+    """A gh failure must not read as 'PR not merged' with exit 0 (#2760)."""
+    world = _gc_world(tmp_path)
+    inner = world.__call__
+
+    def gh_down(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        if cmd[:2] == ["gh", "api"]:
+            return deliver.Proc(1, "", "API rate limit exceeded")
+        return inner(cmd, cwd)
+
+    with pytest.raises(deliver.DeliverError, match="rate limit"):
+        deliver.gc(argparse.Namespace(dry_run=False), gh_down)
+    assert "cleanup-merged" not in world.names()
 
 
 def test_gc_dry_run_changes_nothing(tmp_path: Path) -> None:
     world = _gc_world(tmp_path)
-    import argparse
-
-    result = deliver.gc(
-        argparse.Namespace(dry_run=True), lambda cmd, cwd: world.__call__(cmd, cwd)
-    )
-    assert result["retired"] == [{"branch": "feat/merged", "pr": 41, "applied": False}]
+    result = _gc(world, dry_run=True)
+    assert [r["applied"] for r in result["retired"]] == [False, False]
     assert "cleanup-merged" not in world.names()
 
 
@@ -1234,23 +1409,23 @@ def _agent_record(**extra: Any) -> dict[str, Any]:
     }
 
 
-def test_an_agent_claim_with_a_stale_base_is_retired_and_readopted_on_trunk() -> None:
+def test_an_agent_claim_with_a_stale_base_is_readopted_in_one_call() -> None:
+    """#2466: retire + adopt are one orchestrator mutation (one lock lease)."""
     world = FakeWorld(branch="worktree-agent-abc123", record=_agent_record())
     code, result = ship(world, "--check", "docs=good")
     assert code == 0, result
-    assert world.names() == ["resolve", "adopt", "hand-back", "receipt", "publish"]
-    resolve = next(c for c in world.calls if c[1:2] == ["resolve"])
-    assert resolve[resolve.index("--status") + 1] == "abandoned"
-    assert resolve[resolve.index("--expected-head-sha") + 1] == "e" * 40
-    adopt = next(c for c in world.calls if c[1:2] == ["adopt"])
-    assert adopt[adopt.index("--base") + 1] == "f" * 40  # world.fork
+    assert world.names() == ["readopt", "hand-back", "receipt", "publish"]
+    readopt = next(c for c in world.calls if c[1:2] == ["readopt"])
+    assert _value(readopt, "--expected-head-sha") == "e" * 40
+    assert _value(readopt, "--expected-generation") == "0"
+    assert _value(readopt, "--base") == "f" * 40  # world.fork
 
 
 def _adopt_bases(world: FakeWorld) -> list[str]:
     return [
         _value(c, "--base")
         for c in world.calls
-        if c[0].endswith("worktree_orchestrate.py") and c[1] == "adopt"
+        if c[0].endswith("worktree_orchestrate.py") and c[1] in ("adopt", "readopt")
     ]
 
 
@@ -1261,23 +1436,22 @@ def test_a_readopt_after_a_lock_wait_declares_the_fork_not_a_moved_trunk() -> No
     world = FakeWorld(
         branch="worktree-agent-abc123",
         record=_agent_record(),
-        lock_busy={"resolve": 1, "adopt": 1},
+        lock_busy={"readopt": 2},
         trunk_moves_to=moved,
     )
     code, result = ship(world, "--check", "docs=good")
     assert code == 0, result
     assert world.trunk == moved  # main really moved during the wait
     assert world.names() == [
-        "resolve",
-        "resolve",
-        "adopt",
-        "adopt",
+        "readopt",
+        "readopt",
+        "readopt",
         "hand-back",
         "receipt",
         "publish",
     ]
     bases = _adopt_bases(world)
-    assert bases == [world.fork, world.fork]
+    assert bases == [world.fork] * 3
     assert all(deliver.SHA.fullmatch(b) for b in bases)
     assert deliver.TRUNK not in bases and moved not in bases
 
@@ -1393,14 +1567,10 @@ def test_stale_local_main_base_is_detected_in_a_real_agent_style_checkout(
         return deliver.run(cmd, cwd)
 
     delivery.runner = spy
-    assert delivery.reclaim_if_base_stale(
-        {"base_sha": stale, "handed_back_sha": "e" * 40}, "worktree-agent-x"
-    )
-    assert retired and "abandoned" in retired[0]
+    assert delivery.claim_base_is_stale({"base_sha": stale})
     fork = sh("git", "merge-base", "HEAD", "origin/main", cwd=repo)
-    assert not delivery.reclaim_if_base_stale(
-        {"base_sha": fork, "handed_back_sha": "e" * 40}, "worktree-agent-x"
-    )
+    assert not delivery.claim_base_is_stale({"base_sha": fork})
+    assert not retired  # detection retires nothing: readopt does, atomically
 
 
 def test_the_claim_base_stays_on_the_fork_when_origin_main_moves_on_real_git(
@@ -1851,6 +2021,7 @@ def test_redeliver_abandons_the_old_lane_with_the_registrys_generation_and_head(
         if c[0].endswith("delivery.py") and c[3] == "publish"
     )
     assert world.calls.index(close) > publish  # the link exists before the close
+    assert _value(world.calls[publish], "--replaces-pr") == "50"
     assert _call(world, "git", "push") == [
         "git",
         "push",
@@ -2209,3 +2380,71 @@ def test_redeliver_still_abandons_when_the_pr_stays_clean_across_the_wait() -> N
     assert _adopt_bases(world) == [world.fork]  # not the main fetched meanwhile
     graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
     assert len(graphql) >= 3  # run, retire, and once more before the retry
+
+
+# --- post-merge verification that every Closes issue closed (#2654) ---------
+
+_CLOSES_BODY = "## Issues\nCloses #2029\nCloses #2030\nRefs #9\n\n"
+
+
+def _issue_views(world: FakeWorld) -> list[str]:
+    return [c[3] for c in world.calls if c[1:3] == ["issue", "view"]]
+
+
+def test_merge_verifies_every_closes_issue_is_closed_after_cleanup() -> None:
+    world = FakeWorld(pr_body=_CLOSES_BODY)
+    code, result = ship(world, "--check", "unit=good", "--merge")
+    assert code == 0
+    assert result["result"] == "merged"
+    assert _issue_views(world) == ["2029", "2030"]  # Refs #9 is not read
+    assert world.names()[-2:] == ["cleanup-merged", "sync-main"]
+
+
+def test_merge_waits_briefly_for_github_to_close_the_issue() -> None:
+    world = FakeWorld(pr_body=_CLOSES_BODY, issue_states={2029: ["OPEN", "CLOSED"]})
+    code, result = ship(world, "--check", "unit=good", "--merge")
+    assert code == 0, result
+    assert _issue_views(world) == ["2029", "2029", "2030"]
+
+
+def test_merge_fails_loudly_when_a_closes_issue_is_still_open() -> None:
+    world = FakeWorld(pr_body=_CLOSES_BODY, issue_states={2030: ["OPEN"]})
+    code, result = ship(world, "--check", "unit=good", "--merge")
+    assert code == 1
+    assert "#2030" in result["error"] and "still open" in result["error"]
+
+
+def test_a_merged_pr_without_closes_reads_no_issue() -> None:
+    world = FakeWorld(prs=[{"number": 9, "state": "MERGED"}], pr_body="no issues")
+    code, _ = ship(world, "--merge")
+    assert code == 0
+    assert _issue_views(world) == []
+
+
+def test_run_survives_non_utf8_output(tmp_path: Path) -> None:
+    """A check that prints invalid UTF-8 must not crash the delivery (#2770)."""
+    cmd = [
+        sys.executable,
+        "-c",
+        "import sys; sys.stdout.buffer.write(b'ok \\xff\\xfe bad')",
+    ]
+    done = deliver.run(cmd, tmp_path)
+    assert done.returncode == 0
+    assert done.stdout.startswith("ok ")
+    assert "bad" in done.stdout
+
+
+@pytest.mark.parametrize("state", ["TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"])
+def test_every_red_required_state_fails_the_run(state: str) -> None:
+    """A terminal-red required check must fail fast, not poll to timeout (#2447)."""
+    world = FakeWorld(checks=[[{"name": "required", "state": state}]])
+    code, result = ship(world, "--check", "u=good")
+    assert code == 1
+    assert state in result["error"]
+
+
+@pytest.mark.parametrize("state", ["SKIPPED", "NEUTRAL"])
+def test_a_skipped_or_neutral_required_check_passes(state: str) -> None:
+    world = FakeWorld(checks=[[{"name": "required", "state": state}]])
+    code, _ = ship(world, "--check", "u=good")
+    assert code == 0

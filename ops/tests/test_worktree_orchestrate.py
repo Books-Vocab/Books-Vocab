@@ -51,10 +51,14 @@ def test_mutating_worktree_command_uses_shared_operation_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[tuple[str, object]] = []
+    waits: list[float | None] = []
 
     class FakeLock:
-        def __init__(self, repo: Path, *, command: str) -> None:
+        def __init__(
+            self, repo: Path, *, command: str, wait_seconds: float | None = None
+        ) -> None:
             events.append(("init", (repo, command)))
+            waits.append(wait_seconds)
 
         def __enter__(self) -> Self:
             events.append(("enter", None))
@@ -70,6 +74,13 @@ def test_mutating_worktree_command_uses_shared_operation_lock(
     assert events[0][0] == "init"
     assert events[0][1][1] == "worktree:open"  # type: ignore[index]
     assert [item[0] for item in events] == ["init", "enter", "exit"]
+    assert waits == [None]
+
+    events.clear()
+    waits.clear()
+    argv = ["--lock-timeout", "45", "open", "--intent", "test", "--slug", "lock"]
+    assert coordinator.main(argv) == 0
+    assert waits == [45.0]
 
     events.clear()
     monkeypatch.setattr(coordinator, "cmd_preflight", lambda args: 0)
@@ -374,6 +385,63 @@ def test_open_requires_external_id_before_registry_or_worktree_mutation(
         "reason": "--external-id is required for delegated or owner-bound open",
     }
     assert not worktree.exists()
+
+
+def _open_refusal_args(tmp_path: Path, **overrides: object) -> Namespace:
+    values: dict[str, object] = {
+        "slug": "refusal-lane",
+        "intent": "fix direct lane identity",
+        "type": "debug",
+        "path": str(tmp_path / "worktree"),
+        "external_id": ["DIRECT-TEST-REFUSAL"],
+        "base": "origin/main",
+        "codex_thread_id": "owner-thread",
+        "delegated": True,
+        "state": str(tmp_path / "registry.json"),
+        "scope": json.dumps(_scope_for("ops/example.py")),
+        "scope_file": None,
+        "json": True,
+    }
+    values.update(overrides)
+    return Namespace(**values)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        (
+            {"scope": None},
+            "--scope or --scope-file is required to open a lane (#2658)",
+        ),
+        (
+            {"codex_thread_id": None},
+            "--codex-thread-id is required for delegated open (#2658)",
+        ),
+    ],
+)
+def test_open_refuses_missing_scope_or_owner_before_any_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    overrides: dict[str, object],
+    reason: str,
+) -> None:
+    monkeypatch.setattr(coordinator, "_require_unfrozen", lambda command: None)
+    for name in ("_resolve_commit", "_registry_register", "_git"):
+        monkeypatch.setattr(
+            coordinator,
+            name,
+            lambda *_a, **_k: pytest.fail("refusal must precede every mutation"),
+        )
+
+    args = _open_refusal_args(tmp_path, **overrides)
+
+    assert coordinator.cmd_open(args) == coordinator.EXIT_USAGE
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "refused"
+    assert payload["reason"] == reason
+    assert not (tmp_path / "worktree").exists()
+    assert not (tmp_path / "registry.json").exists()
 
 
 def test_open_accepts_external_id_for_owner_bound_open(
@@ -3238,3 +3306,331 @@ def test_adopt_accepts_scope_sharing_only_an_allowlisted_file(
     assert adopt(shared, "ios/issue_1033.py") == coordinator.EXIT_OK
     [_, adopted] = coordinator.registry.load_state(state_path)["records"]
     assert adopted["scope"]["files"][0]["path"] == shared
+
+
+def test_readopt_retires_and_adopts_under_one_lease(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2466: a competing overlapping `open` cannot slip in between the retire
+    and the adopt, because both run inside one operation-lock lease."""
+    repo = _synthetic_rebase_refs(tmp_path)
+    state_path = tmp_path / "worktree_registry.json"
+    scope = json.dumps(
+        {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ios/issue_1033.py", "operation": "add"}],
+        }
+    )
+    # the registry's stored head of an unsealed claim in another repo is its base
+    head = _git(repo, "rev-parse", "main")
+    adopt_argv = [
+        "--state",
+        str(state_path),
+        "--worktree",
+        str(repo),
+        "--intent",
+        "agent worktree",
+        "--external-id",
+        "ISSUE-9",
+        "--scope",
+        scope,
+        "--codex-thread-id",
+        "worker-thread",
+        "--delegated",
+        "--json",
+    ]
+    assert coordinator.main(["adopt", *adopt_argv, "--base", "main"]) == 0
+    capsys.readouterr()
+
+    competing: list[subprocess.CompletedProcess[str]] = []
+    real_adopt = coordinator.cmd_adopt
+
+    def adopt_with_a_rival(args: Namespace) -> int:
+        competing.append(
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(coordinator.__file__)),
+                    "open",
+                    "--state",
+                    str(state_path),
+                    "--intent",
+                    "rival",
+                    "--slug",
+                    "rival",
+                    "--external-id",
+                    "ISSUE-RIVAL",
+                    "--scope",
+                    scope,
+                    "--codex-thread-id",
+                    "rival-thread",
+                    "--delegated",
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        )
+        return real_adopt(args)
+
+    monkeypatch.setattr(coordinator, "cmd_adopt", adopt_with_a_rival)
+
+    rc = coordinator.main(
+        [
+            "readopt",
+            *adopt_argv,
+            "--base",
+            "base",
+            "--expected-generation",
+            "0",
+            "--expected-head-sha",
+            head,
+        ]
+    )
+    capsys.readouterr()
+
+    assert rc == coordinator.EXIT_OK
+    [rival] = competing
+    assert rival.returncode != 0
+    assert "delivery mutation already in progress" in rival.stdout + rival.stderr
+    records = coordinator.registry.load_state(state_path)["records"]
+    active = [r for r in records if r["status"] == "active"]
+    assert [r["status"] for r in records].count("abandoned") == 1
+    assert len(active) == 1
+    assert active[0]["base_sha"] == _git(repo, "rev-parse", "base")
+    assert active[0]["scope"]["files"] == [
+        {"path": "ios/issue_1033.py", "operation": "add"}
+    ]
+
+
+def test_readopt_leaves_the_claim_when_the_retire_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    state_path = tmp_path / "worktree_registry.json"
+    argv = [
+        "--state",
+        str(state_path),
+        "--worktree",
+        str(repo),
+        "--intent",
+        "agent worktree",
+        "--external-id",
+        "ISSUE-9",
+        "--scope-from-diff",
+        "--codex-thread-id",
+        "worker-thread",
+        "--delegated",
+        "--json",
+    ]
+    assert coordinator.main(["adopt", *argv, "--base", "main"]) == 0
+    rc = coordinator.main(
+        [
+            "readopt",
+            *argv,
+            "--base",
+            "base",
+            "--expected-generation",
+            "0",
+            "--expected-head-sha",
+            "0" * 40,  # not the claim's head: the registry CAS refuses
+        ]
+    )
+    capsys.readouterr()
+    assert rc != coordinator.EXIT_OK
+    [record] = coordinator.registry.load_state(state_path)["records"]
+    assert record["status"] == "active"
+
+
+def test_retire_ghosts_dry_run_then_apply_abandons_only_the_ghost(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    scope = {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": "ops/ghost_scope.py", "operation": "modify"}],
+    }
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+
+    def lane(branch: str, path: Path) -> dict:
+        return {
+            "branch": branch,
+            "path": str(path),
+            "intent": "fix",
+            "base": "origin/main",
+            "status": "active",
+            "external_ids": [],
+            "scope": scope if "ghost" in branch else None,
+            "claim_generation": 0,
+            "handed_back_at": None,
+            "handed_back_sha": None,
+        }
+
+    state_file = tmp_path / "registry.json"
+    coordinator.registry.save_state(
+        state_file,
+        {
+            "schema": coordinator.registry.SCHEMA,
+            "records": [
+                lane("debug/ghost-2771", tmp_path / "gone"),
+                lane("debug/live-2771", live_dir),
+            ],
+        },
+    )
+
+    class NoLock:
+        def __init__(self, *a: object, **k: object) -> None: ...
+        def __enter__(self) -> "NoLock":
+            return self
+
+        def __exit__(self, *a: object) -> bool:
+            return False
+
+    monkeypatch.setattr(coordinator, "OperationLock", NoLock)
+    state = ["--state", str(state_file), "--json"]
+
+    assert coordinator.main(["preflight", *state]) == 0
+    listed = json.loads(capsys.readouterr().out)["ghosts"]
+    assert [g["branch"] for g in listed] == ["debug/ghost-2771"]
+
+    assert coordinator.main(["retire-ghosts", *state]) == 0
+    assert not json.loads(capsys.readouterr().out)["retired"]
+    statuses = {
+        r["branch"]: r["status"]
+        for r in coordinator.registry.load_state(state_file)["records"]
+    }
+    assert statuses == {"debug/ghost-2771": "active", "debug/live-2771": "active"}
+
+    assert coordinator.main(["retire-ghosts", "--apply", *state]) == 0
+    assert len(json.loads(capsys.readouterr().out)["retired"]) == 1
+    statuses = {
+        r["branch"]: r["status"]
+        for r in coordinator.registry.load_state(state_file)["records"]
+    }
+    assert statuses == {"debug/ghost-2771": "abandoned", "debug/live-2771": "active"}
+
+    new_state = coordinator.registry.load_state(state_file)
+    rc, _ = coordinator.registry._register_record(
+        new_state,
+        branch="debug/new-2771",
+        path=str(tmp_path / "new"),
+        intent="fix",
+        base="main",
+        external_ids=[],
+        scope=scope,
+    )
+    assert rc == coordinator.registry.EXIT_OK
+
+
+def _rerun_resolve_world(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    record_extra: dict[str, Any],
+) -> tuple[Namespace, list[list[str]], list[list[str]]]:
+    branch = "debug/rerun"
+    expected = "e" * 40
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
+        calls.append(args)
+        if args[:2] == ["show-ref", "--verify"]:
+            return 0, f"{expected} refs/heads/{branch}"
+        if args == ["branch", "--show-current"]:
+            return 0, branch
+        return 0, ""
+
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_git", fake_git)
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False, **_kw: (
+            registry_calls.append(argv) or coordinator.registry.EXIT_CLAIMED
+        ),
+    )
+    state = tmp_path / "state.json"
+    record = {
+        "branch": branch,
+        "path": str(worktree),
+        "status": "abandoned",
+        "claim_generation": 3,
+        "handed_back_sha": expected,
+        **record_extra,
+    }
+    state.write_text(json.dumps({"records": [record]}))
+    args = Namespace(
+        status="abandoned",
+        branch=branch,
+        path=str(worktree),
+        state=str(state),
+        json=True,
+        expected_generation=3,
+        expected_head_sha=expected,
+        remove=True,
+    )
+    return args, calls, registry_calls
+
+
+def test_resolve_remove_rerun_finishes_cleanup_of_an_already_abandoned_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cleanup that blocked after the abandon CAS can be re-driven (#2761)."""
+    args, calls, registry_calls = _rerun_resolve_world(
+        tmp_path, monkeypatch, record_extra={}
+    )
+    assert coordinator.cmd_resolve(args) == coordinator.EXIT_OK
+    assert not registry_calls  # the CAS is not retried
+    assert ["branch", "-D", "--", args.branch] in calls
+
+
+def test_resolve_remove_rerun_ignores_a_mismatched_abandoned_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    args, calls, registry_calls = _rerun_resolve_world(
+        tmp_path, monkeypatch, record_extra={"claim_generation": 2}
+    )
+    assert coordinator.cmd_resolve(args) == coordinator.registry.EXIT_CLAIMED
+    assert ["branch", "-D", "--", args.branch] not in calls
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [b"{not json", b"[1, 2]", b"\xff\xfe\x00bad", b"null"],
+    ids=["bad-json", "non-dict", "bad-utf8", "null"],
+)
+def test_freeze_fails_closed_on_unreadable_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, contents: bytes
+) -> None:
+    path = tmp_path / "worktree-freeze.json"
+    path.write_bytes(contents)
+    monkeypatch.setattr(coordinator, "_freeze_path", lambda: path)
+    refusal = coordinator._require_unfrozen("open")
+    assert refusal is not None
+    assert "frozen" in refusal
+
+
+def test_freeze_fails_closed_on_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "worktree-freeze.json"
+    path.mkdir()  # reading a directory raises OSError (not FileNotFoundError)
+    monkeypatch.setattr(coordinator, "_freeze_path", lambda: path)
+    assert coordinator._require_unfrozen("open") is not None
+
+
+def test_freeze_absent_file_is_not_frozen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        coordinator, "_freeze_path", lambda: tmp_path / "worktree-freeze.json"
+    )
+    assert coordinator._is_frozen() is None
+    assert coordinator._require_unfrozen("open") is None

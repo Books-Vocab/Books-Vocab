@@ -2,12 +2,42 @@
 
 from __future__ import annotations
 
+import signal
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from ..domain.errors import CompareAndSwapConflict
 from ..ports.git import GitQueryPort
 from .errors import AdapterCommandError, AdapterPayloadError
 from .git_client import GitCliClient
+
+
+@contextmanager
+def _sigterm_as_exit() -> Iterator[None]:
+    """Turn SIGTERM into SystemExit so `finally`/compensation code still runs."""
+
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def _raise(signum: int, frame: object) -> None:
+        del frame
+        raise SystemExit(128 + signum)
+
+    previous = signal.signal(signal.SIGTERM, _raise)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def _best_effort(compensate: Callable[[], object]) -> None:
+    """Run compensation while another exception is already propagating."""
+
+    with suppress(Exception):  # the in-flight exception must win
+        compensate()
 
 
 class GitCommands:
@@ -211,7 +241,22 @@ class GitCommands:
     def park_main_to_origin(
         self, *, expected_local_sha: str, expected_origin_sha: str
     ) -> str:
-        """CAS-park a preserved local main tip without reset/rebase/merge."""
+        """CAS-park a preserved local main tip without reset/rebase/merge.
+
+        The canonical checkout is always returned to `main`, including when the
+        process is interrupted (KeyboardInterrupt, SIGTERM) or hits an unexpected
+        exception while HEAD is detached.
+        """
+
+        with _sigterm_as_exit():
+            return self._park_main_to_origin(
+                expected_local_sha=expected_local_sha,
+                expected_origin_sha=expected_origin_sha,
+            )
+
+    def _park_main_to_origin(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str:
 
         if expected_local_sha == expected_origin_sha:
             raise CompareAndSwapConflict(
@@ -288,6 +333,9 @@ class GitCommands:
             if compensation_error is not None:
                 detail += f"; compensation failed: {compensation_error}"
             raise CompareAndSwapConflict(detail) from error
+        except BaseException:
+            _best_effort(compensate)
+            raise
 
         try:
             if self.client.run("branch", "--show-current") != "main":
@@ -314,5 +362,8 @@ class GitCommands:
             if compensation_error is not None:
                 detail += f"; compensation failed: {compensation_error}"
             raise CompareAndSwapConflict(detail) from error
+        except BaseException:
+            _best_effort(compensate)
+            raise
         main_parked = False
         return expected_origin_sha
