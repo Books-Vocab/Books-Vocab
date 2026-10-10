@@ -1071,3 +1071,51 @@ def test_valid_key_does_not_consume_auth_failure_budget_issue_2803(external_api,
     codes = [external_api.client.get("/api/v1/cards", headers=headers).status_code for _ in range(4)]
 
     assert codes == [200, 200, 200, 200]
+
+
+def test_external_card_meaning_update_evicts_stale_embedding(external_api, monkeypatch):
+    """#2688: a meaning edit must drop the card's vector so the pipeline re-embeds it."""
+    import numpy as np
+
+    from kg.deps import _embedding_store
+    from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
+    from kg.service_factories import clear_store_cache
+
+    monkeypatch.setattr(
+        EmbeddingStore,
+        "_embed",
+        lambda self, texts, *, llm=None: np.ones((len(texts), EMBEDDING_DIM), dtype=np.float32),
+    )
+    clear_store_cache()
+    try:
+        headers = {"X-KG-API-Key": _create_key(external_api)}
+        created = external_api.client.post("/api/v1/cards", json={"content": "stale", "meaning": "舊"}, headers=headers)
+        assert created.status_code == 201, created.text
+        card_id = created.json()["card"]["id"]
+        store = _embedding_store(external_api.data_dir / "users" / external_api.user_id, llm=None)
+        store.add(card_id, "stale: 舊")
+        assert store.has(card_id)
+
+        note = external_api.client.patch(f"/api/v1/cards/{card_id}", json={"note": "n"}, headers=headers)
+        assert note.status_code == 200, note.text
+        assert store.has(card_id)
+
+        edited = external_api.client.patch(f"/api/v1/cards/{card_id}", json={"meaning": "新"}, headers=headers)
+        assert edited.status_code == 200, edited.text
+        assert not store.has(card_id)
+    finally:
+        clear_store_cache()
+
+
+def test_external_card_meaning_update_survives_embedding_eviction_failure(external_api, monkeypatch):
+    headers = {"X-KG-API-Key": _create_key(external_api)}
+    created = external_api.client.post("/api/v1/cards", json={"content": "robust", "meaning": "舊"}, headers=headers)
+    card_id = created.json()["card"]["id"]
+
+    def boom(*_a, **_k):
+        raise OSError("embedding store unavailable")
+
+    monkeypatch.setattr(external_router, "_embedding_store", boom)
+    edited = external_api.client.patch(f"/api/v1/cards/{card_id}", json={"meaning": "新"}, headers=headers)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["meaning"] == "新"

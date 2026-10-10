@@ -223,13 +223,6 @@ def _parse_since_timestamp(raw: str) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _utc_instant(value: datetime) -> datetime:
-    """Interpret naive card timestamps as UTC and normalize aware values."""
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
 class CardMutator(Protocol):
     def __call__(self, card: VocabCard) -> None: ...
 
@@ -272,14 +265,11 @@ def list_vocab_cards(
             raise BadRequestError("Cursor scope mismatch")
     after_position = None if after is None else (after[0], after[1])
     if since is not None:
-        # Incremental: fetch the modified set (already bounded), then order and
-        # slice it by the same cursor so since + full-sync paginate identically.
-        modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id, **store_filter)
-        modified = sorted(modified, key=lambda c: (_utc_instant(c.updated_at), c.id))
-        if after_position is not None:
-            after_instant = _utc_instant(after_position[0])
-            modified = [c for c in modified if (_utc_instant(c.updated_at), c.id) > (after_instant, after_position[1])]
-        cards = modified[:limit]
+        # Incremental: SQL-bounded page in (updated_at, id) order, same cursor
+        # as full-sync so both paths paginate identically.
+        cards = cards_store.get_modified_since(
+            naive_since, notebook_id=notebook_id, limit=limit, after=after_position, **store_filter
+        )
     else:
         # Full sync: DB-bounded page (no full-table materialisation).
         cards = cards_store.page_cards(
@@ -366,9 +356,13 @@ def update_vocab_word_content(
     cards_store: Any,
     graph: Any,
     card_response_builder: CardResponseBuilder,
+    embeddings: Any = None,
     notebook_id: str | None = None,
 ) -> CardResponse:
     """Update editorial content (meaning / note) of a single card.
+
+    A changed meaning evicts the card's vector (``embed_text`` embeds it) so
+    the next pipeline pass re-embeds it instead of ranking on stale text.
 
     `explanation` is a write-through alias for the `note` column; an explicit
     `note` takes precedence when both are supplied. Raises BadRequestError when
@@ -388,6 +382,8 @@ def update_vocab_word_content(
         raise BadRequestError("No content fields to update")
 
     cards_store.update(card.id, **updates)
+    if "meaning" in updates and updates["meaning"] != card.meaning:
+        _evict_embedding(embeddings, card.id)
 
     # Re-read the card + its graph neighbours so the response reflects the
     # committed state (mirrors lookup_vocab_word's neighbour resolution).
