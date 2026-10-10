@@ -195,12 +195,14 @@ class CardMutationMixin:
         """
         removed = 0
         cards = list(self.all(include_deleted=False, notebook_id=notebook_id))
-        seen: dict[str, Card] = {}
+        seen: dict[tuple[str, str], Card] = {}
         to_delete: list[Card] = []
-        deleted_keys: set[str] = set()
+        deleted_keys: set[tuple[str, str]] = set()
 
         for card in cards:
-            key = normalize_nfc_lower(card.content)
+            # Scope by notebook: with notebook_id=None the same word in different
+            # notebooks is not a duplicate (#2695).
+            key = (card.notebook_id, normalize_nfc_lower(card.content))
             if key in seen:
                 keeper = seen[key]
                 if (card.review_count, -card.created_at.timestamp()) > (
