@@ -56,7 +56,10 @@ fi
 printf 'cpu_pct\t4.2\n'; printf 'mem_pct\t38.0\n'
 printf 'ingress\t%s\n' "${KG_TEST_INGRESS:-active}"
 printf 'log_errors_1h\t%s\n' "${KG_TEST_ERRS:-0}"
-printf 'data_dir_mb\t393\n'
+printf 'data_dir_mb\t%s\n' "${KG_TEST_DATA_MB-393}"
+# 資料目錄守衛（#2921）：預設健康（目錄在、5 個用戶目錄）。無冒號形式，讓空字串能表達「量不到」。
+printf 'data_dir_exists\t%s\n' "${KG_TEST_DATA_EXISTS-yes}"
+printf 'users_dir_count\t%s\n' "${KG_TEST_USERS-5}"
 # 部署漂移組。預設值刻意是**健康**的（兩 sha 相同、心跳 60s 前、無 poison），否則上面
 # 那條「全綠 overall=ok」的既有斷言會紅。
 # **一律 ${VAR-default}（無冒號）**：冒號形式在變數「已設但為空字串」時也會代入 default，
@@ -447,7 +450,7 @@ exec_health() {  # 真跑 bundle（本機探針失敗無妨，漂移組只吃 fi
   # `docker logs $KG_CONTAINER`，不釘的話在 **felix 上兩者都是生產**，測試耗時會變成
   # 生產資料量的函數（唯讀，無安全問題，但成本不該綁在生產上）。
   KG_BASE="$EXECBASE" KG_EXEC_FAKEBIN="$EXECBIN" KG_PROD_REPO="$FIXPROD" \
-  KG_DATA_DIR="$FIXPROD/backups" KG_CONTAINER="kg-test-no-such-container" \
+  KG_DATA_DIR="${EXEC_DATA_DIR:-$FIXPROD/backups}" KG_CONTAINER="kg-test-no-such-container" \
   KG_HEALTH_CERT_ENDDATE="$FUTURE_CERT" KG_HEALTH_HTTP_CODE=200 \
     bash "$SCRIPT" --json 2>/dev/null
 }
@@ -459,6 +462,15 @@ echo "$ej" | py 'import sys,json,time;d=json.load(sys.stdin);now=int(time.time()
   && ok "真執行：tick epoch 經 bundle→getm 正確到位" || fail_t "真執行：tick 值沒到 getm"
 echo "$ej" | py 'import sys,json,time;d=json.load(sys.stdin);now=int(time.time());g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"][0];assert g["raw"] is not None,g;e=now-g["raw"];assert abs(e-2000)<300,("取到的不是最大 epoch",g,e)' \
   && ok "真執行：poison 取最大 epoch（非最後一行）" || fail_t "真執行：poison 取值錯誤"
+
+# 資料目錄守衛（#2921）真執行：bundle 的 find/[ -d ] 產出必須被 getm 讀到（stub 測試行使不到）。
+mkdir -p "$FIXPROD/dd/users/a" "$FIXPROD/dd/users/b"
+dj="$(EXEC_DATA_DIR="$FIXPROD/dd" exec_health || true)"
+echo "$dj" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="users_dir_count"][0];assert g["raw"]==2 and g["status"]=="ok",g' \
+  && ok "真執行：users_dir_count 經 bundle 到位（2 個目錄）" || fail_t "真執行：users_dir_count 值沒到 getm"
+dj="$(EXEC_DATA_DIR="$FIXPROD/no-such-dd" exec_health || true)"
+echo "$dj" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="data_dir_mb"][0];assert g["status"]=="crit",g' \
+  && ok "真執行：資料目錄不存在 → data_dir_mb crit" || fail_t "真執行：資料目錄缺失未 crit"
 
 # 漂移：讓 origin/prod 前進一個 commit，HEAD 留在原地
 ( cd "$FIXPROD" && echo y > f2 && git add -A && git commit -qm next \
@@ -578,6 +590,21 @@ echo "$(run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.st
   && ok "預設（開關未設）三個 metric 都在（正控）" || fail_t "預設三個 metric 未全部出現"
 echo "$(KG_HEALTH_DEPLOY_DRIFT=0 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);ks={m["key"] for m in d["metrics"]};assert not (ks & {"deploy_drift","reconciler_tick_age_s","reconciler_poison_active"}),ks' \
   && ok "KG_HEALTH_DEPLOY_DRIFT=0 → 三個 metric 不出現" || fail_t "開關無效"
+
+section "資料目錄守衛（#2921）：缺失／無用戶／驟降 → crit，可關閉"
+dm() { py 'import sys,json;d=json.load(sys.stdin);k=sys.argv[1];g=[m for m in d["metrics"] if m["key"]==k];assert g,("missing",k);assert g[0]["status"]==sys.argv[2],g' "$1" "$2"; }
+echo "$(run_health --json 2>/dev/null)" | dm users_dir_count ok && ok "正控：5 個用戶目錄 → users_dir_count ok" || fail_t "正控 users_dir_count 非 ok"
+echo "$(run_health --json 2>/dev/null)" | dm data_dir_mb ok && ok "正控：data_dir_mb ok" || fail_t "正控 data_dir_mb 非 ok"
+echo "$(KG_TEST_USERS=0 run_health --json 2>/dev/null)" | dm users_dir_count crit && ok "users=0 → crit" || fail_t "users=0 未 crit"
+echo "$(KG_TEST_DATA_EXISTS=no KG_TEST_DATA_MB= KG_TEST_USERS= run_health --json 2>/dev/null)" | dm data_dir_mb crit && ok "資料目錄不存在 → data_dir_mb crit" || fail_t "資料目錄缺失 data_dir_mb 未 crit"
+echo "$(KG_TEST_DATA_EXISTS=no KG_TEST_DATA_MB= KG_TEST_USERS= run_health --json 2>/dev/null)" | dm users_dir_count crit && ok "資料目錄不存在 → users_dir_count crit" || fail_t "資料目錄缺失 users_dir_count 未 crit"
+set +e; KG_TEST_USERS=0 run_health --json >/dev/null 2>&1; rc=$?; set -e
+[[ $rc -eq 2 ]] && ok "users=0 → exit 2（cron alert 路徑）" || fail_t "users=0 exit=$rc（預期 2）"
+echo "$(KG_HEALTH_DATA_MB_BASELINE=1000 KG_TEST_DATA_MB=100 run_health --json 2>/dev/null)" | dm data_dir_mb crit && ok "容量跌破基線 50% → crit" || fail_t "容量驟降未 crit"
+echo "$(KG_HEALTH_DATA_MB_BASELINE=1000 KG_TEST_DATA_MB=600 run_health --json 2>/dev/null)" | dm data_dir_mb ok && ok "容量僅降 40% → ok" || fail_t "容量小降誤報"
+echo "$(KG_HEALTH_USERS_BASELINE=100 KG_TEST_USERS=10 run_health --json 2>/dev/null)" | dm users_dir_count crit && ok "用戶數跌破基線 50% → crit" || fail_t "用戶數驟降未 crit"
+echo "$(KG_HEALTH_DATA_GUARD=0 KG_TEST_USERS=0 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);ks={m["key"] for m in d["metrics"]};assert "users_dir_count" not in ks,ks;g=[m for m in d["metrics"] if m["key"]=="data_dir_mb"][0];assert g["status"]=="ok",g' \
+  && ok "KG_HEALTH_DATA_GUARD=0 → 無 users_dir_count、data_dir_mb 回到資訊性" || fail_t "守衛開關無效"
 
 echo ""
 echo "═══ infra_health v2: $pass passed, $fail failed ═══"

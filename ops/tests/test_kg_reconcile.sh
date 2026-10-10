@@ -346,6 +346,11 @@ run_recon() {
     export KG_LOCAL_HEALTH_URL="http://localhost:8000/api/system/info"
     export KG_LOCK_DIR="$LOCK"
     export KG_GH_TOKEN_ENV="$SC/no-such-token.env"
+    # 資料目錄守衛（#2921）：永遠指向 scratch 內的 stub，絕不碰真實 ~/kg-data。
+    # 預設 stub 有 1 個用戶；案例用 KG_DATA_DIR_OVERRIDE 改指向缺失／空目錄。
+    [[ -d "$SC/kg-data/users/u1" ]] || mkdir -p "$SC/kg-data/users/u1"
+    export KG_DATA_DIR="${KG_DATA_DIR_OVERRIDE:-$SC/kg-data}"
+    export KG_DATA_BASELINE_FILE="$SC/backups/data_dir.baseline"
     export KG_RECON_HEALTH_DELAY=0
     export KG_RECON_HEALTH_ATTEMPTS=2
     # 預設指向 scratch repo 裡不存在的 helper（= 生產 clone 尚未帶到 helper 的情形）；
@@ -1160,6 +1165,52 @@ EOF
 )" "$SC" "$SERVEDFILE")"
 out="$(MOCK_EXTERNAL_FAIL_FIRST=99 MOCK_READY_EXTERNAL=000 run_recon --once 2>/dev/null)"; rc=$?
 [[ "$(get_verdict "$out")" == "deployed" ]] && grep -q '"smoke":"unverified"' <<<"$out" && ok "ready outage: 斷網維持 unverified 落地（不因 readiness 假回滾）" || bad "ready outage: verdict=$(get_verdict "$out") out=$out"
+
+section "資料目錄守衛（#2921）：缺失／清空／驟降必須告警"
+# 正控：健康 stub → noop 且寫基線。
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+out="$(run_recon --once 2>"$SC/dd.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "noop" && "$rc" -eq 0 ]] && ok "data guard 正控：健康 stub → noop" || bad "data guard 正控: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "ALERT" "$SC/dd.err" && bad "data guard 正控：不該有 ALERT" || ok "data guard 正控：無 ALERT"
+[[ -s "$SC/backups/data_dir.baseline" ]] && ok "data guard：基線已寫入" || bad "data guard：基線未寫入"
+
+# 1) 資料目錄不存在
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+out="$(KG_DATA_DIR_OVERRIDE="$SC/gone" run_recon --once 2>"$SC/dd.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 ]] && ok "data dir 缺失 → unhealthy 非 0" || bad "data dir 缺失: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "ALERT: 資料目錄不存在" "$SC/dd.err" && ok "data dir 缺失 → ALERT" || bad "data dir 缺失: 無 ALERT ($(cat "$SC/dd.err"))"
+
+# 2) users/ 子目錄數 0
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+mkdir -p "$SC/empty/users"
+out="$(KG_DATA_DIR_OVERRIDE="$SC/empty" run_recon --once 2>"$SC/dd.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "unhealthy" && "$rc" -ne 0 ]] && ok "users/ 為空 → unhealthy 非 0" || bad "users/ 為空: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "ALERT: .*沒有任何用戶子目錄" "$SC/dd.err" && ok "users/ 為空 → ALERT" || bad "users/ 為空: 無 ALERT"
+
+# 3) 用戶數驟降（基線 10 → 現 1）：只告警，不 gate
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+mkdir -p "$SC/backups"; printf '1 10\n' > "$SC/backups/data_dir.baseline"
+out="$(run_recon --once 2>"$SC/dd.err")"; rc=$?
+grep -q "ALERT: 用戶目錄數驟降" "$SC/dd.err" && ok "用戶數驟降 → ALERT" || bad "用戶數驟降: 無 ALERT ($(cat "$SC/dd.err"))"
+[[ "$(get_verdict "$out")" == "noop" && "$rc" -eq 0 ]] && ok "用戶數驟降：不 gate（noop）" || bad "用戶數驟降: verdict=$(get_verdict "$out") rc=$rc"
+[[ "$(cat "$SC/backups/data_dir.baseline")" == "1 10" ]] && ok "驟降時基線不被覆寫" || bad "驟降時基線被覆寫"
+
+# 4) 容量驟降（基線 5000MB → 現 <1MB）
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+mkdir -p "$SC/backups"; printf '5000 1\n' > "$SC/backups/data_dir.baseline"
+run_recon --once >/dev/null 2>"$SC/dd.err"
+grep -q "ALERT: 資料目錄容量驟降" "$SC/dd.err" && ok "容量驟降 → ALERT" || bad "容量驟降: 無 ALERT ($(cat "$SC/dd.err"))"
+
+# 5) 關閉開關
+new_scratch none
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+out="$(KG_RECON_DATA_GUARD=0 KG_DATA_DIR_OVERRIDE="$SC/gone" run_recon --once 2>/dev/null)"
+[[ "$(get_verdict "$out")" == "noop" ]] && ok "KG_RECON_DATA_GUARD=0 → 不檢查" || bad "guard=0: verdict=$(get_verdict "$out")"
 
 echo ""
 echo "══════════════════════════════"
