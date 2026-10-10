@@ -521,6 +521,10 @@ struct NotebookListContent: View {
 
     private func exportNotebook(_ notebook: Notebook, format: NotebookExportFormat) {
         let entries = allEntries.filter { $0.notebookId == notebook.remoteId }
+        guard !entries.isEmpty else {
+            toastCoordinator.error(L10n.string("單字本沒有可匯出的單字"))
+            return
+        }
         let url: URL?
         switch format {
         case .csv:

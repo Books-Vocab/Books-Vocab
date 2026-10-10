@@ -114,4 +114,28 @@ struct VocabularyExporterPOSTests {
     @Test func test_anki_exports_are_independent() throws {
         try expectIndependentExports(VocabularyExporter.exportAsAnki(entries:))
     }
+
+    @Test func test_csv_starts_with_utf8_bom_and_keeps_chinese() throws {
+        let url = try #require(VocabularyExporter.exportAsCSV(entries: [makeEntry()]))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let data = try Data(contentsOf: url)
+        // Excel reads BOM-less UTF-8 as ANSI and garbles the Chinese translation.
+        #expect(data.prefix(3) == Data([0xEF, 0xBB, 0xBF]))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.contains("\"引用\""))
+    }
+
+    @Test func test_anki_html_escapes_fields_but_keeps_small_wrapper() throws {
+        let entry = VocabularyEntry(
+            word: "a<b",
+            translation: "x & y > z",
+            context: "a<b & c>",
+            bookTitle: "B"
+        )
+        let tsv = try read(VocabularyExporter.exportAsAnki(entries: [entry]))
+        #expect(tsv.contains("<small>a&lt;b &amp; c&gt;</small>"))
+        #expect(tsv.contains("a&lt;b<br><small>"))
+        #expect(tsv.contains("x &amp; y &gt; z"))
+        #expect(!tsv.contains("a<b & c>"))
+    }
 }
