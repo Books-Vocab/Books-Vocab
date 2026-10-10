@@ -11,14 +11,20 @@ enum L10n {
 
     /// Three-tier lookup: current language bundle → en bundle → key itself.
     /// Why: 缺鍵時回中文 key 原文會在非 CJK locale 漏出中文字面,違反在地化品質。
-    private static func lookup(_ key: String, in current: Bundle) -> String {
+    /// `fallback` is injectable so the three-tier rule can be exercised against
+    /// fixture bundles without depending on which keys the real locales contain.
+    static func lookup(_ key: String, in current: Bundle, fallback: Bundle?) -> String {
         let primary = current.localizedString(forKey: key, value: missSentinel, table: "Localizable")
         if primary != missSentinel { return primary }
-        if let enBundle {
-            let secondary = enBundle.localizedString(forKey: key, value: missSentinel, table: "Localizable")
+        if let fallback {
+            let secondary = fallback.localizedString(forKey: key, value: missSentinel, table: "Localizable")
             if secondary != missSentinel { return secondary }
         }
         return key
+    }
+
+    private static func lookup(_ key: String, in current: Bundle) -> String {
+        lookup(key, in: current, fallback: enBundle)
     }
 
     private static func lookup(_ key: String) -> String {
