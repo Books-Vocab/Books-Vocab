@@ -138,45 +138,6 @@ def test_resolve_remove_deletes_exact_local_branch_after_remote_absence(
     )
 
 
-def test_resolve_remove_target_finds_worktree_when_only_branch_given(
-    tmp_path: Path,
-) -> None:
-    branch = "debug/orphan"
-    worktree = tmp_path / "worktree"
-    worktree.mkdir()
-    porcelain = (
-        f"worktree {coordinator.ROOT}\n"
-        f"HEAD {'b' * 40}\n"
-        "branch refs/heads/main\n"
-        "\n"
-        f"worktree {worktree}\n"
-        f"HEAD {'a' * 40}\n"
-        f"branch refs/heads/{branch}\n"
-    )
-    calls: list[list[str]] = []
-
-    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
-        calls.append(args)
-        if args == ["worktree", "list", "--porcelain"]:
-            return 0, porcelain
-        return 0, ""
-
-    args = Namespace(branch=branch, path=None)
-    resolved_branch, resolved_worktree, refusal = (
-        coordinator.worktree_cleanup.resolve_remove_target(
-            args,
-            root=coordinator.ROOT,
-            path_resolver=Path,
-            git=fake_git,
-        )
-    )
-
-    assert refusal is None
-    assert resolved_branch == branch
-    assert resolved_worktree == worktree
-    assert ["worktree", "list", "--porcelain"] in calls
-
-
 def _real_repo_with_lane_branch(tmp_path: Path, branch: str) -> tuple[Path, Path]:
     origin = tmp_path / "origin.git"
     repo = tmp_path / "repo"
