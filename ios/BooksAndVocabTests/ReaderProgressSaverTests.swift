@@ -163,6 +163,54 @@ struct ReaderProgressSaverTests {
         // Only the latest closure (C) executes once; A and B are dropped.
         #expect(saves.value == 1)
     }
+
+    // MARK: - PDF progress recorder (#2471)
+
+    /// 10 page changes coalesce to 0 persists until the debouncer fires, then 1;
+    /// in-memory fields stay fresh immediately.
+    @Test func pdfPageChangesCoalesceAndKeepMemoryFresh() throws {
+        let saves = Counter()
+        let debouncer = TestReaderProgressDebouncer()
+        let saver = ReaderProgressSaver(flushDelay: 0.05, debouncer: debouncer)
+        let book = Book(title: "PDF", author: "Test", fileName: "a.pdf")
+        let sut = PDFProgressRecorder(book: book, saver: saver, persist: { saves.increment() })
+
+        for page in 0..<10 { sut.pageChanged(pageIndex: page, pageCount: 100) }
+
+        #expect(saves.value == 0)
+        #expect(book.progression == 9.0 / 99.0)
+        let json = try #require(book.lastReadLocatorJSON)
+        let obj = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Int])
+        #expect(obj == ["pageIndex": 9])
+
+        debouncer.fire()
+        #expect(saves.value == 1)
+    }
+
+    @Test func pdfFlushPersistsOnceAndLateFireDoesNotRepeat() {
+        let saves = Counter()
+        let debouncer = TestReaderProgressDebouncer()
+        let saver = ReaderProgressSaver(flushDelay: 0.05, debouncer: debouncer)
+        let book = Book(title: "PDF", author: "Test", fileName: "a.pdf")
+        let sut = PDFProgressRecorder(book: book, saver: saver, persist: { saves.increment() })
+
+        sut.pageChanged(pageIndex: 3, pageCount: 10)
+        saver.flush()
+        #expect(saves.value == 1)
+        debouncer.fire()
+        #expect(saves.value == 1)
+    }
+
+    @Test func pdfSinglePageHasFullProgression() {
+        let saver = ReaderProgressSaver(flushDelay: 0.05, debouncer: TestReaderProgressDebouncer())
+        let book = Book(title: "PDF", author: "Test", fileName: "a.pdf")
+        let date = Date(timeIntervalSince1970: 42)
+        let sut = PDFProgressRecorder(book: book, saver: saver, persist: {}, now: { date })
+
+        sut.pageChanged(pageIndex: 0, pageCount: 1)
+        #expect(book.progression == 1.0)
+        #expect(book.dateLastRead == date)
+    }
 }
 
 /// Minimal thread-safe counter for observing save invocations.

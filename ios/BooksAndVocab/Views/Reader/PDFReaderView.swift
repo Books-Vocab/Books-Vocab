@@ -16,6 +16,35 @@ private struct PDFPosition: Codable {
     let pageIndex: Int
 }
 
+/// Per-page progress recording for the PDF reader (#2471). In-memory fields
+/// update immediately; the SwiftData save + manifest rewrite is debounced via
+/// `ReaderProgressSaver`, matching the EPUB path.
+@MainActor
+struct PDFProgressRecorder {
+    let book: Book
+    let saver: ReaderProgressSaver
+    let persist: @MainActor () -> Void
+    var now: () -> Date = Date.init
+
+    func pageChanged(pageIndex: Int, pageCount: Int) {
+        let book = book
+        let date = now()
+        saver.recordChange(apply: {
+            if let data = try? JSONEncoder().encode(PDFPosition(pageIndex: pageIndex)),
+               let json = String(data: data, encoding: .utf8) {
+                book.lastReadLocatorJSON = json
+            } else {
+                AppLog.reader.warning("PDF position encode failed (pageIndex=\(pageIndex))")
+            }
+            // Progression: 0.0 ~ 1.0
+            book.progression = pageCount > 1
+                ? Double(pageIndex) / Double(pageCount - 1)
+                : 1.0
+            book.dateLastRead = date
+        }, save: persist)
+    }
+}
+
 // MARK: - PDFReaderView
 
 struct PDFReaderView: View {
@@ -25,6 +54,7 @@ struct PDFReaderView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.actionType != "delete" }
@@ -37,6 +67,7 @@ struct PDFReaderView: View {
     @State private var showTranslation = false
     @State private var loginGate = LoginGateState()
     @State private var detailEntry: VocabularyEntry?
+    @State private var progressSaver = ReaderProgressSaver()
 
     private var vocabularyContext: ReaderVocabularyContext {
         ReaderVocabularyContext(
@@ -57,6 +88,7 @@ struct PDFReaderView: View {
                         document: document,
                         book: book,
                         modelContext: modelContext,
+                        progressSaver: progressSaver,
                         onWordSelected: { word, context in
                             guard canUseProReaderFeature() else { return }
                             handler.handleWordSelected(
@@ -98,6 +130,10 @@ struct PDFReaderView: View {
             // 用 onDisappear 而非 @MainActor @Observable 的 deinit
             // （時序與 actor 隔離易出錯）。
             handler.cancelCurrentTranslationTask()
+            progressSaver.flush()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background { progressSaver.flush() }
         }
         .navigationBarTitleDisplayMode(.inline)
         .macReaderImmersion()
@@ -136,7 +172,7 @@ struct PDFReaderView: View {
         // Record the open like EPUB does on initial locationDidChange: bump
         // dateLastRead so a PDF opened-but-not-paged still surfaces in
         // continue-reading. Position/progression are left to pageDidChange
-        // (already persisted synchronously per page turn).
+        // (persisted debounced via ReaderProgressSaver).
         book.dateLastRead = Date()
         if modelContext.safeSave() {
             BookManifestStore().writeBestEffort(book: book)
@@ -268,6 +304,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
     let document: PDFDocument
     let book: Book
     let modelContext: ModelContext
+    let progressSaver: ReaderProgressSaver
     let onWordSelected: (String, String) -> Void
     let onPhraseSelected: (String, String) -> Void
     let onExplainSelected: (String, String) -> Void
@@ -327,6 +364,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         Coordinator(
             book: book,
             modelContext: modelContext,
+            progressSaver: progressSaver,
             onWordSelected: onWordSelected,
             onPhraseSelected: onPhraseSelected,
             onExplainSelected: onExplainSelected
@@ -347,9 +385,11 @@ private struct PDFKitRepresentable: UIViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     final class Coordinator: NSObject, UIEditMenuInteractionDelegate {
         let book: Book
         let modelContext: ModelContext
+        let progressSaver: ReaderProgressSaver
         let onWordSelected: (String, String) -> Void
         let onPhraseSelected: (String, String) -> Void
         let onExplainSelected: (String, String) -> Void
@@ -359,12 +399,14 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         init(
             book: Book,
             modelContext: ModelContext,
+            progressSaver: ReaderProgressSaver,
             onWordSelected: @escaping (String, String) -> Void,
             onPhraseSelected: @escaping (String, String) -> Void,
             onExplainSelected: @escaping (String, String) -> Void
         ) {
             self.book = book
             self.modelContext = modelContext
+            self.progressSaver = progressSaver
             self.onWordSelected = onWordSelected
             self.onPhraseSelected = onPhraseSelected
             self.onExplainSelected = onExplainSelected
@@ -382,24 +424,17 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             let pageCount = document.pageCount
             guard pageCount > 0 else { return }
 
-            // Encode position
-            let position = PDFPosition(pageIndex: pageIndex)
-            if let data = try? JSONEncoder().encode(position),
-               let json = String(data: data, encoding: .utf8) {
-                book.lastReadLocatorJSON = json
-            } else {
-                AppLog.reader.warning("PDF position encode failed (pageIndex=\(pageIndex))")
-            }
-
-            // Progression: 0.0 ~ 1.0
-            book.progression = pageCount > 1
-                ? Double(pageIndex) / Double(pageCount - 1)
-                : 1.0
-            book.dateLastRead = Date()
-
-            if modelContext.safeSave() {
-                BookManifestStore().writeBestEffort(book: book)
-            }
+            let book = book
+            let modelContext = modelContext
+            PDFProgressRecorder(
+                book: book,
+                saver: progressSaver,
+                persist: {
+                    if modelContext.safeSave() {
+                        BookManifestStore().writeBestEffort(book: book)
+                    }
+                }
+            ).pageChanged(pageIndex: pageIndex, pageCount: pageCount)
         }
 
         // MARK: - Selection → Vocabulary

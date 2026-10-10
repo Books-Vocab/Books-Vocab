@@ -91,7 +91,7 @@ EPUB/TXT/MD 走 `ReaderView`（Readium），`.pdf` 走獨立 `PDFReaderView`（`
 
 | 檔案 | 說明 |
 |------|------|
-| `PDFReaderView.swift` | PDFKit 渲染 + 選詞捕捉；`UIEditMenuInteraction` 提供「翻譯」「解釋」。「翻譯」依 token 數分流 word（`handleWordSelected`）/ phrase（`handlePhraseSelected`），「解釋」走 `handleExplainSelected`。已對齊：已收藏詞顯示「查看詳情」(`WordDetailSheet`)、`canUseProReaderFeature` 閘、開啟 bump `dateLastRead`。進度存 `PDFPosition{pageIndex}`（頁級，非 Locator），翻頁同步存。 |
+| `PDFReaderView.swift` | PDFKit 渲染 + 選詞捕捉；`UIEditMenuInteraction` 提供「翻譯」「解釋」。「翻譯」依 token 數分流 word（`handleWordSelected`）/ phrase（`handlePhraseSelected`），「解釋」走 `handleExplainSelected`。已對齊：已收藏詞顯示「查看詳情」(`WordDetailSheet`)、`canUseProReaderFeature` 閘、開啟 bump `dateLastRead`。進度存 `PDFPosition{pageIndex}`（頁級，非 Locator）。翻頁即時寫記憶體，落盤經 `PDFProgressRecorder` → `ReaderProgressSaver` debounce（與 EPUB 同機制），`onDisappear` 與 scenePhase `.background` 時 flush。 |
 | `ReaderWordCapture.swift` | 選詞層 sanitize（去頭尾 `'`/`-`、丟 <2 字元）+ `isPhraseSelection` 分類；鏡像 EPUB JS 選詞層，與 `normalizeWord` capture 契約分離、組合使用。 |
 | `PDFReaderContext.swift` | 純函式 context 視窗抽取（plain / marked `before**highlight**after`），對齊 EPUB 兩種 context 形狀；可單元測試。 |
 | `ReaderEntitlement.swift` | Reader pro-feature 閘單一真相，EPUB（`ReaderView`）與 PDF 共用委派。 |
